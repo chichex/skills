@@ -44,30 +44,28 @@ Pipeline de desarrollo con contrato explícito: **contrato → spec → ejecuci�
 
 ## Instalación
 
-Los skills viven en un directorio por herramienta. Podés copiar el set que quieras o linkearlo.
-
-**Claude Code** — a `~/.claude/skills/` (o `.claude/skills/` dentro de un proyecto):
+Cloná el repo y corré `install.sh`. Hace `git pull` y copia cada skill a la carpeta de su herramienta **sin pisar los otros skills que ya tengas** (solo agrega/actualiza los de este repo):
 
 ```bash
-cp -R claude/* ~/.claude/skills/
+git clone https://github.com/chichex/skills.git
+cd skills
+./install.sh            # instala ambos sets (claude + opencode)
+./install.sh claude     # solo los de Claude Code
+./install.sh opencode   # solo los de opencode
 ```
 
-**opencode** — a `~/.config/opencode/skills/`:
+Destinos por defecto: `~/.claude/skills/` y `~/.config/opencode/skills/` (overridables con `CLAUDE_SKILLS_DIR` / `OPENCODE_SKILLS_DIR`).
+
+Para **actualizar** más adelante, volvé a correr `./install.sh` — ya hace el `pull` solo.
+
+Si preferís a mano, es un simple copy:
 
 ```bash
+cp -R claude/*   ~/.claude/skills/
 cp -R opencode/* ~/.config/opencode/skills/
 ```
 
-Se invocan pelados (`/grill`, `/sdd-init`, …) o el agente los carga solo cuando el contexto lo amerita, según su `description`.
-
-## Mantener sincronizado
-
-Los skills viven de verdad en `~/.claude/skills` y `~/.config/opencode/skills`. Cuando los editás ahí, corré `sync.sh` para traer los cambios de vuelta al repo:
-
-```bash
-./sync.sh            # copia desde ambas herramientas y muestra el diff
-./sync.sh --commit   # además commitea los cambios (después: git push)
-```
+Una vez instalados, se invocan pelados (`/grill`, `/sdd-init`, …) o el agente los carga solo cuando el contexto lo amerita, según su `description`.
 
 ## Créditos
 

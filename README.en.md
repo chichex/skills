@@ -46,30 +46,28 @@ A development pipeline with an explicit contract: **contract → spec → execut
 
 ## Installation
 
-The skills live in a per-tool directory. Copy the set you want, or symlink it.
-
-**Claude Code** — into `~/.claude/skills/` (or `.claude/skills/` inside a project):
+Clone the repo and run `install.sh`. It runs `git pull` and copies each skill into its tool's folder **without wiping the other skills you already have** (it only adds/updates the ones in this repo):
 
 ```bash
-cp -R claude/* ~/.claude/skills/
+git clone https://github.com/chichex/skills.git
+cd skills
+./install.sh            # installs both sets (claude + opencode)
+./install.sh claude     # only the Claude Code ones
+./install.sh opencode   # only the opencode ones
 ```
 
-**opencode** — into `~/.config/opencode/skills/`:
+Default destinations: `~/.claude/skills/` and `~/.config/opencode/skills/` (overridable with `CLAUDE_SKILLS_DIR` / `OPENCODE_SKILLS_DIR`).
+
+To **update** later, just run `./install.sh` again — it does the `pull` for you.
+
+If you'd rather do it by hand, it's a plain copy:
 
 ```bash
+cp -R claude/*   ~/.claude/skills/
 cp -R opencode/* ~/.config/opencode/skills/
 ```
 
-They're invoked bare (`/grill`, `/sdd-init`, …) or the agent loads them on its own when the context warrants it, based on their `description`.
-
-## Keeping it in sync
-
-The skills actually live in `~/.claude/skills` and `~/.config/opencode/skills`. When you edit them there, run `sync.sh` to pull the changes back into the repo:
-
-```bash
-./sync.sh            # copies from both tools and shows the diff
-./sync.sh --commit   # also commits the changes (then: git push)
-```
+Once installed, they're invoked bare (`/grill`, `/sdd-init`, …) or the agent loads them on its own when the context warrants it, based on their `description`.
 
 ## Credits
 
