@@ -71,7 +71,16 @@ Once installed, they're invoked bare (`/grill`, `/sdd-init`, …) or the agent l
 
 ## Credits
 
-The `grill` skill (and its variant) comes mostly from **[Matt Pocock](https://github.com/mattpocock)**.
+Four of these skills are **Spanish adaptations** of **[Matt Pocock](https://github.com/mattpocock)**'s skills — from his [mattpocock/skills](https://github.com/mattpocock/skills) repo (MIT):
+
+| In this repo | Matt Pocock's original |
+|---|---|
+| `grill` | `grilling` |
+| `grill-with-domain-modeling` | `grill-with-docs` |
+| `domain-modeling` | `domain-modeling` |
+| `tdd` | `tdd` |
+
+The **SDD** family (`sdd-init`, `sdd-spec`, `sdd-run`) is my own: inspired by the same way of working (tracer bullets, tests-first, spec → implementation) as his `to-spec` / `to-tickets` / `implement` / `wayfinder` skills, but with different artifacts — the `.sdd/project.md` autonomy contract and the verifiability verdict.
 
 ## License
 
