@@ -1,5 +1,7 @@
 # skills
 
+> 🇬🇧 [Read this in English](./README.en.md)
+
 Los skills que uso a diario en **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** y **[opencode](https://opencode.ai)**.
 
 Son piezas de conocimiento reutilizable que un agente carga bajo demanda: cada carpeta es un skill con su `SKILL.md` (frontmatter `name` + `description` que decide cuándo aplica) y, opcionalmente, archivos de referencia que el skill lee cuando los necesita.
@@ -58,9 +60,18 @@ cp -R opencode/* ~/.config/opencode/skills/
 
 Se invocan pelados (`/grill`, `/sdd-init`, …) o el agente los carga solo cuando el contexto lo amerita, según su `description`.
 
-## Shoutout
+## Mantener sincronizado
 
-A **[Matt Pocock](https://github.com/mattpocock)** 🙌 — por bajar a tierra cómo trabajar con agentes de verdad y empujar la idea de escribir esto como skills reutilizables. Gran parte de esta forma de laburar sale de mirar lo que comparte.
+Los skills viven de verdad en `~/.claude/skills` y `~/.config/opencode/skills`. Cuando los editás ahí, corré `sync.sh` para traer los cambios de vuelta al repo:
+
+```bash
+./sync.sh            # copia desde ambas herramientas y muestra el diff
+./sync.sh --commit   # además commitea los cambios (después: git push)
+```
+
+## Créditos
+
+El skill `grill` (y su variante) sale principalmente de **[Matt Pocock](https://github.com/mattpocock)**.
 
 ## Licencia
 
