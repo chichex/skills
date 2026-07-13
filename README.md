@@ -69,7 +69,7 @@ Una vez instalados, se invocan pelados (`/grill`, `/sdd-init`, …) o el agente 
 
 ## Créditos
 
-Cuatro de estos skills son **adaptaciones al español** de los skills de **[Matt Pocock](https://github.com/mattpocock)** — de su repo [mattpocock/skills](https://github.com/mattpocock/skills) (MIT):
+Cuatro de estos skills están **basados en** los skills de **[Matt Pocock](https://github.com/mattpocock)** — de su repo [mattpocock/skills](https://github.com/mattpocock/skills) (MIT):
 
 | En este repo | Original de Matt Pocock |
 |---|---|

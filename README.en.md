@@ -71,7 +71,7 @@ Once installed, they're invoked bare (`/grill`, `/sdd-init`, …) or the agent l
 
 ## Credits
 
-Four of these skills are **Spanish adaptations** of **[Matt Pocock](https://github.com/mattpocock)**'s skills — from his [mattpocock/skills](https://github.com/mattpocock/skills) repo (MIT):
+Four of these skills are **based on** **[Matt Pocock](https://github.com/mattpocock)**'s skills — from his [mattpocock/skills](https://github.com/mattpocock/skills) repo (MIT):
 
 | In this repo | Matt Pocock's original |
 |---|---|
