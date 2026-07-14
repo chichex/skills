@@ -14,12 +14,13 @@ Tres ideas fuerza:
 ## Argumentos
 
 ```text
-/sdd-run [.sdd/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>]
+/sdd-run [.sdd/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>] [--ultracode]
 ```
 
 - `--assume` — cero preguntas: encadena `/sdd-spec --assume` (y este `/sdd-init --assume`) si faltan precondiciones, saltea el gate del plan, y resuelve desviaciones con sesgo minimo seguro. Para correr desatendido.
 - `--no-pr` — frena despues del commit en el branch: no pushea ni crea PR. Para repos sin remote o cuando el PR lo arma el usuario.
 - `--base <branch>` — branch base para ramificar y para el PR (default: el branch default que declara el contrato — main/master/otro).
+- `--ultracode` — sube el motor de ejecucion a orquestacion multi-agente adversarial con la tool `Workflow`. NO cambia QUE se hace — mismas fases, misma doctrina, mismos mecanismos que la spec declara por CA — cambia el COMO: exploracion en fan-out, CAs independientes implementados en paralelo, y un panel de escepticos que intenta REFUTAR cada CA verde. Ortogonal a `--assume`/`--no-pr`/`--base` (componen). Default siempre normal; ultracode es opt-in. Ver "## Ultracode".
 
 ## Fase 0 — Lanzador (solo con `/sdd-run` pelado)
 
@@ -34,10 +35,12 @@ con la evidencia. Specs disponibles:
   1. dark-mode-toggle.md      (aprobada · MIXTA: ALTA 4 / MEDIA 1 / NULA 1)
   2. issue-12-rate-limit.md   (draft · ALTA)
 
-Atajo: /sdd-run <spec|#NN> [--assume] [--no-pr] saltea este menu.
+Atajo: /sdd-run <spec|#NN> [--assume] [--no-pr] [--ultracode] saltea este menu.
 ```
 
-Luego usar `question` — "¿Cual spec corremos?": una opcion por spec (maximo 4, las mas recientes; el resto via custom) + `Ninguna, hay que especificar primero` → ofrecer `/sdd-spec`.
+Luego usar `AskUserQuestion` — "¿Cual spec corremos?": una opcion por spec (maximo 3, las mas recientes; el resto via custom) + `Ninguna, hay que especificar primero` → ofrecer `/sdd-spec`.
+
+Con la spec ya elegida, preguntar la intensidad con un segundo `AskUserQuestion` — "¿Con que intensidad la corremos?": `Normal (Recomendado)` — un hilo, la de siempre — / `Ultracode` — orquestacion multi-agente y verificacion adversarial por CA, mismo criterio de terminado, mucho mas costo en tokens (equivale a `--ultracode`; ver "## Ultracode").
 
 ## Fase 1 — Precondiciones (bloqueante)
 
@@ -48,7 +51,7 @@ Luego usar `question` — "¿Cual spec corremos?": una opcion por spec (maximo 4
 
    **Unica excepcion — el spec target sin comitear:** si lo UNICO sucio (segun `git status --porcelain`) es el archivo del spec que se va a correr (el que resolvio la Fase 1.2 cuando vino como ruta local — sea `??` sin trackear o ` M` modificado), NO abortar: ese es el flujo normal de encadenar `/sdd-spec` → `/sdd-run` sin un commit intermedio. CUALQUIER otro path sucio — codigo, otro spec, config — sigue disparando el abort (ahi si el humano esta en el medio de algo). Lo que se corre es el contenido del working-tree, no el committeado. Con `#NN` (spec en el body del issue) la excepcion no aplica: no hay archivo local que tolerar, cualquier cosa sucia aborta.
 
-   Con todo sano (o solo el spec target sucio): crear un worktree nuevo con branch `sdd/<slug>` desde el base actualizado (`--base`; default: el branch default que declara el contrato, y si el contrato no lo dice, detectarlo — nunca asumir "main") — con la herramienta de worktrees del harness si esta disponible, si no `git worktree add ../<repo>-sdd-<slug> -b sdd/<slug> <base>` — y TODO el run pasa ahi adentro. Si se aplico la excepcion del spec: el worktree nace del base y NO trae el cambio sin comitear, asi que copiar el contenido working-tree del spec (desde el checkout) al worktree en el mismo path y commitearlo ahi como PRIMER commit del branch (`spec: baseline de <slug> (sin comitear en el checkout)`). Nunca commitear en el checkout del usuario: se lee y se deja intacto. Asi el worktree queda limpio para el resto del run y el spec entra al PR.
+   Con todo sano (o solo el spec target sucio): crear un worktree nuevo con branch `sdd/<slug>` desde el base actualizado (`--base`; default: el branch default que declara el contrato, y si el contrato no lo dice, detectarlo — nunca asumir "main") con `git worktree add ../<repo>-sdd-<slug> -b sdd/<slug> <base>`, y TODO el run pasa ahi adentro. Si se aplico la excepcion del spec: el worktree nace del base y NO trae el cambio sin comitear, asi que copiar el contenido working-tree del spec (desde el checkout) al worktree en el mismo path y commitearlo ahi como PRIMER commit del branch (`spec: baseline de <slug> (sin comitear en el checkout)`). Nunca commitear en el checkout del usuario: se lee y se deja intacto. Asi el worktree queda limpio para el resto del run y el spec entra al PR.
 
 ## Fase 2 — Plan efimero + gate
 
@@ -59,7 +62,7 @@ Planificar contra el codigo real, no contra la idea del codigo (explorar lo que 
 - El plan declara los **seams** bajo prueba — las interfaces publicas donde se observa comportamiento (doctrina de `/tdd`). Preferir seams existentes, y el mas alto posible; el gate del plan es donde el usuario los aprueba.
 - Si el plan revela que un CA es incoherente con el codigo real (la spec asumio algo que no existe): NO improvisar — es una desviacion, se maneja como dice la Fase 3.
 
-**Gate**: presentar el plan resumido (pasos ↔ CAs, archivos que toca, que queda explicitamente afuera) y usar `question`: `Aprobar (Recomendado)` / `Ajustar` (el usuario dice que via custom y se replantea). Con `--assume`: sin gate. El plan NO se escribe a disco — vive en la conversacion y muere con ella.
+**Gate**: presentar el plan resumido (pasos ↔ CAs, archivos que toca, que queda explicitamente afuera) y usar `AskUserQuestion`: `Aprobar (Recomendado)` / `Ajustar` (el usuario dice que via custom y se replantea). Con `--assume`: sin gate. El plan NO se escribe a disco — vive en la conversacion y muere con ella.
 
 ## Fase 3 — Implementar con loop de verificacion por CA
 
@@ -69,28 +72,6 @@ Planificar contra el codigo real, no contra la idea del codigo (explorar lo que 
 4. **Desviaciones**: si la implementacion revela que la spec esta mal (inferencia `[ASSUMED]` incorrecta, CA imposible como esta escrito): interactivo → preguntar y editar la spec con una linea de changelog fechada; `--assume` → si NO cambia el alcance, documentar `[DEVIATION]` en la spec y seguir; si cambia el alcance, abortar honesto con el estado committeado en el branch. Nunca desviarse en silencio: una spec que dice A con un codigo que hace B mata la confianza en todo el pipeline.
 5. **Regresion**: la suite existente completa (comando del contrato) tiene que quedar verde, no solo los tests nuevos.
 6. Commitear por pasos coherentes (mensaje referencia el CA: `CA-2: rate limit por IP con ventana deslizante`), nunca un mega-commit final.
-
-### Ownership y subagentes
-
-- El agente principal conserva ownership del run hasta cerrar la spec y emitir el reporte final. Puede delegar exploracion o unidades independientes, pero NO delegar "completar toda la spec" ni transferir el ownership del cierre.
-- Toda tarea delegada bloqueante debe ser esperada y reconciliada antes de responder al usuario: revisar su resultado, inspeccionar el worktree y ejecutar la verificacion relevante. Un subagente `running` no constituye progreso terminado.
-- Si un subagente expira, se interrumpe o no devuelve resultado, el agente principal inspecciona los cambios parciales, recupera el trabajo y continua directamente. Nunca termina la sesion dejando una tarea bloqueante en `running`.
-- Antes del cierre, comprobar que no queden tool calls, procesos o subagentes bloqueantes en estado `running`.
-
-### Timeouts y procesos colgados
-
-- Un timeout del harness o un `SIGTERM` NO equivale a test fallido, test verde ni fin de la corrida.
-- Ante un timeout: inspeccionar la salida parcial; comprobar si quedaron handles o procesos vivos; focalizar el comando; usar modo no-watch/no-interactivo y un timeout suficiente; luego repetir el mecanismo requerido por el CA.
-- No describir una suite como verde si el proceso no termino con exit code exitoso. Tampoco abandonar implementacion pendiente por un timeout de infraestructura.
-- Solo registrar FALLA despues de agotar el presupuesto del CA con diagnostico concreto. Si el bloqueo es del harness y no del comportamiento, reportarlo como bloqueo de ejecucion, no como CA verificado ni como implementacion terminada.
-
-### Gate de entrega humana
-
-Antes de levantar o presentar la app para validacion humana:
-
-- Verificar que el flujo solicitado sea accesible y operable desde su interfaz publica; no puede seguir deshabilitado, oculto ni marcado "a definir".
-- Ejecutar al menos los tests focalizados, typecheck y build correspondientes, salvo que el contrato declare otro mecanismo.
-- No pedir prueba humana de un CA cuya implementacion todavia no existe. Si el flujo no esta listo, decirlo explicitamente y continuar trabajando.
 
 ## Fase 4 — Verificacion final y cierre de la spec
 
@@ -116,6 +97,26 @@ Saltear con `--no-pr` (el run termina con el branch committeado y lo dice).
 3. NO mergear: el merge es del humano, siempre.
 4. Limpiar: remover el worktree (`git worktree remove`) — el branch y sus commits quedan en el repo. Si el run aborto a medias o quedo con FALLAs que el usuario querra inspeccionar en caliente, conservarlo y reportar la ruta.
 
+## Ultracode — orquestacion adversarial
+
+Motor alternativo para las Fases 2-4. Activo cuando el run corre con `--ultracode` o se eligio `Ultracode` en el lanzador. Son las MISMAS fases y la MISMA doctrina de arriba — test-first, cada CA verificado con SU mecanismo, presupuesto acotado, cero falsificacion, worktree nuevo, sin merge al default. Ultracode no afloja NADA: cambia el COMO — de un hilo a fan-out determinista — y agrega una capa de verificacion adversarial que es la forma mas fuerte de "la verificacion no se negocia": un CA verde no se cree, se intenta refutar. Todos los MUST NOT DO siguen intactos.
+
+Por fase (todo lo no mencionado queda igual):
+
+- **Fase 2 (plan)** — exploracion multi-modal en paralelo: un `Workflow` con una rama `Explore` por lente (data-flow de lo que la spec toca, seams y tests existentes en la zona, blast-radius y dependencias, modos de falla y edge cases, convenciones del repo); cada lente devuelve evidencia, no opinion. Judge panel de planes SOLO si la spec es MIXTA o grande y el enfoque no es obvio (N planes candidatos → se puntuan contra criterios explicitos —factibilidad test-first, altura de los seams, blast-radius, coherencia con los Limites del contrato— → se sintetiza el ganador); en specs chicas, un plan y listo. El panel elige entre CANDIDATOS, no reemplaza el gate: el plan sintetizado pasa por el MISMO `AskUserQuestion` Aprobar/Ajustar (`--assume` lo saltea igual que en normal) y sigue sin tocar disco.
+
+- **Fase 3 (impl + verificacion)** — el corazon:
+  1. **Particion por dependencias** desde los seams que declara el plan: los CAs que no comparten seams/archivos son independientes → se implementan en paralelo, cada uno en su worktree aislado (`isolation:'worktree'`, anidado del branch del run) SOLO para escribir sin pisarse. CAs dependientes → secuencial, en orden. Cada agente-CA hace la doctrina COMPLETA: test-first (test → verlo fallar por la razon correcta → implementar hasta verde) con el mecanismo que la spec declara.
+  2. **Integracion**: mergear cada CA de vuelta al branch del run preservando los commits por CA (`CA-N: ...`), nunca squash. Si dos CAs "independientes" chocan al mergear, la particion estaba mal → NO forzar el merge: secuencializar esos CAs y rehacerlos. Esto NO viola "no mergear" — ese MUST NOT DO es sobre el PR al branch default; integrar sub-worktrees al branch del run es parte del motor.
+  3. **El verde vale sobre el arbol integrado, no sobre el worktree aislado.** Un CA que dio verde EN SU worktree no esta verificado: otro CA integrado pudo romperlo. La verificacion de cada CA con su mecanismo, los escepticos y la regresion completa corren sobre el branch del run YA INTEGRADO. El worktree aislado es solo para escribir codigo sin colision.
+  4. **Verificacion adversarial por CA**: sobre cada CA que llega a verde (en el arbol integrado), lanzar un panel de N escepticos (escalar N por severidad: mas para ALTA, menos para MEDIA) cuyo UNICO trabajo es REFUTAR "CA-k esta verificado". Cada esceptico: (a) re-corre el mecanismo declarado desde limpio — ¿dio verde de verdad en esta corrida o se reporto sin correr?; (b) diffea los tests contra el base — ¿assert aflojado, `skip`/`only` colado, test borrado o comentado, umbral bajado?; (c) caza asserts tautologicos (`x == x`, asserts sobre el valor de un mock, asserts que no tocan el seam declarado); (d) mutacion dirigida — invierte una condicion o rompe una linea de la impl y re-corre: si ningun test se pone rojo, la rama esta sin cubrir y el verde es hueco; (e) chequea que el test observe el seam aprobado (el mas alto), no uno mas bajo o falso. Un CA queda `verificado` SOLO si ningun esceptico lo refuta con evidencia REPRODUCIBLE (comando re-corrido, mutacion que sobrevive, assert aflojado concreto); refutacion o absolucion sin evidencia concreta no cuentan.
+  5. **Presupuesto**: cap DURO de 3 intentos por CA sobre el TOTAL — intentos normales y redos por refutacion comparten el mismo cap. Una refutacion en pie manda el CA de vuelta al loop con esa refutacion como observacion roja concreta, pero NO compra un intento extra. Agotado el cap con una refutacion en pie, el CA es FALLA con esa refutacion en el diagnostico — nunca `verificado`. "Arreglar un verde refutado" es corregir una verificacion que no se sostuvo, no el intento 4 disfrazado, y el cap sigue siendo el mismo numero.
+  6. Los CA NULA no tienen mecanismo automatico: no llevan escepticos, quedan `pendiente de prueba humana` como en normal. Desviaciones (Fase 3.4) y regresion completa (Fase 3.5): igual que en normal.
+
+- **Fase 4 (cierre)** — antes de escribir el Resultado de ejecucion, un completeness critic con `Workflow` en loop-until-dry audita todo el run cruzando contra los reportes de los escepticos: ¿que CA quedo `verificado` sin que su mecanismo ejercitara de verdad el comportamiento? ¿que regresion no se corrio completa? ¿que evidencia es circunstancial? ¿que edge case del plan quedo sin cubrir? Los hallazgos se resuelven y el critic re-corre hasta salir seco; lo que no se puede cerrar NO se descarta en silencio → FALLA o pendiente humano con diagnostico. La tabla de Resultado de ejecucion anota, por CA verificado, cuantos escepticos lo atacaron sin lograr refutarlo (ej. `verificado (3/3 escepticos refutados)`) y la refutacion que gano si termino en FALLA — asi la verificacion adversarial queda auditable en la spec y el PR.
+
+Limpieza (Fase 5): remover tambien los sub-worktrees de los CAs; ante abort o FALLA que el usuario querra inspeccionar, conservarlos y reportar sus rutas.
+
 ## Reporte
 
 ```text
@@ -128,38 +129,6 @@ Run completo: PR #<n> <url>   (o: branch sdd/<slug> committeado, sin PR)
 - pendiente tuyo: <revisar PR | protocolo humano de CA-n | decidir sobre CA en FALLA>
 ```
 
-### Run interrumpido
-
-Si una restriccion externa obliga a detener la sesion antes del cierre, NO usar `Run completo`. Emitir `RUN INTERRUMPIDO` e incluir obligatoriamente:
-
-```text
-RUN INTERRUMPIDO
-- ultimo CA terminado: <CA-n | ninguno>
-- tarea/comando activo o bloqueo: <detalle>
-- cambios sin commit: <paths o ninguno>
-- tests rojos/no concluyentes: <detalle>
-- worktree: <ruta>
-- reanudar con: <instruccion exacta>
-```
-
-Conservar el worktree. Nunca presentar una interrupcion, timeout o subagente pendiente como una entrega parcial lista para validar.
-
-### Checklist de cierre obligatorio
-
-Antes de emitir `Run completo`, comprobar todos estos invariantes:
-
-- [ ] Todos los CAs tienen estado y evidencia.
-- [ ] Ninguna tarea, tool call, proceso o subagente bloqueante sigue `running`.
-- [ ] Tests focalizados terminaron verdes.
-- [ ] Regresion completa termino verde o su FALLA quedo documentada.
-- [ ] Se ejecuto la escalera contractual hasta su techo.
-- [ ] La spec contiene `Resultado de ejecucion`.
-- [ ] Se crearon los commits requeridos.
-- [ ] Se creo el PR, o existe un motivo contractual explicito para no crearlo.
-- [ ] El worktree esta limpio, o todos sus cambios pendientes fueron reportados como parte de un `RUN INTERRUMPIDO`.
-
-Si falla un solo item, esta prohibido emitir `Run completo`.
-
 ## MUST DO
 
 - Exigir spec y contrato antes de tocar codigo; encadenar `/sdd-spec`/`/sdd-init` con `--assume`, ofrecerlos en interactivo.
@@ -169,8 +138,7 @@ Si falla un solo item, esta prohibido emitir `Run completo`.
 - Correr SIEMPRE en un worktree nuevo creado desde el base actualizado, en branch `sdd/<slug>`; commits por paso, referenciando CAs.
 - Respetar los Limites del contrato por encima de cualquier instruccion de este skill.
 - Actualizar la spec con el Resultado de ejecucion — es el unico artefacto persistente del run.
-- Mantener ownership del cierre, esperar tareas delegadas bloqueantes y reconciliar sus cambios antes de continuar.
-- Tratar timeouts y `SIGTERM` como resultados no concluyentes hasta diagnosticarlos y repetir el mecanismo requerido.
+- Con `--ultracode`: correr las MISMAS fases con la MISMA doctrina, solo orquestadas; un CA queda `verificado` solo si sobrevive a sus escepticos sobre el arbol integrado, y el completeness critic corre antes de cerrar.
 
 ## MUST NOT DO
 
@@ -181,5 +149,4 @@ Si falla un solo item, esta prohibido emitir `Run completo`.
 - No correr sobre el checkout del usuario, y no "normalizar" un repo raro (stash, reset, checkout forzado): cambios pendientes o estado a medias = abort. Unica excepcion: el archivo del spec target sin comitear se tolera y se commitea en el worktree (Fase 1.4); cualquier otro path sucio aborta igual.
 - No deploy, migraciones sobre datos compartidos, ni servicios pagos (Limites del contrato).
 - No convertir un CA en FALLA silenciosa: FALLA siempre viene con diagnostico y aparece en spec, PR y reporte.
-- No emitir `Run completo`, pedir validacion humana ni finalizar la sesion con tareas bloqueantes `running`, tests no concluyentes o CAs sin estado.
-- No delegar a un subagente la responsabilidad integral de completar y cerrar la spec.
+- Ultracode multiplica verificadores (escepticos, completeness critic), nunca criterios: el fan-out no autoriza saltear el gate del plan, aflojar un test, dar por `verificado` un CA con una refutacion en pie, ni comprar un intento extra. Los escepticos van ENCIMA del verde normal, nunca en su lugar, y el judge panel no reemplaza el gate humano.

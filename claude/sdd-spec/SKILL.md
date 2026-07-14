@@ -14,11 +14,12 @@ Dos ideas fuerza:
 ## Argumentos
 
 ```text
-/sdd-spec [pedido libre | #NN | URL de issue] [--out local|issue] [--assume]
+/sdd-spec [pedido libre | #NN | URL de issue] [--out local|issue] [--assume] [--ultracode]
 ```
 
 - `--out local|issue` — destino de la spec sin preguntar. `local` = `.sdd/specs/`, `issue` = actualizar el issue de origen (o crear uno nuevo si el pedido fue libre).
 - `--assume` — cero preguntas: cada inferencia se resuelve con el sesgo minimo seguro y queda marcada `[ASSUMED]`; el mecanismo de verificacion propuesto se toma sin confirmar; la spec queda en estado `draft`. Para correr desatendido.
+- `--ultracode` — sube el motor a orquestacion multi-agente con la tool `Workflow`. NO cambia QUE se produce — misma spec, misma estructura, misma doctrina (inferencias TODAS sobre la mesa, veredicto anclado en el contrato) — cambia el COMO: exploracion en fan-out, y un panel adversarial que caza inferencias escondidas en la prosa, refuta grados de verificabilidad inflados y CAs no observables. Ortogonal a `--out`/`--assume` (componen). Default siempre normal; ultracode es opt-in. Ver "## Ultracode".
 
 ## Fase 0 — Lanzador (solo con `/sdd-spec` pelado)
 
@@ -32,33 +33,35 @@ ejecucion segun el contrato de autonomia (.sdd/project.md).
   • De una descripcion   — me escribis el pedido y arranco.
   • De un issue abierto  — listo los issues del repo y elegis cual especificar.
 
-Atajo: /sdd-spec <pedido | #NN> [--out local|issue] [--assume] saltea este menu.
+Atajo: /sdd-spec <pedido | #NN> [--out local|issue] [--assume] [--ultracode] saltea este menu.
 ```
 
-Luego usar `question` — una pregunta, "¿De donde sale la spec?":
+Luego usar `AskUserQuestion` — una pregunta, "¿De donde sale la spec?":
 
 1. `De una descripcion (Recomendado)` — el usuario escribe el pedido (via Other o en el mensaje siguiente).
 2. `De un issue abierto` — correr `gh issue list --state open --limit 20`, mostrar la lista y preguntar cual.
+
+Resuelto el origen, preguntar la intensidad con un segundo `AskUserQuestion` — "¿Con que intensidad?": `Normal (Recomendado)` — un hilo, la de siempre — / `Ultracode` — exploracion en fan-out y un panel adversarial que ataca la spec (inferencias ocultas, veredictos inflados, CAs no observables), mas costo en tokens (equivale a `--ultracode`; ver "## Ultracode").
 
 ## Fase 1 — Contrato primero (bloqueante)
 
 Leer `.sdd/project.md` ANTES de cualquier otra cosa; interesan sobre todo `## Comandos`, `## Verificacion autonoma` y `## Limites`.
 
-- **Si NO existe**: frenar. Explicar en una linea por que (sin contrato el veredicto de verificabilidad es inventado) y usar `question`: 1. `Correr /sdd-init ahora (Recomendado)` — invocarlo, esperar el contrato y seguir; 2. `Abortar`. NO generar spec "provisoria" sin contrato, ni siquiera si el usuario insiste con que es una feature chica: ofrecer `/sdd-init --assume` como via rapida.
+- **Si NO existe**: frenar. Explicar en una linea por que (sin contrato el veredicto de verificabilidad es inventado) y usar `AskUserQuestion`: 1. `Correr /sdd-init ahora (Recomendado)` — invocarlo, esperar el contrato y seguir; 2. `Abortar`. NO generar spec "provisoria" sin contrato, ni siquiera si el usuario insiste con que es una feature chica: ofrecer `/sdd-init --assume` como via rapida.
 - **Con `--assume` y sin contrato**: correr `/sdd-init --assume` automaticamente, anotarlo en el reporte, y seguir.
 - **Si existe pero esta viejo** (fecha de generacion > 30 dias, o los comandos que este pedido necesita figuran `FALLA` / `no probado`): avisar en una linea y ofrecer `/sdd-init --update`; no bloquear.
 
 ## Fase 2 — Entender el pedido
 
 1. Si el pedido es `#NN` o URL: `gh issue view NN --json title,body,comments,labels` (usar la URL con `-R` si es de otro repo). Guardar el numero: importa para el destino en Fase 6. Los comments cuentan como fuente — a veces desambiguan el body.
-2. Explorar el codigo que el pedido tocaria: subagents `explore` con la herramienta `task` en paralelo (inline si el repo es chico) para relevar que existe hoy, que archivos se tocarian, que convenciones hay, y si hay tests previos en la zona. La spec se escribe contra el codigo real, no contra la idea del codigo.
+2. Explorar el codigo que el pedido tocaria: subagents `Explore` con la tool `Agent` en paralelo (inline si el repo es chico) para relevar que existe hoy, que archivos se tocarian, que convenciones hay, y si hay tests previos en la zona. La spec se escribe contra el codigo real, no contra la idea del codigo.
 3. Revisar `.sdd/specs/`: si ya hay una spec para este mismo pedido (mismo issue o slug equivalente), avisar y tratar la corrida como actualizacion de esa spec, no crear otra.
 
 ## Fase 3 — Inferencias sobre la mesa
 
 El corazon del skill. Toda decision que el pedido no fija explicitamente se lista como inferencia — tambien las de confianza alta, porque el usuario decide cuales revisar, no el skill. Categorias tipicas: alcance (que entra y que no), comportamiento en bordes y errores, UX/copys, datos (¿migracion? ¿backfill?), compatibilidad hacia atras, plataformas.
 
-Mostrar la tabla completa numerada. **"Mostrar" = imprimirla como texto de respuesta visible, ANTES del tool call de `question`.** El razonamiento interno no lo ve el usuario y el dialogo de `question` no arrastra contexto: si la tabla no se emitio como texto, la pregunta referencia numeros (#1, #3...) que el usuario no tiene forma de ver. Tabla no impresa ⇒ pregunta prohibida.
+Mostrar la tabla completa numerada. **"Mostrar" = imprimirla como texto de respuesta visible, ANTES del tool call de `AskUserQuestion`.** El razonamiento interno no lo ve el usuario y el dialogo de `AskUserQuestion` no arrastra contexto: si la tabla no se emitio como texto, la pregunta referencia numeros (#1, #3...) que el usuario no tiene forma de ver. Tabla no impresa ⇒ pregunta prohibida.
 
 ```markdown
 | # | Inferencia | Eleccion propuesta | Alternativa razonable | Confianza |
@@ -67,12 +70,12 @@ Mostrar la tabla completa numerada. **"Mostrar" = imprimirla como texto de respu
 | 2 | ¿Aplica a paginas de admin? | No, solo app publica | Tambien admin | alta |
 ```
 
-Luego usar `question` — "¿Alguna inferencia a revisar?":
+Luego usar `AskUserQuestion` — "¿Alguna inferencia a revisar?":
 
 1. `Ninguna, todas bien (Recomendado)` — solo si ninguna quedo con confianza baja.
 2. `Revisar algunas` — el usuario dice cuales (numeros) via Other; por cada una, UNA pregunta con las alternativas concretas como opciones, la propuesta primera y marcada `(Recomendado)`.
 
-Reglas: lo que el pedido ya fija NO es inferencia y no se lista (listarlo diluye la tabla). Si una inferencia de confianza baja define el alcance entero (ej. "¿esto es solo UI o tambien API?"), preguntarla directo aunque el usuario haya dicho "todas bien" no aplica — respetar su eleccion, pero marcarla en la spec como riesgo. Con `--assume`: elegir el sesgo minimo seguro (la opcion mas chica y reversible) y marcar `[ASSUMED]` en la spec.
+Reglas: lo que el pedido ya fija NO es inferencia y no se lista (listarlo diluye la tabla). Si una inferencia de confianza baja define el alcance entero (ej. "¿esto es solo UI o tambien API?") pero el usuario ya dijo "todas bien", NO re-preguntarla por encima de esa eleccion: respetarla, pero marcarla en la spec como riesgo. Con `--assume`: elegir el sesgo minimo seguro (la opcion mas chica y reversible) y marcar `[ASSUMED]` en la spec.
 
 ## Fase 4 — Veredicto de verificabilidad
 
@@ -96,7 +99,7 @@ Reglas:
 Elegir con criterio = proponer el mecanismo MAS BARATO que observe el comportamiento real, no el mas impresionante. Orden de preferencia: test unit > integration > levantar la app con probe scripteado (curl, señal de log) > e2e browser > prueba humana. Un e2e de playwright para logica que se testea unit es eleccion incorrecta aunque funcione.
 
 1. Proponer por cada criterio de aceptacion el como concreto: comando, assertion o señal observable, anclado en los comandos del contrato.
-2. Usar `question` — "¿Con que lo verificamos?": la propuesta primera y marcada `(Recomendado)`, 1-2 alternativas reales (una mas exhaustiva, una mas barata) con su trade-off en la descripcion, y el usuario puede proponer otra via custom. Con `--assume`: tomar la propuesta sin preguntar.
+2. Usar `AskUserQuestion` — "¿Con que lo verificamos?": la propuesta primera y marcada `(Recomendado)`, 1-2 alternativas reales (una mas exhaustiva, una mas barata) con su trade-off en la descripcion, y el usuario puede proponer otra via custom. Con `--assume`: tomar la propuesta sin preguntar.
 3. Para los criterios NULA: escribir el **protocolo de prueba humana** — pasos concretos y chequeables que el usuario va a seguir ("1. Abri la app en tu iPhone... 2. Confirma un pago... 3. Verifica que vibro"). La spec no esconde la parte manual: la agenda.
 
 ## Fase 6 — Escribir la spec
@@ -135,9 +138,22 @@ Estado: `aprobada` si el usuario reviso inferencias y mecanismo; `draft` si corr
 
 Destino (saltear pregunta si vino `--out`):
 
-- **El pedido vino de un issue** — usar `question`: 1. `Actualizar el issue (Recomendado)` — reescribir el body con la spec, archivando el body original al final dentro de un `<details><summary>Body original</summary>`; 2. `Local` — `.sdd/specs/issue-NN-<slug>.md`; 3. `Ambos`.
-- **Pedido libre** — usar `question`: 1. `Local (Recomendado)` — `.sdd/specs/<slug>.md`; 2. `Crear issue` — `gh issue create` con la spec como body.
+- **El pedido vino de un issue** — usar `AskUserQuestion`: 1. `Actualizar el issue (Recomendado)` — reescribir el body con la spec, archivando el body original al final dentro de un `<details><summary>Body original</summary>`; 2. `Local` — `.sdd/specs/issue-NN-<slug>.md`; 3. `Ambos`.
+- **Pedido libre** — usar `AskUserQuestion`: 1. `Local (Recomendado)` — `.sdd/specs/<slug>.md`; 2. `Crear issue` — `gh issue create` con la spec como body.
 - Con `--assume` y sin `--out`: local.
+
+## Ultracode — orquestacion adversarial
+
+Motor alternativo para las Fases 2-6. Activo cuando el run corre con `--ultracode` o se eligio `Ultracode` en el lanzador. Produce la MISMA spec con la MISMA estructura y la MISMA doctrina — inferencias TODAS sobre la mesa, veredicto anclado en lo que el contrato corre HOY, CAs observables, cero codigo tocado. Ultracode no afloja NADA: cambia el COMO — de un hilo a fan-out determinista — y agrega una capa adversarial que es la forma mas fuerte de las dos ideas fuerza del skill (nada escondido en la prosa, veredicto no inflado): la spec no se cree, se ataca. Todos los MUST NOT DO siguen intactos — en particular, no toca codigo ni commitea.
+
+Por fase (todo lo no mencionado queda igual):
+
+- **Fase 2 (entender)** — exploracion multi-modal en paralelo con `Workflow`: una rama `Explore` por lente (que existe hoy en la zona, archivos que se tocarian, convenciones, tests previos, dependencias y blast-radius del pedido). Cada lente devuelve evidencia, no opinion. La spec se sigue escribiendo contra el codigo real.
+- **Fase 3 (inferencias)** — panel adversarial de inferencias ocultas: N agentes releen el pedido + la exploracion buscando decisiones que el pedido NO fija y que quedarian enterradas en la prosa en vez de en la tabla (alcance, bordes, datos, compat, plataformas). Todo lo que encuentren entra a la tabla numerada ANTES del `AskUserQuestion` — la regla de "mostrar como texto visible" no cambia. Esto endurece "no esconder decisiones en la prosa": la tabla se ataca, no se completa a ojo.
+- **Fases 4-5 (veredicto + mecanismo)** — panel de escepticos que REFUTA: por cada CA, un esceptico intenta mostrar que el grado esta inflado (¿el runner que lo haria ALTA figura `FALLA`/`no probado` en el contrato? entonces NO es ALTA) y que el mecanismo propuesto NO observa el comportamiento real (un e2e para logica unit-testeable, un assert que no toca el seam). El grado y el mecanismo quedan en pie SOLO si sobreviven, con la cita al comando/gap del contrato como evidencia; una refutacion con evidencia baja el grado o cambia el mecanismo.
+- **Cierre (Fase 6)** — antes de escribir la spec, un completeness critic (loop-until-dry) audita: ¿quedo alguna inferencia sin listar? ¿algun CA no es observable (paso/no paso sin interpretacion)? ¿el veredicto es honesto contra el contrato? ¿el protocolo humano de los CA NULA es ejecutable? Lo que marque se resuelve o se anota como `[NEEDS-INPUT]`/riesgo — no se cierra con hallazgos abiertos.
+
+Con `--assume`, ultracode corre igual pero sin los `AskUserQuestion`: los paneles emiten veredictos con evidencia y las inferencias quedan `[ASSUMED]`; la spec queda `draft` como siempre.
 
 ## Reporte
 
@@ -159,6 +175,7 @@ Spec lista: <ruta local y/o issue #NN actualizado>
 - Proponer el mecanismo de verificacion mas barato que observe el comportamiento real, y dejar que el usuario lo cambie o proponga otro.
 - Escribir criterios de aceptacion observables: paso/no paso sin interpretacion.
 - Ser idempotente: re-correr sobre el mismo pedido actualiza la spec existente, no crea otra.
+- Con `--ultracode`: producir la MISMA spec con la MISMA doctrina, solo orquestada; la tabla de inferencias y el veredicto sobreviven a un panel adversarial, y el completeness critic corre antes de escribir.
 
 ## MUST NOT DO
 
@@ -169,4 +186,5 @@ Spec lista: <ruta local y/o issue #NN actualizado>
 - No tocar codigo ni commitear: la spec (y el issue, si se eligio) es el unico output.
 - No pisar el body de un issue sin archivar el original en un `<details>`.
 - No preguntar lo que el pedido ya fija.
-- No llamar a `question` sobre las inferencias o el veredicto sin haberlos impreso antes como texto en la respuesta: "lo pense en el razonamiento" no cuenta como mostrado.
+- No llamar a `AskUserQuestion` sobre las inferencias o el veredicto sin haberlos impreso antes como texto en la respuesta: "lo pense en el razonamiento" no cuenta como mostrado.
+- Ultracode multiplica verificadores (panel de inferencias, escepticos del veredicto, completeness critic), nunca afloja criterios: el fan-out no autoriza saltear la tabla de inferencias, inflar un grado, ni proponer un mecanismo que no observa el comportamiento. Los paneles atacan la spec, no la maquillan.
