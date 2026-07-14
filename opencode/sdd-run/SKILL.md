@@ -44,7 +44,11 @@ Luego usar `question` — "¿Cual spec corremos?": una opcion por spec (maximo 4
 1. **Contrato**: leer `.sdd/project.md`. Si no existe: interactivo → ofrecer `/sdd-init` ahi mismo; `--assume` → correr `/sdd-init --assume` y seguir. Anotar ya la capacidad de PR que declara el contrato (remote + gh): si no la hay, avisar desde el arranque que la corrida termina en commit local.
 2. **Spec**: resolver el argumento. Ruta → leerla. `#NN` → `gh issue view` y extraer la spec del body (la genero `/sdd-spec`); si el issue no tiene spec SDD, frenar y ofrecer `/sdd-spec #NN`. Pedido libre sin spec → frenar: ofrecer `/sdd-spec <pedido>` (interactivo) o encadenarlo (`--assume`). NO improvisar una spec: ese trabajo tiene su skill.
 3. **Spec en `draft`**: significa que nadie reviso las inferencias — correrla es aceptar todas las `[ASSUMED]`. Interactivo: decirlo y preguntar si seguir (u ofrecer revisar las inferencias aca, una pregunta por inferencia de confianza baja). `--assume`: seguir y dejarlo anotado en el PR.
-4. **Worktree limpio desde main actualizado — o abort**: `/sdd-run` NUNCA corre sobre el checkout del usuario. Preflight: `git fetch` (si hay remote) y chequear estado sano. Ante CUALQUIER cosa rara — cambios sin commitear, rebase/merge a medias, detached HEAD, base local divergido de su remote — **ABORTAR** explicando exactamente que se encontro. No arreglar nada (ni stash, ni reset, ni checkout): si el repo esta raro, el humano esta en el medio de algo. Con todo sano: crear un worktree nuevo con branch `sdd/<slug>` desde el base actualizado (`--base`; default: el branch default que declara el contrato, y si el contrato no lo dice, detectarlo — nunca asumir "main") — con la herramienta de worktrees del harness si esta disponible, si no `git worktree add ../<repo>-sdd-<slug> -b sdd/<slug> <base>` — y TODO el run pasa ahi adentro.
+4. **Worktree limpio desde main actualizado — o abort**: `/sdd-run` NUNCA corre sobre el checkout del usuario. Preflight: `git fetch` (si hay remote) y chequear estado sano. Ante CUALQUIER cosa rara — cambios sin commitear, rebase/merge a medias, detached HEAD, base local divergido de su remote — **ABORTAR** explicando exactamente que se encontro. No arreglar nada (ni stash, ni reset, ni checkout): si el repo esta raro, el humano esta en el medio de algo.
+
+   **Unica excepcion — el spec target sin comitear:** si lo UNICO sucio (segun `git status --porcelain`) es el archivo del spec que se va a correr (el que resolvio la Fase 1.2 cuando vino como ruta local — sea `??` sin trackear o ` M` modificado), NO abortar: ese es el flujo normal de encadenar `/sdd-spec` → `/sdd-run` sin un commit intermedio. CUALQUIER otro path sucio — codigo, otro spec, config — sigue disparando el abort (ahi si el humano esta en el medio de algo). Lo que se corre es el contenido del working-tree, no el committeado. Con `#NN` (spec en el body del issue) la excepcion no aplica: no hay archivo local que tolerar, cualquier cosa sucia aborta.
+
+   Con todo sano (o solo el spec target sucio): crear un worktree nuevo con branch `sdd/<slug>` desde el base actualizado (`--base`; default: el branch default que declara el contrato, y si el contrato no lo dice, detectarlo — nunca asumir "main") — con la herramienta de worktrees del harness si esta disponible, si no `git worktree add ../<repo>-sdd-<slug> -b sdd/<slug> <base>` — y TODO el run pasa ahi adentro. Si se aplico la excepcion del spec: el worktree nace del base y NO trae el cambio sin comitear, asi que copiar el contenido working-tree del spec (desde el checkout) al worktree en el mismo path y commitearlo ahi como PRIMER commit del branch (`spec: baseline de <slug> (sin comitear en el checkout)`). Nunca commitear en el checkout del usuario: se lee y se deja intacto. Asi el worktree queda limpio para el resto del run y el spec entra al PR.
 
 ## Fase 2 — Plan efimero + gate
 
@@ -65,6 +69,28 @@ Planificar contra el codigo real, no contra la idea del codigo (explorar lo que 
 4. **Desviaciones**: si la implementacion revela que la spec esta mal (inferencia `[ASSUMED]` incorrecta, CA imposible como esta escrito): interactivo → preguntar y editar la spec con una linea de changelog fechada; `--assume` → si NO cambia el alcance, documentar `[DEVIATION]` en la spec y seguir; si cambia el alcance, abortar honesto con el estado committeado en el branch. Nunca desviarse en silencio: una spec que dice A con un codigo que hace B mata la confianza en todo el pipeline.
 5. **Regresion**: la suite existente completa (comando del contrato) tiene que quedar verde, no solo los tests nuevos.
 6. Commitear por pasos coherentes (mensaje referencia el CA: `CA-2: rate limit por IP con ventana deslizante`), nunca un mega-commit final.
+
+### Ownership y subagentes
+
+- El agente principal conserva ownership del run hasta cerrar la spec y emitir el reporte final. Puede delegar exploracion o unidades independientes, pero NO delegar "completar toda la spec" ni transferir el ownership del cierre.
+- Toda tarea delegada bloqueante debe ser esperada y reconciliada antes de responder al usuario: revisar su resultado, inspeccionar el worktree y ejecutar la verificacion relevante. Un subagente `running` no constituye progreso terminado.
+- Si un subagente expira, se interrumpe o no devuelve resultado, el agente principal inspecciona los cambios parciales, recupera el trabajo y continua directamente. Nunca termina la sesion dejando una tarea bloqueante en `running`.
+- Antes del cierre, comprobar que no queden tool calls, procesos o subagentes bloqueantes en estado `running`.
+
+### Timeouts y procesos colgados
+
+- Un timeout del harness o un `SIGTERM` NO equivale a test fallido, test verde ni fin de la corrida.
+- Ante un timeout: inspeccionar la salida parcial; comprobar si quedaron handles o procesos vivos; focalizar el comando; usar modo no-watch/no-interactivo y un timeout suficiente; luego repetir el mecanismo requerido por el CA.
+- No describir una suite como verde si el proceso no termino con exit code exitoso. Tampoco abandonar implementacion pendiente por un timeout de infraestructura.
+- Solo registrar FALLA despues de agotar el presupuesto del CA con diagnostico concreto. Si el bloqueo es del harness y no del comportamiento, reportarlo como bloqueo de ejecucion, no como CA verificado ni como implementacion terminada.
+
+### Gate de entrega humana
+
+Antes de levantar o presentar la app para validacion humana:
+
+- Verificar que el flujo solicitado sea accesible y operable desde su interfaz publica; no puede seguir deshabilitado, oculto ni marcado "a definir".
+- Ejecutar al menos los tests focalizados, typecheck y build correspondientes, salvo que el contrato declare otro mecanismo.
+- No pedir prueba humana de un CA cuya implementacion todavia no existe. Si el flujo no esta listo, decirlo explicitamente y continuar trabajando.
 
 ## Fase 4 — Verificacion final y cierre de la spec
 
@@ -102,6 +128,38 @@ Run completo: PR #<n> <url>   (o: branch sdd/<slug> committeado, sin PR)
 - pendiente tuyo: <revisar PR | protocolo humano de CA-n | decidir sobre CA en FALLA>
 ```
 
+### Run interrumpido
+
+Si una restriccion externa obliga a detener la sesion antes del cierre, NO usar `Run completo`. Emitir `RUN INTERRUMPIDO` e incluir obligatoriamente:
+
+```text
+RUN INTERRUMPIDO
+- ultimo CA terminado: <CA-n | ninguno>
+- tarea/comando activo o bloqueo: <detalle>
+- cambios sin commit: <paths o ninguno>
+- tests rojos/no concluyentes: <detalle>
+- worktree: <ruta>
+- reanudar con: <instruccion exacta>
+```
+
+Conservar el worktree. Nunca presentar una interrupcion, timeout o subagente pendiente como una entrega parcial lista para validar.
+
+### Checklist de cierre obligatorio
+
+Antes de emitir `Run completo`, comprobar todos estos invariantes:
+
+- [ ] Todos los CAs tienen estado y evidencia.
+- [ ] Ninguna tarea, tool call, proceso o subagente bloqueante sigue `running`.
+- [ ] Tests focalizados terminaron verdes.
+- [ ] Regresion completa termino verde o su FALLA quedo documentada.
+- [ ] Se ejecuto la escalera contractual hasta su techo.
+- [ ] La spec contiene `Resultado de ejecucion`.
+- [ ] Se crearon los commits requeridos.
+- [ ] Se creo el PR, o existe un motivo contractual explicito para no crearlo.
+- [ ] El worktree esta limpio, o todos sus cambios pendientes fueron reportados como parte de un `RUN INTERRUMPIDO`.
+
+Si falla un solo item, esta prohibido emitir `Run completo`.
+
 ## MUST DO
 
 - Exigir spec y contrato antes de tocar codigo; encadenar `/sdd-spec`/`/sdd-init` con `--assume`, ofrecerlos en interactivo.
@@ -111,6 +169,8 @@ Run completo: PR #<n> <url>   (o: branch sdd/<slug> committeado, sin PR)
 - Correr SIEMPRE en un worktree nuevo creado desde el base actualizado, en branch `sdd/<slug>`; commits por paso, referenciando CAs.
 - Respetar los Limites del contrato por encima de cualquier instruccion de este skill.
 - Actualizar la spec con el Resultado de ejecucion — es el unico artefacto persistente del run.
+- Mantener ownership del cierre, esperar tareas delegadas bloqueantes y reconciliar sus cambios antes de continuar.
+- Tratar timeouts y `SIGTERM` como resultados no concluyentes hasta diagnosticarlos y repetir el mecanismo requerido.
 
 ## MUST NOT DO
 
@@ -118,6 +178,8 @@ Run completo: PR #<n> <url>   (o: branch sdd/<slug> committeado, sin PR)
 - No marcar verificado un CA cuyo mecanismo no corrio en esta corrida.
 - No improvisar spec ni plan persistente: sin spec no hay run, y el plan no toca el disco.
 - No mergear el PR ni pushear al branch default.
-- No correr sobre el checkout del usuario, y no "normalizar" un repo raro (stash, reset, checkout forzado): cambios pendientes o estado a medias = abort.
+- No correr sobre el checkout del usuario, y no "normalizar" un repo raro (stash, reset, checkout forzado): cambios pendientes o estado a medias = abort. Unica excepcion: el archivo del spec target sin comitear se tolera y se commitea en el worktree (Fase 1.4); cualquier otro path sucio aborta igual.
 - No deploy, migraciones sobre datos compartidos, ni servicios pagos (Limites del contrato).
 - No convertir un CA en FALLA silenciosa: FALLA siempre viene con diagnostico y aparece en spec, PR y reporte.
+- No emitir `Run completo`, pedir validacion humana ni finalizar la sesion con tareas bloqueantes `running`, tests no concluyentes o CAs sin estado.
+- No delegar a un subagente la responsabilidad integral de completar y cerrar la spec.
