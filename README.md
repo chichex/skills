@@ -25,6 +25,7 @@ Las disciplinas sobre las que SDD se apoya — y que también uso sueltas, fuera
 | Skill | Qué hace |
 |---|---|
 | **`grill`** | Entrevista implacable sobre un plan o diseño **antes** de construir. Recorre cada rama del árbol de decisiones, una pregunta a la vez, con respuesta recomendada, hasta llegar a un entendimiento compartido. |
+| **`mini-grill`** | Versión express de `grill`: desambigua un pedido puntual en una a tres preguntas (con opción recomendada primero) y confirma la interpretación antes de actuar. Si aparecen muchas decisiones, deriva al `grill` completo. |
 | **`grill-with-domain-modeling`** | Un `grill` que además mantiene los docs del dominio (`CONTEXT.md` + ADRs) a medida que las decisiones se resuelven. |
 | **`domain-modeling`** | Mantiene vivo el modelo de dominio mientras se diseña: desafía términos, afila el lenguaje difuso, y escribe el glosario (`CONTEXT.md`) y las decisiones (`docs/adr/`) cuando cristalizan. Regla de contaminación cero: nunca introduce la práctica en un repo que no la usa. |
 | **`tdd`** | Referencia de test-driven development: el loop rojo → verde, qué es un buen test, dónde van (seams), los anti-patrones. Incluye guías de `mocking` y `tests`. |
@@ -68,7 +69,7 @@ Una vez instalados, se invocan pelados (`/grill`, `/sdd-init`, …) o el agente 
 
 ## Créditos
 
-Los cuatro **skills fundacionales** están **basados en** los skills de **[Matt Pocock](https://github.com/mattpocock)** — de su repo [mattpocock/skills](https://github.com/mattpocock/skills) (MIT):
+Cuatro de los **skills fundacionales** están **basados en** los skills de **[Matt Pocock](https://github.com/mattpocock)** — de su repo [mattpocock/skills](https://github.com/mattpocock/skills) (MIT); `mini-grill` es una variante propia reducida de `grill`:
 
 | En este repo | Original de Matt Pocock |
 |---|---|
