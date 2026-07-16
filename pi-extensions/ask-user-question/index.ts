@@ -111,10 +111,10 @@ export default function askUserQuestion(pi: ExtensionAPI) {
 				const selected = new Set<number>();
 
 				const editorTheme: EditorTheme = {
-					borderColor: (text) => theme.fg("accent", text),
+					borderColor: (text) => theme.fg("borderAccent", text),
 					selectList: {
 						selectedPrefix: (text) => theme.fg("accent", text),
-						selectedText: (text) => theme.fg("accent", text),
+						selectedText: (text) => theme.bg("selectedBg", theme.fg("text", text)),
 						description: (text) => theme.fg("muted", text),
 						scrollInfo: (text) => theme.fg("dim", text),
 						noMatch: (text) => theme.fg("warning", text),
@@ -234,27 +234,64 @@ export default function askUserQuestion(pi: ExtensionAPI) {
 						}
 					}
 
-					lines.push(theme.fg("accent", "─".repeat(renderWidth)));
+					function styleProse(text: string): string {
+						return text
+							.split(/(`[^`]+`)/g)
+							.map((part) => part.startsWith("`") && part.endsWith("`")
+								? theme.fg("mdCode", part)
+								: theme.fg("text", part))
+							.join("");
+					}
+
+					lines.push(theme.fg("borderMuted", "─".repeat(renderWidth)));
 					const progress = params.questionNumber
 						? `Pregunta ${params.questionNumber}${params.estimatedTotal ? ` de ~${params.estimatedTotal}` : ""}`
 						: undefined;
-					const heading = [params.section, progress].filter(Boolean).join(" · ");
-					if (heading) addWrappedWithPrefix(" ", theme.fg("muted", heading));
-					addWrappedWithPrefix(" ", theme.fg("text", params.question));
+					if (params.section) {
+						addWrappedWithPrefix(" ", theme.fg("accent", theme.bold(params.section)));
+					}
+					if (progress) addWrappedWithPrefix(" ", theme.fg("dim", progress));
+					if (params.section || progress) lines.push("");
+					let renderedQuestionTitle = false;
+					for (const rawLine of params.question.split(/\r?\n/)) {
+						const line = rawLine.trimEnd();
+						if (!line.trim()) {
+							lines.push("");
+							continue;
+						}
+						if (!renderedQuestionTitle) {
+							addWrappedWithPrefix(" ", theme.fg("text", theme.bold(line)));
+							renderedQuestionTitle = true;
+							continue;
+						}
+						const sectionLine = line.match(/^([^:]{1,32}:)(.*)$/);
+						if (sectionLine && !/^\d/.test(sectionLine[1])) {
+							const styled = theme.fg("accent", theme.bold(sectionLine[1])) + styleProse(sectionLine[2]);
+							addWrappedWithPrefix(" ", styled);
+						} else {
+							addWrappedWithPrefix(" ", styleProse(line));
+						}
+					}
 					lines.push("");
 
 					for (let index = 0; index < options.length; index++) {
 						const option = options[index];
 						const focused = index === optionIndex;
 						const checked = selected.has(index);
-						const cursor = focused ? theme.fg("accent", "> ") : "  ";
+						const cursor = focused ? theme.fg("accent", "› ") : "  ";
 						const marker = selectionMode === "multiple" && !option.isOther ? `${checked ? "[x]" : "[ ]"} ` : "";
-						const recommended = option.recommended ? theme.fg("success", " ★ Recomendada") : "";
+						const recommended = option.recommended
+							? ` ${theme.fg("warning", theme.bold("★ Recomendada"))}`
+							: "";
 						const label = `${marker}${option.label}${recommended}`;
-						addWrappedWithPrefix(cursor, theme.fg(focused ? "accent" : "text", label));
-						if (option.description) addWrappedWithPrefix("     ", theme.fg("muted", option.description));
+						const styledLabel = focused
+							? theme.bg("selectedBg", theme.fg("text", theme.bold(label)))
+							: theme.fg("text", label);
+						addWrappedWithPrefix(cursor, styledLabel);
+						if (option.description) addWrappedWithPrefix("    ", theme.fg("muted", option.description));
 						if (option.recommended && option.recommendationReason) {
-							addWrappedWithPrefix("     ", theme.fg("dim", `Motivo: ${option.recommendationReason}`));
+							const reason = `${theme.fg("warning", "Por qué:")} ${theme.fg("muted", option.recommendationReason)}`;
+							addWrappedWithPrefix("    ", reason);
 						}
 					}
 
@@ -274,7 +311,7 @@ export default function askUserQuestion(pi: ExtensionAPI) {
 								: "↑↓ navegar · Espacio marcar · Enter enviar · Esc cancelar"
 							: "↑↓ navegar · Enter elegir · Esc cancelar";
 					addWrappedWithPrefix(" ", theme.fg("dim", help));
-					lines.push(theme.fg("accent", "─".repeat(renderWidth)));
+					lines.push(theme.fg("borderMuted", "─".repeat(renderWidth)));
 					cachedLines = lines;
 					return lines;
 				}

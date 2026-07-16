@@ -8,6 +8,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Markdown } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { menuItems, selectMenu, type MenuItem } from "./lib/menu";
 
 export interface IssueListItem {
 	number: number;
@@ -81,10 +82,13 @@ function ghError(stderr: string, fallback: string): Error {
 	return new Error(message || fallback);
 }
 
-function formatChoice(issue: IssueListItem): string {
-	const labels = issue.labels.map((label) => label.name).filter(Boolean);
-	const suffix = labels.length > 0 ? `  [${labels.join(", ")}]` : "";
-	return `#${issue.number} ${issue.title}${suffix}`;
+function issueMenuItem(issue: IssueListItem): MenuItem<string> {
+	const labels = issue.labels.map((label) => label.name).filter(Boolean).join(", ") || "sin labels";
+	return {
+		value: String(issue.number),
+		label: `#${issue.number} ${issue.title}`,
+		description: `${labels} · @${issue.author?.login ?? "desconocido"}`,
+	};
 }
 
 export type IssueCandidate = IssueListItem & { body: string };
@@ -314,6 +318,7 @@ export default function (pi: ExtensionAPI) {
 		executionMode: "sequential",
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+			const executionSignal = signal ?? new AbortController().signal;
 			if (!ctx.hasUI) {
 				throw new Error("select_github_issue requires interactive or RPC mode");
 			}
@@ -352,21 +357,21 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			const choices = issues.map(formatChoice);
-			const selectedChoice = await ctx.ui.select(
-				`Select a GitHub issue (${issues.length} ${state})`,
-				choices,
+			const selectedChoice = await selectMenu(
+				ctx,
+				`GitHub issues (${issues.length} · ${state})`,
+				issues.map(issueMenuItem),
+				{ minPrimaryColumnWidth: 44, maxPrimaryColumnWidth: 54 },
 			);
 
-			if (selectedChoice === undefined) {
+			if (selectedChoice === null) {
 				return {
 					content: [{ type: "text", text: "The user cancelled issue selection." }],
 					details: { selected: null, cancelled: true },
 				};
 			}
 
-			const selectedIndex = choices.indexOf(selectedChoice);
-			const selected = issues[selectedIndex];
+			const selected = issues.find((issue) => String(issue.number) === selectedChoice);
 			if (!selected) throw new Error("Could not resolve the selected GitHub issue");
 
 			const viewArgs = [
@@ -393,9 +398,28 @@ export default function (pi: ExtensionAPI) {
 			const analyzeChoice = "Analizar dependencias potenciales (usa el modelo)";
 			const grillChoice = `Grillar el issue #${issue.number} (usa el modelo)`;
 			const cancelChoice = "Cancelar";
-			const selectedAction = await ctx.ui.select(
-				`¿Qué hacemos con el issue #${issue.number}?`,
-				[inspectChoice, analyzeChoice, grillChoice, cancelChoice],
+			const selectedAction = await selectMenu(
+				ctx,
+				`Issue #${issue.number} · elegí una acción`,
+				[
+					{
+						value: inspectChoice,
+						label: inspectChoice,
+						description: "Devuelve sus detalles completos sin ejecutar otro análisis",
+					},
+					{
+						value: analyzeChoice,
+						label: analyzeChoice,
+						description: "Busca relaciones, prerrequisitos y orden recomendado",
+					},
+					{
+						value: grillChoice,
+						label: grillChoice,
+						description: "Aclara alcance y decisiones antes de escribir una spec",
+					},
+					{ value: cancelChoice, label: cancelChoice },
+				],
+				{ minPrimaryColumnWidth: 44, maxPrimaryColumnWidth: 44 },
 			);
 
 			let relatedAnalysis: RelatedIssueAnalysis | undefined;
@@ -454,9 +478,9 @@ export default function (pi: ExtensionAPI) {
 					const candidates = parseJson<IssueCandidate[]>(candidateResult.stdout, "related gh issue list")
 						.filter((candidate) => candidate.number !== issue.number);
 					try {
-						relatedAnalysis = await analyzeRelatedIssues(ctx, issue, candidates, signal);
+						relatedAnalysis = await analyzeRelatedIssues(ctx, issue, candidates, executionSignal);
 					} catch (error) {
-						if (signal.aborted) throw error;
+						if (executionSignal.aborted) throw error;
 						const message = error instanceof Error ? error.message : String(error);
 						relatedAnalysis = {
 							summary: `No se pudo completar el análisis de relaciones: ${message}`,
@@ -474,10 +498,9 @@ export default function (pi: ExtensionAPI) {
 
 				const prerequisites = relatedAnalysis.related.filter((finding) => finding.mustBeDoneFirst);
 				const prerequisiteChoices = new Map<string, RelatedIssueFinding>();
-				for (const [index, finding] of prerequisites.entries()) {
-					const recommendation = index === 0 ? " (Recomendado)" : "";
+				for (const finding of prerequisites) {
 					prerequisiteChoices.set(
-						`Grillar primero #${finding.number}: ${finding.title}${recommendation}`,
+						`Grillar primero #${finding.number}: ${finding.title}`,
 						finding,
 					);
 				}
@@ -486,9 +509,18 @@ export default function (pi: ExtensionAPI) {
 					? `Grillar igualmente el issue #${issue.number}`
 					: `Grillar el issue #${issue.number}`;
 				const finishChoice = "Finalizar sin grillar";
-				const nextChoice = await ctx.ui.select(
+				const nextChoice = await selectMenu(
+					ctx,
 					`Análisis completo para #${issue.number}`,
-					[...prerequisiteChoices.keys(), grillSelectedChoice, finishChoice],
+					[
+						...[...prerequisiteChoices.keys()].map((label, index) => ({
+							value: label,
+							label,
+							recommended: index === 0,
+						})),
+						{ value: grillSelectedChoice, label: grillSelectedChoice },
+						{ value: finishChoice, label: finishChoice },
+					],
 				);
 				const prerequisite = nextChoice ? prerequisiteChoices.get(nextChoice) : undefined;
 

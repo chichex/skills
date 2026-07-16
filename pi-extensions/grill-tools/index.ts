@@ -7,6 +7,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { getMarkdownTheme, truncateHead, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Markdown, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { menuItems, selectMenu, type MenuItem } from "../lib/menu";
 
 const AGENT_DIR = join(homedir(), ".pi", "agent");
 const STORE_DIR = join(AGENT_DIR, "grill-sessions");
@@ -322,8 +323,12 @@ function statusIcon(status: GrillStatus): string {
 	return "✓";
 }
 
-function choiceLabel(snapshot: GrillSnapshot): string {
-	return `${statusIcon(snapshot.status)} ${snapshot.topic} · ${snapshot.workflowMode} · ${basename(snapshot.projectPath)} · ${snapshot.interactions.length}/~${snapshot.estimate.likely} · ${formatDate(snapshot.updatedAt)} · ${snapshot.id.slice(-8)}`;
+function snapshotMenuItem(snapshot: GrillSnapshot): MenuItem<string> {
+	return {
+		value: snapshot.id,
+		label: `${statusIcon(snapshot.status)} ${snapshot.topic}`,
+		description: `${snapshot.status} · ${snapshot.workflowMode} · ${basename(snapshot.projectPath)} · ${snapshot.interactions.length}/~${snapshot.estimate.likely} · ${formatDate(snapshot.updatedAt)} · ${snapshot.id.slice(-8)}`,
+	};
 }
 
 function inspectionMarkdown(snapshot: GrillSnapshot): string {
@@ -387,8 +392,12 @@ function specStatusIcon(state: string): string {
 	return "•";
 }
 
-function specChoiceLabel(spec: SpecDocument): string {
-	return `${specStatusIcon(spec.state)} ${spec.title} · ${basename(spec.projectPath)} · ${spec.state} · ${formatDate(spec.updatedAt)} · ${basename(spec.path)}`;
+function specMenuItem(spec: SpecDocument): MenuItem<string> {
+	return {
+		value: spec.path,
+		label: `${specStatusIcon(spec.state)} ${spec.title}`,
+		description: `${spec.state} · ${basename(spec.projectPath)} · ${formatDate(spec.updatedAt)} · ${basename(spec.path)}`,
+	};
 }
 
 function specInspectionMarkdown(spec: SpecDocument): string {
@@ -517,16 +526,19 @@ export default function grillTools(pi: ExtensionAPI) {
 					const specs = effectiveScope === "current-project"
 						? currentSpecs
 						: (allSpecs ??= await listSpecs(await knownProjectRoots(pi, currentProject)));
-					const choices = [
-						...specs.map(specChoiceLabel),
-						effectiveScope === "current-project" ? showAllChoice : showProjectChoice,
+					const scopeChoice = effectiveScope === "current-project" ? showAllChoice : showProjectChoice;
+					const items: MenuItem<string>[] = [
+						...specs.map(specMenuItem),
+						{ value: scopeChoice, label: scopeChoice, description: "Cambia el alcance del selector" },
 					];
 
-					const selectedChoice = await ctx.ui.select(
+					const selectedChoice = await selectMenu(
+						ctx,
 						`Specs SDD · ${effectiveScope === "current-project" ? basename(currentProject) : "todos los proyectos conocidos"}`,
-						choices,
+						items,
+						{ minPrimaryColumnWidth: 44, maxPrimaryColumnWidth: 52 },
 					);
-					if (selectedChoice === undefined) return;
+					if (selectedChoice === null) return;
 					if (selectedChoice === showAllChoice) {
 						effectiveScope = "all";
 						continue;
@@ -536,16 +548,17 @@ export default function grillTools(pi: ExtensionAPI) {
 						continue;
 					}
 
-					const selected = specs[choices.indexOf(selectedChoice)];
+					const selected = specs.find((spec) => spec.path === selectedChoice);
 					if (!selected) throw new Error("No se pudo resolver la spec seleccionada");
 
 					const inspectChoice = "Inspeccionar";
 					const runChoice = "Ejecutar con /skill:sdd-run";
-					const action = await ctx.ui.select(
+					const action = await selectMenu(
+						ctx,
 						`${selected.title} · ${selected.state}`,
-						[backChoice, inspectChoice, runChoice],
+						menuItems([backChoice, inspectChoice, runChoice]),
 					);
-					if (action === undefined || action === backChoice) continue;
+					if (action === null || action === backChoice) continue;
 
 					if (action === inspectChoice) {
 						pi.appendEntry("sdd-spec-inspection", {
@@ -590,16 +603,19 @@ export default function grillTools(pi: ExtensionAPI) {
 					const snapshots = allSnapshots.filter((snapshot) =>
 						effectiveScope === "all" || resolve(snapshot.projectPath) === currentProject
 					);
-					const choices = [
-						...snapshots.map(choiceLabel),
-						effectiveScope === "current-project" ? showAllChoice : showProjectChoice,
+					const scopeChoice = effectiveScope === "current-project" ? showAllChoice : showProjectChoice;
+					const items: MenuItem<string>[] = [
+						...snapshots.map(snapshotMenuItem),
+						{ value: scopeChoice, label: scopeChoice, description: "Cambia el alcance del selector" },
 					];
 
-					const selectedChoice = await ctx.ui.select(
+					const selectedChoice = await selectMenu(
+						ctx,
 						`Grill sessions · ${effectiveScope === "current-project" ? basename(currentProject) : "todos los proyectos"}`,
-						choices,
+						items,
+						{ minPrimaryColumnWidth: 44, maxPrimaryColumnWidth: 52 },
 					);
-					if (selectedChoice === undefined) return;
+					if (selectedChoice === null) return;
 					if (selectedChoice === showAllChoice) {
 						effectiveScope = "all";
 						continue;
@@ -609,7 +625,7 @@ export default function grillTools(pi: ExtensionAPI) {
 						continue;
 					}
 
-					const selected = snapshots[choices.indexOf(selectedChoice)];
+					const selected = snapshots.find((snapshot) => snapshot.id === selectedChoice);
 					if (!selected) throw new Error("No se pudo resolver la sesión seleccionada");
 
 					const inspectChoice = "Inspeccionar";
@@ -619,8 +635,12 @@ export default function grillTools(pi: ExtensionAPI) {
 					const actionChoices = selected.status === "finalized"
 						? [backChoice, inspectChoice, createSpecChoice, duplicateChoice]
 						: [backChoice, resumeChoice, inspectChoice];
-					const action = await ctx.ui.select(`${selected.topic} · ${selected.status}`, actionChoices);
-					if (action === undefined || action === backChoice) continue;
+					const action = await selectMenu(
+						ctx,
+						`${selected.topic} · ${selected.status}`,
+						menuItems(actionChoices),
+					);
+					if (action === null || action === backChoice) continue;
 
 					if (action === inspectChoice) {
 						pi.appendEntry("grill-session-inspection", {
@@ -870,21 +890,25 @@ export default function grillTools(pi: ExtensionAPI) {
 			while (true) {
 				const snapshots = filteredSnapshots(effectiveScope);
 				const scopeChoice = effectiveScope === "current-project" ? showAllChoice : showProjectChoice;
-				const choices = [...snapshots.map(choiceLabel)];
-				if (scope === "current-project") choices.push(scopeChoice);
+				const items: MenuItem<string>[] = snapshots.map(snapshotMenuItem);
+				if (scope === "current-project") {
+					items.push({ value: scopeChoice, label: scopeChoice, description: "Cambia el alcance del selector" });
+				}
 
-				if (choices.length === 0) {
+				if (items.length === 0) {
 					return {
 						content: [{ type: "text", text: "No grill sessions matched the selected filters." }],
 						details: { selected: null, action: "none", status, scope: effectiveScope },
 					};
 				}
 
-				const selectedChoice = await ctx.ui.select(
+				const selectedChoice = await selectMenu(
+					ctx,
 					`Grill sessions · ${effectiveScope === "current-project" ? basename(currentProject) : "all projects"}`,
-					choices,
+					items,
+					{ minPrimaryColumnWidth: 44, maxPrimaryColumnWidth: 52 },
 				);
-				if (selectedChoice === undefined) {
+				if (selectedChoice === null) {
 					return {
 						content: [{ type: "text", text: "The user cancelled grill session selection." }],
 						details: { selected: null, action: "cancel" },
@@ -899,7 +923,7 @@ export default function grillTools(pi: ExtensionAPI) {
 					continue;
 				}
 
-				const selected = snapshots[choices.indexOf(selectedChoice)];
+				const selected = snapshots.find((snapshot) => snapshot.id === selectedChoice);
 				if (!selected) throw new Error("Could not resolve the selected grill session");
 
 				if ((params.intent ?? "manage") === "spec-source") {
@@ -921,8 +945,12 @@ export default function grillTools(pi: ExtensionAPI) {
 				const actionChoices = selected.status === "finalized"
 					? [backChoice, "Inspect only", createSpecChoice, "Duplicate as a new revision"]
 					: [backChoice, "Resume in this conversation", "Inspect only"];
-				const selectedAction = await ctx.ui.select(`${selected.topic} · ${selected.status}`, actionChoices);
-				if (selectedAction === undefined || selectedAction === backChoice) continue;
+				const selectedAction = await selectMenu(
+					ctx,
+					`${selected.topic} · ${selected.status}`,
+					menuItems(actionChoices),
+				);
+				if (selectedAction === null || selectedAction === backChoice) continue;
 
 				if (selectedAction === "Inspect only") {
 					return {

@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { BorderedLoader, DynamicBorder } from "@earendil-works/pi-coding-agent";
-import { Container, type SelectItem, SelectList, Text } from "@earendil-works/pi-tui";
+import { BorderedLoader } from "@earendil-works/pi-coding-agent";
+import type { SelectItem } from "@earendil-works/pi-tui";
+import { selectMenu } from "../lib/menu";
 
 type PrAction = "open-web" | "comments-fix" | "review" | "merge" | "close";
 type MergeStrategy = "merge" | "squash" | "rebase";
@@ -202,34 +203,16 @@ export default function githubPrsExtension(pi: ExtensionAPI): void {
 		items: SelectItem[],
 		help: string,
 	): Promise<T | null> {
-		return ctx.ui.custom<T | null>((tui, theme, _keybindings, done) => {
-			const container = new Container();
-			container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-			container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
-
-			const selectList = new SelectList(items, Math.min(items.length, 12), {
-				selectedPrefix: (text) => theme.fg("accent", text),
-				selectedText: (text) => theme.fg("accent", text),
-				description: (text) => theme.fg("muted", text),
-				scrollInfo: (text) => theme.fg("dim", text),
-				noMatch: (text) => theme.fg("warning", text),
-			});
-			selectList.onSelect = (item) => done(item.value as T);
-			selectList.onCancel = () => done(null);
-
-			container.addChild(selectList);
-			container.addChild(new Text(theme.fg("dim", help), 1, 0));
-			container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-
-			return {
-				render: (width: number) => container.render(width),
-				invalidate: () => container.invalidate(),
-				handleInput: (data: string) => {
-					selectList.handleInput(data);
-					tui.requestRender();
-				},
-			};
-		});
+		return selectMenu<T>(
+			ctx,
+			title,
+			items.map((item) => ({
+				value: item.value as T,
+				label: item.label ?? item.value,
+				description: item.description,
+			})),
+			{ help },
+		);
 	}
 
 	async function listOpenPrs(ctx: ExtensionContext): Promise<PullRequestListItem[]> {

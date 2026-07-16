@@ -18,6 +18,7 @@
 #   OPENCODE_SKILLS_DIR  (default: ~/.config/opencode/skills)
 #   PI_SKILLS_DIR        (default: ~/.agents/skills)
 #   PI_EXTENSIONS_DIR    (default: ~/.pi/agent/extensions)
+#   PI_THEMES_DIR        (default: ~/.pi/agent/themes)
 #
 set -euo pipefail
 
@@ -26,6 +27,7 @@ CLAUDE_DEST="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
 OPENCODE_DEST="${OPENCODE_SKILLS_DIR:-$HOME/.config/opencode/skills}"
 PI_DEST="${PI_SKILLS_DIR:-$HOME/.agents/skills}"
 PI_EXTENSIONS_DEST="${PI_EXTENSIONS_DIR:-$HOME/.pi/agent/extensions}"
+PI_THEMES_DEST="${PI_THEMES_DIR:-$HOME/.pi/agent/themes}"
 WHICH="${1:-all}"
 
 # 1. traer lo último (si es un clon git)
@@ -71,9 +73,27 @@ install_extensions() {
   done
 }
 
+install_themes() {
+  local src="$1" dest="$2"
+  if [ ! -d "$src" ]; then
+    echo "⚠  Pi themes: no existe $src en el repo — salteando"
+    return
+  fi
+  mkdir -p "$dest"
+  echo "→ Pi themes → $dest"
+  for theme in "$src"/*.json; do
+    [ -f "$theme" ] || continue
+    local base; base="$(basename "$theme")"
+    rm -f "$dest/$base"
+    cp "$theme" "$dest/$base"
+    echo "   ✓ $base"
+  done
+}
+
 install_pi() {
   install_set "Pi skills" "$REPO_DIR/pi" "$PI_DEST"
   install_extensions "$REPO_DIR/pi-extensions" "$PI_EXTENSIONS_DEST"
+  install_themes "$REPO_DIR/pi-themes" "$PI_THEMES_DEST"
 }
 
 case "$WHICH" in

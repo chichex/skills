@@ -15,9 +15,6 @@ import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 
 const DIFF_INDENT = "    ";
-const ADDED_BG = "\x1b[48;2;18;66;24m";
-const REMOVED_BG = "\x1b[48;2;91;24;20m";
-const RESET_BG = "\x1b[49m";
 
 interface ParsedDiffLine {
   kind: "added" | "removed" | "context";
@@ -44,10 +41,6 @@ function parseDiffLine(line: string): ParsedDiffLine {
     prefix: `${marker}${lineNumber} `,
     content: match[3].replace(/\t/g, "   "),
   };
-}
-
-function rawBackground(color: string, text: string): string {
-  return `${color}${text}${RESET_BG}`;
 }
 
 class ClaudeDiffComponent implements Component {
@@ -81,9 +74,9 @@ class ClaudeDiffComponent implements Component {
     const added = parsed.filter((line) => line.kind === "added").length;
     const removed = parsed.filter((line) => line.kind === "removed").length;
     const summary =
-      `  ${this.theme.fg("dim", "└ Added ")}` +
-      `${this.theme.bold(String(added))}${this.theme.fg("dim", ` ${added === 1 ? "line" : "lines"}, removed `)}` +
-      `${this.theme.bold(String(removed))}${this.theme.fg("dim", ` ${removed === 1 ? "line" : "lines"}`)}`;
+      `  ${this.theme.fg("dim", "└ ")}` +
+      `${this.theme.fg("success", this.theme.bold(`+${added}`))}${this.theme.fg("dim", " / ")}` +
+      `${this.theme.fg("error", this.theme.bold(`-${removed}`))}${this.theme.fg("dim", " lines")}`;
 
     const lines = [truncateToWidth(summary, width)];
     const rowWidth = Math.max(1, width - visibleWidth(DIFF_INDENT));
@@ -110,12 +103,12 @@ class ClaudeDiffComponent implements Component {
         }
 
         const token = line.kind === "added" ? "toolDiffAdded" : "toolDiffRemoved";
-        const background = line.kind === "added" ? ADDED_BG : REMOVED_BG;
+        const background = line.kind === "added" ? "toolSuccessBg" : "toolErrorBg";
         const styledPrefix = this.theme.fg(token, prefix);
         const styledContent = this.theme.fg("text", chunk);
         const used = visibleWidth(prefix) + visibleWidth(chunk);
         const padding = " ".repeat(Math.max(0, rowWidth - used));
-        lines.push(`${DIFF_INDENT}${rawBackground(background, `${styledPrefix}${styledContent}${padding}`)}`);
+        lines.push(`${DIFF_INDENT}${this.theme.bg(background, `${styledPrefix}${styledContent}${padding}`)}`);
       }
     }
 

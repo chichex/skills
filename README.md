@@ -52,6 +52,8 @@ El repo también conserva todas las extensiones globales de Pi usadas por este w
 | **`visual-footer.ts`** | Footer visual con estado, modelo, tokens y directorio actual; se alterna con `/visual-footer`. |
 | **`warp-status.ts`** | Emite el estado de Pi para la integración de terminal de Warp. |
 
+También incluye el theme global **`claude-code`**, con la paleta usada por estas interfaces.
+
 ## Estructura del repo
 
 Está partido por herramienta porque las versiones no son idénticas y cada harness expone tools y comandos distintos. Elegí la carpeta según dónde los quieras usar.
@@ -61,7 +63,8 @@ skills/
 ├── claude/      # versiones para Claude Code  (~/.claude/skills)
 ├── opencode/       # versiones para opencode      (~/.config/opencode/skills)
 ├── pi/             # skills para Pi               (~/.agents/skills)
-└── pi-extensions/  # extensiones de Pi             (~/.pi/agent/extensions)
+├── pi-extensions/  # extensiones de Pi             (~/.pi/agent/extensions)
+└── pi-themes/      # themes de Pi                  (~/.pi/agent/themes)
 ```
 
 ## Instalación
@@ -79,7 +82,7 @@ cd skills
 ./install.sh pi         # solo los de Pi
 ```
 
-Destinos por defecto: `~/.claude/skills/`, `~/.config/opencode/skills/`, `~/.agents/skills/` y `~/.pi/agent/extensions/` (overridables con `CLAUDE_SKILLS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR` y `PI_EXTENSIONS_DIR`).
+Destinos por defecto: `~/.claude/skills/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/` y `~/.pi/agent/themes/` (overridables con `CLAUDE_SKILLS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR` y `PI_THEMES_DIR`).
 
 Para **actualizar** más adelante, volvé a correr `./install.sh` — ya hace el `pull` solo.
 
@@ -90,6 +93,7 @@ cp -R claude/*   ~/.claude/skills/
 cp -R opencode/* ~/.config/opencode/skills/
 cp -R pi/*             ~/.agents/skills/
 cp -R pi-extensions/*  ~/.pi/agent/extensions/
+cp pi-themes/*.json    ~/.pi/agent/themes/
 ```
 
 Una vez instalados, Claude Code/opencode los invocan con sus comandos habituales. En Pi se usan como `/skill:grill`, `/skill:code-review`, `/skill:github-issue-selector`, `/skill:sdd-init`, `/skill:sdd-spec` y `/skill:sdd-run`, o el agente los carga según su `description`. Ejecutá `/reload` en una sesión de Pi abierta después de instalarlos.

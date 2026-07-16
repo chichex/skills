@@ -5,18 +5,10 @@ import { basename, join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	BorderedLoader,
-	DynamicBorder,
 	getMarkdownTheme,
 	truncateHead,
 } from "@earendil-works/pi-coding-agent";
-import {
-	Container,
-	Markdown,
-	matchesKey,
-	type SelectItem,
-	SelectList,
-	Text,
-} from "@earendil-works/pi-tui";
+import { Markdown } from "@earendil-works/pi-tui";
 
 import {
 	analyzeRelatedIssues,
@@ -27,6 +19,7 @@ import {
 	type RelatedIssueAnalysis,
 	type RelatedIssueFinding,
 } from "./github-issue-selector";
+import { selectMenu, type MenuItem } from "./lib/menu";
 
 type IssueListAction =
 	| { kind: "select"; number: number }
@@ -82,9 +75,13 @@ function parseJson<T>(output: string, context: string): T {
 	}
 }
 
-function formatIssueChoice(issue: Pick<IssueListItem, "number" | "title" | "labels">): string {
-	const labels = issue.labels.map((label) => label.name).filter(Boolean);
-	return `#${issue.number} ${issue.title}${labels.length > 0 ? `  [${labels.join(", ")}]` : ""}`;
+function formatIssueChoice(issue: Pick<IssueListItem, "number" | "title">): string {
+	return `#${issue.number} ${issue.title}`;
+}
+
+function issueListDescription(issue: Pick<IssueListItem, "labels">, work: IssueWork | undefined): string {
+	const labels = issue.labels.map((label) => label.name).filter(Boolean).join(", ") || "sin labels";
+	return `${labels} · ${workSummary(work)}`;
 }
 
 function localizedGrillStatus(status: GrillStatus): string {
@@ -314,51 +311,28 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 		issues: IssueListItem[],
 		workByIssue: Map<number, IssueWork>,
 	): Promise<IssueListAction> {
-		return ctx.ui.custom<IssueListAction>((tui, theme, _keybindings, done) => {
-			const container = new Container();
-			container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-			container.addChild(
-				new Text(theme.fg("accent", theme.bold(`GitHub Issues abiertos (${issues.length})`)), 1, 0),
-			);
-
-			const items: SelectItem[] = issues.map((issue) => ({
+		const createValue = "__create__";
+		const items: MenuItem<string>[] = [
+			...issues.map((issue) => ({
 				value: String(issue.number),
 				label: formatIssueChoice(issue),
-				description: workSummary(workByIssue.get(issue.number)),
-			}));
-			const selectList = new SelectList(items, Math.min(Math.max(items.length, 1), 12), {
-				selectedPrefix: (text) => theme.fg("accent", text),
-				selectedText: (text) => theme.fg("accent", text),
-				description: (text) => theme.fg("muted", text),
-				scrollInfo: (text) => theme.fg("dim", text),
-				noMatch: (text) => theme.fg("warning", text),
-			});
-
-			selectList.onSelect = (item) => done({ kind: "select", number: Number(item.value) });
-			selectList.onCancel = () => done({ kind: "exit" });
-			if (items.length > 0) {
-				container.addChild(selectList);
-			} else {
-				container.addChild(new Text(theme.fg("muted", "No hay issues abiertos."), 1, 1));
-			}
-			container.addChild(
-				new Text(theme.fg("dim", "↑↓ navegar • enter elegir • c crear issue • esc salir"), 1, 0),
-			);
-			container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-
-			return {
-				render: (width: number) => container.render(width),
-				invalidate: () => container.invalidate(),
-				handleInput: (data: string) => {
-					if (matchesKey(data, "c")) {
-						done({ kind: "create" });
-						return;
-					}
-					selectList.handleInput(data);
-					tui.requestRender();
-				},
-			};
-		});
+				description: issueListDescription(issue, workByIssue.get(issue.number)),
+			})),
+			{
+				value: createValue,
+				label: "＋ Crear un issue nuevo",
+				description: "Abre el editor y pide confirmación antes de publicarlo",
+			},
+		];
+		const selected = await selectMenu(
+			ctx,
+			`GitHub Issues abiertos (${issues.length})`,
+			items,
+			{ maxVisible: 12 },
+		);
+		if (selected === null) return { kind: "exit" };
+		if (selected === createValue) return { kind: "create" };
+		return { kind: "select", number: Number(selected) };
 	}
 
 	async function showIssueActions(
@@ -366,11 +340,12 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 		issue: Pick<IssueDetails, "number">,
 		hasAnalysis: boolean,
 	): Promise<IssueAction | null> {
-		const items: SelectItem[] = [
+		const items: MenuItem<IssueAction>[] = [
 			{
 				value: "analyze",
-				label: `${hasAnalysis ? "Reanalizar" : "Analizar"} dependencias potenciales (Recomendado)`,
+				label: `${hasAnalysis ? "Reanalizar" : "Analizar"} dependencias potenciales`,
 				description: "Compara con otros issues, detecta prerrequisitos y recomienda el orden de trabajo; usa el modelo",
+				recommended: true,
 			},
 			{
 				value: "grill",
@@ -386,6 +361,7 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 				value: "delete",
 				label: `Eliminar #${issue.number} permanentemente`,
 				description: "Borra el issue de GitHub de forma irreversible; pide confirmación",
+				danger: true,
 			},
 			{
 				value: "list",
@@ -399,41 +375,12 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 			},
 		];
 
-		return ctx.ui.custom<IssueAction | null>((tui, theme, _keybindings, done) => {
-			const container = new Container();
-			container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-			container.addChild(
-				new Text(theme.fg("accent", theme.bold(`Issue #${issue.number} · elegí una acción`)), 1, 0),
-			);
-
-			const selectList = new SelectList(
-				items,
-				items.length,
-				{
-					selectedPrefix: (text) => theme.fg("accent", text),
-					selectedText: (text) => theme.fg("accent", text),
-					description: (text) => theme.fg("muted", text),
-					scrollInfo: (text) => theme.fg("dim", text),
-					noMatch: (text) => theme.fg("warning", text),
-				},
-				{ minPrimaryColumnWidth: 48, maxPrimaryColumnWidth: 48 },
-			);
-			selectList.onSelect = (item) => done(item.value as IssueAction);
-			selectList.onCancel = () => done(null);
-
-			container.addChild(selectList);
-			container.addChild(new Text(theme.fg("dim", "↑↓ navegar • enter elegir • esc cancelar"), 1, 0));
-			container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-
-			return {
-				render: (width: number) => container.render(width),
-				invalidate: () => container.invalidate(),
-				handleInput: (data: string) => {
-					selectList.handleInput(data);
-					tui.requestRender();
-				},
-			};
-		});
+		return selectMenu<IssueAction>(
+			ctx,
+			`Issue #${issue.number} · elegí una acción`,
+			items,
+			{ maxVisible: items.length, minPrimaryColumnWidth: 48, maxPrimaryColumnWidth: 48 },
+		);
 	}
 
 	async function listOpenIssues(
@@ -611,17 +558,26 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 
 				const prerequisites = analysis.related.filter((finding) => finding.mustBeDoneFirst);
 				const prerequisiteChoices = new Map<string, RelatedIssueFinding>();
-				for (const [index, prerequisite] of prerequisites.entries()) {
+				for (const prerequisite of prerequisites) {
 					prerequisiteChoices.set(
-						`Grillar primero #${prerequisite.number}: ${prerequisite.title}${index === 0 ? " (Recomendado)" : ""}`,
+						`Grillar primero #${prerequisite.number}: ${prerequisite.title}`,
 						prerequisite,
 					);
 				}
 				const grillSelectedChoice = `Grillar #${issue.number}`;
 				const continueChoice = "Seguir inspeccionando sin grillar";
-				const next = await ctx.ui.select(
+				const next = await selectMenu(
+					ctx,
 					`Dependencias analizadas para #${issue.number}`,
-					[...prerequisiteChoices.keys(), grillSelectedChoice, continueChoice],
+					[
+						...[...prerequisiteChoices.keys()].map((label, index) => ({
+							value: label,
+							label,
+							recommended: index === 0,
+						})),
+						{ value: grillSelectedChoice, label: grillSelectedChoice },
+						{ value: continueChoice, label: continueChoice },
+					],
 				);
 				const prerequisite = next ? prerequisiteChoices.get(next) : undefined;
 				if (prerequisite) {
