@@ -1,24 +1,31 @@
 #!/usr/bin/env bash
 #
-# Instala/actualiza los skills de este repo en Claude Code y opencode.
+# Instala/actualiza los skills de este repo en Claude Code, opencode y Pi.
 # Hace git pull y copia cada skill a su carpeta, SIN borrar los otros skills
 # que ya tengas: solo agrega/actualiza los que vienen del repo.
 #
 # Uso:
-#   ./install.sh              # instala ambos sets (claude + opencode)
+#   ./install.sh              # instala los tres sets
+#   ./install.sh all          # instala los tres sets
+#   ./install.sh both         # Claude Code + opencode (compatibilidad)
 #   ./install.sh claude       # solo los de Claude Code
 #   ./install.sh opencode     # solo los de opencode
+#   ./install.sh pi           # solo los de Pi
 #
 # Overrides por variable de entorno (destinos):
 #   CLAUDE_SKILLS_DIR    (default: ~/.claude/skills)
 #   OPENCODE_SKILLS_DIR  (default: ~/.config/opencode/skills)
+#   PI_SKILLS_DIR        (default: ~/.agents/skills)
+#   PI_EXTENSIONS_DIR    (default: ~/.pi/agent/extensions)
 #
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DEST="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
 OPENCODE_DEST="${OPENCODE_SKILLS_DIR:-$HOME/.config/opencode/skills}"
-WHICH="${1:-both}"
+PI_DEST="${PI_SKILLS_DIR:-$HOME/.agents/skills}"
+PI_EXTENSIONS_DEST="${PI_EXTENSIONS_DIR:-$HOME/.pi/agent/extensions}"
+WHICH="${1:-all}"
 
 # 1. traer lo último (si es un clon git)
 if [ -d "$REPO_DIR/.git" ]; then
@@ -45,12 +52,21 @@ install_set() {
   done
 }
 
+install_pi() {
+  install_set "Pi skills" "$REPO_DIR/pi" "$PI_DEST"
+  install_set "Pi extensions" "$REPO_DIR/pi-extensions" "$PI_EXTENSIONS_DEST"
+}
+
 case "$WHICH" in
+  all)      install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST"
+            install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST"
+            install_pi ;;
   both)     install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST"
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
   claude)   install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST" ;;
   opencode) install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
-  *) echo "Argumento inválido: '$WHICH' (usá: both | claude | opencode)" >&2; exit 2 ;;
+  pi)       install_pi ;;
+  *) echo "Argumento inválido: '$WHICH' (usá: all | both | claude | opencode | pi)" >&2; exit 2 ;;
 esac
 
 echo

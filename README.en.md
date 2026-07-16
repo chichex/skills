@@ -2,7 +2,7 @@
 
 > 🇦🇷 [Leer en español](./README.md)
 
-This repo is built around my own **Spec-Driven Development (SDD)** workflow — plus the foundational skills it builds on. Everything I use day to day in **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** and **[opencode](https://opencode.ai)**.
+This repo is built around my own **Spec-Driven Development (SDD)** workflow — plus the foundational skills it builds on. Everything I use day to day in **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[opencode](https://opencode.ai)**, and **[Pi](https://github.com/badlogic/pi-mono)**.
 
 Skills are reusable pieces of knowledge an agent loads on demand: each folder is a skill with its `SKILL.md` (frontmatter `name` + `description` that decides when it applies) and, optionally, reference files the skill reads when it needs them.
 
@@ -34,29 +34,36 @@ The disciplines SDD builds on — which I also use standalone, outside the pipel
 
 SDD doesn't replace these skills — it orchestrates them. The design that precedes a spec is sharpened with `grill` and `domain-modeling`, and `sdd-run` implements following the `tdd` discipline.
 
+In Pi, `sdd-spec` accepts `--from-grill`: it consumes a confirmed handoff without asking again about decisions already settled. The Pi version of `grill` can chain into it on confirmation, and the `grill-tools` extension provides persistence and the option to generate a spec from a finalized session.
+
 ## Repo layout
 
-It's split by tool because the versions aren't identical: the opencode ones are plain ASCII (no diacritics) and there are minor content differences between them. Pick the folder based on where you want to use them.
+It's split by tool because the versions aren't identical: the opencode and Pi ones are plain ASCII (no diacritics), and tool/command details differ between harnesses. Pick the folder based on where you want to use them.
 
 ```
 skills/
 ├── claude/      # versions for Claude Code  (~/.claude/skills)
-└── opencode/    # versions for opencode      (~/.config/opencode/skills)
+├── opencode/       # versions for opencode      (~/.config/opencode/skills)
+├── pi/             # skills for Pi               (~/.agents/skills)
+└── pi-extensions/  # required Pi extensions       (~/.pi/agent/extensions)
 ```
 
 ## Installation
 
-Clone the repo and run `install.sh`. It runs `git pull` and copies each skill into its tool's folder **without wiping the other skills you already have** (it only adds/updates the ones in this repo):
+Clone the repo and run `install.sh`. It runs `git pull` and copies each skill —plus the Pi extensions— into its tool's folder **without wiping anything else you already have** (it only adds/updates items from this repo):
 
 ```bash
 git clone https://github.com/chichex/skills.git
 cd skills
-./install.sh            # installs both sets (claude + opencode)
+./install.sh            # installs all three sets
+./install.sh all        # same as above
+./install.sh both       # Claude Code + opencode
 ./install.sh claude     # only the Claude Code ones
 ./install.sh opencode   # only the opencode ones
+./install.sh pi         # only the Pi ones
 ```
 
-Default destinations: `~/.claude/skills/` and `~/.config/opencode/skills/` (overridable with `CLAUDE_SKILLS_DIR` / `OPENCODE_SKILLS_DIR`).
+Default destinations: `~/.claude/skills/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, and `~/.pi/agent/extensions/` (overridable with `CLAUDE_SKILLS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, and `PI_EXTENSIONS_DIR`).
 
 To **update** later, just run `./install.sh` again — it does the `pull` for you.
 
@@ -65,9 +72,11 @@ If you'd rather do it by hand, it's a plain copy:
 ```bash
 cp -R claude/*   ~/.claude/skills/
 cp -R opencode/* ~/.config/opencode/skills/
+cp -R pi/*             ~/.agents/skills/
+cp -R pi-extensions/*  ~/.pi/agent/extensions/
 ```
 
-Once installed, they're invoked bare (`/grill`, `/sdd-init`, …) or the agent loads them on its own when the context warrants it, based on their `description`.
+Once installed, Claude Code/opencode use their usual commands. In Pi, invoke `/skill:grill`, `/skill:sdd-init`, `/skill:sdd-spec`, and `/skill:sdd-run`, or let the agent load them from their `description`. Run `/reload` in an open Pi session after installing.
 
 ## Credits
 
