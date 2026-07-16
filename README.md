@@ -20,35 +20,53 @@ Invocados pelados (sin args) abren una **Fase 0 — Lanzador** que expone las op
 
 ## Skills fundacionales
 
-Las disciplinas sobre las que SDD se apoya — y que también uso sueltas, fuera del pipeline. Están **basadas en** los skills de [Matt Pocock](https://github.com/mattpocock) (ver [Créditos](#créditos)).
+Las disciplinas sobre las que SDD se apoya — y que también uso sueltas, fuera del pipeline. Algunas están **basadas en** los skills de [Matt Pocock](https://github.com/mattpocock) (ver [Créditos](#créditos)); otras son propias.
 
 | Skill | Qué hace |
 |---|---|
-| **`grill`** | Entrevista implacable sobre un plan o diseño **antes** de construir. Recorre cada rama del árbol de decisiones, una pregunta a la vez, con respuesta recomendada, hasta llegar a un entendimiento compartido. |
+| **`grill`** | Entrevista implacable sobre un plan o diseño **antes** de construir. Permite recorrer el árbol de decisiones de forma rápida o pregunta a pregunta hasta llegar a un entendimiento compartido. En Pi también puede mantener la documentación de dominio. |
 | **`mini-grill`** | Versión express de `grill`: desambigua un pedido puntual en una a tres preguntas (con opción recomendada primero) y confirma la interpretación antes de actuar. Si aparecen muchas decisiones, deriva al `grill` completo. |
-| **`grill-with-domain-modeling`** | Un `grill` que además mantiene los docs del dominio (`CONTEXT.md` + ADRs) a medida que las decisiones se resuelven. |
+| **`grill-with-domain-modeling`** *(Claude/opencode)* | Un `grill` que además mantiene los docs del dominio (`CONTEXT.md` + ADRs) a medida que las decisiones se resuelven. En Pi esta modalidad vive dentro de `grill`. |
 | **`domain-modeling`** | Mantiene vivo el modelo de dominio mientras se diseña: desafía términos, afila el lenguaje difuso, y escribe el glosario (`CONTEXT.md`) y las decisiones (`docs/adr/`) cuando cristalizan. Regla de contaminación cero: nunca introduce la práctica en un repo que no la usa. |
 | **`tdd`** | Referencia de test-driven development: el loop rojo → verde, qué es un buen test, dónde van (seams), los anti-patrones. Incluye guías de `mocking` y `tests`. |
+| **`code-review`** *(solo Pi)* | Revisa un PR en tres ejes separados —correctness y riesgo, estándares y spec—, ejecuta verificaciones, muestra findings con evidencia y al final pregunta si querés publicar los comments en GitHub. Nunca postea sin confirmación explícita. |
+| **`github-issue-selector`** *(solo Pi)* | Abre un selector interactivo cuando querés elegir o inspeccionar un issue y todavía no diste un número concreto. |
+| **`find-skills`** *(solo Pi)* | Busca skills instalables en el ecosistema abierto mediante `npx skills`. Vendorizado desde `vercel-labs/skills`. |
+| **`yt-summary`** *(solo Claude)* | Descarga con `yt-dlp` un único track de subtítulos de YouTube y guía un resumen con TL;DR, puntos clave y timestamps. |
 
 SDD no reemplaza a estos skills: los orquesta. El diseño previo a una spec se afila con `grill` y `domain-modeling`, y `sdd-run` implementa siguiendo la disciplina de `tdd`.
 
-En Pi, `sdd-spec` acepta `--from-grill`: consume el handoff confirmado sin volver a preguntar decisiones ya cerradas. La versión Pi de `grill` puede encadenarlo al confirmar, y la extensión `grill-tools` agrega persistencia y la opción de generar una spec desde una sesión finalizada.
+### Integración con Pi
+
+En Pi, `grill` es el único entry point de entrevista: el usuario elige si quiere solo handoff o también documentación de dominio. `sdd-spec --from-grill` consume el handoff confirmado sin volver a preguntar decisiones ya cerradas.
+
+El repo también conserva todas las extensiones globales de Pi usadas por este workflow:
+
+| Extensión | Qué agrega |
+|---|---|
+| **`ask-user-question`** | Herramienta `ask_user_question` con selección simple/múltiple, recomendaciones, respuesta libre y envío vacío opcional. |
+| **`claude-tool-renderer.ts`** | Presenta las ediciones con encabezado y diff compacto al estilo Claude Code. |
+| **`grill-tools`** | Persistencia con `grill_session`, selector `select_grill_session` y comandos `/grills` y `/specs`. |
+| **`github-issue-selector.ts`** + **`github-issues.ts`** | Herramienta `select_github_issue` y comando `/issues` para elegir, inspeccionar y administrar issues. |
+| **`github-prs`** | Comando `/prs`; su acción de review invoca `/skill:code-review`. |
+| **`visual-footer.ts`** | Footer visual con estado, modelo, tokens y directorio actual; se alterna con `/visual-footer`. |
+| **`warp-status.ts`** | Emite el estado de Pi para la integración de terminal de Warp. |
 
 ## Estructura del repo
 
-Está partido por herramienta porque las versiones no son idénticas: las de opencode y Pi van en ASCII puro (sin diacríticos) y hay diferencias de tools/comandos entre harnesses. Elegí la carpeta según dónde los quieras usar.
+Está partido por herramienta porque las versiones no son idénticas y cada harness expone tools y comandos distintos. Elegí la carpeta según dónde los quieras usar.
 
 ```
 skills/
 ├── claude/      # versiones para Claude Code  (~/.claude/skills)
 ├── opencode/       # versiones para opencode      (~/.config/opencode/skills)
 ├── pi/             # skills para Pi               (~/.agents/skills)
-└── pi-extensions/  # extensiones requeridas de Pi  (~/.pi/agent/extensions)
+└── pi-extensions/  # extensiones de Pi             (~/.pi/agent/extensions)
 ```
 
 ## Instalación
 
-Cloná el repo y corré `install.sh`. Hace `git pull` y copia cada skill —y las extensiones de Pi— a la carpeta de su herramienta **sin pisar lo demás que ya tengas** (solo agrega/actualiza lo que viene de este repo):
+Cloná el repo y corré `install.sh`. Hace `git pull` y copia cada skill —y las extensiones de Pi, tanto archivos `.ts` como carpetas con `index.ts`— a la carpeta de su herramienta **sin pisar lo demás que ya tengas** (solo agrega/actualiza lo que viene de este repo):
 
 ```bash
 git clone https://github.com/chichex/skills.git
@@ -74,7 +92,7 @@ cp -R pi/*             ~/.agents/skills/
 cp -R pi-extensions/*  ~/.pi/agent/extensions/
 ```
 
-Una vez instalados, Claude Code/opencode los invocan con sus comandos habituales. En Pi se usan como `/skill:grill`, `/skill:sdd-init`, `/skill:sdd-spec` y `/skill:sdd-run`, o el agente los carga según su `description`. Ejecutá `/reload` en una sesión de Pi abierta después de instalarlos.
+Una vez instalados, Claude Code/opencode los invocan con sus comandos habituales. En Pi se usan como `/skill:grill`, `/skill:code-review`, `/skill:github-issue-selector`, `/skill:sdd-init`, `/skill:sdd-spec` y `/skill:sdd-run`, o el agente los carga según su `description`. Ejecutá `/reload` en una sesión de Pi abierta después de instalarlos.
 
 ## Créditos
 
@@ -89,6 +107,8 @@ Cuatro de los **skills fundacionales** están **basados en** los skills de **[Ma
 
 La familia **SDD** (`sdd-init`, `sdd-spec`, `sdd-run`) es propia: está inspirada en el mismo enfoque de trabajo (tracer bullets, tests-first, spec → implementación) de sus skills `to-spec` / `to-tickets` / `implement` / `wayfinder`, pero con artefactos distintos — el contrato de autonomía `.sdd/project.md` y el veredicto de verificabilidad.
 
+`find-skills` se conserva tal como fue instalado desde [`vercel-labs/skills`](https://skills.sh/vercel-labs/skills/find-skills); no es un skill propio.
+
 ## Licencia
 
-[MIT](./LICENSE) — usalos, adaptalos, lo que quieras.
+[MIT](./LICENSE) para el material propio y las adaptaciones; `find-skills` conserva las condiciones de su fuente upstream.

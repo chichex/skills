@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Instala/actualiza los skills de este repo en Claude Code, opencode y Pi.
+# Instala/actualiza los skills de este repo en Claude Code, opencode y Pi,
+# junto con las extensiones de Pi.
 # Hace git pull y copia cada skill a su carpeta, SIN borrar los otros skills
 # que ya tengas: solo agrega/actualiza los que vienen del repo.
 #
@@ -52,9 +53,27 @@ install_set() {
   done
 }
 
+install_extensions() {
+  local src="$1" dest="$2"
+  if [ ! -d "$src" ]; then
+    echo "⚠  Pi extensions: no existe $src en el repo — salteando"
+    return
+  fi
+  mkdir -p "$dest"
+  echo "→ Pi extensions → $dest"
+  for extension in "$src"/*; do
+    [ -e "$extension" ] || continue
+    local base; base="$(basename "$extension")"
+    # Pi descubre tanto archivos .ts como carpetas con index.ts.
+    rm -rf "${dest:?}/$base"
+    cp -R "$extension" "$dest/$base"
+    echo "   ✓ $base"
+  done
+}
+
 install_pi() {
   install_set "Pi skills" "$REPO_DIR/pi" "$PI_DEST"
-  install_set "Pi extensions" "$REPO_DIR/pi-extensions" "$PI_EXTENSIONS_DEST"
+  install_extensions "$REPO_DIR/pi-extensions" "$PI_EXTENSIONS_DEST"
 }
 
 case "$WHICH" in

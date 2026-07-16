@@ -1,48 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
 import { StringEnum } from "@earendil-works/pi-ai";
-import { truncateHead, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-	Editor,
-	type EditorTheme,
-	Key,
-	matchesKey,
-	Text,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@earendil-works/pi-tui";
+import { getMarkdownTheme, truncateHead, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Markdown, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
-const STORE_DIR = join(homedir(), ".pi", "agent", "grill-sessions");
-const FORMAT_VERSION = 1;
+const AGENT_DIR = join(homedir(), ".pi", "agent");
+const STORE_DIR = join(AGENT_DIR, "grill-sessions");
+const SESSIONS_DIR = join(AGENT_DIR, "sessions");
+const FORMAT_VERSION = 3;
 const DEFAULT_QUESTION_LIMIT = 20;
 
-interface AskOption {
-	value: string;
-	label: string;
-	description?: string;
-	recommended?: boolean;
-	recommendationReason?: string;
-}
-
-interface AskAnswer {
-	value: string;
-	label: string;
-	wasCustom: boolean;
-}
-
-interface AskQuestionDetails {
-	question: string;
-	selectionMode: "single" | "multiple";
-	answers: AskAnswer[];
-	cancelled: boolean;
-	section?: string;
-	questionNumber?: number;
-	estimatedTotal?: number;
-}
+type GrillWorkflowMode = "standard" | "domain-modeling";
 
 interface GrillEstimate {
 	min: number;
@@ -82,6 +54,11 @@ interface GrillPendingBranch {
 	section?: string;
 }
 
+interface GrillIssueReference {
+	number: number;
+	repository?: string;
+}
+
 type GrillStatus = "active" | "paused" | "finalized";
 
 interface GrillSnapshot {
@@ -91,6 +68,8 @@ interface GrillSnapshot {
 	projectPath: string;
 	projectName: string;
 	status: GrillStatus;
+	workflowMode: GrillWorkflowMode;
+	sourceIssue?: GrillIssueReference;
 	createdAt: string;
 	updatedAt: string;
 	estimate: GrillEstimate;
@@ -105,29 +84,14 @@ interface GrillSnapshot {
 	revision: number;
 }
 
-const AskOptionSchema = Type.Object({
-	value: Type.String({ description: "Stable value returned for this option" }),
-	label: Type.String({ description: "Label displayed to the user" }),
-	description: Type.Optional(Type.String({ description: "Optional explanatory text" })),
-	recommended: Type.Optional(Type.Boolean({ description: "Mark this option as recommended" })),
-	recommendationReason: Type.Optional(
-		Type.String({ description: "Short reason why this option is recommended" }),
-	),
-});
-
-const AskQuestionParams = Type.Object({
-	question: Type.String({ description: "Ask exactly one self-contained question" }),
-	options: Type.Array(AskOptionSchema, { description: "Selectable answers; may be empty for free-text-only input" }),
-	selectionMode: Type.Optional(
-		StringEnum(["single", "multiple"] as const, { description: "Defaults to single" }),
-	),
-	allowOther: Type.Optional(
-		Type.Boolean({ description: "Allow a free-text answer. Defaults to false" }),
-	),
-	section: Type.Optional(Type.String({ description: "Optional section or topic label" })),
-	questionNumber: Type.Optional(Type.Integer({ minimum: 1, description: "Current question number" })),
-	estimatedTotal: Type.Optional(Type.Integer({ minimum: 1, description: "Current estimated total" })),
-});
+interface SpecDocument {
+	path: string;
+	projectPath: string;
+	title: string;
+	state: string;
+	updatedAt: string;
+	markdown: string;
+}
 
 const EstimateSchema = Type.Object({
 	min: Type.Integer({ minimum: 0 }),
@@ -165,11 +129,22 @@ const InteractionSchema = Type.Object({
 	recommendation: Type.Optional(Type.String()),
 });
 
+const IssueReferenceSchema = Type.Object({
+	number: Type.Integer({ minimum: 1, description: "GitHub issue number that originated this grill" }),
+	repository: Type.Optional(Type.String({ description: "Optional owner/repo identity" })),
+});
+
 const GrillSessionParams = Type.Object({
-	action: StringEnum(["create", "checkpoint", "pause", "finalize", "get"] as const),
+	action: StringEnum(["create", "configure", "checkpoint", "pause", "finalize", "get"] as const),
 	sessionId: Type.Optional(Type.String({ description: "Required except for create" })),
 	topic: Type.Optional(Type.String({ description: "Required for create" })),
 	projectPath: Type.Optional(Type.String({ description: "Defaults to the current git root or cwd" })),
+	workflowMode: Type.Optional(
+		StringEnum(["standard", "domain-modeling"] as const, {
+			description: "Whether the grill only produces a handoff or also maintains domain documentation",
+		}),
+	),
+	sourceIssue: Type.Optional(IssueReferenceSchema),
 	estimate: Type.Optional(EstimateSchema),
 	questionLimit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
 	sections: Type.Optional(Type.Array(SectionSchema, { description: "Full replacement section map" })),
@@ -255,6 +230,25 @@ async function saveSnapshot(snapshot: GrillSnapshot): Promise<void> {
 	await writeAtomic(jsonPath(snapshot.id), `${JSON.stringify(snapshot, null, 2)}\n`);
 }
 
+function normalizeSnapshot(snapshot: GrillSnapshot): GrillSnapshot {
+	if (!snapshot.sourceIssue) {
+		const match = snapshot.topic.match(/\bissue\s*#(\d+)/i) ?? snapshot.id.match(/^issue-(\d+)(?:-|$)/i);
+		const number = Number(match?.[1]);
+		if (Number.isInteger(number) && number > 0) snapshot.sourceIssue = { number };
+	}
+	if (snapshot.workflowMode !== "standard" && snapshot.workflowMode !== "domain-modeling") {
+		const domainDecision = snapshot.decisions.find((decision) => {
+			const identity = `${decision.id} ${decision.title}`.toLowerCase();
+			return identity.includes("domain modeling") || identity.includes("modelado de dominio");
+		});
+		const agreement = domainDecision?.agreement.toLowerCase() ?? "";
+		const explicitlyDisabled = /\b(no|false|standard|disabled|desactivad[oa]|sin documentaci[oó]n)\b/.test(agreement);
+		snapshot.workflowMode = domainDecision && !explicitlyDisabled ? "domain-modeling" : "standard";
+	}
+	snapshot.version = FORMAT_VERSION;
+	return snapshot;
+}
+
 async function loadSnapshot(id: string): Promise<GrillSnapshot> {
 	if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error("Invalid grill session id");
 	let parsed: unknown;
@@ -264,7 +258,7 @@ async function loadSnapshot(id: string): Promise<GrillSnapshot> {
 		throw new Error(`Could not load grill session ${id}: ${error instanceof Error ? error.message : String(error)}`);
 	}
 	if (!isSnapshot(parsed)) throw new Error(`Invalid grill session file: ${id}`);
-	return parsed;
+	return normalizeSnapshot(parsed);
 }
 
 async function listSnapshots(): Promise<GrillSnapshot[]> {
@@ -274,7 +268,7 @@ async function listSnapshots(): Promise<GrillSnapshot[]> {
 	for (const file of files) {
 		try {
 			const parsed: unknown = JSON.parse(await readFile(join(STORE_DIR, file), "utf8"));
-			if (isSnapshot(parsed)) snapshots.push(parsed);
+			if (isSnapshot(parsed)) snapshots.push(normalizeSnapshot(parsed));
 		} catch {
 			// Ignore corrupt entries in the selector; direct get still reports the error.
 		}
@@ -293,6 +287,8 @@ function compactSnapshot(snapshot: GrillSnapshot): object {
 		topic: snapshot.topic,
 		projectPath: snapshot.projectPath,
 		status: snapshot.status,
+		workflowMode: snapshot.workflowMode,
+		sourceIssue: snapshot.sourceIssue,
 		progress: `${snapshot.interactions.length} of ~${snapshot.estimate.likely} (limit ${snapshot.questionLimit})`,
 		estimate: snapshot.estimate,
 		sections: snapshot.sections,
@@ -327,7 +323,157 @@ function statusIcon(status: GrillStatus): string {
 }
 
 function choiceLabel(snapshot: GrillSnapshot): string {
-	return `${statusIcon(snapshot.status)} ${snapshot.topic} · ${basename(snapshot.projectPath)} · ${snapshot.interactions.length}/~${snapshot.estimate.likely} · ${formatDate(snapshot.updatedAt)} · ${snapshot.id.slice(-8)}`;
+	return `${statusIcon(snapshot.status)} ${snapshot.topic} · ${snapshot.workflowMode} · ${basename(snapshot.projectPath)} · ${snapshot.interactions.length}/~${snapshot.estimate.likely} · ${formatDate(snapshot.updatedAt)} · ${snapshot.id.slice(-8)}`;
+}
+
+function inspectionMarkdown(snapshot: GrillSnapshot): string {
+	const lines = [
+		`# ${snapshot.topic}`,
+		"",
+		`- **Estado:** ${snapshot.status}`,
+		`- **Modo:** ${snapshot.workflowMode}`,
+		...(snapshot.sourceIssue
+			? [`- **Issue de origen:** ${snapshot.sourceIssue.repository ? `${snapshot.sourceIssue.repository}#` : "#"}${snapshot.sourceIssue.number}`]
+			: []),
+		`- **Proyecto:** ${snapshot.projectPath}`,
+		`- **Progreso:** ${snapshot.interactions.length} de ~${snapshot.estimate.likely} (límite ${snapshot.questionLimit})`,
+		`- **Actualizado:** ${formatDate(snapshot.updatedAt)}`,
+		`- **ID:** \`${snapshot.id}\``,
+	];
+
+	if (snapshot.summary) lines.push("", "## Resumen", "", snapshot.summary);
+	if (snapshot.decisions.length > 0) {
+		lines.push("", "## Decisiones", "");
+		for (const decision of snapshot.decisions) {
+			lines.push(`- **${decision.title}:** ${decision.agreement}`);
+		}
+	}
+	if (snapshot.pendingBranches.length > 0) {
+		lines.push("", "## Ramas pendientes", "");
+		for (const branch of snapshot.pendingBranches) {
+			lines.push(`- **${branch.title}**${branch.description ? ` — ${branch.description}` : ""}`);
+		}
+	} else {
+		lines.push("", "## Ramas pendientes", "", "Ninguna.");
+	}
+
+	lines.push("", `JSON: \`${jsonPath(snapshot.id)}\``);
+	if (snapshot.handoffMarkdown) lines.push(`Handoff: \`${markdownPath(snapshot.id)}\``);
+	return lines.join("\n");
+}
+
+function specMetadata(markdown: string, path: string): Pick<SpecDocument, "title" | "state"> {
+	const heading = markdown.match(/^#\s+(?:Spec\s*[—–-]\s*)?(.+?)\s*$/m)?.[1]?.trim();
+	const state = markdown.match(/Estado:\s*([^>\n.]+?)(?:\s*-->|[.\n])/i)?.[1]?.trim();
+	return {
+		title: heading || basename(path, ".md").replace(/[-_]+/g, " "),
+		state: state || "sin estado",
+	};
+}
+
+function specStatusRank(state: string): number {
+	const normalized = state.toLowerCase();
+	if (normalized.includes("aprobad") || normalized.includes("approved")) return 0;
+	if (normalized.includes("draft") || normalized.includes("borrador")) return 1;
+	if (normalized.includes("implement")) return 2;
+	return 3;
+}
+
+function specStatusIcon(state: string): string {
+	const rank = specStatusRank(state);
+	if (rank === 0) return "●";
+	if (rank === 1) return "◌";
+	if (rank === 2) return "✓";
+	return "•";
+}
+
+function specChoiceLabel(spec: SpecDocument): string {
+	return `${specStatusIcon(spec.state)} ${spec.title} · ${basename(spec.projectPath)} · ${spec.state} · ${formatDate(spec.updatedAt)} · ${basename(spec.path)}`;
+}
+
+function specInspectionMarkdown(spec: SpecDocument): string {
+	return `${spec.markdown.trim()}\n\n---\n\n**Ruta:** \`${spec.path}\``;
+}
+
+async function listSpecs(projectPaths: string[]): Promise<SpecDocument[]> {
+	const roots = [...new Set(projectPaths.map((path) => resolve(path)))];
+	const specs = (await Promise.all(roots.map(async (projectPath) => {
+		const directory = join(projectPath, ".sdd", "specs");
+		let files: string[];
+		try {
+			files = (await readdir(directory, { withFileTypes: true }))
+				.filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+				.map((entry) => entry.name);
+		} catch {
+			return [];
+		}
+
+		return Promise.all(files.map(async (file) => {
+			const path = join(directory, file);
+			const [markdown, fileStat] = await Promise.all([readFile(path, "utf8"), stat(path)]);
+			return {
+				path,
+				projectPath,
+				...specMetadata(markdown, path),
+				updatedAt: fileStat.mtime.toISOString(),
+				markdown,
+			};
+		}));
+	}))).flat();
+
+	return specs.sort((a, b) => {
+		const statusDifference = specStatusRank(a.state) - specStatusRank(b.state);
+		if (statusDifference !== 0) return statusDifference;
+
+		const dateDifference = b.updatedAt.localeCompare(a.updatedAt);
+		if (dateDifference !== 0) return dateDifference;
+
+		return a.title.localeCompare(b.title);
+	});
+}
+
+async function listSessionCwds(): Promise<string[]> {
+	let directories;
+	try {
+		directories = (await readdir(SESSIONS_DIR, { withFileTypes: true })).filter((entry) => entry.isDirectory());
+	} catch {
+		return [];
+	}
+
+	const paths = await Promise.all(directories.map(async (directory): Promise<string | undefined> => {
+		try {
+			const sessionDirectory = join(SESSIONS_DIR, directory.name);
+			const sessionFile = (await readdir(sessionDirectory)).find((file) => file.endsWith(".jsonl"));
+			if (!sessionFile) return undefined;
+			const handle = await open(join(sessionDirectory, sessionFile), "r");
+			try {
+				const buffer = Buffer.alloc(4096);
+				const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+				const firstLine = buffer.subarray(0, bytesRead).toString("utf8").split("\n", 1)[0];
+				const header = JSON.parse(firstLine) as { cwd?: unknown };
+				return typeof header.cwd === "string" ? header.cwd : undefined;
+			} finally {
+				await handle.close();
+			}
+		} catch {
+			return undefined;
+		}
+	}));
+
+	return paths.filter((path): path is string => typeof path === "string");
+}
+
+async function knownProjectRoots(pi: ExtensionAPI, currentProject: string): Promise<string[]> {
+	const [snapshots, sessionCwds] = await Promise.all([listSnapshots(), listSessionCwds()]);
+	const candidates = new Set([currentProject, ...snapshots.map((snapshot) => snapshot.projectPath), ...sessionCwds]);
+	const roots = await Promise.all([...candidates].map(async (path) => {
+		try {
+			return await projectRoot(pi, path);
+		} catch {
+			return resolve(path);
+		}
+	}));
+	return [...new Set(roots)];
 }
 
 function upsertDecision(snapshot: GrillSnapshot, decision: Omit<GrillDecision, "updatedAt">): void {
@@ -337,280 +483,192 @@ function upsertDecision(snapshot: GrillSnapshot, decision: Omit<GrillDecision, "
 	else snapshot.decisions.push(next);
 }
 
-function errorAskResult(question: string, message: string): { content: Array<{ type: "text"; text: string }>; details: AskQuestionDetails } {
-	return {
-		content: [{ type: "text", text: message }],
-		details: { question, selectionMode: "single", answers: [], cancelled: true },
-	};
-}
-
 export default function grillTools(pi: ExtensionAPI) {
-	pi.registerCommand("grills", {
-		description: "Abrir el selector interactivo de sesiones de grill",
+	pi.registerEntryRenderer("grill-session-inspection", (entry) => {
+		const data = entry.data as { markdown?: string };
+		return new Markdown(data.markdown ?? "", 1, 1, getMarkdownTheme());
+	});
+
+	pi.registerEntryRenderer("sdd-spec-inspection", (entry) => {
+		const data = entry.data as { markdown?: string };
+		return new Markdown(data.markdown ?? "", 1, 1, getMarkdownTheme());
+	});
+
+	pi.registerCommand("specs", {
+		description: "Abrir el selector interactivo de specs SDD locales",
 		handler: async (_args, ctx) => {
-			if (!ctx.hasUI) {
-				ctx.ui.notify("El selector de grills requiere modo interactivo", "error");
+			if (ctx.mode !== "tui") {
+				ctx.ui.notify("El selector de specs requiere modo TUI", "error");
 				return;
 			}
 
 			await ctx.waitForIdle();
 
-			const instruction = [
-				"Mostrá y permitime gestionar todas las sesiones de grill guardadas del proyecto actual.",
-				'Invocá select_grill_session con status "all" y scope "current-project".',
-				"Si elijo retomar o duplicar una sesión, seguí el flujo de reanudación del grill; si solo la inspecciono, resumila sin iniciar preguntas.",
-			].join(" ");
-			const hasGrillSkill = pi
-				.getCommands()
-				.some((command) => command.source === "skill" && command.name === "skill:grill");
+			try {
+				const currentProject = await projectRoot(pi, ctx.cwd);
+				let effectiveScope: "current-project" | "all" = "current-project";
+				let allSpecs: SpecDocument[] | undefined;
+				const currentSpecs = await listSpecs([currentProject]);
+				const showAllChoice = "🌐 Mostrar specs de todos los proyectos conocidos por Pi…";
+				const showProjectChoice = `⌂ Volver a specs de ${basename(currentProject)}`;
+				const backChoice = "← Volver a la lista de specs";
 
-			pi.sendUserMessage(hasGrillSkill ? `/skill:grill ${instruction}` : instruction);
+				while (true) {
+					const specs = effectiveScope === "current-project"
+						? currentSpecs
+						: (allSpecs ??= await listSpecs(await knownProjectRoots(pi, currentProject)));
+					const choices = [
+						...specs.map(specChoiceLabel),
+						effectiveScope === "current-project" ? showAllChoice : showProjectChoice,
+					];
+
+					const selectedChoice = await ctx.ui.select(
+						`Specs SDD · ${effectiveScope === "current-project" ? basename(currentProject) : "todos los proyectos conocidos"}`,
+						choices,
+					);
+					if (selectedChoice === undefined) return;
+					if (selectedChoice === showAllChoice) {
+						effectiveScope = "all";
+						continue;
+					}
+					if (selectedChoice === showProjectChoice) {
+						effectiveScope = "current-project";
+						continue;
+					}
+
+					const selected = specs[choices.indexOf(selectedChoice)];
+					if (!selected) throw new Error("No se pudo resolver la spec seleccionada");
+
+					const inspectChoice = "Inspeccionar";
+					const runChoice = "Ejecutar con /skill:sdd-run";
+					const action = await ctx.ui.select(
+						`${selected.title} · ${selected.state}`,
+						[backChoice, inspectChoice, runChoice],
+					);
+					if (action === undefined || action === backChoice) continue;
+
+					if (action === inspectChoice) {
+						pi.appendEntry("sdd-spec-inspection", {
+							markdown: specInspectionMarkdown(selected),
+						});
+						return;
+					}
+
+					const hasSddRunSkill = pi.getCommands().some((command) => command.name === "skill:sdd-run");
+					const instruction = `Ejecutá la spec SDD en ${selected.path}. Su raíz de proyecto es ${selected.projectPath}.`;
+					pi.sendUserMessage(hasSddRunSkill
+						? `/skill:sdd-run ${selected.path}\n\nLa spec fue seleccionada mediante /specs. Trabajá desde la raíz ${selected.projectPath}.`
+						: instruction);
+					return;
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				ctx.ui.notify(`Specs: ${message}`, "error");
+			}
 		},
 	});
 
-	pi.registerTool({
-		name: "ask_user_question",
-		label: "Ask user question",
-		description:
-			"Ask exactly one interactive question. Supports single choice, multiple choice, recommended options with reasons, and optional free-text input. The user's answer is returned as tool context for the next model turn.",
-		promptSnippet: "Ask one interactive single-choice, multiple-choice, or free-text question",
-		promptGuidelines: [
-			"Use ask_user_question when one user decision is required before proceeding; ask only one question per call.",
-		],
-		parameters: AskQuestionParams,
-		executionMode: "sequential",
-
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+	pi.registerCommand("grills", {
+		description: "Abrir el selector interactivo de sesiones de grill",
+		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui") {
-				return errorAskResult(params.question, "Error: ask_user_question requires interactive TUI mode");
+				ctx.ui.notify("El selector de grills requiere modo TUI", "error");
+				return;
 			}
 
-			const selectionMode = params.selectionMode ?? "single";
-			const allowOther = params.allowOther ?? false;
-			if (params.options.length === 0 && !allowOther) {
-				return errorAskResult(params.question, "Error: provide at least one option or enable allowOther");
+			await ctx.waitForIdle();
+
+			try {
+				const currentProject = await projectRoot(pi, ctx.cwd);
+				const allSnapshots = await listSnapshots();
+				let effectiveScope: "current-project" | "all" = "current-project";
+				const showAllChoice = "🌐 Mostrar sesiones de todos los proyectos…";
+				const showProjectChoice = `⌂ Volver a sesiones de ${basename(currentProject)}`;
+				const backChoice = "← Volver a la lista de sesiones";
+
+				while (true) {
+					const snapshots = allSnapshots.filter((snapshot) =>
+						effectiveScope === "all" || resolve(snapshot.projectPath) === currentProject
+					);
+					const choices = [
+						...snapshots.map(choiceLabel),
+						effectiveScope === "current-project" ? showAllChoice : showProjectChoice,
+					];
+
+					const selectedChoice = await ctx.ui.select(
+						`Grill sessions · ${effectiveScope === "current-project" ? basename(currentProject) : "todos los proyectos"}`,
+						choices,
+					);
+					if (selectedChoice === undefined) return;
+					if (selectedChoice === showAllChoice) {
+						effectiveScope = "all";
+						continue;
+					}
+					if (selectedChoice === showProjectChoice) {
+						effectiveScope = "current-project";
+						continue;
+					}
+
+					const selected = snapshots[choices.indexOf(selectedChoice)];
+					if (!selected) throw new Error("No se pudo resolver la sesión seleccionada");
+
+					const inspectChoice = "Inspeccionar";
+					const resumeChoice = "Retomar en esta conversación";
+					const duplicateChoice = "Duplicar como nueva revisión y retomar";
+					const createSpecChoice = "Crear spec SDD desde el handoff finalizado";
+					const actionChoices = selected.status === "finalized"
+						? [backChoice, inspectChoice, createSpecChoice, duplicateChoice]
+						: [backChoice, resumeChoice, inspectChoice];
+					const action = await ctx.ui.select(`${selected.topic} · ${selected.status}`, actionChoices);
+					if (action === undefined || action === backChoice) continue;
+
+					if (action === inspectChoice) {
+						pi.appendEntry("grill-session-inspection", {
+							markdown: inspectionMarkdown(selected),
+						});
+						return;
+					}
+
+					if (action === createSpecChoice) {
+						const hasSddSpecSkill = pi.getCommands().some((command) => command.name === "skill:sdd-spec");
+						const instruction = `Create an SDD spec from finalized grill session ${selected.id}. Use project root ${selected.projectPath}. Treat the frozen handoff as authoritative and do not ask again about confirmed decisions.`;
+						pi.sendUserMessage(hasSddSpecSkill ? `/skill:sdd-spec --from-grill ${selected.id}` : instruction);
+						return;
+					}
+
+					let session = selected;
+					if (action === duplicateChoice) {
+						const timestamp = now();
+						session = {
+							...selected,
+							id: `${slugify(selected.topic)}-${timestamp.slice(0, 10).replace(/-/g, "")}-${randomUUID().slice(0, 8)}`,
+							status: "active",
+							createdAt: timestamp,
+							updatedAt: timestamp,
+							handoffMarkdown: undefined,
+							parentId: selected.id,
+							revision: selected.revision + 1,
+						};
+						await saveSnapshot(session);
+					} else if (action === resumeChoice) {
+						session.status = "active";
+						await saveSnapshot(session);
+					}
+
+					const instruction = [
+						`Retomá la sesión de grill ${session.id}, ya seleccionada localmente mediante /grills.`,
+						`Cargá su snapshot autoritativo con grill_session usando action "get" y sessionId "${session.id}"; no vuelvas a abrir el selector.`,
+						"Mostrá brevemente lo resuelto y pendiente, y pedí autorización antes de continuar.",
+					].join(" ");
+					const availableCommands = new Set(pi.getCommands().map((command) => command.name));
+					const grillCommand = availableCommands.has("skill:grill") ? "skill:grill" : undefined;
+					pi.sendUserMessage(grillCommand ? `/${grillCommand} ${instruction}` : instruction);
+					return;
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				ctx.ui.notify(`Grills: ${message}`, "error");
 			}
-
-			type RenderOption = AskOption & { isOther?: boolean };
-			const options: RenderOption[] = [...params.options];
-			if (allowOther) options.push({ value: "__other__", label: "Escribir otra respuesta…", isOther: true });
-
-			const result = await ctx.ui.custom<AskAnswer[] | null>((tui, theme, _keybindings, done) => {
-				let optionIndex = 0;
-				let inputMode = params.options.length === 0 && allowOther;
-				let notice = "";
-				let cachedLines: string[] | undefined;
-				const selected = new Set<number>();
-
-				const editorTheme: EditorTheme = {
-					borderColor: (text) => theme.fg("accent", text),
-					selectList: {
-						selectedPrefix: (text) => theme.fg("accent", text),
-						selectedText: (text) => theme.fg("accent", text),
-						description: (text) => theme.fg("muted", text),
-						scrollInfo: (text) => theme.fg("dim", text),
-						noMatch: (text) => theme.fg("warning", text),
-					},
-				};
-				const editor = new Editor(tui, editorTheme);
-
-				function refresh(): void {
-					cachedLines = undefined;
-					tui.requestRender();
-				}
-
-				function selectedAnswers(custom?: string): AskAnswer[] {
-					const answers = [...selected]
-						.sort((a, b) => a - b)
-						.map((index) => options[index])
-						.filter((option) => option && !option.isOther)
-						.map((option) => ({ value: option.value, label: option.label, wasCustom: false }));
-					if (custom) answers.push({ value: custom, label: custom, wasCustom: true });
-					return answers;
-				}
-
-				editor.onSubmit = (value) => {
-					const answer = value.trim();
-					if (!answer) {
-						notice = "La respuesta no puede estar vacía.";
-						refresh();
-						return;
-					}
-					done(selectionMode === "multiple" ? selectedAnswers(answer) : [{ value: answer, label: answer, wasCustom: true }]);
-				};
-
-				function handleInput(data: string): void {
-					if (inputMode) {
-						if (matchesKey(data, Key.escape)) {
-							if (params.options.length === 0) done(null);
-							else {
-								inputMode = false;
-								editor.setText("");
-								notice = "";
-								refresh();
-							}
-							return;
-						}
-						editor.handleInput(data);
-						refresh();
-						return;
-					}
-
-					if (matchesKey(data, Key.up)) {
-						optionIndex = Math.max(0, optionIndex - 1);
-						notice = "";
-						refresh();
-						return;
-					}
-					if (matchesKey(data, Key.down)) {
-						optionIndex = Math.min(options.length - 1, optionIndex + 1);
-						notice = "";
-						refresh();
-						return;
-					}
-					if (matchesKey(data, Key.escape)) {
-						done(null);
-						return;
-					}
-
-					const option = options[optionIndex];
-					if (selectionMode === "multiple" && matchesKey(data, Key.space) && option && !option.isOther) {
-						if (selected.has(optionIndex)) selected.delete(optionIndex);
-						else selected.add(optionIndex);
-						notice = "";
-						refresh();
-						return;
-					}
-
-					if (matchesKey(data, Key.enter) && option) {
-						if (option.isOther) {
-							inputMode = true;
-							notice = "";
-							refresh();
-							return;
-						}
-						if (selectionMode === "single") {
-							done([{ value: option.value, label: option.label, wasCustom: false }]);
-							return;
-						}
-						if (selected.size === 0) {
-							notice = "Seleccioná al menos una opción con Espacio.";
-							refresh();
-							return;
-						}
-						done(selectedAnswers());
-					}
-				}
-
-				function render(width: number): string[] {
-					if (cachedLines) return cachedLines;
-					const renderWidth = Math.max(1, width);
-					const lines: string[] = [];
-
-					function addWrapped(text: string): void {
-						lines.push(...wrapTextWithAnsi(text, renderWidth));
-					}
-
-					function addWrappedWithPrefix(prefix: string, text: string): void {
-						const prefixWidth = visibleWidth(prefix);
-						if (prefixWidth >= renderWidth) {
-							addWrapped(prefix + text);
-							return;
-						}
-						const wrapped = wrapTextWithAnsi(text, renderWidth - prefixWidth);
-						const continuation = " ".repeat(prefixWidth);
-						for (let index = 0; index < wrapped.length; index++) {
-							lines.push(`${index === 0 ? prefix : continuation}${wrapped[index]}`);
-						}
-					}
-
-					lines.push(theme.fg("accent", "─".repeat(renderWidth)));
-					const progress = params.questionNumber
-						? `Pregunta ${params.questionNumber}${params.estimatedTotal ? ` de ~${params.estimatedTotal}` : ""}`
-						: undefined;
-					const heading = [params.section, progress].filter(Boolean).join(" · ");
-					if (heading) addWrappedWithPrefix(" ", theme.fg("muted", heading));
-					addWrappedWithPrefix(" ", theme.fg("text", params.question));
-					lines.push("");
-
-					for (let index = 0; index < options.length; index++) {
-						const option = options[index];
-						const focused = index === optionIndex;
-						const checked = selected.has(index);
-						const cursor = focused ? theme.fg("accent", "> ") : "  ";
-						const marker = selectionMode === "multiple" && !option.isOther ? `${checked ? "[x]" : "[ ]"} ` : "";
-						const recommended = option.recommended ? theme.fg("success", " ★ Recomendada") : "";
-						const label = `${marker}${option.label}${recommended}`;
-						addWrappedWithPrefix(cursor, theme.fg(focused ? "accent" : "text", label));
-						if (option.description) addWrappedWithPrefix("     ", theme.fg("muted", option.description));
-						if (option.recommended && option.recommendationReason) {
-							addWrappedWithPrefix("     ", theme.fg("dim", `Motivo: ${option.recommendationReason}`));
-						}
-					}
-
-					if (inputMode) {
-						if (options.length > 1) lines.push("");
-						addWrappedWithPrefix(" ", theme.fg("muted", "Tu respuesta:"));
-						for (const line of editor.render(Math.max(1, renderWidth - 2))) lines.push(` ${line}`);
-					}
-
-					lines.push("");
-					if (notice) addWrappedWithPrefix(" ", theme.fg("warning", notice));
-					const help = inputMode
-						? "Enter enviar · Esc volver/pausar"
-						: selectionMode === "multiple"
-							? "↑↓ navegar · Espacio marcar · Enter enviar · Esc cancelar"
-							: "↑↓ navegar · Enter elegir · Esc cancelar";
-					addWrappedWithPrefix(" ", theme.fg("dim", help));
-					lines.push(theme.fg("accent", "─".repeat(renderWidth)));
-					cachedLines = lines;
-					return lines;
-				}
-
-				return {
-					render,
-					invalidate: () => {
-						cachedLines = undefined;
-					},
-					handleInput,
-				};
-			});
-
-			const details: AskQuestionDetails = {
-				question: params.question,
-				selectionMode,
-				answers: result ?? [],
-				cancelled: result === null,
-				section: params.section,
-				questionNumber: params.questionNumber,
-				estimatedTotal: params.estimatedTotal,
-			};
-			if (!result) {
-				return { content: [{ type: "text", text: "The user cancelled or paused the question." }], details };
-			}
-			const labels = result.map((answer) => answer.wasCustom ? `wrote: ${answer.label}` : `selected: ${answer.label}`);
-			return { content: [{ type: "text", text: `User ${labels.join("; ")}` }], details };
-		},
-
-		renderCall(args, theme) {
-			const progress = args.questionNumber
-				? ` ${theme.fg("dim", `[${args.questionNumber}${args.estimatedTotal ? `/~${args.estimatedTotal}` : ""}]`)}`
-				: "";
-			return new Text(
-				`${theme.fg("toolTitle", theme.bold("ask_user_question"))}${progress} ${theme.fg("muted", args.question)}`,
-				0,
-				0,
-			);
-		},
-
-		renderResult(result, _options, theme) {
-			const details = result.details as AskQuestionDetails | undefined;
-			if (!details || details.cancelled) return new Text(theme.fg("warning", "Paused/cancelled"), 0, 0);
-			return new Text(
-				`${theme.fg("success", "✓ ")}${details.answers.map((answer) => answer.label).join(", ")}`,
-				0,
-				0,
-			);
 		},
 	});
 
@@ -618,7 +676,7 @@ export default function grillTools(pi: ExtensionAPI) {
 		name: "grill_session",
 		label: "Grill session",
 		description:
-			"Create, checkpoint, pause, finalize, or retrieve a persistent grill interview. Grill sessions are stored globally and survive Pi sessions. Use only as directed by the grill skill.",
+			"Create, configure, checkpoint, pause, finalize, or retrieve a persistent grill interview. Grill sessions are stored globally and survive Pi sessions. Use only as directed by the grill skill.",
 		parameters: GrillSessionParams,
 		executionMode: "sequential",
 
@@ -638,6 +696,13 @@ export default function grillTools(pi: ExtensionAPI) {
 					projectPath: root,
 					projectName: basename(root),
 					status: "active",
+					workflowMode: params.workflowMode ?? "standard",
+					sourceIssue: params.sourceIssue
+						? {
+							number: params.sourceIssue.number,
+							repository: params.sourceIssue.repository?.trim() || undefined,
+						}
+						: undefined,
 					createdAt: timestamp,
 					updatedAt: timestamp,
 					estimate: params.estimate,
@@ -668,6 +733,16 @@ export default function grillTools(pi: ExtensionAPI) {
 
 			if (snapshot.status === "finalized") {
 				throw new Error("Finalized grill sessions are immutable; duplicate it with select_grill_session first");
+			}
+
+			if (params.action === "configure") {
+				if (!params.workflowMode) throw new Error("workflowMode is required for configure");
+				snapshot.workflowMode = params.workflowMode;
+				await saveSnapshot(snapshot);
+				return {
+					content: [{ type: "text", text: snapshotText("Grill session configured.", snapshot) }],
+					details: { action: "configure", snapshot, jsonPath: jsonPath(snapshot.id) },
+				};
 			}
 
 			if (params.action === "checkpoint") {
@@ -748,7 +823,7 @@ export default function grillTools(pi: ExtensionAPI) {
 			const snapshot = details.snapshot;
 			const suffix = details.markdownPath ? `\n${theme.fg("dim", details.markdownPath)}` : "";
 			return new Text(
-				`${theme.fg("success", "✓ ")}${snapshot.topic} · ${snapshot.status} · ${snapshot.interactions.length}/~${snapshot.estimate.likely}${suffix}`,
+				`${theme.fg("success", "✓ ")}${snapshot.topic} · ${snapshot.status} · ${snapshot.workflowMode} · ${snapshot.interactions.length}/~${snapshot.estimate.likely}${suffix}`,
 				0,
 				0,
 			);

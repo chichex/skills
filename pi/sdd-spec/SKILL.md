@@ -18,7 +18,7 @@ Dos ideas fuerza:
 ```
 
 - `--from-grill [ID|ruta.md]` — usa como fuente autoritativa un handoff finalizado. Si no trae referencia, invocar `select_grill_session` con `status: "finalized"` e `intent: "spec-source"`; si trae un ID, resolver `~/.pi/agent/grill-sessions/<ID>.json` y su `.md`; si trae una ruta, leer el Markdown y, si existe, el JSON hermano. Usar `projectPath` del snapshot como raiz operativa.
-- `--out local|issue` — destino de la spec sin preguntar. `local` = `.sdd/specs/`, `issue` = actualizar el issue de origen (o crear uno nuevo si el pedido fue libre).
+- `--out local|issue` — destino de la spec sin preguntar. `local` = `.sdd/specs/`; `issue` = actualizar el issue de origen (o crear uno nuevo si el pedido fue libre) **sin crear una copia en `.sdd/specs/`**.
 - `--assume` — cero preguntas: cada inferencia nueva se resuelve con el sesgo minimo seguro y queda marcada `[ASSUMED]`; el mecanismo de verificacion propuesto se toma sin confirmar; la spec queda en estado `draft`. Las decisiones ya confirmadas por grill nunca se degradan a supuestos.
 
 ## Fase 0 — Lanzador (solo con `/skill:sdd-spec` pelado)
@@ -55,7 +55,7 @@ Luego usar `ask_user_question` — una pregunta, "¿De donde sale la spec?":
 ## Fase 2 — Entender el pedido
 
 1. Si el pedido es `#NN` o URL: `gh issue view NN --json title,body,comments,labels` (usar la URL con `-R` si es de otro repo). Guardar el numero: importa para el destino en Fase 6. Los comments cuentan como fuente — a veces desambiguan el body.
-2. Si la fuente es grill: leer el `handoffMarkdown` finalizado completo. Tratar hechos comprobados y decisiones resueltas como fuente confirmada; conservar restricciones, no-objetivos, supuestos, riesgos, pendientes y contexto recomendado. Si el snapshot no esta `finalized` o no tiene handoff, frenar y pedir que se cierre el grill. No re-preguntar decisiones confirmadas.
+2. Si la fuente es grill: leer el `handoffMarkdown` finalizado completo. Tratar hechos comprobados y decisiones resueltas como fuente confirmada; conservar restricciones, no-objetivos, supuestos, riesgos, pendientes y contexto recomendado. Si el snapshot no esta `finalized` o no tiene handoff, frenar y pedir que se cierre el grill. No re-preguntar decisiones confirmadas. Si el snapshot trae `sourceIssue`, heredarlo como issue de origen de la spec; para snapshots legacy, aceptar `Issue #NN` en el topic/handoff como fallback y dejar la referencia estructurada en la spec.
 3. Explorar el codigo con `read`, `bash` y llamadas paralelas solo cuando sean independientes: relevar que existe hoy, archivos potenciales, convenciones, tests previos, dependencias y blast radius. La spec se escribe contra el codigo real, no contra la idea del codigo.
 4. Revisar `.sdd/specs/`: si ya hay una spec para este mismo pedido, issue o grill ID, avisar y tratar la corrida como actualizacion, no crear otra.
 
@@ -72,12 +72,16 @@ Mostrar la tabla completa numerada:
 | 2 | ¿Aplica a paginas de admin? | No, solo app publica | Tambien admin | alta |
 ```
 
-Luego usar `ask_user_question` — "¿Alguna inferencia a revisar?":
+Luego usar `ask_user_question` una sola vez para elegir cuales revisar:
 
-1. `Ninguna, todas bien (Recomendado)` — solo si ninguna quedo con confianza baja.
-2. `Revisar algunas` — el usuario dice cuales (numeros) via Other; por cada una, UNA pregunta con las alternativas concretas como opciones, la propuesta primera y marcada `(Recomendado)`.
+- Pregunta: `Marcá las inferencias que querés revisar. Si todas están bien, enviá sin marcar ninguna.`
+- `selectionMode: "multiple"`, `allowEmptySelection: true`, `allowOther: false`.
+- Una opcion por inferencia, con value estable (`inference-1`, `inference-2`, etc.), label `#N — <inferencia>` y description `Propuesta: <...> · Alternativa: <...> · Confianza: <...>`.
+- Las inferencias de confianza baja se marcan `recommended: true`, con el motivo de por que conviene revisarlas.
+- Cero opciones seleccionadas significa aceptar todas las propuestas. Por cada inferencia seleccionada, hacer UNA pregunta posterior con las alternativas concretas como opciones, la propuesta primera y marcada `(Recomendado)`.
+- No volver a pedir numeros por texto libre ni usar el flujo binario `Ninguna` / `Revisar algunas`.
 
-Reglas: lo que el pedido o el handoff confirmado ya fija NO es inferencia y no se lista (listarlo diluye la tabla). Ante conflicto entre el handoff y el codigo actual, mostrarlo como gap/desviacion de fuente; no reinterpretar silenciosamente la decision. Si una inferencia de confianza baja define el alcance entero (ej. "¿esto es solo UI o tambien API?"), preguntarla directo aunque el usuario haya dicho "todas bien" no aplica — respetar su eleccion, pero marcarla en la spec como riesgo. Con `--assume`: elegir el sesgo minimo seguro (la opcion mas chica y reversible) y marcar `[ASSUMED]` en la spec.
+Reglas: lo que el pedido o el handoff confirmado ya fija NO es inferencia y no se lista (listarlo diluye la tabla). Ante conflicto entre el handoff y el codigo actual, mostrarlo como gap/desviacion de fuente; no reinterpretar silenciosamente la decision. Si una inferencia de confianza baja define el alcance entero (ej. "¿esto es solo UI o tambien API?") y el usuario no la selecciona, respetar su eleccion pero marcarla en la spec como riesgo. Con `--assume`: elegir el sesgo minimo seguro (la opcion mas chica y reversible) y marcar `[ASSUMED]` en la spec.
 
 ## Fase 4 — Veredicto de verificabilidad
 
@@ -111,6 +115,7 @@ Con EXACTAMENTE esta estructura:
 ```markdown
 # Spec — <titulo>
 <!-- Generada por /skill:sdd-spec el <fecha>. Fuente: <pedido libre | issue #NN | grill <ID>>. Estado: <aprobada|draft> -->
+<!-- SDD-Tracking: issue=<#NN|owner/repo#NN|none>; grill=<ID|none> -->
 
 ## Contexto
 <por que existe el pedido + que hay en el codigo hoy; 2-4 lineas con referencias reales>
@@ -140,9 +145,11 @@ Estado: `aprobada` si el usuario reviso inferencias y mecanismo; `draft` si corr
 
 Destino (saltear pregunta si vino `--out`):
 
-- **El pedido vino de un issue** — usar `ask_user_question`: 1. `Actualizar el issue (Recomendado)` — reescribir el body con la spec, archivando el body original al final dentro de un `<details><summary>Body original</summary>`; 2. `Local` — `.sdd/specs/issue-NN-<slug>.md`; 3. `Ambos`.
-- **Pedido libre o grill sin issue de origen** — usar `ask_user_question`: 1. `Local (Recomendado)` — `.sdd/specs/<slug>.md`; 2. `Crear issue` — `gh issue create` con la spec como body.
+- **El pedido vino de un issue** — usar `ask_user_question`: 1. `Actualizar el issue (Recomendado)` — reescribir el body con la spec, archivando el body original al final dentro de un `<details><summary>Body original</summary>`; aclarar en la descripcion de esta opcion que **no crea un archivo en `.sdd/specs/`**. 2. `Local` — `.sdd/specs/issue-NN-<slug>.md`; 3. `Ambos`.
+- **Pedido libre o grill sin issue de origen** — usar `ask_user_question`: 1. `Local (Recomendado)` — `.sdd/specs/<slug>.md`; 2. `Crear issue` — `gh issue create` con la spec como body. Si se crea un issue nuevo, reemplazar inmediatamente `issue=none` por el número devuelto antes de dar la spec por lista.
 - Con `--assume` y sin `--out`: local.
+
+`SDD-Tracking` es metadata local/machine-readable para que `/issues` pueda asociar artefactos sin ensuciar GitHub con labels o comments de tracking. Si la spec vive en el body del issue, conservar también el marker allí.
 
 ## Reporte
 
@@ -165,6 +172,7 @@ Spec lista: <ruta local y/o issue #NN actualizado>
 - Proponer el mecanismo de verificacion mas barato que observe el comportamiento real, y dejar que el usuario lo cambie o proponga otro.
 - Escribir criterios de aceptacion observables: paso/no paso sin interpretacion.
 - Ser idempotente: re-correr sobre el mismo pedido actualiza la spec existente, no crea otra.
+- Emitir siempre el comment `SDD-Tracking` y preservar la referencia al issue heredada del pedido o del `sourceIssue` del grill.
 
 ## MUST NOT DO
 
