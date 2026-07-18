@@ -21,6 +21,10 @@ Dos ideas fuerza:
 - `--out local|issue` — destino de la spec sin preguntar. `local` = `.sdd/specs/`; `issue` = actualizar el issue de origen (o crear uno nuevo si el pedido fue libre) **sin crear una copia en `.sdd/specs/`**.
 - `--assume` — cero preguntas: cada inferencia nueva se resuelve con el sesgo minimo seguro y queda marcada `[ASSUMED]`; el mecanismo de verificacion propuesto se toma sin confirmar; la spec queda en estado `draft`. Las decisiones ya confirmadas por grill nunca se degradan a supuestos.
 
+### Perfil del modelo durante la especificación
+
+Una invocación directa usa `standard`; `--assume` usa `critical`; `--from-grill` usa `standard` salvo que un triage ya haya confirmado y aplicado un override `light|standard|critical` mediante `route_skill`. Esto controla el modelo que redacta la spec y es distinto del **Perfil de ejecución** que la spec persistirá para `/skill:sdd-run`.
+
 ## Fase 0 — Lanzador (solo con `/skill:sdd-spec` pelado)
 
 Dispara SOLO cuando el pedido viene vacio y no vino `--from-grill`. Si trajo pedido, issue, handoff o flags, saltear: el usuario ya dijo por donde va.
@@ -100,12 +104,22 @@ Reglas:
 - Si los criterios tienen grados distintos, NO promediar: desglosar por criterio y reportar mixto ("CA-1..CA-3 ALTA; CA-4 NULA — vibracion en dispositivo, exige prueba tuya").
 - Mostrar el veredicto al usuario con el porque ANTES de elegir mecanismo: es el dato que le dice cuanto puede delegar de la ejecucion.
 
+### Perfil de ejecución
+
+Junto al veredicto, decidí y mostrá el perfil que `/skill:sdd-run` deberá usar:
+
+- `light`: alcance acotado, sin riesgos duros y CAs mayormente ALTA con mecanismos deterministas.
+- `critical`: cualquier riesgo duro del gate de triage (seguridad/auth/privacidad, datos o migraciones, concurrencia, contratos públicos), alcance transversal o CAs materiales BAJA/NULA.
+- `standard`: el resto de las specs ejecutables.
+
+Con `--assume`, ante duda elegí `critical`. El perfil no escala por cantidad de tests ni por una respuesta subjetivamente floja. Si la fuente vino de triage, considerá su perfil downstream como evidencia, pero clasificá la ejecución del alcance ya especificado y exponé cualquier diferencia.
+
 ## Fase 5 — Mecanismo de verificacion
 
 Elegir con criterio = proponer el mecanismo MAS BARATO que observe el comportamiento real, no el mas impresionante. Orden de preferencia: test unit > integration > levantar la app con probe scripteado (curl, señal de log) > e2e browser > prueba humana. Un e2e de playwright para logica que se testea unit es eleccion incorrecta aunque funcione.
 
 1. Proponer por cada criterio de aceptacion el como concreto: comando, assertion o señal observable, anclado en los comandos del contrato.
-2. Usar `ask_user_question` — "¿Con que lo verificamos?": la propuesta primera y marcada `(Recomendado)`, 1-2 alternativas reales (una mas exhaustiva, una mas barata) con su trade-off en la descripcion, y el usuario puede proponer otra via custom. Con `--assume`: tomar la propuesta sin preguntar.
+2. Usar una sola `ask_user_question` — "¿Confirmás este mecanismo y el Perfil de ejecución `<perfil>`?": la propuesta primera y marcada `(Recomendado)`, 1-2 alternativas reales (una mas exhaustiva, una mas barata) con su trade-off en la descripcion, y el usuario puede proponer otra via custom. Cada opción debe decir qué perfil confirmaría; no hagas una segunda pregunta sólo por el perfil. Con `--assume`: tomar mecanismo y perfil sin preguntar.
 3. Para los criterios NULA: escribir el **protocolo de prueba humana** — pasos concretos y chequeables que el usuario va a seguir ("1. Abri la app en tu iPhone... 2. Confirma un pago... 3. Verifica que vibro"). La spec no esconde la parte manual: la agenda.
 
 ## Fase 6 — Escribir la spec
@@ -116,6 +130,7 @@ Con EXACTAMENTE esta estructura:
 # Spec — <titulo>
 <!-- Generada por /skill:sdd-spec el <fecha>. Fuente: <pedido libre | issue #NN | grill <ID>>. Estado: <aprobada|draft> -->
 <!-- SDD-Tracking: issue=<#NN|owner/repo#NN|none>; grill=<ID|none> -->
+<!-- SDD-Execution-Profile: light|standard|critical -->
 
 ## Contexto
 <por que existe el pedido + que hay en el codigo hoy; 2-4 lineas con referencias reales>
@@ -158,6 +173,7 @@ Spec lista: <ruta local y/o issue #NN actualizado>
 - criterios de aceptacion: <N> (ALTA <a> · MEDIA <m> · BAJA <b> · NULA <h>)
 - verificabilidad global: <grado o mixto> — <motivo en una linea>
 - mecanismo: <elegido> (<confirmado por usuario | asumido>)
+- perfil de ejecución: <light|standard|critical> (<confirmado junto al mecanismo | asumido>)
 - inferencias: <N> sobre la mesa · <K> revisadas por el usuario · <A> asumidas
 - siguiente paso: /skill:sdd-run <ruta | #NN>
 <si hubo que correr /skill:sdd-init, o hay CA NULA que exigen prueba humana, una linea por cada uno>
@@ -170,6 +186,7 @@ Spec lista: <ruta local y/o issue #NN actualizado>
 - Listar TODAS las inferencias nuevas, tambien las de confianza alta — elegir cuales revisar es del usuario.
 - Anclar cada grado de verificabilidad en lo que el contrato dice que corre HOY, citando el comando o gap concreto.
 - Proponer el mecanismo de verificacion mas barato que observe el comportamiento real, y dejar que el usuario lo cambie o proponga otro.
+- Clasificar el Perfil de ejecución, confirmarlo junto al mecanismo y persistir exactamente un marker `SDD-Execution-Profile`.
 - Escribir criterios de aceptacion observables: paso/no paso sin interpretacion.
 - Ser idempotente: re-correr sobre el mismo pedido actualiza la spec existente, no crea otra.
 - Emitir siempre el comment `SDD-Tracking` y preservar la referencia al issue heredada del pedido o del `sourceIssue` del grill.
