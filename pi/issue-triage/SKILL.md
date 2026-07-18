@@ -1,7 +1,7 @@
 ---
 name: issue-triage
 description: Analiza uno o varios issues de GitHub contra el código, tests y contrato del repo; decide con evidencia si hay que rechazarlos por dependencia/tamaño, grillar, crear spec o ejecutar un quick-run protegido. Para selecciones múltiples decide todo-o-nada y, si se confirma una ruta conjunta, crea un issue combinado y cierra los originales como reemplazados. Usar SIEMPRE cuando `/issues` envíe la acción Analizar o cuando el usuario pida decidir cómo encarar uno o varios issues antes de implementar.
-compatibility: Requiere GitHub CLI (`gh`), un repositorio Git y las tools read/bash/ask_user_question. Grill y spec requieren sus respectivos skills instalados.
+compatibility: Requiere GitHub CLI (`gh`), un repositorio Git y las tools read/bash/ask_user_question. Grill y spec requieren sus respectivos skills instalados; `route_skill` es opcional y, si falta, el triage continúa con el modelo actual.
 ---
 
 # Issue Triage
@@ -120,6 +120,16 @@ Elegila cuando falta una decisión real que el código no responde: alcance, UX,
 
 Con confianza baja, nunca recomiendes quick-run. Elegí el fallback seguro o un rechazo honesto.
 
+### Perfil downstream
+
+Para toda ruta accionable, clasificá también el perfil cognitivo que usará el siguiente skill. Es una decisión auditable del triage, no una elección de provider/model:
+
+- `light`: outcome claro, confianza alta, patrones existentes, bajo riesgo y verificación determinista. Puede haber varios criterios o seams que justifiquen una spec aunque el cambio no califique como quick-run.
+- `critical`: cualquier riesgo duro de seguridad, auth o privacidad; datos, migraciones o backfills; concurrencia; contratos públicos; blast radius transversal; o verificación débil/nula.
+- `standard`: todo caso intermedio cuyo outcome está claro y no activa un riesgo duro.
+
+No rebajes `critical` porque el diff parezca corto ni subas de perfil por cantidad de tests fallidos. El perfil describe riesgo y verificabilidad del trabajo downstream. Para una ruta `grill`, la incertidumbre material normalmente justifica `critical`; explicá la señal concreta en vez de usar esa palabra como regla automática.
+
 ## Fase 4 — Diagnóstico visible
 
 Mostrá exactamente esta estructura antes de cualquier mutación:
@@ -136,6 +146,9 @@ Mostrá exactamente esta estructura antes de cualquier mutación:
 - **Ruta recomendada:** join-spec
 - **Confianza:** alta | media | baja
 - **Fallback seguro:** join-grill
+- **Perfil downstream:** light | standard | critical
+- **Modelo resultante:** <candidato utilizable que resolvería ese perfil, o “modelo actual hasta confirmar”>
+- **Motivo:** <gate auditable que justifica el perfil>
 
 ### Evidencia
 - Issues: <referencias y requisitos concretos>
@@ -162,7 +175,7 @@ Para `blocked-dependency`, `split-too-large`, `combined-too-large` o `incoherent
 
 ### Rutas accionables
 
-Para grill/spec/quick-run usá `ask_user_question`. La pregunta debe repetir en una oración el outcome de `En pocas palabras`, para que la decisión sea autocontenida, y ofrecer:
+Para grill/spec/quick-run usá `ask_user_question`. La pregunta debe repetir en una oración el outcome de `En pocas palabras` y el `Perfil downstream`, para que la decisión sea autocontenida. La confirmación existente confirma a la vez ruta y perfil: no agregues una segunda pregunta. Ofrecé:
 
 - `Confirmar <ruta recomendada> (Recomendado)`
 - `Usar fallback: <ruta>`
@@ -233,6 +246,8 @@ Desde este punto, la única fuente downstream es `#NEW`.
 ## Fase 6 — Ejecutar la ruta confirmada
 
 Al encadenar cualquier ruta, conservá `En pocas palabras` y su `Ejemplo de impacto` como introducción breve del trabajo para que el lector sepa qué se va a grillar, especificar o implementar. La fuente sigue siendo autoritativa: la síntesis no reemplaza requisitos ni evidencia.
+
+Para `grill` o `spec`, recién después de confirmar (y, en una selección múltiple, después de canonicalizar) llamá `route_skill` con `targetSkill` igual a `grill` o `sdd-spec`, el `profile` confirmado y un `reason` breve derivado de `Motivo`. Hacelo antes de cargar el `SKILL.md` downstream. Si `route_skill` no está disponible, avisá explícitamente que el modelo no cambió y continuá con el modelo actual; nunca simules un cambio ni anuncies un `Modelo resultante` que no ocurrió. Quick-run no llama esta tool porque no carga un skill downstream.
 
 ### Grill
 
@@ -313,7 +328,9 @@ Nunca llames “completo” a un run con tareas, procesos, cambios sin commit o 
 - Abrir el diagnóstico con una síntesis breve, llana y autocontenida de qué se quiere lograr, más un ejemplo de impacto concreto respaldado por evidencia.
 - Detectar dependencias también para una selección de un solo issue.
 - Mostrar una sola ruta primaria con evidencia y fallback.
-- Pedir confirmación antes de cualquier ruta o canonicalización.
+- Mostrar `Perfil downstream`, `Modelo resultante` y `Motivo`, usando los gates auditables de riesgo/verificabilidad.
+- Pedir una sola confirmación conjunta de ruta + perfil antes de cualquier ruta o canonicalización.
+- Llamar `route_skill` sólo después de confirmar y antes de cargar `grill`/`sdd-spec`; si no está disponible, avisar y continuar sin fingir el cambio.
 - Evaluar selecciones múltiples todo-o-nada.
 - Hacer canonicalización idempotente y cerrar originales como reemplazados, nunca eliminarlos.
 - Mantener quick-run aislado en worktree y entregar PR por defecto.

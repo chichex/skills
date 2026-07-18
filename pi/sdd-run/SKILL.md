@@ -43,6 +43,7 @@ Luego usar `ask_user_question` — "¿Cual spec corremos?": una opcion por spec 
 
 1. **Contrato**: leer `.sdd/project.md`. Si no existe: interactivo → ofrecer `/skill:sdd-init` ahi mismo; `--assume` → correr `/skill:sdd-init --assume` y seguir. Anotar ya la capacidad de PR que declara el contrato (remote + gh): si no la hay, avisar desde el arranque que la corrida termina en commit local.
 2. **Spec**: resolver el argumento. Ruta → leerla. `#NN` → `gh issue view` y extraer la spec del body (la genero `/skill:sdd-spec`); si el issue no tiene spec SDD, frenar y ofrecer `/skill:sdd-spec #NN`. Pedido libre sin spec → frenar: ofrecer `/skill:sdd-spec <pedido>` (interactivo) o encadenarlo (`--assume`). NO improvisar una spec: ese trabajo tiene su skill.
+2.a. **Perfil de ejecución**: después de resolver el contenido autoritativo, leer el marker `<!-- SDD-Execution-Profile: light|standard|critical -->`; si falta o es inválido, usar `standard`. Si `route_skill` está disponible, llamarla con `targetSkill: sdd-run`, ese `profile` y un motivo breve que cite el marker/default. La llamada ocurre antes de planificar o editar. Si la tool no está disponible, avisar que el modelo no cambió y continuar con el actual; nunca simular el cambio. Un test rojo, timeout, CA fallido o respuesta mediocre no escala el perfil automáticamente: sólo lo cambian el marker confirmado, una llamada confirmada a `route_skill` o la elección manual del usuario.
 3. **Spec en `draft`**: significa que nadie reviso las inferencias — correrla es aceptar todas las `[ASSUMED]`. Interactivo: decirlo y preguntar si seguir (u ofrecer revisar las inferencias aca, una pregunta por inferencia de confianza baja). `--assume`: seguir y dejarlo anotado en el PR.
 4. **Worktree limpio desde main actualizado — o abort**: `/skill:sdd-run` NUNCA corre sobre el checkout del usuario. Preflight: `git fetch` (si hay remote) y chequear estado sano. Ante CUALQUIER cosa rara — cambios sin commitear, rebase/merge a medias, detached HEAD, base local divergido de su remote — **ABORTAR** explicando exactamente que se encontro. No arreglar nada (ni stash, ni reset, ni checkout): si el repo esta raro, el humano esta en el medio de algo.
 
@@ -162,6 +163,7 @@ Si falla un solo item, esta prohibido emitir `Run completo`.
 ## MUST DO
 
 - Exigir spec y contrato antes de tocar codigo; encadenar `/skill:sdd-spec`/`/skill:sdd-init` con `--assume`, ofrecerlos en interactivo.
+- Leer `SDD-Execution-Profile` al resolver la spec (default `standard`) y llamar `route_skill` antes de planificar o editar cuando esté disponible.
 - Escribir los tests de los CA ALTA antes que la implementacion y verlos fallar primero.
 - Verificar cada CA con el mecanismo que la spec declara, y la regresion completa con el comando del contrato.
 - Documentar toda desviacion en la spec misma, con fecha.
@@ -180,4 +182,5 @@ Si falla un solo item, esta prohibido emitir `Run completo`.
 - No correr sobre el checkout del usuario, y no "normalizar" un repo raro (stash, reset, checkout forzado): cambios pendientes o estado a medias = abort. Unica excepcion: el archivo del spec target sin comitear se tolera y se commitea en el worktree (Fase 1.4); cualquier otro path sucio aborta igual.
 - No deploy, migraciones sobre datos compartidos, ni servicios pagos (Limites del contrato).
 - No convertir un CA en FALLA silenciosa: FALLA siempre viene con diagnostico y aparece en spec, PR y reporte.
+- No escalar el modelo por tests rojos, timeouts o CAs fallidos; el perfil sólo cambia por marker, `route_skill` confirmada o override manual.
 - No emitir `Run completo`, pedir validacion humana ni finalizar la sesion con tareas bloqueantes `running`, tests no concluyentes o CAs sin estado.
