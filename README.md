@@ -31,6 +31,8 @@ Las disciplinas sobre las que SDD se apoya — y que también uso sueltas, fuera
 | **`tdd`** | Referencia de test-driven development: el loop rojo → verde, qué es un buen test, dónde van (seams), los anti-patrones. Incluye guías de `mocking` y `tests`. |
 | **`code-review`** *(solo Pi)* | Revisa un PR en tres ejes separados —correctness y riesgo, estándares y spec—, ejecuta verificaciones, muestra findings con evidencia y al final pregunta si querés publicar los comments en GitHub. Nunca postea sin confirmación explícita. |
 | **`github-issue-selector`** *(solo Pi)* | Abre un selector interactivo cuando querés elegir o inspeccionar un issue y todavía no diste un número concreto. |
+| **`issue-triage`** *(solo Pi)* | Analiza uno o varios issues contra código, tests y dependencias; recomienda grill, spec, quick-run protegido o rechazo accionable. Para selecciones conjuntas crea un issue canónico y cierra los originales como reemplazados. |
+| **`repo-clean`** *(solo Pi)* | Deja el branch actual sin cambios pendientes y sincronizado con `origin/<branch>`. Si hay trabajo sin commit, muestra el impacto y pregunta si conservarlo o descartarlo; nunca cambia de branch ni hace force-push. |
 | **`find-skills`** *(solo Pi)* | Busca skills instalables en el ecosistema abierto mediante `npx skills`. Vendorizado desde `vercel-labs/skills`. |
 | **`yt-summary`** *(solo Claude)* | Descarga con `yt-dlp` un único track de subtítulos de YouTube y guía un resumen con TL;DR, puntos clave y timestamps. |
 
@@ -47,7 +49,8 @@ El repo también conserva todas las extensiones globales de Pi usadas por este w
 | **`ask-user-question`** | Herramienta `ask_user_question` con selección simple/múltiple, recomendaciones, respuesta libre y envío vacío opcional. |
 | **`claude-tool-renderer.ts`** | Presenta las ediciones con encabezado y diff compacto al estilo Claude Code. |
 | **`grill-tools`** | Persistencia con `grill_session`, selector `select_grill_session` y comandos `/grills` y `/specs`. |
-| **`github-issue-selector.ts`** + **`github-issues.ts`** | Herramienta `select_github_issue` y comando `/issues` para elegir, inspeccionar y administrar issues. |
+| **`inline-skill-autocomplete`** | Abre el autocomplete de skills al escribir `/` o `/skill:…` en cualquier punto del borrador. Al enviar, antepone la invocación para que Pi la expanda correctamente. |
+| **`github-issue-selector.ts`** + **`github-issues.ts`** | Herramienta `select_github_issue` y comando `/issues` con selección múltiple. El menú unificado permite analizar mediante `issue-triage`, cerrar en bulk o eliminar en bulk. |
 | **`github-prs`** | Comando `/prs`; su acción de review invoca `/skill:code-review`. |
 | **`visual-footer.ts`** | Footer visual con estado, modelo, tokens y directorio actual; se alterna con `/visual-footer`. |
 | **`warp-status.ts`** | Emite el estado de Pi para la integración de terminal de Warp. |
@@ -96,7 +99,7 @@ cp -R pi-extensions/*  ~/.pi/agent/extensions/
 cp pi-themes/*.json    ~/.pi/agent/themes/
 ```
 
-Una vez instalados, Claude Code/opencode los invocan con sus comandos habituales. En Pi se usan como `/skill:grill`, `/skill:code-review`, `/skill:github-issue-selector`, `/skill:sdd-init`, `/skill:sdd-spec` y `/skill:sdd-run`, o el agente los carga según su `description`. Ejecutá `/reload` en una sesión de Pi abierta después de instalarlos.
+Una vez instalados, Claude Code/opencode los invocan con sus comandos habituales. En Pi se usan como `/skill:grill`, `/skill:code-review`, `/skill:github-issue-selector`, `/skill:issue-triage`, `/skill:repo-clean`, `/skill:sdd-init`, `/skill:sdd-spec` y `/skill:sdd-run`, o el agente los carga según su `description`. Ejecutá `/reload` en una sesión de Pi abierta después de instalarlos.
 
 ## Créditos
 

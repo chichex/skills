@@ -3,35 +3,17 @@ import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import {
-	BorderedLoader,
-	getMarkdownTheme,
-	truncateHead,
-} from "@earendil-works/pi-coding-agent";
-import { Markdown } from "@earendil-works/pi-tui";
+import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 
-import {
-	analyzeRelatedIssues,
-	formatRelatedAnalysis,
-	type IssueCandidate,
-	type IssueDetails,
-	type IssueListItem,
-	type RelatedIssueAnalysis,
-	type RelatedIssueFinding,
-} from "./github-issue-selector";
-import { selectMenu, type MenuItem } from "./lib/menu";
+import type { IssueListItem } from "./github-issue-selector";
+import { selectManyMenu, selectMenu, type MenuItem } from "./lib/menu";
 
 type IssueListAction =
-	| { kind: "select"; number: number }
+	| { kind: "select"; numbers: number[] }
 	| { kind: "create" }
 	| { kind: "exit" };
 
-type IssueAction = "analyze" | "grill" | "close" | "delete" | "list" | "exit";
-
-type AnalysisOutcome =
-	| { analysis: RelatedIssueAnalysis }
-	| { error: string };
-
+type SelectionAction = "analyze" | "close" | "delete" | "back";
 type GrillStatus = "active" | "paused" | "finalized";
 
 interface StoredGrill {
@@ -59,6 +41,13 @@ interface AssociatedSpec {
 interface IssueWork {
 	grills: AssociatedGrill[];
 	specs: AssociatedSpec[];
+}
+
+interface BulkMutationResult {
+	number: number;
+	title: string;
+	success: boolean;
+	error?: string;
 }
 
 const GRILL_STORE_DIR = join(homedir(), ".pi", "agent", "grill-sessions");
@@ -218,58 +207,7 @@ async function collectWorkflowAssociations(
 	return byIssue;
 }
 
-function formatIssueMarkdown(issue: IssueDetails, work?: IssueWork): string {
-	const labels = issue.labels.map((label) => label.name).filter(Boolean).join(", ") || "ninguna";
-	const assignees = issue.assignees.map((assignee) => assignee.login).filter(Boolean).join(", ") || "ninguno";
-	const author = issue.author?.login || "desconocido";
-	const milestone = issue.milestone?.title || "ninguno";
-	const body = issue.body.trim() || "_(sin descripción)_";
-	const comments = (issue.comments ?? []).slice(-5).map((comment) => {
-		const login = comment.author?.login ?? "desconocido";
-		return `### @${login}\n\n${comment.body.trim() || "_(comentario vacío)_"}`;
-	});
-	const markdown = [
-		`# #${issue.number} — ${issue.title}`,
-		"",
-		`- **Estado:** ${issue.state}`,
-		`- **Autor:** @${author}`,
-		`- **Labels:** ${labels}`,
-		`- **Assignees:** ${assignees}`,
-		`- **Milestone:** ${milestone}`,
-		`- **URL:** ${issue.url}`,
-		"",
-		"## Trabajo asociado",
-		"",
-		...(work && (work.grills.length > 0 || work.specs.length > 0)
-			? [
-				...work.grills.map((grill) => `- **Grill ${localizedGrillStatus(grill.status)}:** \`${grill.id}\``),
-				...work.specs.map((spec) => spec.location === "issue"
-					? `- **Spec ${spec.state}:** body de este issue`
-					: `- **Spec ${spec.state}:** \`${spec.path}\``),
-			]
-			: ["- Sin grill ni spec asociados."]),
-		"",
-		"## Descripción",
-		"",
-		body,
-		...(comments.length > 0 ? ["", "## Últimos comentarios", "", ...comments] : []),
-	].join("\n");
-	const truncated = truncateHead(markdown, { maxBytes: 45 * 1024, maxLines: 1_900 });
-	return truncated.truncated
-		? `${truncated.content}\n\n_Contenido truncado; abrí ${issue.url} para verlo completo._`
-		: truncated.content;
-}
-
 export default function githubIssuesExtension(pi: ExtensionAPI): void {
-	pi.registerEntryRenderer("github-issue-local-view", (entry) => {
-		const data = entry.data as { markdown?: string };
-		return new Markdown(data.markdown ?? "", 1, 1, getMarkdownTheme());
-	});
-	pi.registerEntryRenderer("github-issue-local-analysis", (entry) => {
-		const data = entry.data as { markdown?: string };
-		return new Markdown(data.markdown ?? "", 1, 1, getMarkdownTheme());
-	});
-
 	async function runGh(
 		args: string[],
 		ctx: ExtensionContext,
@@ -310,6 +248,7 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 		ctx: ExtensionContext,
 		issues: IssueListItem[],
 		workByIssue: Map<number, IssueWork>,
+		initialSelection: number[],
 	): Promise<IssueListAction> {
 		const createValue = "__create__";
 		const items: MenuItem<string>[] = [
@@ -322,65 +261,66 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 				value: createValue,
 				label: "＋ Crear un issue nuevo",
 				description: "Abre el editor y pide confirmación antes de publicarlo",
+				multiSelectable: false,
+			},
+		];
+		const selected = await selectManyMenu(
+			ctx,
+			`GitHub Issues abiertos (${issues.length})`,
+			items,
+			{
+				maxVisible: 12,
+				maxSelected: 12,
+				initialSelectedValues: initialSelection.map(String),
+			},
+		);
+		if (selected === null) return { kind: "exit" };
+		if (selected.includes(createValue)) return { kind: "create" };
+		return { kind: "select", numbers: selected.map(Number) };
+	}
+
+	async function showSelectionActions(
+		ctx: ExtensionContext,
+		issues: IssueListItem[],
+	): Promise<SelectionAction> {
+		const numbers = issues.map((issue) => `#${issue.number}`).join(", ");
+		const items: MenuItem<SelectionAction>[] = [
+			{
+				value: "analyze",
+				label: "1  Analizar",
+				description: "Explora issues, código, tests y contrato; recomienda grill, spec, quick-run o rechazo",
+				recommended: true,
+				shortcut: "1",
+			},
+			{
+				value: "close",
+				label: "2  Cerrar como completado",
+				description: `Cierra ${issues.length === 1 ? numbers : `los ${issues.length} issues seleccionados`}`,
+				success: true,
+				shortcut: "2",
+			},
+			{
+				value: "delete",
+				label: "3  Eliminar permanentemente",
+				description: `Elimina ${issues.length === 1 ? numbers : `los ${issues.length} issues seleccionados`}; no se puede deshacer`,
+				danger: true,
+				shortcut: "3",
+			},
+			{
+				value: "back",
+				label: "0  Volver atrás",
+				description: "Regresa a la lista conservando la selección",
+				shortcut: "0",
+				separatorBefore: true,
 			},
 		];
 		const selected = await selectMenu(
 			ctx,
-			`GitHub Issues abiertos (${issues.length})`,
+			issues.length === 1 ? `Issue ${numbers} · elegí una acción` : `${issues.length} issues (${numbers}) · elegí una acción`,
 			items,
-			{ maxVisible: 12 },
+			{ maxVisible: items.length, minPrimaryColumnWidth: 42, maxPrimaryColumnWidth: 50 },
 		);
-		if (selected === null) return { kind: "exit" };
-		if (selected === createValue) return { kind: "create" };
-		return { kind: "select", number: Number(selected) };
-	}
-
-	async function showIssueActions(
-		ctx: ExtensionContext,
-		issue: Pick<IssueDetails, "number">,
-		hasAnalysis: boolean,
-	): Promise<IssueAction | null> {
-		const items: MenuItem<IssueAction>[] = [
-			{
-				value: "analyze",
-				label: `${hasAnalysis ? "Reanalizar" : "Analizar"} dependencias potenciales`,
-				description: "Compara con otros issues, detecta prerrequisitos y recomienda el orden de trabajo; usa el modelo",
-				recommended: true,
-			},
-			{
-				value: "grill",
-				label: `Grillar #${issue.number}`,
-				description: "Inicia una entrevista para aclarar alcance, decisiones y casos borde antes de escribir la spec; usa el modelo",
-			},
-			{
-				value: "close",
-				label: `Cerrar #${issue.number}`,
-				description: "Marca el issue como completado en GitHub; se puede volver a abrir",
-			},
-			{
-				value: "delete",
-				label: `Eliminar #${issue.number} permanentemente`,
-				description: "Borra el issue de GitHub de forma irreversible; pide confirmación",
-				danger: true,
-			},
-			{
-				value: "list",
-				label: "← Volver a la lista de issues",
-				description: "Regresa al selector sin modificar este issue",
-			},
-			{
-				value: "exit",
-				label: "Salir de /issues",
-				description: "Cierra el administrador de issues",
-			},
-		];
-
-		return selectMenu<IssueAction>(
-			ctx,
-			`Issue #${issue.number} · elegí una acción`,
-			items,
-			{ maxVisible: items.length, minPrimaryColumnWidth: 48, maxPrimaryColumnWidth: 48 },
-		);
+		return selected ?? "back";
 	}
 
 	async function listOpenIssues(
@@ -405,191 +345,64 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 		});
 	}
 
-	async function loadIssue(number: number, ctx: ExtensionContext): Promise<IssueDetails> {
-		return withLoader(ctx, `Consultando issue #${number} en GitHub…`, async (signal) => {
-			const output = await runGh(
-				[
-					"issue",
-					"view",
-					String(number),
-					"--json",
-					"number,title,body,url,state,updatedAt,author,labels,assignees,milestone,comments",
-				],
-				ctx,
-				signal,
-			);
-			return parseJson<IssueDetails>(output, `gh issue view #${number}`);
-		});
+	function queueIssueTriage(issues: IssueListItem[], ctx: ExtensionContext): boolean {
+		const triageCommand = pi.getCommands().find((command) => command.name === "skill:issue-triage");
+		if (!triageCommand) {
+			ctx.ui.notify("Todavía no está instalado /skill:issue-triage", "warning");
+			return false;
+		}
+		pi.sendUserMessage(`/skill:issue-triage ${issues.map((issue) => `#${issue.number}`).join(" ")}`);
+		return true;
 	}
 
-	async function analyzeDependencies(
+	function bulkSummary(action: "close" | "delete", results: BulkMutationResult[]): string {
+		const verb = action === "close" ? "Cierre" : "Eliminación";
+		const succeeded = results.filter((result) => result.success);
+		const failed = results.filter((result) => !result.success);
+		return [
+			`${verb}: ${succeeded.length}/${results.length} completados.`,
+			...succeeded.map((result) => `✓ #${result.number} — ${result.title}`),
+			...failed.map((result) => `✗ #${result.number} — ${result.title}: ${result.error}`),
+		].join("\n");
+	}
+
+	async function mutateIssues(
+		action: "close" | "delete",
+		issues: IssueListItem[],
 		ctx: ExtensionContext,
-		issue: IssueDetails,
-		getCandidates: (signal: AbortSignal) => Promise<IssueCandidate[]>,
-	): Promise<RelatedIssueAnalysis | undefined> {
-		if (!ctx.model) {
-			ctx.ui.notify("No hay un modelo activo para analizar dependencias", "error");
-			return undefined;
-		}
+	): Promise<boolean> {
+		const issueLines = issues.map((issue) => `#${issue.number} — ${issue.title}`).join("\n");
+		const destructive = action === "delete";
+		const confirmed = await ctx.ui.confirm(
+			destructive ? `Eliminar ${issues.length} issue(s)` : `Cerrar ${issues.length} issue(s)`,
+			[
+				issueLines,
+				"",
+				destructive
+					? "Esta acción es permanente y los issues no se podrán recuperar."
+					: "Los issues se marcarán como completados y se podrán volver a abrir.",
+			].join("\n"),
+		);
+		if (!confirmed) return false;
 
-		const outcome = await ctx.ui.custom<AnalysisOutcome | null>((tui, theme, _keybindings, done) => {
-			const loader = new BorderedLoader(
-				tui,
-				theme,
-				`Analizando dependencias de #${issue.number} con ${ctx.model!.id}…`,
-			);
-			loader.onAbort = () => done(null);
-
-			getCandidates(loader.signal)
-				.then((candidates) => analyzeRelatedIssues(ctx, issue, candidates, loader.signal))
-				.then((analysis) => done({ analysis }))
-				.catch((error) => {
-					if (!loader.signal.aborted) done({ error: errorMessage(error) });
-				});
-			return loader;
-		});
-
-		if (outcome === null) {
-			ctx.ui.notify("Análisis cancelado", "info");
-			return undefined;
-		}
-		if ("error" in outcome) {
-			ctx.ui.notify(`No se pudo analizar: ${outcome.error}`, "error");
-			return undefined;
-		}
-		return outcome.analysis;
-	}
-
-	function queueGrill(
-		issue: Pick<IssueDetails, "number" | "title">,
-		context?: { selectedIssue: IssueDetails; prerequisite: RelatedIssueFinding },
-	): void {
-		const availableCommands = new Set(pi.getCommands().map((command) => command.name));
-		const grillCommand = availableCommands.has("skill:grill") ? "skill:grill" : undefined;
-		const instruction = context
-			? [
-				`Grillá primero el issue #${issue.number} (${issue.title}).`,
-				`Fue detectado como prerrequisito del issue #${context.selectedIssue.number} (${context.selectedIssue.title}).`,
-				`Evidencia: ${context.prerequisite.reason}`,
-				"Antes de preguntar, obtené sus detalles completos con gh issue view y explorá el codebase.",
-				"No implementes hasta que confirme el entendimiento compartido.",
-			].join(" ")
-			: [
-				`Grillá el issue #${issue.number} (${issue.title}) del repositorio actual.`,
-				"Antes de preguntar, obtené sus detalles completos con gh issue view y explorá el codebase.",
-				"No implementes hasta que confirme el entendimiento compartido.",
-			].join(" ");
-		pi.sendUserMessage(grillCommand ? `/${grillCommand} ${instruction}` : instruction);
-	}
-
-	async function viewIssues(ctx: ExtensionContext): Promise<void> {
-		let candidateCache: IssueCandidate[] | undefined;
-
-		while (true) {
-			const { issues, workByIssue } = await listOpenIssues(ctx);
-			const listAction = await showIssueList(ctx, issues, workByIssue);
-			if (listAction.kind === "exit") return;
-			if (listAction.kind === "create") {
-				if (await createIssue(ctx)) candidateCache = undefined;
-				continue;
-			}
-
-			const selected = issues.find((issue) => issue.number === listAction.number);
-			if (!selected) throw new Error("No se pudo resolver el issue seleccionado");
-			const issue = await loadIssue(selected.number, ctx);
-			pi.appendEntry("github-issue-local-view", {
-				issueNumber: issue.number,
-				markdown: formatIssueMarkdown(issue, workByIssue.get(issue.number)),
-			});
-
-			let analysis: RelatedIssueAnalysis | undefined;
-			while (true) {
-				const action = await showIssueActions(ctx, issue, analysis !== undefined);
-
-				if (!action || action === "exit") return;
-				if (action === "list") break;
-				if (action === "close") {
-					if (await closeIssue(issue, ctx)) {
-						candidateCache = undefined;
-						break;
-					}
-					continue;
+		const results = await withLoader(
+			ctx,
+			destructive ? "Eliminando issues en GitHub…" : "Cerrando issues en GitHub…",
+			async (signal): Promise<BulkMutationResult[]> => Promise.all(issues.map(async (issue) => {
+				try {
+					const args = destructive
+						? ["issue", "delete", String(issue.number), "--yes"]
+						: ["issue", "close", String(issue.number), "--reason", "completed"];
+					await runGh(args, ctx, signal);
+					return { number: issue.number, title: issue.title, success: true };
+				} catch (error) {
+					return { number: issue.number, title: issue.title, success: false, error: errorMessage(error) };
 				}
-				if (action === "delete") {
-					if (await deleteIssue(issue, ctx)) {
-						candidateCache = undefined;
-						break;
-					}
-					continue;
-				}
-				if (action === "grill") {
-					queueGrill(issue);
-					return;
-				}
-				if (action !== "analyze") continue;
-
-				analysis = await analyzeDependencies(ctx, issue, async (signal) => {
-					if (!candidateCache) {
-						const output = await runGh(
-							[
-								"issue",
-								"list",
-								"--state",
-								"all",
-								"--limit",
-								"100",
-								"--json",
-								"number,title,body,url,state,updatedAt,author,labels",
-							],
-							ctx,
-							signal,
-						);
-						candidateCache = parseJson<IssueCandidate[]>(output, "gh issue list para dependencias");
-					}
-					return candidateCache.filter((candidate) => candidate.number !== issue.number);
-				});
-				if (!analysis) continue;
-
-				const analysisMarkdown = formatRelatedAnalysis(issue, analysis);
-				pi.appendEntry("github-issue-local-analysis", {
-					issueNumber: issue.number,
-					markdown: analysisMarkdown,
-				});
-
-				const prerequisites = analysis.related.filter((finding) => finding.mustBeDoneFirst);
-				const prerequisiteChoices = new Map<string, RelatedIssueFinding>();
-				for (const prerequisite of prerequisites) {
-					prerequisiteChoices.set(
-						`Grillar primero #${prerequisite.number}: ${prerequisite.title}`,
-						prerequisite,
-					);
-				}
-				const grillSelectedChoice = `Grillar #${issue.number}`;
-				const continueChoice = "Seguir inspeccionando sin grillar";
-				const next = await selectMenu(
-					ctx,
-					`Dependencias analizadas para #${issue.number}`,
-					[
-						...[...prerequisiteChoices.keys()].map((label, index) => ({
-							value: label,
-							label,
-							recommended: index === 0,
-						})),
-						{ value: grillSelectedChoice, label: grillSelectedChoice },
-						{ value: continueChoice, label: continueChoice },
-					],
-				);
-				const prerequisite = next ? prerequisiteChoices.get(next) : undefined;
-				if (prerequisite) {
-					queueGrill(prerequisite, { selectedIssue: issue, prerequisite });
-					return;
-				}
-				if (next === grillSelectedChoice) {
-					queueGrill(issue);
-					return;
-				}
-			}
-		}
+			})),
+		);
+		const failures = results.filter((result) => !result.success).length;
+		ctx.ui.notify(bulkSummary(action, results), failures > 0 ? "warning" : "info");
+		return results.some((result) => result.success);
 	}
 
 	async function createIssue(ctx: ExtensionContext): Promise<boolean> {
@@ -612,40 +425,37 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 		return true;
 	}
 
-	async function closeIssue(
-		issue: Pick<IssueDetails, "number" | "title">,
-		ctx: ExtensionContext,
-	): Promise<boolean> {
-		const confirmed = await ctx.ui.confirm(
-			`Cerrar issue #${issue.number}`,
-			`${issue.title}\n\nEsta acción marcará el issue como completado.`,
-		);
-		if (!confirmed) return false;
+	async function viewIssues(ctx: ExtensionContext): Promise<void> {
+		let selectedNumbers: number[] = [];
 
-		await withLoader(ctx, `Cerrando issue #${issue.number} en GitHub…`, (signal) =>
-			runGh(["issue", "close", String(issue.number), "--reason", "completed"], ctx, signal));
-		ctx.ui.notify(`Issue #${issue.number} cerrado`, "info");
-		return true;
-	}
+		while (true) {
+			const { issues, workByIssue } = await listOpenIssues(ctx);
+			selectedNumbers = selectedNumbers.filter((number) => issues.some((issue) => issue.number === number));
+			const listAction = await showIssueList(ctx, issues, workByIssue, selectedNumbers);
+			if (listAction.kind === "exit") return;
+			if (listAction.kind === "create") {
+				if (await createIssue(ctx)) selectedNumbers = [];
+				continue;
+			}
 
-	async function deleteIssue(
-		issue: Pick<IssueDetails, "number" | "title">,
-		ctx: ExtensionContext,
-	): Promise<boolean> {
-		const confirmed = await ctx.ui.confirm(
-			`Eliminar issue #${issue.number}`,
-			`${issue.title}\n\nEsta acción es permanente y el issue no se podrá recuperar.`,
-		);
-		if (!confirmed) return false;
+			selectedNumbers = listAction.numbers;
+			const selectedIssues = selectedNumbers
+				.map((number) => issues.find((issue) => issue.number === number))
+				.filter((issue): issue is IssueListItem => issue !== undefined);
+			if (selectedIssues.length === 0) continue;
 
-		await withLoader(ctx, `Eliminando issue #${issue.number} de GitHub…`, (signal) =>
-			runGh(["issue", "delete", String(issue.number), "--yes"], ctx, signal));
-		ctx.ui.notify(`Issue #${issue.number} eliminado`, "info");
-		return true;
+			const action = await showSelectionActions(ctx, selectedIssues);
+			if (action === "back") continue;
+			if (action === "analyze") {
+				if (queueIssueTriage(selectedIssues, ctx)) return;
+				continue;
+			}
+			if (await mutateIssues(action, selectedIssues, ctx)) selectedNumbers = [];
+		}
 	}
 
 	pi.registerCommand("issues", {
-		description: "Listar y administrar GitHub Issues; presioná c para crear uno",
+		description: "Seleccionar y administrar GitHub Issues; Analizar enruta a grill, spec, quick-run o rechazo",
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui") {
 				ctx.ui.notify("El administrador de issues requiere modo TUI", "error");
