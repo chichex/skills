@@ -59,6 +59,11 @@ gh issue view <N> --json number,title,body,url,state,updatedAt,author,labels,ass
    - componentes, seams o secuencias compartidas.
 6. Leé `.sdd/project.md` si existe. Su ausencia **no bloquea el triage ni el quick-run**; sí será manejada por `sdd-spec` si la ruta elegida es spec.
 7. Revisá `.sdd/specs/` y los bodies fuente para detectar specs o grills ya asociados. No recomiendes repetir trabajo existente sin explicarlo.
+8. Prepará una síntesis autocontenida del pedido antes de clasificar:
+   - explicá en lenguaje llano qué pasa hoy, qué cambio o resultado se busca y quién o qué flujo se beneficia;
+   - para un issue, usá 2–4 frases; para varios, describí primero el objetivo común y después una línea breve por fuente con su aporte;
+   - no copies el título o el body, no adelantes la ruta y no presentes una solución técnica inferida como si fuera el pedido;
+   - si falta un dato esencial, decilo explícitamente en vez de inventarlo.
 
 ## Fase 2 — Explorar código y tests
 
@@ -120,6 +125,9 @@ Mostrá exactamente esta estructura antes de cualquier mutación:
 ```markdown
 ## Triage de issues
 
+### En pocas palabras
+<para uno: 2–4 frases sobre la situación actual, el cambio buscado y su impacto; para varios: objetivo común + una línea por fuente>
+
 - **Fuentes:** #12, #13
 - **Ruta recomendada:** join-spec
 - **Confianza:** alta | media | baja
@@ -140,6 +148,8 @@ Mostrá exactamente esta estructura antes de cualquier mutación:
 <acción exacta que ocurrirá si se confirma>
 ```
 
+`En pocas palabras` va primero y debe permitir entender el trabajo sin abrir los issues ni conocer la jerga de rutas. Resume el pedido, no la justificación de la clasificación. Si issue y código discrepan, describí brevemente ambas realidades y marcá qué falta resolver.
+
 La ruta primaria debe ser única. El fallback no es otra recomendación equivalente: es la degradación segura si el usuario no acepta la primaria o si aparece una precondición faltante.
 
 ### Rechazos
@@ -148,7 +158,7 @@ Para `blocked-dependency`, `split-too-large`, `combined-too-large` o `incoherent
 
 ### Rutas accionables
 
-Para grill/spec/quick-run usá `ask_user_question`:
+Para grill/spec/quick-run usá `ask_user_question`. La pregunta debe repetir en una oración el outcome de `En pocas palabras`, para que la decisión sea autocontenida, y ofrecer:
 
 - `Confirmar <ruta recomendada> (Recomendado)`
 - `Usar fallback: <ruta>`
@@ -198,7 +208,7 @@ Sintetizá un issue nuevo con:
 - #13
 ```
 
-No concatentes bodies ni copies comentarios. Conservá labels comunes y agregá otras sólo cuando sean inequívocamente aplicables al alcance combinado.
+No concatentes bodies ni copies comentarios. El `Objetivo` debe conservar la síntesis entendible del diagnóstico, sin jerga de triage. Conservá labels comunes y agregá otras sólo cuando sean inequívocamente aplicables al alcance combinado.
 
 Creá el issue con `gh issue create` usando un archivo temporal para el body y eliminá ese temporal al terminar.
 
@@ -217,6 +227,8 @@ Si falla crear el combinado, no toques los originales. Si falla algún comentari
 Desde este punto, la única fuente downstream es `#NEW`.
 
 ## Fase 6 — Ejecutar la ruta confirmada
+
+Al encadenar cualquier ruta, conservá `En pocas palabras` como introducción breve del trabajo para que el lector sepa qué se va a grillar, especificar o implementar. La fuente sigue siendo autoritativa: la síntesis no reemplaza requisitos ni evidencia.
 
 ### Grill
 
@@ -294,6 +306,7 @@ Nunca llames “completo” a un run con tareas, procesos, cambios sin commit o 
 ## MUST DO
 
 - Analizar contra issues, código, tests y contrato cuando exista.
+- Abrir el diagnóstico con una síntesis breve, llana y autocontenida de qué se quiere lograr.
 - Detectar dependencias también para una selección de un solo issue.
 - Mostrar una sola ruta primaria con evidencia y fallback.
 - Pedir confirmación antes de cualquier ruta o canonicalización.
