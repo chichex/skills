@@ -1,5 +1,5 @@
 # Spec — Router de modelos por skill para Pi
-<!-- Generada por /skill:sdd-spec el 2026-07-18. Fuente: pedido libre confirmado en conversación. Estado: aprobada -->
+<!-- Generada por /skill:sdd-spec el 2026-07-18. Fuente: pedido libre confirmado en conversación. Estado: implementada -->
 <!-- SDD-Tracking: issue=none; grill=none -->
 
 ## Contexto
@@ -261,3 +261,30 @@ Ejecutar el protocolo de CA-10 después de `./install.sh pi` y `/reload`, sin pr
 - La continuación explícita tras auth/cuota es deliberadamente única para evitar loops o duplicación de tool side effects.
 - No existe e2e automático para el orden real de eventos; CA-10 requiere humano.
 - El checkout tenía cambios locales preexistentes en `pi/issue-triage/SKILL.md` antes de esta spec. Además, `.sdd/project.md`, esta spec, `AGENTS.md` y `CLAUDE.md` son nuevos. `/skill:sdd-run` abortará hasta que todo trabajo que deba conservarse esté commiteado y el checkout quede limpio; no descartar nada para forzarlo.
+
+## Resultado de ejecucion (2026-07-18)
+
+| CA | Estado | Evidencia |
+|---|---|---|
+| CA-1 | verificado | `node --test pi-extensions/*/*.test.ts`: 28/28 verdes; matriz, preselección, perfiles, niveles, `enabledModels`, credenciales e `inherit` cubiertos. |
+| CA-2 | lógica verificada; pendiente humano | Unitarios verdes para invocación idle/inline/encolada, bloque expandido y read por path canónico exacto. Orden real de eventos Pi: NO EJECUTADO (protocolo 1–3). |
+| CA-3 | lógica verificada; pendiente humano | Unitarios verdes para owner, prioridades, nesting, `route_skill`, override manual y restauración exacta. Interacción `/model`/Ctrl+P real: NO EJECUTADO (protocolo 4). |
+| CA-4 | contrato/lógica verificados; pendiente humano | Tests estáticos verdes sobre `pi/issue-triage/SKILL.md` y schema cerrado de `route_skill`; override de prioridad cubierto. Conducta del modelo en triage: NO EJECUTADO (protocolo 7). |
+| CA-5 | marker/lógica verificados; pendiente humano | Parser default `standard`, persistencia textual del marker y llamada previa de `sdd-run` cubiertos por unitarios/estáticos. Cambio real de modelo desde una spec: NO EJECUTADO. |
+| CA-6 | lógica verificada; pendiente humano | Clasificación, un candidato por error, máximo un intento, auth/cuota, imágenes, agotamiento y original cubiertos; continuación tras compactación serializada. No se provocaron errores pagos reales, por diseño. |
+| CA-7 | umbrales/lógica verificados; pendiente humano | Unitarios verdes para `372000 - 32768 = 339232`, mínimo de cadena, cruce único, switch diferido, replay exacto y falla de compactación. No se infló contexto ni se ejecutó compactación real. |
+| CA-8 | lógica/render verificados; pendiente humano | Unitarios verdes para diagnóstico, status y sanitización; smoke carga comando/tool/renderer. TUI y auditoría visibles: NO EJECUTADO (protocolo 6). |
+| CA-9 | verificado | Smoke conjunto: 10 entrypoints, 57 modelos y exit 0; `README.md`/`README.en.md` cubiertos; `bash -n install.sh` y ambos diff checks verdes. No se ejecutó instalación global, según el contrato. |
+| CA-10 | pendiente humano | Los siete pasos quedan NO EJECUTADOS; no se corrió `./install.sh pi` sin autorización. |
+
+### Protocolo humano CA-10
+
+| Paso | Estado |
+|---:|---|
+| 1. Skill explícita cambia antes de responder y `/skill-models` muestra owner/perfil | NO EJECUTADO |
+| 2. Selección automática conserva la primera respuesta y cambia después del read | NO EJECUTADO |
+| 3. `github-issue-selector` o skill no configurada hereda | NO EJECUTADO |
+| 4. Override manual durante una ruta no se revierte al terminar | NO EJECUTADO |
+| 5. Candidato inexistente se salta y luego se restaura el config | NO EJECUTADO |
+| 6. `/skill-models` y auditoría se ven sin ruta y con ruta | NO EJECUTADO |
+| 7. Triage muestra/confirma perfil y cambia al modelo correspondiente | NO EJECUTADO |
