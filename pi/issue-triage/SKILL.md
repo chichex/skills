@@ -62,6 +62,8 @@ gh issue view <N> --json number,title,body,url,state,updatedAt,author,labels,ass
 8. Prepará una síntesis autocontenida del pedido antes de clasificar:
    - explicá en lenguaje llano qué pasa hoy, qué cambio o resultado se busca y quién o qué flujo se beneficia;
    - para un issue, usá 2–4 frases; para varios, describí primero el objetivo común y después una línea breve por fuente con su aporte;
+   - cerrá con una línea separada `**Ejemplo de impacto:**` basada en el issue o el código: nombrá un flujo, servicio o componente representativo, contrastá qué ocurre hoy y qué ocurrirá después, y aclará si el comportamiento observable no cambia;
+   - el ejemplo no puede ser una mera lista de archivos o símbolos; si no hay evidencia para concretarlo, explicitá esa falta en vez de inventarlo;
    - no copies el título o el body, no adelantes la ruta y no presentes una solución técnica inferida como si fuera el pedido;
    - si falta un dato esencial, decilo explícitamente en vez de inventarlo.
 
@@ -128,6 +130,8 @@ Mostrá exactamente esta estructura antes de cualquier mutación:
 ### En pocas palabras
 <para uno: 2–4 frases sobre la situación actual, el cambio buscado y su impacto; para varios: objetivo común + una línea por fuente>
 
+**Ejemplo de impacto:** <caso respaldado por evidencia: en un flujo, servicio o componente concreto, qué ocurre hoy y qué ocurrirá después; aclarar si el resultado observable no cambia>
+
 - **Fuentes:** #12, #13
 - **Ruta recomendada:** join-spec
 - **Confianza:** alta | media | baja
@@ -148,7 +152,7 @@ Mostrá exactamente esta estructura antes de cualquier mutación:
 <acción exacta que ocurrirá si se confirma>
 ```
 
-`En pocas palabras` va primero y debe permitir entender el trabajo sin abrir los issues ni conocer la jerga de rutas. Resume el pedido, no la justificación de la clasificación. Si issue y código discrepan, describí brevemente ambas realidades y marcá qué falta resolver.
+`En pocas palabras` va primero y debe permitir entender el trabajo sin abrir los issues ni conocer la jerga de rutas. Resume el pedido, no la justificación de la clasificación. `Ejemplo de impacto` vuelve ese resumen tangible con un caso representativo en formato “hoy ocurre A; después ocurrirá B”; no especula ni repite una lista de paths. Si issue y código discrepan, describí brevemente ambas realidades y marcá qué falta resolver.
 
 La ruta primaria debe ser única. El fallback no es otra recomendación equivalente: es la degradación segura si el usuario no acepta la primaria o si aparece una precondición faltante.
 
@@ -228,7 +232,7 @@ Desde este punto, la única fuente downstream es `#NEW`.
 
 ## Fase 6 — Ejecutar la ruta confirmada
 
-Al encadenar cualquier ruta, conservá `En pocas palabras` como introducción breve del trabajo para que el lector sepa qué se va a grillar, especificar o implementar. La fuente sigue siendo autoritativa: la síntesis no reemplaza requisitos ni evidencia.
+Al encadenar cualquier ruta, conservá `En pocas palabras` y su `Ejemplo de impacto` como introducción breve del trabajo para que el lector sepa qué se va a grillar, especificar o implementar. La fuente sigue siendo autoritativa: la síntesis no reemplaza requisitos ni evidencia.
 
 ### Grill
 
@@ -306,7 +310,7 @@ Nunca llames “completo” a un run con tareas, procesos, cambios sin commit o 
 ## MUST DO
 
 - Analizar contra issues, código, tests y contrato cuando exista.
-- Abrir el diagnóstico con una síntesis breve, llana y autocontenida de qué se quiere lograr.
+- Abrir el diagnóstico con una síntesis breve, llana y autocontenida de qué se quiere lograr, más un ejemplo de impacto concreto respaldado por evidencia.
 - Detectar dependencias también para una selección de un solo issue.
 - Mostrar una sola ruta primaria con evidencia y fallback.
 - Pedir confirmación antes de cualquier ruta o canonicalización.
