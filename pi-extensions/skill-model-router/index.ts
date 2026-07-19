@@ -334,7 +334,10 @@ export default function skillModelRouter(pi: ExtensionAPI): void {
 						{ type: "text", text: action.payload.text },
 						...(action.payload.images ?? []),
 					];
-					pi.sendUserMessage(content);
+					// deliverAs followUp: if the agent is unexpectedly busy, queue instead of
+					// throwing "already processing" and losing the skill. The input event (and
+					// the replayGuard expansion) runs before the message is queued.
+					pi.sendUserMessage(content, { deliverAs: "followUp" });
 					break;
 				}
 				case "restore": {

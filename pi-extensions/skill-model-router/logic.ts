@@ -501,20 +501,30 @@ export class RouterMachine {
 		};
 		this.state.incident = undefined;
 		this.state.previousContextTokens = snapshot.contextTokens;
-		this.state.pendingReplay = replay;
+		this.state.pendingReplay = undefined;
 
 		const target = chain[0]!;
 		if (this.state.operation === "compacting") {
 			this.state.pendingSwitch = { candidate: target, kind: "route" };
 			return [];
 		}
-		return this.scheduleSwitch(
+		const actions = this.scheduleSwitch(
 			target,
 			"route",
 			snapshot,
 			undefined,
 			this.profileSoftCap(request.profile, snapshot.hasImages),
 		);
+		// Only keep the replay when the switch is gated on compaction: the input handler
+		// swallows the original input in that case ("handled"), so the skill must be
+		// re-injected after compaction. In the direct-switch path the original input
+		// continues normally and a replay would double-submit the skill, racing the
+		// in-flight prompt() ("Agent is already processing a prompt") and triggering a
+		// premature agent_settled that restores the original model mid-run.
+		if (this.state.operation === "compacting") {
+			this.state.pendingReplay = replay;
+		}
+		return actions;
 	}
 
 	queueIntent(intent: { skill: string; args: string }): void {

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
 	RouterMachine,
@@ -25,12 +26,39 @@ import {
 	type RouterSnapshot,
 } from "./logic.ts";
 
-const ROOT = new URL("../../", import.meta.url);
 const CONFIG_PATH = new URL("./config.json", import.meta.url);
 
-function read(relativePath: string): string {
-	return readFileSync(new URL(relativePath, ROOT), "utf8");
+/**
+ * Source repo root for the layout integration tests (extension + skills + READMEs).
+ * Found by walking up from this file looking for the repo markers. Undefined when
+ * running from the installed copy (~/.pi/agent/extensions/...), which only ships
+ * the extension files — there the layout tests skip instead of failing with ENOENT.
+ */
+const REPO_ROOT = findRepoRoot(dirname(fileURLToPath(import.meta.url)));
+
+function findRepoRoot(startDir: string): string | undefined {
+	let dir = startDir;
+	for (let depth = 0; depth < 6; depth++) {
+		if (
+			existsSync(join(dir, "pi-extensions/skill-model-router/index.ts"))
+			&& existsSync(join(dir, "pi"))
+			&& existsSync(join(dir, "README.md"))
+		) {
+			return dir;
+		}
+		const parent = dirname(dir);
+		if (parent === dir) return undefined;
+		dir = parent;
+	}
+	return undefined;
 }
+
+function read(relativePath: string): string {
+	if (!REPO_ROOT) throw new Error(`source repo root not found for ${relativePath}`);
+	return readFileSync(join(REPO_ROOT, relativePath), "utf8");
+}
+
+const SKIP_REASON = "source repo layout not found (running from the installed extension copy)";
 
 function loadConfig(): RouterConfig {
 	return JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as RouterConfig;
@@ -417,6 +445,23 @@ test("context protection computes 372000 - 32768 and compacts before a smaller s
 	assert.deepEqual(machine.confirmSwitch("openai-codex/gpt-5.6-sol"), [{ type: "replay", payload: replay }]);
 });
 
+test("a direct switch drops the replay: the original input continues normally", () => {
+	// Regression: an explicit skill invocation with enough context must not replay.
+	// Replaying here double-submits the skill while the original prompt() is in flight
+	// ("Agent is already processing a prompt") and the thrown prompt triggers a premature
+	// agent_settled that restores the original model mid-run.
+	const machine = new RouterMachine(validated());
+	const replay: ReplayPayload = {
+		text: "/skill:grill inspect this",
+		expandedText: '<skill name="grill" location="/skills/grill/SKILL.md">\nbody\n</skill>\n\ninspect this',
+	};
+	const actions = machine.requestSkill("grill", "inspect this", "explicit", snapshot({ contextTokens: 10_000 }), replay);
+	assert.deepEqual(actions.map((action) => action.type), ["switch"]);
+	assert.equal(machine.state.operation, "switching");
+	assert.equal(machine.state.pendingReplay, undefined);
+	assert.deepEqual(machine.confirmSwitch("openai-codex/gpt-5.6-sol"), []);
+});
+
 test("soft-cap crossing requests compaction once and failure clears a pending switch", () => {
 	const unknownBaseline = new RouterMachine(validated());
 	unknownBaseline.requestSkill("grill", "", "explicit", snapshot({ contextTokens: undefined }));
@@ -493,7 +538,7 @@ test("diagnostics/status expose operational state while audit sanitization drops
 	);
 });
 
-test("Pi adapter registers every required event, tool, command, status and audit event", () => {
+test("Pi adapter registers every required event, tool, command, status and audit event", { skip: REPO_ROOT ? false : SKIP_REASON }, () => {
 	const index = read("pi-extensions/skill-model-router/index.ts");
 	for (const event of [
 		"input",
@@ -523,7 +568,7 @@ test("Pi adapter registers every required event, tool, command, status and audit
 	}
 });
 
-test("Pi workflow skills persist and confirm downstream execution profiles", () => {
+test("Pi workflow skills persist and confirm downstream execution profiles", { skip: REPO_ROOT ? false : SKIP_REASON }, () => {
 	const triage = read("pi/issue-triage/SKILL.md");
 	for (const label of ["Perfil downstream", "Modelo resultante", "Motivo"]) {
 		assert.match(triage, new RegExp(label));
@@ -550,7 +595,7 @@ test("Pi workflow skills persist and confirm downstream execution profiles", () 
 	assert.match(sddRun, /antes de planificar o editar/i);
 });
 
-test("README files document profiles, command, fallback and reload", () => {
+test("README files document profiles, command, fallback and reload", { skip: REPO_ROOT ? false : SKIP_REASON }, () => {
 	for (const path of ["README.md", "README.en.md"]) {
 		const content = read(path);
 		assert.match(content, /skill-model-router/);
