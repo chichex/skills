@@ -52,13 +52,11 @@ The repo also keeps every global Pi extension used by this workflow:
 | **`claude-tool-renderer.ts`** | Renders edits with a compact Claude Code-style header and diff. |
 | **`grill-tools`** | Persistence through `grill_session`, the `select_grill_session` selector, and `/grills` and `/specs` commands. |
 | **`inline-skill-autocomplete`** | Opens skill autocomplete when `/` or `/skill:…` is typed anywhere in a draft. On submit, it promotes the invocation so Pi expands it correctly. |
-| **`skill-model-router`** | Routes each skill through a versioned model chain, registers `route_skill`, and exposes state through `/skill-models`, a status item, and out-of-context audit entries. |
 | **`github-issue-selector.ts`** + **`github-issues.ts`** | The `select_github_issue` tool and multi-select `/issues` command. Its unified menu can analyze through `issue-triage`, bulk-close, or bulk-delete the selection. |
 | **`github-prs`** | The `/prs` command; its review action invokes `/skill:code-review`. |
 | **`visual-footer.ts`** | A visual footer with status, model, tokens, and current directory; toggle it with `/visual-footer`. |
 | **`warp-status.ts`** | Emits Pi status events for Warp's terminal integration. |
 
-`skill-model-router` reads its canonical matrix from `pi-extensions/skill-model-router/config.json`. Workflows can confirm `light`, `standard`, or `critical` profiles; the matrix also has internal `utility`, `safe-ops`, and `discovery` profiles. The router honors manual model changes, protects switches to smaller context windows with compaction, and only applies fallback on classified technical failures (including unequivocal auth/quota failures)—never on red tests or subjective response quality. `/skill-models` shows the route, chain, context, pending operations, and warnings. Run `/reload` after installing or updating the extension so Pi loads the new configuration.
 
 It also includes the global **`claude-code`** theme with the palette used by these interfaces.
 

@@ -36,10 +36,6 @@ El techo autonomo actual es carga integrada mas tests unitarios. La experiencia 
 - No descartar, pisar ni incluir cambios locales preexistentes del usuario.
 - No provocar consumos deliberados de contexto o errores pagos de proveedores solo para probar fallback sin confirmacion.
 
-## Decisiones humanas
-- 2026-07-18: usar solamente los modelos incluidos en `enabledModels` para el router por skill.
-- 2026-07-18: conservar las ventanas nativas del catalogo de Pi; GPT-5.6 mediante `openai-codex` usa 372K y el router debe proteger cambios desde modelos de 1M.
-
 ## Gaps
 - [NEEDS-INPUT] El repo no declara una version minima de Node; los tests fueron verificados con Node `v26.4.0`.
 - No hay typecheck, lint ni build automatizado para las extensiones TypeScript.

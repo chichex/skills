@@ -50,13 +50,11 @@ El repo también conserva todas las extensiones globales de Pi usadas por este w
 | **`claude-tool-renderer.ts`** | Presenta las ediciones con encabezado y diff compacto al estilo Claude Code. |
 | **`grill-tools`** | Persistencia con `grill_session`, selector `select_grill_session` y comandos `/grills` y `/specs`. |
 | **`inline-skill-autocomplete`** | Abre el autocomplete de skills al escribir `/` o `/skill:…` en cualquier punto del borrador. Al enviar, antepone la invocación para que Pi la expanda correctamente. |
-| **`skill-model-router`** | Enruta cada skill a una cadena de modelos versionada, registra `route_skill` y expone el estado con `/skill-models`, status y auditoría fuera del contexto. |
 | **`github-issue-selector.ts`** + **`github-issues.ts`** | Herramienta `select_github_issue` y comando `/issues` con selección múltiple. El menú unificado permite analizar mediante `issue-triage`, cerrar en bulk o eliminar en bulk. |
 | **`github-prs`** | Comando `/prs`; su acción de review invoca `/skill:code-review`. |
 | **`visual-footer.ts`** | Footer visual con estado, modelo, tokens y directorio actual; se alterna con `/visual-footer`. |
 | **`warp-status.ts`** | Emite el estado de Pi para la integración de terminal de Warp. |
 
-`skill-model-router` toma su matriz canónica de `pi-extensions/skill-model-router/config.json`. Los workflows pueden confirmar perfiles `light`, `standard` o `critical`; la matriz también contiene perfiles internos `utility`, `safe-ops` y `discovery`. El router respeta cambios manuales de modelo, protege cambios hacia ventanas menores con compactación y hace fallback sólo ante errores técnicos clasificados (incluidos auth/cuota inequívocos), nunca por tests rojos ni por calidad subjetiva. `/skill-models` muestra ruta, cadena, contexto, operaciones pendientes y warnings. Después de instalar o actualizar la extensión, ejecutá `/reload` para cargar la nueva configuración.
 
 También incluye el theme global **`claude-code`**, con la paleta usada por estas interfaces.
 
