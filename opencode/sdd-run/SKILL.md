@@ -58,7 +58,7 @@ Planificar contra el codigo real, no contra la idea del codigo (explorar lo que 
 - Orden test-first para los CA ALTA: los tests del plan de verificacion se escriben ANTES que la implementacion, y tienen que fallar primero (rojo → verde es la evidencia de que el test observa algo real).
 - El plan declara los **seams** bajo prueba — las interfaces publicas donde se observa comportamiento (doctrina de `/tdd`). Preferir seams existentes, y el mas alto posible; el gate del plan es donde el usuario los aprueba.
 - Si el plan revela que un CA es incoherente con el codigo real (la spec asumio algo que no existe): NO improvisar — es una desviacion, se maneja como dice la Fase 3.
-- **Politicas de generacion en el plan**: con *tamaño maximo de PR* activo, estimar el blast-radius del plan contra el limite — si la spec entera no cabe, decirlo en el gate y ofrecer partirla (`/sdd-spec`) o seguir sabiendo que el PR puede terminar en draft; `--assume` → seguir y que el gate del cierre juzgue. Con *dependencias nuevas: prohibido/preguntar*, el plan declara toda dep nueva que necesite — `prohibido` → replantear sin la dep o dejarlo como FALLA honesta; `preguntar` → entra como pregunta en el gate del plan.
+- **Politicas de generacion en el plan**: con *tamaño maximo de PR* activo, estimar el blast-radius del plan contra el limite — si la spec entera no cabe, decirlo en el gate y ofrecer partirla (`/sdd-spec`) o seguir sabiendo que el PR puede terminar en draft; `--assume` → seguir y que el gate del cierre juzgue. Con *dependencias nuevas: prohibido/preguntar*, el plan declara toda dep nueva que necesite — `prohibido` → replantear sin la dep o dejarlo como FALLA honesta; `preguntar` → entra como pregunta en el gate del plan. Las politicas de la tecnologia — gates y `guia` (estilo, max lineas por archivo, constructos prohibidos) — se adoptan al ESCRIBIR el codigo: se genera siguiendolas, no se corrige al final.
 
 **Gate**: presentar el plan resumido (pasos ↔ CAs, archivos que toca, que queda explicitamente afuera) y usar `question`: `Aprobar (Recomendado)` / `Ajustar` (el usuario dice que via custom y se replantea). Con `--assume`: sin gate. El plan NO se escribe a disco — vive en la conversacion y muere con ella.
 
@@ -97,7 +97,7 @@ Antes de levantar o presentar la app para validacion humana:
 
 1. Correr la escalera del contrato completa hasta su techo (typecheck, unit, build, levantar la app y probarla si el contrato sabe como).
 2. **CA NULA**: no se implementan a ciegas ni se verifican por decreto — quedan `pendiente de prueba humana` con el protocolo de la spec listo para ejecutar. No bloquean el PR: se listan como checklist en el body.
-3. **Gates de politica**: verificar cada politica de generacion del contrato con el gate que ELLA declara — tamaño de PR con `git diff --stat <base>...HEAD` (excluyendo lockfiles y generados), coverage corriendo su comando y comparando contra el umbral que la politica declara (% fijo o `no bajar del baseline`), deps nuevas con el diff de manifest/lockfile, commits con el patron sobre `git log`. Politica incumplida = **FALLA de politica**: entra al Resultado de ejecucion como fila `POL-*` con la medicion real, y el PR se abre en **draft** (Fase 5). Misma doctrina que los CAs: prohibido excluir archivos del diff, bajar el umbral o retocar la medicion para que de verde.
+3. **Gates de politica**: verificar cada politica de generacion del contrato con el gate que ELLA declara — tamaño de PR con `git diff --stat <base>...HEAD` (excluyendo lockfiles y generados), coverage corriendo su comando y comparando contra el umbral que la politica declara (% fijo o `no bajar del baseline`), deps nuevas con el diff de manifest/lockfile, commits con el patron sobre `git log`, y las politicas de la tecnologia con el linter/script/grep que cada una declara. Las filas `guia` no se gatean ni se reportan verificadas: se listan en el PR como `guias aplicadas`, para que el reviewer las juzgue. Politica incumplida = **FALLA de politica**: entra al Resultado de ejecucion como fila `POL-*` con la medicion real, y el PR se abre en **draft** (Fase 5). Misma doctrina que los CAs: prohibido excluir archivos del diff, bajar el umbral o retocar la medicion para que de verde.
 4. Actualizar la spec (unico artefacto que persiste): estado del header a `implementada`, y una seccion nueva al final:
 
 ```markdown
@@ -125,7 +125,7 @@ Saltear con `--no-pr` (el run termina con el branch committeado y lo dice).
 Run completo: PR #<n> <url>   (o: branch sdd/<slug> committeado, sin PR)
 - spec: <ruta> (<estado previo> → implementada)
 - CAs: <N> — verificados <V> · FALLA <F> · pendiente humano <H>
-- politicas de generacion: <k cumplidas · f FALLA (PR en draft) | sin politicas activas>
+- politicas de generacion: <k cumplidas · f FALLA (PR en draft) · guias aplicadas <g> | sin politicas activas>
 - tests: <X> pasan (<K> nuevos) · regresion verde · escalera hasta <techo>
 - desviaciones de la spec: <ninguna | una linea por cada una>
 - commits: <M> en sdd/<slug>
@@ -187,6 +187,6 @@ Si falla un solo item, esta prohibido emitir `Run completo`.
 - No correr sobre el checkout del usuario, y no "normalizar" un repo raro (stash, reset, checkout forzado): cambios pendientes o estado a medias = abort. Unica excepcion: el archivo del spec target sin comitear se tolera y se commitea en el worktree (Fase 1.4); cualquier otro path sucio aborta igual.
 - No deploy, migraciones sobre datos compartidos, ni servicios pagos (Limites del contrato).
 - No convertir un CA en FALLA silenciosa: FALLA siempre viene con diagnostico y aparece en spec, PR y reporte.
-- No abrir el PR como ready con una politica de generacion en FALLA (va en draft con la medicion visible), y no maquillar el gate: ni excluir archivos del diff, ni bajar umbrales, ni cambiar el comando que la mide.
+- No abrir el PR como ready con una politica de generacion en FALLA (va en draft con la medicion visible), y no maquillar el gate: ni excluir archivos del diff, ni bajar umbrales, ni cambiar el comando que la mide. Tampoco reportar una `guia` como verificada: no tiene gate, la juzga el reviewer.
 - No emitir `Run completo`, pedir validacion humana ni finalizar la sesion con tareas bloqueantes `running`, tests no concluyentes o CAs sin estado.
 - No delegar a un subagente la responsabilidad integral de completar y cerrar la spec.
