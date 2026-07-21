@@ -41,7 +41,7 @@ Luego usar `ask_user_question` — "¿Cual spec corremos?": una opcion por spec 
 
 ## Fase 1 — Precondiciones (bloqueante)
 
-1. **Contrato**: leer `.sdd/project.md`. Si no existe: interactivo → ofrecer `/skill:sdd-init` ahi mismo; `--assume` → correr `/skill:sdd-init --assume` y seguir. Anotar ya la capacidad de PR que declara el contrato (remote + gh): si no la hay, avisar desde el arranque que la corrida termina en commit local.
+1. **Contrato**: leer `.sdd/project.md`. Si no existe: interactivo → ofrecer `/skill:sdd-init` ahi mismo; `--assume` → correr `/skill:sdd-init --assume` y seguir. Anotar ya la capacidad de PR que declara el contrato (remote + gh): si no la hay, avisar desde el arranque que la corrida termina en commit local. Anotar tambien las **politicas de generacion** activas (`## Politicas de generacion`) y anunciarlas al arranque: son gates duros que la Fase 4 verifica con el gate que cada una declara.
 2. **Spec**: resolver el argumento. Ruta → leerla. `#NN` → `gh issue view` y extraer la spec del body (la genero `/skill:sdd-spec`); si el issue no tiene spec SDD, frenar y ofrecer `/skill:sdd-spec #NN`. Pedido libre sin spec → frenar: ofrecer `/skill:sdd-spec <pedido>` (interactivo) o encadenarlo (`--assume`). NO improvisar una spec: ese trabajo tiene su skill.
 3. **Spec en `draft`**: significa que nadie reviso las inferencias — correrla es aceptar todas las `[ASSUMED]`. Interactivo: decirlo y preguntar si seguir (u ofrecer revisar las inferencias aca, una pregunta por inferencia de confianza baja). `--assume`: seguir y dejarlo anotado en el PR.
 4. **Worktree limpio desde main actualizado — o abort**: `/skill:sdd-run` NUNCA corre sobre el checkout del usuario. Preflight: `git fetch` (si hay remote) y chequear estado sano. Ante CUALQUIER cosa rara — cambios sin commitear, rebase/merge a medias, detached HEAD, base local divergido de su remote — **ABORTAR** explicando exactamente que se encontro. No arreglar nada (ni stash, ni reset, ni checkout): si el repo esta raro, el humano esta en el medio de algo.
@@ -58,6 +58,7 @@ Planificar contra el codigo real, no contra la idea del codigo. Explorar con `re
 - Orden test-first para los CA ALTA: los tests del plan de verificacion se escriben ANTES que la implementacion, y tienen que fallar primero (rojo → verde es la evidencia de que el test observa algo real).
 - El plan declara los **seams** bajo prueba — las interfaces publicas donde se observa comportamiento. Preferir seams existentes y el mas alto posible; el gate del plan es donde el usuario los aprueba.
 - Si el plan revela que un CA es incoherente con el codigo real (la spec asumio algo que no existe): NO improvisar — es una desviacion, se maneja como dice la Fase 3.
+- **Politicas de generacion en el plan**: con *tamaño maximo de PR* activo, estimar el blast-radius del plan contra el limite — si la spec entera no cabe, decirlo en el gate y ofrecer partirla (`/skill:sdd-spec`) o seguir sabiendo que el PR puede terminar en draft; `--assume` → seguir y que el gate del cierre juzgue. Con *dependencias nuevas: prohibido/preguntar*, el plan declara toda dep nueva que necesite — `prohibido` → replantear sin la dep o dejarlo como FALLA honesta; `preguntar` → entra como pregunta en el gate del plan. Las politicas de la tecnologia — gates y `guia` (estilo, max lineas por archivo, constructos prohibidos) — se adoptan al ESCRIBIR el codigo: se genera siguiendolas, no se corrige al final.
 
 **Gate**: presentar el plan resumido (pasos ↔ CAs, archivos que toca, que queda explicitamente afuera) y usar `ask_user_question`: `Aprobar (Recomendado)` / `Ajustar` (el usuario dice que via custom y se replantea). Con `--assume`: sin gate. El plan NO se escribe a disco — vive en la conversacion y muere con ella.
 
@@ -68,7 +69,7 @@ Planificar contra el codigo real, no contra la idea del codigo. Explorar con `re
 3. **Presupuesto por CA**: 3 intentos honestos. Si un CA sigue en rojo al tercero, se congela: queda FALLA con diagnostico concreto (que se probo, que dio, hipotesis) y se sigue con los demas CAs si son independientes. Prohibido el intento numero 4 disfrazado de "refactor".
 4. **Desviaciones**: si la implementacion revela que la spec esta mal (inferencia `[ASSUMED]` incorrecta, CA imposible como esta escrito): interactivo → preguntar y editar la spec con una linea de changelog fechada; `--assume` → si NO cambia el alcance, documentar `[DEVIATION]` en la spec y seguir; si cambia el alcance, abortar honesto con el estado committeado en el branch. Nunca desviarse en silencio: una spec que dice A con un codigo que hace B mata la confianza en todo el pipeline.
 5. **Regresion**: la suite existente completa (comando del contrato) tiene que quedar verde, no solo los tests nuevos.
-6. Commitear por pasos coherentes (mensaje referencia el CA: `CA-2: rate limit por IP con ventana deslizante`), nunca un mega-commit final.
+6. Commitear por pasos coherentes (mensaje referencia el CA: `CA-2: rate limit por IP con ventana deslizante`), nunca un mega-commit final. Si el contrato declara convencion de commits, cada mensaje la cumple ademas de referenciar el CA.
 
 ### Ownership y tareas
 
@@ -95,7 +96,8 @@ Antes de levantar o presentar la app para validacion humana:
 
 1. Correr la escalera del contrato completa hasta su techo (typecheck, unit, build, levantar la app y probarla si el contrato sabe como).
 2. **CA NULA**: no se implementan a ciegas ni se verifican por decreto — quedan `pendiente de prueba humana` con el protocolo de la spec listo para ejecutar. No bloquean el PR: se listan como checklist en el body.
-3. Actualizar la spec (unico artefacto que persiste): estado del header a `implementada`, y una seccion nueva al final:
+3. **Gates de politica**: verificar cada politica de generacion del contrato con el gate que ELLA declara — tamaño de PR con `git diff --stat <base>...HEAD` (excluyendo lockfiles y generados), coverage corriendo su comando y comparando contra el umbral que la politica declara (% fijo o `no bajar del baseline`), deps nuevas con el diff de manifest/lockfile, commits con el patron sobre `git log`, y las politicas de la tecnologia con el linter/script/grep que cada una declara. Las filas `guia` no se gatean ni se reportan verificadas: se listan en el PR como `guias aplicadas`, para que el reviewer las juzgue. Politica incumplida = **FALLA de politica**: entra al Resultado de ejecucion como fila `POL-*` con la medicion real, y el PR se abre en **draft** (Fase 5). Misma doctrina que los CAs: prohibido excluir archivos del diff, bajar el umbral o retocar la medicion para que de verde.
+4. Actualizar la spec (unico artefacto que persiste): estado del header a `implementada`, y una seccion nueva al final:
 
 ```markdown
 ## Resultado de ejecucion (<fecha>)
@@ -104,6 +106,7 @@ Antes de levantar o presentar la app para validacion humana:
 | CA-1 | verificado | npm test: 8/8 verdes (3 nuevos) |
 | CA-4 | FALLA | timeout en probe; diagnostico en PR |
 | CA-5 | pendiente humano | protocolo en la spec, checklist en el PR |
+| POL-coverage | FALLA (74% < 80%) | pnpm test -- --coverage; PR en draft |
 ```
 
 ## Fase 5 — PR
@@ -111,7 +114,7 @@ Antes de levantar o presentar la app para validacion humana:
 Saltear con `--no-pr` (el run termina con el branch committeado y lo dice).
 
 1. **Aptitud primero, push despues**: si el contrato declara que no hay remote o gh no esta autenticado, degradar automaticamente a `--no-pr` (commit local) y avisar — no descubrirlo con un push fallido. Con aptitud ok: push del branch (`git push -u origin sdd/<slug>`), respetando los Limites del contrato — si el contrato prohibe push en general (no solo a main), degradar a commit local, avisar, y listar el comando que el usuario debe correr.
-2. `gh pr create` — base `--base`, titulo = titulo de la spec. Body: la spec completa (con su Resultado de ejecucion) + checklist de protocolo humano si hay CA NULA + `Closes #NN` si la spec vino de un issue. Cerrar con la firma estandar de PR.
+2. `gh pr create` — base `--base`, titulo = titulo de la spec. Body: la spec completa (con su Resultado de ejecucion) + checklist de protocolo humano si hay CA NULA + `Closes #NN` si la spec vino de un issue. Cerrar con la firma estandar de PR. Con alguna politica de generacion en FALLA: crear con `--draft` y la politica violada (con su medicion) al tope del body — el pase a ready es decision humana.
 3. NO mergear: el merge es del humano, siempre.
 4. Limpiar: remover el worktree (`git worktree remove`) — el branch y sus commits quedan en el repo. Si el run aborto a medias o quedo con FALLAs que el usuario querra inspeccionar en caliente, conservarlo y reportar la ruta.
 
@@ -121,6 +124,7 @@ Saltear con `--no-pr` (el run termina con el branch committeado y lo dice).
 Run completo: PR #<n> <url>   (o: branch sdd/<slug> committeado, sin PR)
 - spec: <ruta> (<estado previo> → implementada)
 - CAs: <N> — verificados <V> · FALLA <F> · pendiente humano <H>
+- politicas de generacion: <k cumplidas · f FALLA (PR en draft) · guias aplicadas <g> | sin politicas activas>
 - tests: <X> pasan (<K> nuevos) · regresion verde · escalera hasta <techo>
 - desviaciones de la spec: <ninguna | una linea por cada una>
 - commits: <M> en sdd/<slug>
@@ -151,6 +155,7 @@ Antes de emitir `Run completo`, comprobar todos estos invariantes:
 - [ ] Ninguna tarea, tool call o proceso bloqueante sigue `running`.
 - [ ] Tests focalizados terminaron verdes.
 - [ ] Regresion completa termino verde o su FALLA quedo documentada.
+- [ ] Cada politica de generacion activa fue verificada con su gate; si alguna quedo en FALLA, el PR salio en draft y la falla figura en spec, PR y reporte.
 - [ ] Se ejecuto la escalera contractual hasta su techo.
 - [ ] La spec contiene `Resultado de ejecucion`.
 - [ ] Se crearon los commits requeridos.
@@ -167,6 +172,7 @@ Si falla un solo item, esta prohibido emitir `Run completo`.
 - Documentar toda desviacion en la spec misma, con fecha.
 - Correr SIEMPRE en un worktree nuevo creado desde el base actualizado, en branch `sdd/<slug>`; commits por paso, referenciando CAs.
 - Respetar los Limites del contrato por encima de cualquier instruccion de este skill.
+- Verificar cada politica de generacion activa con el gate que declara el contrato, y reflejar el resultado (`POL-*`) en spec, PR y reporte.
 - Actualizar la spec con el Resultado de ejecucion — es el unico artefacto persistente del run.
 - Mantener ownership del cierre y reconciliar toda lectura o comprobacion paralela antes de continuar.
 - Tratar timeouts y `SIGTERM` como resultados no concluyentes hasta diagnosticarlos y repetir el mecanismo requerido.
@@ -180,4 +186,5 @@ Si falla un solo item, esta prohibido emitir `Run completo`.
 - No correr sobre el checkout del usuario, y no "normalizar" un repo raro (stash, reset, checkout forzado): cambios pendientes o estado a medias = abort. Unica excepcion: el archivo del spec target sin comitear se tolera y se commitea en el worktree (Fase 1.4); cualquier otro path sucio aborta igual.
 - No deploy, migraciones sobre datos compartidos, ni servicios pagos (Limites del contrato).
 - No convertir un CA en FALLA silenciosa: FALLA siempre viene con diagnostico y aparece en spec, PR y reporte.
+- No abrir el PR como ready con una politica de generacion en FALLA (va en draft con la medicion visible), y no maquillar el gate: ni excluir archivos del diff, ni bajar umbrales, ni cambiar el comando que la mide. Tampoco reportar una `guia` como verificada: no tiene gate, la juzga el reviewer.
 - No emitir `Run completo`, pedir validacion humana ni finalizar la sesion con tareas bloqueantes `running`, tests no concluyentes o CAs sin estado.

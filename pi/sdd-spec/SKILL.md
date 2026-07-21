@@ -46,7 +46,7 @@ Luego usar `ask_user_question` — una pregunta, "¿De donde sale la spec?":
 ## Fase 1 — Raiz y contrato primero (bloqueante)
 
 1. Resolver la raiz del proyecto sin explorar codigo: cwd para pedido/issue; `projectPath` del snapshot para `--from-grill`. Si el handoff pertenece a otro proyecto, avisar y ejecutar todas las tools con ese `cwd`; nunca escribir la spec en el cwd equivocado.
-2. Leer `<raiz>/.sdd/project.md` ANTES de explorar el codigo; interesan sobre todo `## Comandos`, `## Verificacion autonoma` y `## Limites`.
+2. Leer `<raiz>/.sdd/project.md` ANTES de explorar el codigo; interesan sobre todo `## Comandos`, `## Verificacion autonoma`, `## Limites` y `## Politicas de generacion` (los gates duros que `/skill:sdd-run` va a aplicar — condicionan el veredicto y el tamaño sano de la spec).
 
 - **Si NO existe**: frenar. Explicar en una linea por que (sin contrato el veredicto de verificabilidad es inventado) y usar `ask_user_question`: 1. `Correr /skill:sdd-init ahora (Recomendado)` — cargar y ejecutar ese skill en la raiz resuelta, esperar el contrato y seguir; 2. `Abortar`. NO generar spec "provisoria" sin contrato, ni siquiera si el usuario insiste con que es una feature chica: ofrecer `/skill:sdd-init --assume` como via rapida.
 - **Con `--assume` y sin contrato**: correr `/skill:sdd-init --assume` automaticamente, anotarlo en el reporte, y seguir.
@@ -98,6 +98,7 @@ Reglas:
 
 - El grado sale de lo que el contrato dice que se puede correr HOY, no de lo teoricamente posible. Una feature TDD-able en un repo cuyo test runner figura `FALLA` NO es ALTA — es BAJA hasta que alguien arregle el runner, y se dice explicitamente ("seria ALTA si `pnpm test` funcionara — ver Gaps del contrato").
 - Si los criterios tienen grados distintos, NO promediar: desglosar por criterio y reportar mixto ("CA-1..CA-3 ALTA; CA-4 NULA — vibracion en dispositivo, exige prueba tuya").
+- Cruzar el alcance contra las politicas de generacion del contrato y decirlo en el veredicto: una spec cuyo blast-radius estimado excede el *tamaño maximo de PR* se reporta con propuesta de particion (2+ specs encadenadas, cada una dentro del limite) — mejor partir aca que descubrirlo con el PR en draft. Un *coverage minimo* activo sube la vara del plan de verificacion: los tests de los CA ALTA tienen que cubrir el codigo nuevo, no solo el happy path. *Dependencias nuevas: prohibido* convierte cualquier CA que exija una dep en conflicto a resolver en la spec, no en el run. Las politicas de la tecnologia con gate (linter, script) integran la vara igual que coverage; las filas `guia` no gatean ni cambian el veredicto.
 - Mostrar el veredicto al usuario con el porque ANTES de elegir mecanismo: es el dato que le dice cuanto puede delegar de la ejecucion.
 
 ## Fase 5 — Mecanismo de verificacion
@@ -138,7 +139,8 @@ sin interpretacion) y con su grado de verificabilidad al lado>
 el protocolo de prueba paso a paso>
 
 ## Riesgos y gaps
-<[ASSUMED] riesgosos, dependencias, flakiness conocida, [NEEDS-INPUT] pendientes>
+<[ASSUMED] riesgosos, dependencias, flakiness conocida, [NEEDS-INPUT] pendientes,
+conflictos con politicas de generacion del contrato (tamaño, coverage, deps)>
 ```
 
 Estado: `aprobada` si el usuario reviso inferencias y mecanismo; `draft` si corrio con `--assume`.
@@ -160,7 +162,8 @@ Spec lista: <ruta local y/o issue #NN actualizado>
 - mecanismo: <elegido> (<confirmado por usuario | asumido>)
 - inferencias: <N> sobre la mesa · <K> revisadas por el usuario · <A> asumidas
 - siguiente paso: /skill:sdd-run <ruta | #NN>
-<si hubo que correr /skill:sdd-init, o hay CA NULA que exigen prueba humana, una linea por cada uno>
+<si hubo que correr /skill:sdd-init, hay CA NULA que exigen prueba humana, o una politica de
+generacion condiciona la ejecucion (particion por tamaño, coverage), una linea por cada uno>
 ```
 
 ## MUST DO
@@ -169,6 +172,7 @@ Spec lista: <ruta local y/o issue #NN actualizado>
 - Si la fuente es grill, validar que este finalizado, trabajar en su `projectPath` y conservar sus decisiones como confirmadas.
 - Listar TODAS las inferencias nuevas, tambien las de confianza alta — elegir cuales revisar es del usuario.
 - Anclar cada grado de verificabilidad en lo que el contrato dice que corre HOY, citando el comando o gap concreto.
+- Cruzar el alcance contra las politicas de generacion del contrato y avisar en el veredicto si la spec choca con alguna (en particular: proponer particion si no entra en el tamaño maximo de PR).
 - Proponer el mecanismo de verificacion mas barato que observe el comportamiento real, y dejar que el usuario lo cambie o proponga otro.
 - Escribir criterios de aceptacion observables: paso/no paso sin interpretacion.
 - Ser idempotente: re-correr sobre el mismo pedido actualiza la spec existente, no crea otra.

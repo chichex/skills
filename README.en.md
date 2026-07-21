@@ -14,7 +14,7 @@ The heart of the repo, and its original part. A development pipeline with an exp
 
 | Skill | Stage | What it does |
 |---|---|---|
-| **`sdd-init`** | contract | Explores the repo thoroughly and generates `.sdd/project.md`, the *autonomy contract*: how it's run / tested / built, what environments exist, which one to use for testing, and what can be verified without a human. Every command is **executed** before being documented; anything unverified is flagged. |
+| **`sdd-init`** | contract | Explores the repo thoroughly and generates `.sdd/project.md`, the *autonomy contract*: how it's run / tested / built, what environments exist, which one to use for testing, and what can be verified without a human. Every command is **executed** before being documented; anything unverified is flagged. It also captures the *generation policies* the user activates (max PR size, minimum coverage, new dependencies, commit convention, and technology-specific policies — style guides, max lines per file), which `sdd-run` enforces as hard gates or follows as explicit guidelines. |
 | **`sdd-spec`** | spec | Turns a request (free text or an issue) into a **verifiable spec**. It surfaces every inference to disambiguate, cross-checks them against the contract, and issues a verifiability verdict (deterministic TDD / flaky e2e / requires human proof) with a concrete plan per criterion. |
 | **`sdd-run`** | execution | Executes a spec end to end: clean worktree, plans against the real code, implements **tests first**, verifies each criterion with its declared mechanism, and finishes in a **PR** with the spec as the body + evidence. |
 

@@ -12,7 +12,7 @@ El corazón del repo, y su parte propia. Un pipeline de desarrollo con contrato 
 
 | Skill | Etapa | Qué hace |
 |---|---|---|
-| **`sdd-init`** | contrato | Explora el repo a fondo y genera `.sdd/project.md`, el *contrato de autonomía*: cómo se corre / testea / buildea, qué ambientes hay, cuál usar para probar y qué se puede verificar sin un humano. Cada comando se **ejecuta** antes de documentarse; lo no verificado queda marcado. |
+| **`sdd-init`** | contrato | Explora el repo a fondo y genera `.sdd/project.md`, el *contrato de autonomía*: cómo se corre / testea / buildea, qué ambientes hay, cuál usar para probar y qué se puede verificar sin un humano. Cada comando se **ejecuta** antes de documentarse; lo no verificado queda marcado. También captura las *políticas de generación* que el usuario active (tamaño máximo de PR, coverage mínimo, dependencias nuevas, convención de commits y políticas propias de la tecnología — guías de estilo, líneas máximas por archivo), que `sdd-run` aplica como gates duros o sigue como guías explícitas. |
 | **`sdd-spec`** | spec | Convierte un pedido (texto libre o issue) en una **spec verificable**. Pone todas las inferencias sobre la mesa para desambiguar, las cruza contra el contrato y emite un veredicto de verificabilidad (TDD determinista / e2e flaky / exige prueba humana) con plan concreto por criterio. |
 | **`sdd-run`** | ejecución | Ejecuta una spec de punta a punta: worktree limpio, planifica contra el código real, implementa **con tests primero**, verifica cada criterio con su mecanismo declarado y termina en un **PR** con la spec como body + evidencia. |
 
