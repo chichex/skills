@@ -1,6 +1,6 @@
 ---
 name: mini-grill
-description: Desambigua rapidamente un pedido y confirma que fue entendido antes de actuar. Usar cuando el usuario dice "mini grill", "mini grilling", "aclarame este prompt", "confirmame que entendiste" o quiere alinear brevemente alcance e intencion sin una entrevista exhaustiva.
+description: Desambigua rapidamente un pedido y confirma que fue entendido antes de actuar. Usar cuando el usuario dice "mini grill", "mini grilling", "aclarame este prompt", "confirmame que entendiste", y tambien proactivamente —sin que el usuario lo pida— cuando su pedido es ambiguo o subespecificado (varias interpretaciones razonables de alcance, resultado o intencion) antes de empezar a trabajar. Alinea brevemente alcance e intencion sin una entrevista exhaustiva.
 ---
 
 # Mini Grill
