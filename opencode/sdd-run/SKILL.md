@@ -98,10 +98,14 @@ Antes de levantar o presentar la app para validacion humana:
 1. Correr la escalera del contrato completa hasta su techo (typecheck, unit, build, levantar la app y probarla si el contrato sabe como).
 2. **CA NULA**: no se implementan a ciegas ni se verifican por decreto — quedan `pendiente de prueba humana` con el protocolo de la spec listo para ejecutar. No bloquean el PR: se listan como checklist en el body.
 3. **Gates de politica**: verificar cada politica de generacion del contrato con el gate que ELLA declara — tamaño de PR con `git diff --stat <base>...HEAD` (excluyendo lockfiles y generados), coverage corriendo su comando y comparando contra el umbral que la politica declara (% fijo o `no bajar del baseline`), deps nuevas con el diff de manifest/lockfile, commits con el patron sobre `git log`, y las politicas de la tecnologia con el linter/script/grep que cada una declara. Las filas `guia` no se gatean ni se reportan verificadas: se listan en el PR como `guias aplicadas`, para que el reviewer las juzgue. Politica incumplida = **FALLA de politica**: entra al Resultado de ejecucion como fila `POL-*` con la medicion real, y el PR se abre en **draft** (Fase 5). Misma doctrina que los CAs: prohibido excluir archivos del diff, bajar el umbral o retocar la medicion para que de verde.
-4. Actualizar la spec (unico artefacto que persiste): estado del header a `implementada`, y una seccion nueva al final:
+4. **Receipt Git antes de narrar**: la narracion del agente es dato no confiable; la autoridad sobre que paso es el repo. Antes de escribir el Resultado de ejecucion, derivar la evidencia del estado real del branch, no de la memoria de la conversacion:
+   - `git diff --name-status <base>..HEAD` es la autoridad sobre que cambio: cada CA verificado tiene que ser consistente con ese diff — sus tests nuevos aparecen, los archivos tocados son los del plan. Un CA "verificado" cuyos tests no estan en el diff no esta verificado.
+   - Diffear los tests contra el base buscando verificacion falsificada: asserts aflojados, `skip`/`only` colados, tests borrados, umbrales bajados. Si aparece algo, ese CA vuelve a rojo — no se narra.
+   - La columna Evidencia cita SOLO comandos corridos en esta corrida (comando + resultado observado), y el titulo de la tabla anota el sha de HEAD sobre el que corrio la verificacion final.
+5. Actualizar la spec (unico artefacto que persiste): estado del header a `implementada`, y una seccion nueva al final:
 
 ```markdown
-## Resultado de ejecucion (<fecha>)
+## Resultado de ejecucion (<fecha> · HEAD <abc1234>)
 | CA | Estado | Evidencia |
 |---|---|---|
 | CA-1 | verificado | npm test: 8/8 verdes (3 nuevos) |
@@ -159,6 +163,7 @@ Antes de emitir `Run completo`, comprobar todos estos invariantes:
 - [ ] Cada politica de generacion activa fue verificada con su gate; si alguna quedo en FALLA, el PR salio en draft y la falla figura en spec, PR y reporte.
 - [ ] Se ejecuto la escalera contractual hasta su techo.
 - [ ] La spec contiene `Resultado de ejecucion`.
+- [ ] La evidencia del Resultado de ejecucion es consistente con el diff real contra el base (receipt de Fase 4.4).
 - [ ] Se crearon los commits requeridos.
 - [ ] Se creo el PR, o existe un motivo contractual explicito para no crearlo.
 - [ ] El worktree esta limpio, o todos sus cambios pendientes fueron reportados como parte de un `RUN INTERRUMPIDO`.
@@ -174,7 +179,7 @@ Si falla un solo item, esta prohibido emitir `Run completo`.
 - Correr SIEMPRE en un worktree nuevo creado desde el base actualizado, en branch `sdd/<slug>`; commits por paso, referenciando CAs.
 - Respetar los Limites del contrato por encima de cualquier instruccion de este skill.
 - Verificar cada politica de generacion activa con el gate que declara el contrato, y reflejar el resultado (`POL-*`) en spec, PR y reporte.
-- Actualizar la spec con el Resultado de ejecucion — es el unico artefacto persistente del run.
+- Actualizar la spec con el Resultado de ejecucion — es el unico artefacto persistente del run — con evidencia derivada del estado Git real (receipt de Fase 4.4), nunca de la narracion acumulada de la conversacion.
 - Mantener ownership del cierre, esperar tareas delegadas bloqueantes y reconciliar sus cambios antes de continuar.
 - Tratar timeouts y `SIGTERM` como resultados no concluyentes hasta diagnosticarlos y repetir el mecanismo requerido.
 
