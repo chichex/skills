@@ -54,14 +54,14 @@ Leer `.sdd/project.md` ANTES de cualquier otra cosa; interesan sobre todo `## Co
 ## Fase 2 — Entender el pedido
 
 1. Si el pedido es `#NN` o URL: `gh issue view NN --json title,body,comments,labels` (usar la URL con `-R` si es de otro repo). Guardar el numero: importa para el destino en Fase 6. Los comments cuentan como fuente — a veces desambiguan el body.
-2. Explorar el codigo que el pedido tocaria: subagents `Explore` con la tool `Agent` en paralelo (inline si el repo es chico) para relevar que existe hoy, que archivos se tocarian, que convenciones hay, y si hay tests previos en la zona. La spec se escribe contra el codigo real, no contra la idea del codigo.
+2. Explorar el codigo que el pedido tocaria: subagents `Explore` con la tool `Agent` en paralelo (inline si el repo es chico) para relevar que existe hoy, que archivos se tocarian, que convenciones hay, y si hay tests previos en la zona. La spec se escribe contra el codigo real, no contra la idea del codigo. Piso verificable: la fase NO esta hecha si lo unico leido fue el contrato — las elecciones propuestas de la tabla de inferencias citan evidencia real (`archivo:linea` o convencion observada) donde aplique; una tabla sin ninguna cita al codigo es sintoma de que se escribio contra la idea del codigo.
 3. Revisar `.sdd/specs/`: si ya hay una spec para este mismo pedido (mismo issue o slug equivalente), avisar y tratar la corrida como actualizacion de esa spec, no crear otra.
 
 ## Fase 3 — Inferencias sobre la mesa
 
 El corazon del skill. Toda decision que el pedido no fija explicitamente se lista como inferencia — tambien las de confianza alta, porque el usuario decide cuales revisar, no el skill. Categorias tipicas: alcance (que entra y que no), comportamiento en bordes y errores, UX/copys, datos (¿migracion? ¿backfill?), compatibilidad hacia atras, plataformas.
 
-Mostrar la tabla completa numerada. **"Mostrar" = imprimirla como texto de respuesta visible, ANTES del tool call de `AskUserQuestion`.** El razonamiento interno no lo ve el usuario y el dialogo de `AskUserQuestion` no arrastra contexto: si la tabla no se emitio como texto, la pregunta referencia numeros (#1, #3...) que el usuario no tiene forma de ver. Tabla no impresa ⇒ pregunta prohibida.
+Mostrar la tabla completa numerada. **"Mostrar" = imprimirla como texto visible en el MISMO mensaje que llama a `AskUserQuestion`, inmediatamente antes del tool call.** No cuenta haberla pensado en el razonamiento ni haberla emitido en un mensaje anterior: el razonamiento interno no lo ve el usuario y el dialogo de `AskUserQuestion` no arrastra contexto — la pregunta tiene que poder responderse leyendo solo la pantalla actual. Checklist previo al call: ¿el texto de ESTE mensaje contiene la tabla? Si no, emitirla primero. Tabla no impresa ⇒ pregunta prohibida.
 
 ```markdown
 | # | Inferencia | Eleccion propuesta | Alternativa razonable | Confianza |
@@ -73,7 +73,11 @@ Mostrar la tabla completa numerada. **"Mostrar" = imprimirla como texto de respu
 Luego usar `AskUserQuestion` — "¿Alguna inferencia a revisar?":
 
 1. `Ninguna, todas bien (Recomendado)` — solo si ninguna quedo con confianza baja.
-2. `Revisar algunas` — el usuario dice cuales (numeros) via Other; por cada una, UNA pregunta con las alternativas concretas como opciones, la propuesta primera y marcada `(Recomendado)`.
+2. `Revisar algunas` — el usuario dice cuales (numeros) via Other; por cada una, UNA pregunta con las alternativas concretas como opciones, la propuesta primera y marcada `(Recomendado)`. Esta opcion lleva la tabla completa como `preview`: si por cualquier motivo la impresion fallo, la tabla queda recuperable desde el propio dialogo (redundancia, no reemplazo — la obligacion de imprimirla no cambia).
+
+Si alguna inferencia quedo con confianza **baja**, no dejarla enterrada detras de `Revisar algunas`: agregar en el MISMO call una pregunta dedicada por cada una (maximo 3; si hay mas, priorizar las que definen alcance), con sus alternativas concretas como opciones y la propuesta primera. La pregunta general cubre el resto de la tabla.
+
+Este dialogo va SOLO: no adjuntar en el mismo call las preguntas de mecanismo (Fase 5) ni de destino (Fase 6). Son fases secuenciales — revisar una inferencia puede cambiar los CA y por lo tanto invalidar el mecanismo que se estaria votando en paralelo.
 
 Reglas: lo que el pedido ya fija NO es inferencia y no se lista (listarlo diluye la tabla). Si una inferencia de confianza baja define el alcance entero (ej. "¿esto es solo UI o tambien API?") pero el usuario ya dijo "todas bien", NO re-preguntarla por encima de esa eleccion: respetarla, pero marcarla en la spec como riesgo. Con `--assume`: elegir el sesgo minimo seguro (la opcion mas chica y reversible) y marcar `[ASSUMED]` en la spec.
 
@@ -93,7 +97,7 @@ Reglas:
 - El grado sale de lo que el contrato dice que se puede correr HOY, no de lo teoricamente posible. Una feature TDD-able en un repo cuyo test runner figura `FALLA` NO es ALTA — es BAJA hasta que alguien arregle el runner, y se dice explicitamente ("seria ALTA si `pnpm test` funcionara — ver Gaps del contrato").
 - Si los criterios tienen grados distintos, NO promediar: desglosar por criterio y reportar mixto ("CA-1..CA-3 ALTA; CA-4 NULA — vibracion en dispositivo, exige prueba tuya").
 - Cruzar el alcance contra las politicas de generacion del contrato y decirlo en el veredicto: una spec cuyo blast-radius estimado excede el *tamaño maximo de PR* se reporta con propuesta de particion (2+ specs encadenadas, cada una dentro del limite) — mejor partir aca que descubrirlo con el PR en draft. Un *coverage minimo* activo sube la vara del plan de verificacion: los tests de los CA ALTA tienen que cubrir el codigo nuevo, no solo el happy path. *Dependencias nuevas: prohibido* convierte cualquier CA que exija una dep en conflicto a resolver en la spec, no en el run. Las politicas de la tecnologia con gate (linter, script) integran la vara igual que coverage; las filas `guia` no gatean ni cambian el veredicto.
-- Mostrar el veredicto al usuario con el porque ANTES de elegir mecanismo: es el dato que le dice cuanto puede delegar de la ejecucion. Misma regla que la tabla de inferencias: emitirlo como texto de respuesta visible, no darlo por mostrado en el razonamiento.
+- Mostrar el veredicto al usuario con el porque ANTES de elegir mecanismo: es el dato que le dice cuanto puede delegar de la ejecucion. Misma regla que la tabla de inferencias: emitirlo como texto visible en el MISMO mensaje que el `AskUserQuestion` de mecanismo, inmediatamente antes del call — no darlo por mostrado en el razonamiento ni por emitido en un mensaje anterior.
 
 ## Fase 5 — Mecanismo de verificacion
 
@@ -190,5 +194,6 @@ generacion condiciona la ejecucion (particion por tamaño, coverage), una linea 
 - No tocar codigo ni commitear: la spec (y el issue, si se eligio) es el unico output.
 - No pisar el body de un issue sin archivar el original en un `<details>`.
 - No preguntar lo que el pedido ya fija.
-- No llamar a `AskUserQuestion` sobre las inferencias o el veredicto sin haberlos impreso antes como texto en la respuesta: "lo pense en el razonamiento" no cuenta como mostrado.
+- No llamar a `AskUserQuestion` sobre las inferencias o el veredicto sin haberlos impreso como texto visible en el MISMO mensaje del call: "lo pense en el razonamiento" o "lo mostre mas arriba" no cuentan como mostrado.
+- No combinar en un solo `AskUserQuestion` preguntas de fases distintas (inferencias / mecanismo / destino): son dialogos secuenciales por diseño — el veredicto se emite despues de resolver las inferencias, y el mecanismo se pregunta despues de mostrar el veredicto. Un call por fase, en orden.
 - Ultracode multiplica verificadores (panel de inferencias, escepticos del veredicto, completeness critic), nunca afloja criterios: el fan-out no autoriza saltear la tabla de inferencias, inflar un grado, ni proponer un mecanismo que no observa el comportamiento. Los paneles atacan la spec, no la maquillan.
