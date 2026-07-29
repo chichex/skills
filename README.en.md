@@ -2,7 +2,7 @@
 
 > 🇦🇷 [Leer en español](./README.md)
 
-This repo is built around my own **Spec-Driven Development (SDD)** workflow — plus the foundational skills it builds on. Everything I use day to day in **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[opencode](https://opencode.ai)**, and **[Pi](https://github.com/badlogic/pi-mono)**.
+This repo is built around my own **Spec-Driven Development (SDD)** workflow — plus the foundational skills it builds on. Everything I use day to day in **[Codex](https://developers.openai.com/codex/)**, **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[opencode](https://opencode.ai)**, and **[Pi](https://github.com/badlogic/pi-mono)**.
 
 Skills are reusable pieces of knowledge an agent loads on demand: each folder is a skill with its `SKILL.md` (frontmatter `name` + `description` that decides when it applies) and, optionally, reference files the skill reads when it needs them.
 
@@ -26,17 +26,17 @@ The disciplines SDD builds on — which I also use standalone, outside the pipel
 
 | Skill | What it does |
 |---|---|
-| **`grill`** | A relentless interview about a plan or design **before** building. It can walk the decision tree in quick mode or one question at a time until reaching shared understanding. In Pi it can also maintain domain documentation. |
+| **`grill`** | A relentless interview about a plan or design **before** building. It can walk the decision tree in quick mode or one question at a time until reaching shared understanding. In Pi and Codex it can also maintain domain documentation. |
 | **`mini-grill`** | An express `grill`: disambiguates a single request in one to three questions (recommended option first) and confirms the interpretation before acting. If too many decisions surface, it hands off to the full `grill`. |
-| **`grill-with-domain-modeling`** *(Claude/opencode)* | A `grill` that also maintains the domain docs (`CONTEXT.md` + ADRs) as decisions get resolved. In Pi this mode lives inside `grill`. |
+| **`grill-with-domain-modeling`** *(Codex/Claude/opencode)* | A `grill` that also maintains the domain docs (`CONTEXT.md` + ADRs) as decisions get resolved. In Pi and Codex this mode can also be selected inside `grill`. |
 | **`domain-modeling`** | Keeps the domain model alive while designing: challenges terms, sharpens fuzzy language, and writes the glossary (`CONTEXT.md`) and decisions (`docs/adr/`) the moment they crystallize. Zero-contamination rule: it never introduces the practice into a repo that doesn't already use it. |
 | **`tdd`** | A test-driven development reference: the red → green loop, what makes a good test, where tests live (seams), the anti-patterns. Includes `mocking` and `tests` guides. |
-| **`code-review`** *(Pi only)* | Reviews a PR across three separate axes—correctness and risk, standards, and spec—runs available checks, reports evidence-backed findings, and finally asks whether to post the comments to GitHub. It never posts without explicit confirmation. |
-| **`github-issue-selector`** *(Pi only)* | Opens an interactive selector when you want to choose or inspect an issue but have not provided a specific number. |
-| **`issue-triage`** *(Pi only)* | Analyzes one or more issues against code, tests, and dependencies; recommends grill, spec, a protected quick-run, or an actionable rejection. Joint selections become one canonical issue while originals are closed as superseded. |
-| **`repo-clean`** *(Pi only)* | Leaves the current branch with no pending changes and synchronized with `origin/<branch>`. When uncommitted work exists, it shows the impact and asks whether to preserve or discard it; it never switches branches or force-pushes. |
-| **`find-skills`** *(Pi only)* | Searches the open ecosystem for installable skills through `npx skills`. Vendored from `vercel-labs/skills`. |
-| **`yt-summary`** *(Claude only)* | Downloads a single YouTube subtitle track with `yt-dlp` and guides a summary with a TL;DR, key points, and timestamps. |
+| **`code-review`** *(Codex/Pi)* | Reviews a PR across three separate axes—correctness and risk, standards, and spec—runs available checks, reports evidence-backed findings, and finally asks whether to post the comments to GitHub. It never posts without explicit confirmation. |
+| **`github-issue-selector`** *(Codex/Pi)* | Lets you choose or inspect an issue when no specific number was provided. |
+| **`issue-triage`** *(Codex/Pi)* | Analyzes one or more issues against code, tests, and dependencies; recommends grill, spec, a protected quick-run, or an actionable rejection. Joint selections become one canonical issue while originals are closed as superseded. |
+| **`repo-clean`** *(Codex/Pi)* | Leaves the current branch with no pending changes and synchronized with `origin/<branch>`. When uncommitted work exists, it shows the impact and asks whether to preserve or discard it; it never switches branches or force-pushes. |
+| **`find-skills`** *(Codex/Pi)* | Searches the open ecosystem for installable skills through `npx skills`. Vendored from `vercel-labs/skills`. |
+| **`yt-summary`** *(Codex/Claude)* | Downloads a single YouTube subtitle track with `yt-dlp` and guides a summary with a TL;DR, key points, and timestamps. |
 
 SDD doesn't replace these skills — it orchestrates them. The design that precedes a spec is sharpened with `grill` and `domain-modeling`, and `sdd-run` implements following the `tdd` discipline.
 
@@ -66,6 +66,7 @@ It's split by tool because the versions aren't identical and each harness expose
 
 ```
 skills/
+├── codex/       # versions for Codex        (~/.codex/skills)
 ├── claude/      # versions for Claude Code  (~/.claude/skills)
 ├── opencode/       # versions for opencode      (~/.config/opencode/skills)
 ├── pi/             # skills for Pi               (~/.agents/skills)
@@ -80,21 +81,23 @@ Clone the repo and run `install.sh`. It runs `git pull` and copies each skill—
 ```bash
 git clone https://github.com/chichex/skills.git
 cd skills
-./install.sh            # installs all three sets
+./install.sh            # installs all four sets
 ./install.sh all        # same as above
 ./install.sh both       # Claude Code + opencode
+./install.sh codex      # only the Codex ones
 ./install.sh claude     # only the Claude Code ones
 ./install.sh opencode   # only the opencode ones
 ./install.sh pi         # only the Pi ones
 ```
 
-Default destinations: `~/.claude/skills/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/`, and `~/.pi/agent/themes/` (overridable with `CLAUDE_SKILLS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR`, and `PI_THEMES_DIR`).
+Default destinations: `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/`, and `~/.pi/agent/themes/` (overridable with `CODEX_SKILLS_DIR`, `CLAUDE_SKILLS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR`, and `PI_THEMES_DIR`).
 
 To **update** later, just run `./install.sh` again — it does the `pull` for you.
 
 If you'd rather do it by hand, it's a plain copy:
 
 ```bash
+cp -R codex/*    "${CODEX_HOME:-$HOME/.codex}/skills/"
 cp -R claude/*   ~/.claude/skills/
 cp -R opencode/* ~/.config/opencode/skills/
 cp -R pi/*             ~/.agents/skills/
@@ -102,7 +105,7 @@ cp -R pi-extensions/*  ~/.pi/agent/extensions/
 cp pi-themes/*.json    ~/.pi/agent/themes/
 ```
 
-Once installed, Claude Code/opencode use their usual commands. In Pi, invoke `/skill:grill`, `/skill:code-review`, `/skill:github-issue-selector`, `/skill:issue-triage`, `/skill:repo-clean`, `/skill:sdd-init`, `/skill:sdd-spec`, and `/skill:sdd-run`, or let the agent load them from their `description`. Run `/reload` in an open Pi session after installing.
+Once installed, Codex invokes them as `$grill`, `$code-review`, `$sdd-spec`, and so on, or loads them from their `description`. Claude Code/opencode use their usual commands. Pi uses `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec`, and equivalents. Run `/reload` in an open Pi session after installing.
 
 ## Credits
 

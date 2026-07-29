@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 #
-# Instala/actualiza los skills de este repo en Claude Code, opencode y Pi,
+# Instala/actualiza los skills de este repo en Codex, Claude Code, opencode y Pi,
 # junto con las extensiones de Pi.
 # Hace git pull y copia cada skill a su carpeta, SIN borrar los otros skills
 # que ya tengas: solo agrega/actualiza los que vienen del repo.
 #
 # Uso:
-#   ./install.sh              # instala los tres sets
-#   ./install.sh all          # instala los tres sets
+#   ./install.sh              # instala los cuatro sets
+#   ./install.sh all          # instala los cuatro sets
 #   ./install.sh both         # Claude Code + opencode (compatibilidad)
 #   ./install.sh claude       # solo los de Claude Code
 #   ./install.sh opencode     # solo los de opencode
 #   ./install.sh pi           # solo los de Pi
+#   ./install.sh codex        # solo los de Codex
 #
 # Overrides por variable de entorno (destinos):
 #   CLAUDE_SKILLS_DIR    (default: ~/.claude/skills)
@@ -19,6 +20,7 @@
 #   PI_SKILLS_DIR        (default: ~/.agents/skills)
 #   PI_EXTENSIONS_DIR    (default: ~/.pi/agent/extensions)
 #   PI_THEMES_DIR        (default: ~/.pi/agent/themes)
+#   CODEX_SKILLS_DIR     (default: ${CODEX_HOME:-~/.codex}/skills)
 #
 set -euo pipefail
 
@@ -28,6 +30,7 @@ OPENCODE_DEST="${OPENCODE_SKILLS_DIR:-$HOME/.config/opencode/skills}"
 PI_DEST="${PI_SKILLS_DIR:-$HOME/.agents/skills}"
 PI_EXTENSIONS_DEST="${PI_EXTENSIONS_DIR:-$HOME/.pi/agent/extensions}"
 PI_THEMES_DEST="${PI_THEMES_DIR:-$HOME/.pi/agent/themes}"
+CODEX_DEST="${CODEX_SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
 WHICH="${1:-all}"
 
 # 1. traer lo último (si es un clon git)
@@ -97,7 +100,8 @@ install_pi() {
 }
 
 case "$WHICH" in
-  all)      install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST"
+  all)      install_set "Codex"       "$REPO_DIR/codex" "$CODEX_DEST"
+            install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST"
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST"
             install_pi ;;
   both)     install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST"
@@ -105,7 +109,8 @@ case "$WHICH" in
   claude)   install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST" ;;
   opencode) install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
   pi)       install_pi ;;
-  *) echo "Argumento inválido: '$WHICH' (usá: all | both | claude | opencode | pi)" >&2; exit 2 ;;
+  codex)    install_set "Codex" "$REPO_DIR/codex" "$CODEX_DEST" ;;
+  *) echo "Argumento inválido: '$WHICH' (usá: all | both | codex | claude | opencode | pi)" >&2; exit 2 ;;
 esac
 
 echo

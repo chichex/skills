@@ -1,0 +1,4 @@
+interface:
+  display_name: "Repo Clean"
+  short_description: "Limpiá y sincronizá el branch con seguridad"
+  default_prompt: "Usá $repo-clean para dejar este repositorio limpio y sincronizado."

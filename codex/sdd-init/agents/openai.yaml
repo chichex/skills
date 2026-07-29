@@ -1,0 +1,4 @@
+interface:
+  display_name: "SDD Init"
+  short_description: "Documentá el contrato de autonomía del repo"
+  default_prompt: "Usá $sdd-init para inicializar el contrato de autonomía de este repositorio."

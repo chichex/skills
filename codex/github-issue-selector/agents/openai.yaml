@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Issue Selector"
+  short_description: "Elegí e inspeccioná issues de GitHub"
+  default_prompt: "Usá $github-issue-selector para listar los issues abiertos y ayudarme a elegir uno."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Grill"
+  short_description: "Desambiguá ideas antes de especificarlas"
+  default_prompt: "Usá $grill para entrevistarme sobre esta idea hasta cerrar un handoff."

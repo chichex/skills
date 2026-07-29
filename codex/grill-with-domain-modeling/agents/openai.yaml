@@ -1,0 +1,4 @@
+interface:
+  display_name: "Grill + Domain Modeling"
+  short_description: "Grill con glosario y ADRs del dominio"
+  default_prompt: "Usá $grill-with-domain-modeling para grillar esta idea y mantener la documentación de dominio."

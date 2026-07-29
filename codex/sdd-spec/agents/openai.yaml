@@ -1,0 +1,4 @@
+interface:
+  display_name: "SDD Spec"
+  short_description: "Convertí pedidos en specs verificables"
+  default_prompt: "Usá $sdd-spec para convertir este pedido en una spec verificable."

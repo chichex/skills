@@ -1,0 +1,4 @@
+interface:
+  display_name: "YouTube Summary"
+  short_description: "Resumí videos desde sus subtítulos"
+  default_prompt: "Usá $yt-summary para resumir este video con puntos clave y timestamps."

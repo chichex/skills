@@ -1,0 +1,4 @@
+interface:
+  display_name: "Domain Modeling"
+  short_description: "Mantené glosarios y ADRs del dominio"
+  default_prompt: "Usá $domain-modeling para registrar estos términos y decisiones de dominio."

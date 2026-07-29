@@ -1,0 +1,4 @@
+interface:
+  display_name: "Issue Triage"
+  short_description: "Decidí cómo encarar issues con evidencia"
+  default_prompt: "Usá $issue-triage para analizar estos issues y recomendar una ruta de trabajo."

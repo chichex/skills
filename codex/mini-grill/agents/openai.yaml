@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mini Grill"
+  short_description: "Aclaración rápida antes de actuar"
+  default_prompt: "Usá $mini-grill para confirmar el alcance de este pedido antes de actuar."
