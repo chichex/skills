@@ -92,6 +92,8 @@ cd skills
 
 Default destinations: `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/`, and `~/.pi/agent/themes/` (overridable with `CODEX_SKILLS_DIR`, `CLAUDE_SKILLS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR`, and `PI_THEMES_DIR`).
 
+Because Codex also discovers Pi skills under `~/.agents/skills` and does not merge duplicate names, installing the Codex set adds a managed block to `${CODEX_HOME:-~/.codex}/config.toml`. It disables only the Pi copies that have an equivalent under `codex/`; Pi keeps using its files normally. The rest of `config.toml` is preserved and later runs update the same block without duplicating it. Set `CODEX_DEDUPLICATE_PI_SKILLS=0` to skip this change or `CODEX_CONFIG_FILE` to target another config.
+
 To **update** later, just run `./install.sh` again — it does the `pull` for you.
 
 If you'd rather do it by hand, it's a plain copy:
