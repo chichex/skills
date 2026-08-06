@@ -1,25 +1,25 @@
 ---
 name: sdd-init
-description: Explora el proyecto a fondo y genera .sdd/project.md — el "contrato de autonomia" que le dice a Codex como correr, testear y buildear la app, que ambientes hay, cual usar para probar, y que puede verificar sin un humano. Usar SIEMPRE que el usuario quiera inicializar SDD, preparar un repo para trabajo autonomo, documentar el harness del proyecto (como se corre/testea/buildea), o cuando otro skill sdd-* necesite un .sdd/project.md que no existe o esta desactualizado. Tambien cuando el usuario diga "quiero que Codex pueda trabajar solo aca", "documenta como se testea esto" o similar.
+description: Explora el proyecto a fondo y genera .sdd/project.md — el "contrato de autonomía" que le dice a Codex cómo correr, testear y buildear la app, qué ambientes hay, cuál usar para probar, y qué puede verificar sin un humano. Usar SIEMPRE que el usuario quiera inicializar SDD, preparar un repo para trabajo autónomo, documentar el harness del proyecto (cómo se corre/testea/buildea), o cuando otro skill sdd-* necesite un .sdd/project.md que no existe o está desactualizado. También cuando el usuario diga "quiero que Codex pueda trabajar solo acá", "documenta cómo se testea esto" o similar.
 ---
 
-Explora el proyecto y genera `.sdd/project.md`: el **contrato de autonomia** que los demas skills `sdd-*` (spec, run) consumen para trabajar sin humano. No es documentacion aspiracional: cada comando documentado se EJECUTA antes de escribirse, y lo que no se pudo verificar queda marcado como tal. Los argumentos pueden traer pistas libres ("es un monorepo, ignora apps/legacy", "el ambiente de prueba es staging") o ir vacio.
+Explora el proyecto y genera `.sdd/project.md`: el **contrato de autonomía** que los demás skills `sdd-*` (spec, run) consumen para trabajar sin humano. No es documentación aspiracional: cada comando documentado se EJECUTA antes de escribirse, y lo que no se pudo verificar queda marcado como tal. Los argumentos pueden traer pistas libres ("es un monorepo, ignora apps/legacy", "el ambiente de prueba es staging") o ir vacío.
 
-Skill operativo con una fase interactiva acotada: explora solo, verifica solo, y pregunta UNICAMENTE lo que el codigo no puede responder.
+Skill operativo con una fase interactiva acotada: explora solo, verifica solo, y pregunta ÚNICAMENTE lo que el código no puede responder.
 
 En Codex, usar `request_user_input` solo cuando esté disponible y la decisión tenga 2-3 opciones mutuamente excluyentes. Para selección múltiple o más opciones, preguntar en texto plano, terminar el turno y continuar tras la respuesta.
 
-## Que es el contrato de autonomia
+## Qué es el contrato de autonomía
 
-`.sdd/project.md` responde, con evidencia, las preguntas que un agente autonomo necesita antes de tocar codigo:
+`.sdd/project.md` responde, con evidencia, las preguntas que un agente autónomo necesita antes de tocar código:
 
-1. **Como se corre / testea / buildea** — comandos exactos, cwd, duracion, y si fueron verificados ejecutandolos.
-2. **Que ambientes existen y cual puedo usar para probar** — local, staging, prod; env vars y de donde salen.
-3. **Que puedo verificar sin humano** — la escalera de verificacion: typecheck < unit < build < levantar la app y probarla < e2e. Hasta que escalon llega este repo y como se sube cada uno.
-4. **Que NO debo hacer sin humano** — deploy, migraciones, push, tocar servicios pagos.
-5. **Bajo que politicas genero codigo** — preferencias que el usuario ELIGE (tamaño maximo de PR, coverage minimo, dependencias nuevas, convencion de commits, politicas propias de la tecnologia) y que `$sdd-run` aplica como gates duros — o sigue como `guia` explicita cuando no hay gate medible. Solo son activables como gate las politicas cuyo mecanismo de medicion este verificado en este repo.
+1. **Cómo se corre / testea / buildea** — comandos exactos, cwd, duración, y si fueron verificados ejecutándolos.
+2. **Qué ambientes existen y cuál puedo usar para probar** — local, staging, prod; env vars y de dónde salen.
+3. **Qué puedo verificar sin humano** — la escalera de verificación: typecheck < unit < build < levantar la app y probarla < e2e. Hasta qué escalón llega este repo y cómo se sube cada uno.
+4. **Qué NO debo hacer sin humano** — deploy, migraciones, push, tocar servicios pagos.
+5. **Bajo qué políticas genero código** — preferencias que el usuario ELIGE (tamaño máximo de PR, coverage mínimo, dependencias nuevas, convención de commits, políticas propias de la tecnología) y que `$sdd-run` aplica como gates duros — o sigue como `guia` explícita cuando no hay gate medible. Solo son activables como gate las políticas cuyo mecanismo de medición esté verificado en este repo.
 
-Se referencia desde el `AGENTS.md` del proyecto con una instruccion explicita para que Codex lo lea antes de trabajar en el repo. `CLAUDE.md` conserva el import `@.sdd/project.md` para Claude Code.
+Se referencia desde el `AGENTS.md` del proyecto con una instrucción explícita para que Codex lo lea antes de trabajar en el repo. `CLAUDE.md` conserva el import `@.sdd/project.md` para Claude Code.
 
 ## Argumentos
 
@@ -27,16 +27,16 @@ Se referencia desde el `AGENTS.md` del proyecto con una instruccion explicita pa
 $sdd-init [pistas libres] [--assume] [--no-verify] [--update] [--no-import]
 ```
 
-- `--assume` — cero preguntas: los gaps se resuelven con la assumption mas conservadora y quedan marcados `[NEEDS-INPUT]` en el doc. Para correr desatendido.
-- `--no-verify` — no ejecutar comandos: documenta lo detectado como `no probado`. Util en repos con builds carisimos.
-- `--update` — refresco de un `.sdd/project.md` existente: re-explora, re-verifica, pero PRESERVA la seccion `## Decisiones humanas` y las respuestas previas. Ademas ofrece las capacidades que el skill gano desde que el contrato se genero (ver "## Upgrade de contrato").
+- `--assume` — cero preguntas: los gaps se resuelven con la assumption más conservadora y quedan marcados `[NEEDS-INPUT]` en el doc. Para correr desatendido.
+- `--no-verify` — no ejecutar comandos: documenta lo detectado como `no probado`. Útil en repos con builds carísimos.
+- `--update` — refresco de un `.sdd/project.md` existente: re-explora, re-verifica, pero PRESERVA la sección `## Decisiones humanas` y las respuestas previas. Además ofrece las capacidades que el skill ganó desde que el contrato se generó (ver "## Upgrade de contrato").
 - `--no-import` — no tocar `AGENTS.md` ni `CLAUDE.md`.
 
 ## Fase 0 — Lanzador (solo con `$sdd-init` pelado)
 
-Dispara SOLO cuando los argumentos vienen vacios. Si trajo pistas o flags, saltear: el usuario ya dijo por donde va.
+Dispara SOLO cuando los argumentos vienen vacíos. Si trajo pistas o flags, saltear: el usuario ya dijo por dónde va.
 
-Si `.sdd/project.md` ya existe, decirlo primero (`Ya hay un contrato del <fecha>. Esto lo actualiza.`) y tratar toda eleccion como `--update` — incluida la oferta de mejoras de "## Upgrade de contrato" si el contrato es de una version anterior del skill.
+Si `.sdd/project.md` ya existe, decirlo primero (`Ya hay un contrato del <fecha>. Esto lo actualiza.`) y tratar toda elección como `--update` — incluida la oferta de mejoras de "## Upgrade de contrato" si el contrato es de una versión anterior del skill.
 
 ```text
 $sdd-init explora el repo y genera .sdd/project.md: el contrato de autonomia que guia a
@@ -60,75 +60,75 @@ Atajo: $sdd-init <pistas> [--assume] [--no-verify] saltea este menu.
 
 Luego usar `request_user_input` — una pregunta, "¿Ejecuto los comandos para verificarlos, y te pregunto las dudas?":
 
-1. `Verificar y preguntar (Recomendado)` — ejecuta test/build para probar que funcionan; pregunta solo los gaps que el codigo no responde.
+1. `Verificar y preguntar (Recomendado)` — ejecuta test/build para probar que funcionan; pregunta solo los gaps que el código no responde.
 2. `Sin ejecutar nada` — solo explora y documenta; los comandos quedan `no probado` (`--no-verify`).
 3. `Sin preguntar nada` — corre desatendido; las dudas se asumen conservadoras y quedan `[NEEDS-INPUT]` (`--assume`).
 
-## Fase 1 — Exploracion
+## Fase 1 — Exploración
 
 Explorar con lectura de archivos y shell. Agrupar con llamadas paralelas solo las lecturas y comprobaciones independientes; mantener el ownership en el agente principal. Relevar dos lentes y luego integrarlos:
 
-1. **Harness**: stack, lenguajes, frameworks, package manager segun lockfile, estructura/monorepo; comandos de run, test, build, lint y typecheck con su fuente exacta (`package.json`, Makefile, justfile, Cargo.toml, go.mod, pyproject, etc.); leer cada script antes de describirlo; framework y distribucion de tests unit/integration/e2e.
+1. **Harness**: stack, lenguajes, frameworks, package manager según lockfile, estructura/monorepo; comandos de run, test, build, lint y typecheck con su fuente exacta (`package.json`, Makefile, justfile, Cargo.toml, go.mod, pyproject, etc.); leer cada script antes de describirlo; framework y distribución de tests unit/integration/e2e.
 2. **Ambientes y verificabilidad**: `.env*`, compose y configs por ambiente; nombres de env vars consumidas (nunca sus secretos), defaults y faltantes; CI; servicios externos; branch default (`git symbolic-ref refs/remotes/origin/HEAD` o branch actual), remotes y `gh auth status`.
 
-Integrar las pistas de los argumentos como prioridad sobre lo detectado. Toda conclusion debe citar su archivo o comando fuente.
+Integrar las pistas de los argumentos como prioridad sobre lo detectado. Toda conclusión debe citar su archivo o comando fuente.
 
-## Fase 2 — Verificacion empirica (saltear con `--no-verify`)
+## Fase 2 — Verificación empírica (saltear con `--no-verify`)
 
-La razon de ser del skill: un contrato con comandos no probados vale poco, porque el agente autonomo que lo lea va a fallar en su primer paso. Ejecutar y registrar:
+La razón de ser del skill: un contrato con comandos no probados vale poco, porque el agente autónomo que lo lea va a fallar en su primer paso. Ejecutar y registrar:
 
 1. **Deps**: si faltan (`node_modules`, venv, etc.), correr el install del package manager del repo y documentarlo como prerequisito.
-2. **Comandos finitos** (test, build, lint, typecheck, coverage si el repo tiene tooling): correrlos con timeout de 120s c/u. Registrar: `verificado <fecha>` + duracion + resumen (ej. "84 tests pasan"), o `FALLA` + el error resumido (una falla NO aborta el skill: se documenta y sigue — saber que el build esta roto es exactamente el tipo de cosa que el contrato debe decir). Para coverage, registrar ademas el **% actual en las Notas: es el baseline** que la Fase 3.5 usa para anclar el gate.
-3. **Procesos largos** (dev server, app): arrancar en background, esperar la señal de vida (puerto abierto, linea de log), registrar como se reconoce el "esta arriba" (ej. `curl -sf localhost:5173` responde), y MATARLO. Si no levanta en 60s, anotar `no levanta: <motivo>`.
+2. **Comandos finitos** (test, build, lint, typecheck, coverage si el repo tiene tooling): correrlos con timeout de 120s c/u. Registrar: `verificado <fecha>` + duración + resumen (ej. "84 tests pasan"), o `FALLA` + el error resumido (una falla NO aborta el skill: se documenta y sigue — saber que el build está roto es exactamente el tipo de cosa que el contrato debe decir). Para coverage, registrar además el **% actual en las Notas: es el baseline** que la Fase 3.5 usa para anclar el gate.
+3. **Procesos largos** (dev server, app): arrancar en background, esperar la señal de vida (puerto abierto, línea de log), registrar cómo se reconoce el "está arriba" (ej. `curl -sf localhost:5173` responde), y MATARLO. Si no levanta en 60s, anotar `no levanta: <motivo>`.
 4. Lo que exceda timeout o requiera credenciales ausentes: `no probado (<motivo>)`. Nunca inventar el estado.
 
 ## Fase 3 — Gaps: preguntar solo lo no inferible
 
-Listar las preguntas que el codigo NO respondio. Tipicas: ¿cual ambiente uso para probar?, ¿de donde saco las env vars que faltan?, ¿hay datos de prueba / seeds?, ¿que cosas requieren confirmacion humana ademas de los defaults (deploy, migraciones, push)?
+Listar las preguntas que el código NO respondió. Típicas: ¿cuál ambiente uso para probar?, ¿de dónde saco las env vars que faltan?, ¿hay datos de prueba / seeds?, ¿qué cosas requieren confirmación humana además de los defaults (deploy, migraciones, push)?
 
-- Preguntar con `request_user_input`, de a UNA, opciones concretas derivadas de la exploracion, la recomendada primera y marcada `(Recomendado)`. Maximo 5 preguntas; si hay mas gaps, priorizar por impacto en autonomia y el resto va a `## Gaps`.
+- Preguntar con `request_user_input`, de a UNA, opciones concretas derivadas de la exploración, la recomendada primera y marcada `(Recomendado)`. Máximo 5 preguntas; si hay más gaps, priorizar por impacto en autonomía y el resto va a `## Gaps`.
 - Lo ya claro NO se pregunta: preguntar lo inferible erosiona la confianza en el skill.
-- Con `--assume` (o si el usuario no responde): assumption mas conservadora (ej. "solo local, nunca staging"), documentada en el doc con `[NEEDS-INPUT]`.
+- Con `--assume` (o si el usuario no responde): assumption más conservadora (ej. "solo local, nunca staging"), documentada en el doc con `[NEEDS-INPUT]`.
 
-## Fase 3.5 — Politicas de generacion
+## Fase 3.5 — Políticas de generación
 
-Ofrecer las politicas de generacion: preferencias que el usuario ELIGE — nunca se infieren — y que `$sdd-run` aplica como **gates duros**: una politica incumplida es FALLA visible (PR en draft), jamas se maquilla. Regla de oro: **solo es activable como gate la politica cuyo gate se puede medir en ESTE repo hoy** — por eso esta fase corre despues de la verificacion empirica, que ya establecio que tooling hay. Una preferencia sin gate medible puede entrar unicamente como **`guia`** explicita (ver Politicas de la tecnologia): orienta la generacion, no gatea.
+Ofrecer las políticas de generación: preferencias que el usuario ELIGE — nunca se infieren — y que `$sdd-run` aplica como **gates duros**: una política incumplida es FALLA visible (PR en draft), jamás se maquilla. Regla de oro: **solo es activable como gate la política cuyo gate se puede medir en ESTE repo hoy** — por eso esta fase corre después de la verificación empírica, que ya estableció qué tooling hay. Una preferencia sin gate medible puede entrar únicamente como **`guia`** explícita (ver Políticas de la tecnología): orienta la generación, no gatea.
 
-Menu v1 (cada politica con su gate — el mecanismo con el que `$sdd-run` la va a medir):
+Menú v1 (cada política con su gate — el mecanismo con el que `$sdd-run` la va a medir):
 
 | Politica | Valor | Gate |
 |---|---|---|
-| Tamaño maximo de PR | N lineas de diff y/o M archivos (sugerido: 400 / 15) | `git diff --stat <base>...HEAD`, excluyendo lockfiles y archivos generados |
-| Coverage minimo | umbral anclado al baseline actual | correr el comando y comparar contra el umbral; activable SOLO si el comando figura `verificado` en `## Comandos` con su baseline medido |
+| Tamaño máximo de PR | N líneas de diff y/o M archivos (sugerido: 400 / 15) | `git diff --stat <base>...HEAD`, excluyendo lockfiles y archivos generados |
+| Coverage mínimo | umbral anclado al baseline actual | correr el comando y comparar contra el umbral; activable SOLO si el comando figura `verificado` en `## Comandos` con su baseline medido |
 | Dependencias nuevas | prohibido / preguntar / libre | diff sobre manifest + lockfile contra el base |
-| Commits convencionales | patron (ej. `tipo(scope): resumen`) | cada mensaje del branch matchea el patron |
-| Politicas de la tecnologia (custom) | preferencia libre del stack: guia de estilo (ej. Uber para Go), max lineas por archivo, naming, constructos prohibidos | el mas barato que la observe: regla de linter con config verificada, script del contrato o grep; sin gate medible queda como `guia` |
+| Commits convencionales | patrón (ej. `tipo(scope): resumen`) | cada mensaje del branch matchea el patrón |
+| Políticas de la tecnología (custom) | preferencia libre del stack: guía de estilo (ej. Uber para Go), max líneas por archivo, naming, constructos prohibidos | el más barato que la observe: regla de linter con config verificada, script del contrato o grep; sin gate medible queda como `guia` |
 
 Reglas:
 
 - Preguntar en texto plano "¿Activás alguna política de generación? Indicá todas las que quieras o respondé `ninguna`": una opción por política ACTIVABLE. Por cada elegida, hacer UNA pregunta de valor posterior con defaults sugeridos como opciones.
-- Politica no medible = no ofrecida. Coverage sin comando de coverage verificado no aparece en el menu: se anota en `## Gaps` ("coverage no activable: no hay tooling de coverage verificado") y se ofrece activarla cuando el tooling exista.
-- **Baseline primero (coverage)**: el umbral se elige mirando el % actual medido en Fase 2, nunca en el aire. Ofrecer: `No bajar del baseline (X%) (Recomendado)` — ratchet, cumplible desde el dia uno — / un % fijo que el repo YA cumple / custom. Un umbral por encima del baseline nace en FALLA (pedir 90% con un repo en 10% = todos los PRs en draft para siempre): decirlo con los dos numeros sobre la mesa y aceptarlo SOLO si el usuario lo confirma viendo el baseline; queda anotado `aspiracional` junto al baseline.
-- **Politicas de la tecnologia (custom)**: el usuario describe la preferencia en texto libre ("seguir la guia de estilo de Uber en Go", "max 300 lineas por archivo", "prohibir panic() fuera de main"). Por cada una, proponer el gate MAS BARATO que la observe — regla de un linter ya configurado > config nueva de un linter que el repo ya tiene > script corto del contrato (ej. `wc -l` sobre los archivos del diff) > grep — y VERIFICARLO ejecutandolo antes de escribirlo, como cualquier comando. Sin gate medible, ofrecer escribirla como **`guia`**: `$sdd-run` la sigue al GENERAR el codigo y el reviewer la juzga en el PR — una `guia` nunca se reporta verificada ni gatea. Si un linter la haria medible pero falta configurarlo, anotarlo en `## Gaps` ("seria gate si golangci-lint tuviera config").
-- Pistas de los argumentos que fijen politicas ("coverage 80", "PRs de max 300 lineas") cuentan como eleccion del usuario: se activan sin preguntar (verificando igual que el gate sea medible). Unica excepcion: un umbral de coverage por encima del baseline se confirma igual — regla del baseline.
-- Con `--assume`: ninguna politica se activa — son elecciones humanas, no se asumen.
-- Con `--update` y politicas ya activas: preguntar `Mantener (Recomendado)` / `Revisar` — mantener preserva la seccion verbatim; revisar re-abre el menu con los valores actuales como default. Si el menu gano politicas que el contrato no conocia (ej. las de tecnologia), decirlo en esa misma pregunta.
+- Política no medible = no ofrecida. Coverage sin comando de coverage verificado no aparece en el menú: se anota en `## Gaps` ("coverage no activable: no hay tooling de coverage verificado") y se ofrece activarla cuando el tooling exista.
+- **Baseline primero (coverage)**: el umbral se elige mirando el % actual medido en Fase 2, nunca en el aire. Ofrecer: `No bajar del baseline (X%) (Recomendado)` — ratchet, cumplible desde el día uno — / un % fijo que el repo YA cumple / custom. Un umbral por encima del baseline nace en FALLA (pedir 90% con un repo en 10% = todos los PRs en draft para siempre): decirlo con los dos números sobre la mesa y aceptarlo SOLO si el usuario lo confirma viendo el baseline; queda anotado `aspiracional` junto al baseline.
+- **Políticas de la tecnología (custom)**: el usuario describe la preferencia en texto libre ("seguir la guía de estilo de Uber en Go", "max 300 líneas por archivo", "prohibir panic() fuera de main"). Por cada una, proponer el gate MÁS BARATO que la observe — regla de un linter ya configurado > config nueva de un linter que el repo ya tiene > script corto del contrato (ej. `wc -l` sobre los archivos del diff) > grep — y VERIFICARLO ejecutándolo antes de escribirlo, como cualquier comando. Sin gate medible, ofrecer escribirla como **`guia`**: `$sdd-run` la sigue al GENERAR el código y el reviewer la juzga en el PR — una `guia` nunca se reporta verificada ni gatea. Si un linter la haría medible pero falta configurarlo, anotarlo en `## Gaps` ("sería gate si golangci-lint tuviera config").
+- Pistas de los argumentos que fijen políticas ("coverage 80", "PRs de max 300 líneas") cuentan como elección del usuario: se activan sin preguntar (verificando igual que el gate sea medible). Única excepción: un umbral de coverage por encima del baseline se confirma igual — regla del baseline.
+- Con `--assume`: ninguna política se activa — son elecciones humanas, no se asumen.
+- Con `--update` y políticas ya activas: preguntar `Mantener (Recomendado)` / `Revisar` — mantener preserva la sección verbatim; revisar re-abre el menú con los valores actuales como default. Si el menú ganó políticas que el contrato no conocía (ej. las de tecnología), decirlo en esa misma pregunta.
 
 ## Upgrade de contrato (corridas sobre contrato existente)
 
-El skill evoluciona; los contratos generados por versiones anteriores no. En TODA corrida sobre un `.sdd/project.md` existente (`--update` explicito o lanzador que lo detecto), antes de escribir: cruzar el contrato viejo contra esta **checklist de capacidades** y detectar cuales le faltan. La deteccion es estructural — se mira el doc, no hace falta versionado:
+El skill evoluciona; los contratos generados por versiones anteriores no. En TODA corrida sobre un `.sdd/project.md` existente (`--update` explícito o lanzador que lo detectó), antes de escribir: cruzar el contrato viejo contra esta **checklist de capacidades** y detectar cuáles le faltan. La detección es estructural — se mira el doc, no hace falta versionado:
 
-| Capacidad | Como detectar que falta en el contrato viejo |
+| Capacidad | Cómo detectar que falta en el contrato viejo |
 |---|---|
-| Politicas de generacion | no existe la seccion `## Politicas de generacion` |
-| Baseline de coverage | hay politica de coverage activa sin baseline anotado junto al umbral |
-| Politicas de la tecnologia | `## Politicas de generacion` existe pero sin filas custom ni `guia` (el menu que la genero no las ofrecia) |
+| Políticas de generación | no existe la sección `## Politicas de generacion` |
+| Baseline de coverage | hay política de coverage activa sin baseline anotado junto al umbral |
+| Políticas de la tecnología | `## Politicas de generacion` existe pero sin filas custom ni `guia` (el menú que la generó no las ofrecía) |
 | Capacidad de Git/PR | `## Ambientes` no declara branch default, remote o estado de `gh` |
-| Señal de vida de procesos largos | comandos `run` sin el "como se reconoce que esta arriba" |
+| Señal de vida de procesos largos | comandos `run` sin el "cómo se reconoce que está arriba" |
 
-Con faltantes: listarlos como texto visible (una linea por capacidad, con que aporta) y preguntar en texto plano "El contrato es de una version anterior del skill; ¿qué mejoras le agrego? Indicá todas las que quieras o respondé `ninguna`". SOLO lo elegido se releva, pregunta y escribe, cada capacidad con el mecanismo de su fase (ej. elegir `Politicas de generacion` se resuelve con el menu de la Fase 3.5); lo no elegido no se anota como gap — es una eleccion, no una deuda. Con `--assume`: no se agrega ninguna (varias exigen eleccion humana); quedan en el reporte como `mejoras disponibles`.
+Con faltantes: listarlos como texto visible (una línea por capacidad, con qué aporta) y preguntar en texto plano "El contrato es de una versión anterior del skill; ¿qué mejoras le agrego? Indicá todas las que quieras o respondé `ninguna`". SOLO lo elegido se releva, pregunta y escribe, cada capacidad con el mecanismo de su fase (ej. elegir `Politicas de generacion` se resuelve con el menú de la Fase 3.5); lo no elegido no se anota como gap — es una elección, no una deuda. Con `--assume`: no se agrega ninguna (varias exigen elección humana); quedan en el reporte como `mejoras disponibles`.
 
-**Regla de mantenimiento del skill**: al agregarle una capacidad nueva a este skill, sumar SIEMPRE su fila a esta checklist. Es lo que hace que los contratos viejos se pongan al dia preguntando, en vez de quedar silenciosamente desactualizados.
+**Regla de mantenimiento del skill**: al agregarle una capacidad nueva a este skill, sumar SIEMPRE su fila a esta checklist. Es lo que hace que los contratos viejos se pongan al día preguntando, en vez de quedar silenciosamente desactualizados.
 
 ## Fase 4 — Escribir el contrato
 
@@ -179,7 +179,7 @@ con $sdd-init --update." Formato tabla, cada fila con su gate concreto:
 <[NEEDS-INPUT] pendientes + comandos FALLA/no probados que un humano deberia mirar.>
 ```
 
-En `--update`: regenerar todo salvo `## Decisiones humanas` y `## Politicas de generacion` (preservar verbatim — las politicas solo cambian si el usuario eligio `Revisar` en Fase 3.5) y los `[NEEDS-INPUT]` aun sin respuesta (mantenerlos, no duplicarlos).
+En `--update`: regenerar todo salvo `## Decisiones humanas` y `## Politicas de generacion` (preservar verbatim — las políticas solo cambian si el usuario eligió `Revisar` en Fase 3.5) y los `[NEEDS-INPUT]` aún sin respuesta (mantenerlos, no duplicarlos).
 
 ## Fase 5 — Referencia en AGENTS.md y CLAUDE.md (saltear con `--no-import`)
 
@@ -193,7 +193,7 @@ Cablear el contrato de forma idempotente para ambos harnesses:
    ```
 
    Si ya contiene una referencia equivalente, no duplicarla.
-2. **CLAUDE.md** — si no contiene `@.sdd/project.md`, agregar esa linea; si no existe, crearlo con solo esa linea. Si ya esta, no tocar nada.
+2. **CLAUDE.md** — si no contiene `@.sdd/project.md`, agregar esa línea; si no existe, crearlo con solo esa línea. Si ya está, no tocar nada.
 
 ## Reporte
 
@@ -213,18 +213,18 @@ tomadas ("mejoras disponibles" con --assume), una linea>
 
 - Ejecutar los comandos antes de documentarlos como verificados (salvo `--no-verify`); distinguir siempre `verificado` / `FALLA` / `no probado (<motivo>)`.
 - Matar todo proceso largo que se haya arrancado para verificar.
-- Preguntar solo gaps reales, de a una pregunta, con recomendacion.
-- Ofrecer como gate SOLO lo que tiene gate medible en este repo, y escribir cada politica activa con su gate concreto; una preferencia sin gate medible entra unicamente como `guia` explicita. El umbral de coverage se elige siempre contra el baseline medido, nunca en el aire.
+- Preguntar solo gaps reales, de a una pregunta, con recomendación.
+- Ofrecer como gate SOLO lo que tiene gate medible en este repo, y escribir cada política activa con su gate concreto; una preferencia sin gate medible entra únicamente como `guia` explícita. El umbral de coverage se elige siempre contra el baseline medido, nunca en el aire.
 - En corridas sobre un contrato existente, cruzarlo contra la checklist de "## Upgrade de contrato" y OFRECER los faltantes — nunca agregarlos sin preguntar, nunca callarlos.
 - Preservar `## Decisiones humanas` y `## Politicas de generacion` en `--update`.
 - Ser idempotente: re-correr sobre un repo ya inicializado actualiza, no duplica (ni el doc ni las referencias de AGENTS.md/CLAUDE.md).
 
 ## MUST NOT DO
 
-- No correr NADA que mute estado externo o compartido: deploy, publish, migraciones contra DBs remotas, git push. La verificacion es local y read-only hacia afuera.
-- No documentar comandos adivinados por el nombre del script sin leer que hacen.
-- No preguntar lo que la exploracion ya respondio.
-- No escribir secrets ni valores de env vars en el contrato — solo el NOMBRE de la var y de donde sale.
-- No inferir ni asumir politicas de generacion: si el usuario no las eligio (o corrio `--assume`), la seccion queda vacia. Y no activar una cuyo gate no se pueda medir hoy (coverage sin comando verificado va a Gaps, no al contrato). Una preferencia sin gate medible jamas se disfraza de gate: o es `guia` explicita o no entra.
+- No correr NADA que mute estado externo o compartido: deploy, publish, migraciones contra DBs remotas, git push. La verificación es local y read-only hacia afuera.
+- No documentar comandos adivinados por el nombre del script sin leer qué hacen.
+- No preguntar lo que la exploración ya respondió.
+- No escribir secrets ni valores de env vars en el contrato — solo el NOMBRE de la var y de dónde sale.
+- No inferir ni asumir políticas de generación: si el usuario no las eligió (o corrió `--assume`), la sección queda vacía. Y no activar una cuyo gate no se pueda medir hoy (coverage sin comando verificado va a Gaps, no al contrato). Una preferencia sin gate medible jamás se disfraza de gate: o es `guia` explícita o no entra.
 - No pisar un `.sdd/project.md` editado a mano sin preservar `## Decisiones humanas`.
 - No commitear nada.

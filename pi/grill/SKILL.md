@@ -52,9 +52,10 @@ Cuando el usuario quiera ver, inspeccionar o retomar sesiones de grilling:
 2. Si devuelve `resume` o `duplicate`, tratá el snapshot seleccionado como estado autoritativo.
 3. Leé `workflowMode`. Para snapshots legacy sin modo, buscá una decisión explícita que active domain modeling; si sigue siendo ambiguo, preguntá el modo de documentación y persistilo con `grill_session` usando `action: "configure"` antes de continuar.
 4. Si el modo es `domain-modeling`, cargá el skill de domain modeling y contrastá el snapshot con los archivos actuales. Si difieren, mostrá la contradicción y resolvela antes de avanzar.
-5. Mostrá brevemente el tema, las decisiones resueltas, lo pendiente y el próximo bloque recomendado.
-6. Reevaluá sobre las ramas pendientes si hace falta análisis adaptativo usando los criterios de la Fase 0. Pedí que elija **Grillado rápido** o **Grillado pregunta a pregunta** mediante `ask_user_question`, marcando la recomendación resultante y explicando sus señales concretas; cancelar pausa la sesión.
-7. Continuá en la modalidad elegida desde la siguiente decisión pendiente; no repitas preguntas ya resueltas salvo que el usuario quiera revisarlas.
+5. Si existe un cuestionario exportado con respuestas completadas (ver **Exportar cuestionario**), leelo e incorporá cada respuesta como decisión resuelta con su checkpoint; repreguntá solo lo ambiguo.
+6. Mostrá brevemente el tema, las decisiones resueltas, lo pendiente y el próximo bloque recomendado.
+7. Reevaluá sobre las ramas pendientes si hace falta análisis adaptativo usando los criterios de la Fase 0. Pedí que elija **Grillado rápido** o **Grillado pregunta a pregunta** mediante `ask_user_question`, marcando la recomendación resultante y explicando sus señales concretas; cancelar pausa la sesión.
+8. Continuá en la modalidad elegida desde la siguiente decisión pendiente; no repitas preguntas ya resueltas salvo que el usuario quiera revisarlas.
 
 Una sesión finalizada es inmutable. Para cambiarla, duplicala como nueva revisión mediante `select_grill_session`. Para convertirla en spec sin cambiarla, elegí la acción de crear spec SDD del selector; el handoff congelado se usa como fuente.
 
@@ -205,7 +206,23 @@ Si `ask_user_question` indica cancelación:
 2. Escribí un resumen visible de lo resuelto y pendiente.
 3. En modo `domain-modeling`, incluí glosarios modificados, términos resueltos y pendientes, y candidatos a ADR todavía no evaluados.
 4. Invocá `grill_session` con `action: "pause"`, incluyendo resumen, ramas pendientes, secciones y estimación actuales.
-5. Informá el id de la sesión y que puede retomarse con `select_grill_session`.
+5. Ofrecé exportar las decisiones pendientes como cuestionario para un stakeholder sin agente (ver **Exportar cuestionario**).
+6. Informá el id de la sesión y que puede retomarse con `select_grill_session`.
+
+## Exportar cuestionario
+
+Tanto al pausar como en el cierre, ofrecé exportar las decisiones pendientes como `.sdd/grills/<fecha>-<slug>-cuestionario.md`: un cuestionario autocontenido para un tercero sin agente, pensado para pegar en un Google Doc y discutir con un stakeholder. Escribilo como archivo Markdown normal; no reemplaza el snapshot de `grill_session`.
+
+Por cada decisión pendiente incluí:
+
+- contexto breve que la haga entendible sin leer el resto de la sesión;
+- la pregunta y sus opciones;
+- la opción recomendada con su motivo;
+- un espacio explícito para la respuesta.
+
+No uses jerga interna de la sesión ni referencias que el tercero no pueda resolver. Después de escribir el archivo, asegurate de que la sesión quede pausada (`grill_session` con `action: "pause"`) e informá la ruta del cuestionario.
+
+Cuando vuelvan las respuestas, el grill se retoma leyendo ese archivo: registrá cada respuesta como decisión resuelta con su checkpoint, repreguntá solo lo ambiguo y continuá con las ramas restantes.
 
 ## Fase 3: cierre
 
@@ -235,6 +252,7 @@ Recién después del contrato visible, invocá `ask_user_question` con una pregu
 - **Confirmar y crear spec SDD**: si `sdd-spec` está disponible, primero finaliza y congela el handoff; recién después inicia el workflow de spec.
 - **Ajustar una decisión**: vuelve a la rama elegida y retoma la entrevista.
 - **Pausar**: conserva el progreso sin finalizar.
+- **Exportar cuestionario**: escribe las decisiones pendientes o diferidas como cuestionario para un stakeholder sin agente y pausa la sesión hasta que vuelvan las respuestas (ver **Exportar cuestionario**).
 
 No incluyas acciones para implementar o construir. En modo `domain-modeling`, esta confirmación no aprueba ningún ADR.
 

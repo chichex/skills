@@ -92,20 +92,36 @@ Para pausar o guardar, escribir `.sdd/grills/<fecha>-<slug>.md` con:
 <vacío mientras esté paused; contrato completo cuando esté finalized>
 ```
 
+Al pausar, ofrecer además exportar las decisiones pendientes como cuestionario para un tercero (ver **Exportar cuestionario**).
+
 Para retomar:
 
 1. Listar `.sdd/grills/*.md` por fecha si no se indicó una ruta.
 2. Pedir elegir solo si hay más de un candidato razonable.
 3. Leer el archivo completo y contrastar sus hechos con el estado actual del repo.
-4. Mostrar decisiones resueltas, ramas pendientes y próxima pregunta.
-5. No modificar un handoff `finalized`; para revisarlo crear un archivo nuevo con sufijo `-rev-N`.
+4. Si existe un `<fecha>-<slug>-cuestionario.md` con respuestas completadas, leerlo e incorporar cada respuesta como decisión resuelta; repreguntar solo lo ambiguo.
+5. Mostrar decisiones resueltas, ramas pendientes y próxima pregunta.
+6. No modificar un handoff `finalized`; para revisarlo crear un archivo nuevo con sufijo `-rev-N`.
+
+## Exportar cuestionario
+
+Al pausar y en el cierre, ofrecer exportar las decisiones pendientes como `.sdd/grills/<fecha>-<slug>-cuestionario.md`: un cuestionario autocontenido para un tercero sin agente, pensado para pegar en un Google Doc y discutir con un stakeholder.
+
+Por cada decisión pendiente incluir:
+
+1. Contexto breve que la haga entendible sin leer el resto de la sesión.
+2. La pregunta y sus opciones.
+3. La opción recomendada y su motivo.
+4. Un espacio explícito para la respuesta.
+
+No usar jerga interna de la sesión ni referencias que el tercero no pueda resolver. Al exportar, dejar la sesión guardada como `paused` e informar la ruta del cuestionario. Cuando vuelvan las respuestas, retomar el grill leyendo ese archivo: registrar cada respuesta como decisión resuelta, repreguntar solo lo ambiguo y continuar con las ramas restantes.
 
 ## Cierre
 
 Cuando las ramas del alcance estén resueltas:
 
 1. Mostrar en el chat un contrato autocontenido con tema, alcance, hechos, decisiones enumeradas, restricciones, no-objetivos, supuestos, riesgos, pendientes y contexto recomendado para la spec.
-2. Pedir una confirmación explícita y autocontenida: confirmar, ajustar una decisión, pausar o confirmar y crear spec SDD.
+2. Pedir una confirmación explícita y autocontenida: confirmar, ajustar una decisión, pausar, exportar cuestionario para un stakeholder (ver **Exportar cuestionario**) o confirmar y crear spec SDD.
 3. Tras confirmar, guardar el mismo contenido como handoff `finalized` en `.sdd/grills/`.
 4. Si pidió crear spec, cargar `sdd-spec` y continuar con `--from-grill <ruta-del-handoff>`.
 

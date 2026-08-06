@@ -4,7 +4,7 @@ description: Sesión de /grill que además mantiene los docs del dominio (glosar
 disable-model-invocation: true
 ---
 
-Corré una sesión de `/grill` usando el skill `/domain-modeling`.
+Corré una sesión de `/grill` con la configuración de documentación ya fijada en **Grill + documentación de dominio**: invocar este skill equivale a esa elección, así que en la configuración de `/grill` no vuelvas a preguntar por la documentación — solo queda elegir la modalidad de entrevista. Cargá el skill `/domain-modeling` antes de empezar a entrevistar.
 
 Invocar este skill cuenta como el pedido explícito que exige la regla de contaminación cero de `/domain-modeling`: se pueden crear `CONTEXT.md` y `docs/adr/` aunque todavía no existan en el repo. Los ADRs siguen bajo default-deny: 3 criterios con evidencia concreta + OK explícito del usuario por cada uno.
 

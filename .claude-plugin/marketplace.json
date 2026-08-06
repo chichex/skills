@@ -1,0 +1,24 @@
+{
+  "name": "chichex",
+  "owner": {
+    "name": "chichex",
+    "url": "https://github.com/chichex"
+  },
+  "description": "Marketplace de los skills de chichex, instalables como plugin de Claude Code.",
+  "plugins": [
+    {
+      "name": "chichex-skills",
+      "source": "./",
+      "description": "Skills de chichex para Claude Code: familia SDD (contrato de autonomía → spec verificable → ejecución), grill y mini-grill para desambiguar planes y pedidos, TDD, domain modeling y yt-summary.",
+      "category": "engineering",
+      "keywords": [
+        "skills",
+        "sdd",
+        "spec-driven-development",
+        "tdd",
+        "grill",
+        "domain-modeling"
+      ]
+    }
+  ]
+}

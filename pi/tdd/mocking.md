@@ -3,7 +3,7 @@
 Mockear solo en **límites de sistema**:
 
 - APIs externas (pagos, email, etc.)
-- Bases de datos (a veces; preferir una DB de test)
+- Bases de datos (a veces — preferir una DB de test)
 - Tiempo/aleatoriedad
 - File system (a veces)
 

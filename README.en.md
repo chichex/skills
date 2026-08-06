@@ -15,7 +15,7 @@ The heart of the repo, and its original part. A development pipeline with an exp
 | Skill | Stage | What it does |
 |---|---|---|
 | **`sdd-init`** | contract | Explores the repo thoroughly and generates `.sdd/project.md`, the *autonomy contract*: how it's run / tested / built, what environments exist, which one to use for testing, and what can be verified without a human. Every command is **executed** before being documented; anything unverified is flagged. It also captures the *generation policies* the user activates (max PR size, minimum coverage, new dependencies, commit convention, and technology-specific policies — style guides, max lines per file), which `sdd-run` enforces as hard gates or follows as explicit guidelines. |
-| **`sdd-spec`** | spec | Turns a request (free text or an issue) into a **verifiable spec**. It surfaces every inference to disambiguate, cross-checks them against the contract, and issues a verifiability verdict (deterministic TDD / flaky e2e / requires human proof) with a concrete plan per criterion. |
+| **`sdd-spec`** | spec | Turns a request (free text or an issue) into a **verifiable spec**. It surfaces every inference to disambiguate, cross-checks them against the contract, and issues a verifiability verdict (deterministic TDD / flaky e2e / requires human proof) with a concrete plan per criterion. With `--from-grill` (Codex, Pi, and Claude Code) it starts from a finalized `grill` handoff in `.sdd/grills/`: decisions the grill already settled enter the spec as confirmed and are never asked again; the bare launcher offers `De un grill cerrado` whenever handoffs exist. |
 | **`sdd-run`** | execution | Executes a spec end to end: clean worktree, plans against the real code, implements **tests first**, verifies each criterion with its declared mechanism, and finishes in a **PR** with the spec as the body + evidence. |
 
 Invoked bare (no args) they open a **Phase 0 — Launcher** that surfaces the options; passing args/flags skips the menu.
@@ -26,12 +26,12 @@ The disciplines SDD builds on — which I also use standalone, outside the pipel
 
 | Skill | What it does |
 |---|---|
-| **`grill`** | A relentless interview about a plan or design **before** building. It can walk the decision tree in quick mode or one question at a time until reaching shared understanding. In Pi and Codex it can also maintain domain documentation. |
-| **`mini-grill`** | An express `grill`: disambiguates a single request in one to three questions (recommended option first) and confirms the interpretation before acting. If too many decisions surface, it hands off to the full `grill`. |
-| **`grill-with-domain-modeling`** *(Codex/Claude/opencode)* | A `grill` that also maintains the domain docs (`CONTEXT.md` + ADRs) as decisions get resolved. In Pi and Codex this mode can also be selected inside `grill`. |
+| **`grill`** | A relentless interview about a plan or design **before** building. In Codex, Pi, and Claude Code it starts with an upfront reconnaissance (code, domain docs, previous handoffs) that builds the decision tree with its dependencies, persists and resumes sessions in `.sdd/grills/`, can export the pending decisions as a self-contained questionnaire for a stakeholder without an agent (e.g., pasting it into a Google Doc), and on close chains into `sdd-spec --from-grill`. In Claude Code the interview runs **in rounds** over the dependency frontier — each `AskUserQuestion` call presents up to 4 already-unblocked decisions — or one question at a time for dense trees, with a lightweight shortcut when 1-3 questions are enough. In Pi, Codex, and Claude Code it can also maintain domain documentation. |
+| **`mini-grill`** *(Codex/Claude/opencode)* | An express `grill`: disambiguates a single request in one to three questions (recommended option first) and confirms the interpretation before acting. If too many decisions surface, it hands off to the full `grill`. |
+| **`grill-with-domain-modeling`** *(Codex/Claude/opencode)* | A `grill` that also maintains the domain docs (`CONTEXT.md` + ADRs) as decisions get resolved. In Pi, Codex, and Claude Code this mode can also be selected inside `grill`; in Claude Code this skill is a wrapper that pins that choice and skips the configuration question. |
 | **`domain-modeling`** | Keeps the domain model alive while designing: challenges terms, sharpens fuzzy language, and writes the glossary (`CONTEXT.md`) and decisions (`docs/adr/`) the moment they crystallize. Zero-contamination rule: it never introduces the practice into a repo that doesn't already use it. |
-| **`tdd`** | A test-driven development reference: the red → green loop, what makes a good test, where tests live (seams), the anti-patterns. Includes `mocking` and `tests` guides. |
-| **`code-review`** *(Codex/Pi)* | Reviews a PR across three separate axes—correctness and risk, standards, and spec—runs available checks, reports evidence-backed findings, and finally asks whether to post the comments to GitHub. It never posts without explicit confirmation. |
+| **`tdd`** | A test-driven development reference: the red → green loop, what makes a good test, where tests live (seams), the anti-patterns. Includes `mocking` and `tests` guides. Available in all four harnesses; `sdd-run` references its doctrine when declaring the plan's seams and in the tests-first step. |
+| **`code-review`** *(Codex/Pi/opencode)* | Reviews a PR across three separate axes—correctness and risk, standards, and spec—runs available checks, reports evidence-backed findings with the exact preview of the comments, and finally asks whether to post them to GitHub as a single COMMENT review. It never posts without explicit confirmation. |
 | **`github-issue-selector`** *(Codex/Pi)* | Lets you choose or inspect an issue when no specific number was provided. |
 | **`issue-triage`** *(Codex/Pi)* | Analyzes one or more issues against code, tests, and dependencies; recommends grill, spec, a protected quick-run, or an actionable rejection. Joint selections become one canonical issue while originals are closed as superseded. |
 | **`repo-clean`** *(Codex/Pi)* | Leaves the current branch with no pending changes and synchronized with `origin/<branch>`. When uncommitted work exists, it shows the impact and asks whether to preserve or discard it; it never switches branches or force-pushes. |
@@ -40,9 +40,11 @@ The disciplines SDD builds on — which I also use standalone, outside the pipel
 
 SDD doesn't replace these skills — it orchestrates them. The design that precedes a spec is sharpened with `grill` and `domain-modeling`, and `sdd-run` implements following the `tdd` discipline.
 
+Separately, the repo has an **internal skill** at `.claude/skills/harness-port/`: it guides porting and maintaining skills across the four harnesses (identical doctrine, only the interaction layer changes — question tool, invocation syntax, extras like the `agents/openai.yaml` sidecar in Codex or the `compatibility` field in Pi), with the codex/pi `code-review` pair as the canonical example. It's a Claude Code project skill: it only loads while working inside this repo, and it isn't distributed by `install.sh` or the plugin.
+
 ### Pi integration
 
-In Pi, `grill` is the single interview entry point: the user chooses between handoff only and maintaining domain documentation as well. `sdd-spec --from-grill` consumes the confirmed handoff without asking again about settled decisions.
+In Pi, `grill` is the single interview entry point: the user chooses between handoff only and maintaining domain documentation as well. The `sdd-spec --from-grill` chaining works the same as in Codex and Claude Code, with the addition of the `grill-tools` session selector.
 
 The repo also keeps every global Pi extension used by this workflow:
 
@@ -71,10 +73,29 @@ skills/
 ├── opencode/       # versions for opencode      (~/.config/opencode/skills)
 ├── pi/             # skills for Pi               (~/.agents/skills)
 ├── pi-extensions/  # Pi extensions                (~/.pi/agent/extensions)
-└── pi-themes/      # Pi themes                    (~/.pi/agent/themes)
+├── pi-themes/      # Pi themes                    (~/.pi/agent/themes)
+├── .claude/        # the repo's internal project skills (harness-port)
+├── .claude-plugin/ # Claude Code plugin marketplace + manifest
+├── .github/        # CI (GitHub Actions)
+└── scripts/        # frontmatter lint and drift report (used by CI)
 ```
 
+The repo runs CI on GitHub Actions (`.github/workflows/ci.yml`): it validates shell syntax and style (`bash -n` + shellcheck), the frontmatter of every skill (`scripts/lint-frontmatter.sh`, which also runs on local macOS), and the `pi-extensions` tests on Node 26. It also publishes an informational drift report between each skill's per-harness copies (`scripts/drift-report.sh`): the expected divergence is only each harness's interaction layer; a large divergence in doctrine warrants manual review.
+
 ## Installation
+
+### Claude Code: as a plugin (recommended)
+
+The `claude/` skills can be installed as a Claude Code plugin, without cloning the repo or running `install.sh`:
+
+```
+/plugin marketplace add chichex/skills
+/plugin install chichex-skills@chichex
+```
+
+The plugin exposes every skill in `claude/` and updates itself with each push to the repo (no pinned version: Claude Code versions by commit, so each push arrives as an automatic update).
+
+### All harnesses: with `install.sh`
 
 Clone the repo and run `install.sh`. It runs `git pull` and copies each skill—plus Pi extensions, both standalone `.ts` files and directories with `index.ts`—into its tool's folder **without wiping anything else you already have** (it only adds/updates items from this repo):
 
@@ -107,7 +128,7 @@ cp -R pi-extensions/*  ~/.pi/agent/extensions/
 cp pi-themes/*.json    ~/.pi/agent/themes/
 ```
 
-Once installed, Codex invokes them as `$grill`, `$code-review`, `$sdd-spec`, and so on, or loads them from their `description`. Claude Code/opencode use their usual commands. Pi uses `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec`, and equivalents. Run `/reload` in an open Pi session after installing.
+Once installed, Codex invokes them as `$grill`, `$code-review`, `$sdd-spec`, and so on, or loads them from their `description` — with one exception: `sdd-run`'s `agents/openai.yaml` sidecar declares `policy.allow_implicit_invocation: false`, so Codex never triggers it automatically from the user's input and it only runs when invoked explicitly with `$sdd-run`. Claude Code/opencode use their usual commands. Pi uses `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec`, and equivalents. Run `/reload` in an open Pi session after installing.
 
 ## Credits
 
@@ -119,6 +140,8 @@ Four of the **foundational skills** are **based on** **[Matt Pocock](https://git
 | `grill-with-domain-modeling` | `grill-with-docs` |
 | `domain-modeling` | `domain-modeling` |
 | `tdd` | `tdd` |
+
+In addition, `grill`'s **questionnaire export** is inspired by his `to-questionnaire` skill.
 
 The **SDD** family (`sdd-init`, `sdd-spec`, `sdd-run`) is my own: inspired by the same way of working (tracer bullets, tests-first, spec → implementation) as his `to-spec` / `to-tickets` / `implement` / `wayfinder` skills, but with different artifacts — the `.sdd/project.md` autonomy contract and the verifiability verdict.
 

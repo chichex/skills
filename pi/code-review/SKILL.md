@@ -1,16 +1,16 @@
 ---
 name: code-review
-description: Revisa un Pull Request de GitHub contra el codigo real en tres ejes separados — Correctness & Risk, Standards y Spec — con evidencia por archivo/linea, severidad, confianza y verificaciones ejecutadas. Al terminar muestra exactamente que comments publicaria y pregunta si el usuario quiere postearlos; nunca publica, aprueba ni pide cambios sin confirmacion explicita. Usar SIEMPRE que el usuario pida revisar, auditar o comentar un PR de GitHub.
+description: Revisa un Pull Request de GitHub contra el código real en tres ejes separados — Correctness & Risk, Standards y Spec — con evidencia por archivo/línea, severidad, confianza y verificaciones ejecutadas. Al terminar muestra exactamente qué comments publicaría y pregunta si el usuario quiere postearlos; nunca publica, aprueba ni pide cambios sin confirmación explícita. Usar SIEMPRE que el usuario pida revisar, auditar o comentar un PR de GitHub.
 compatibility: Requiere un repositorio git, GitHub CLI (gh) autenticado y acceso de lectura al PR. Publicar comments requiere permiso de escritura en el repositorio.
 ---
 
-Revisa un PR de GitHub sin modificar codigo ni cambiar el checkout del usuario. La review responde tres preguntas por separado:
+Revisa un PR de GitHub sin modificar código ni cambiar el checkout del usuario. La review responde tres preguntas por separado:
 
-1. **Correctness & Risk** — ¿el cambio funciona y es seguro en el contexto real del codigo?
+1. **Correctness & Risk** — ¿el cambio funciona y es seguro en el contexto real del código?
 2. **Standards** — ¿respeta las instrucciones y convenciones documentadas por el repo?
 3. **Spec** — ¿implementa lo pedido, completo y sin scope creep?
 
-La review termina primero en pantalla. Despues muestra una preview exacta y usa `ask_user_question` para decidir si publicar los comments en GitHub. La opcion segura por default es no publicar.
+La review termina primero en pantalla. Después muestra una preview exacta y usa `ask_user_question` para decidir si publicar los comments en GitHub. La opción segura por default es no publicar.
 
 ## Argumentos
 
@@ -18,15 +18,15 @@ La review termina primero en pantalla. Despues muestra una preview exacta y usa 
 /skill:code-review [<numero de PR | URL de PR>]
 ```
 
-- Con numero o URL: revisar ese PR.
-- Sin argumento: intentar resolver el PR abierto de la branch actual con `gh pr view`. Si no hay uno inequivoco, pedir numero o URL con `ask_user_question`.
+- Con número o URL: revisar ese PR.
+- Sin argumento: intentar resolver el PR abierto de la branch actual con `gh pr view`. Si no hay uno inequívoco, pedir número o URL con `ask_user_question`.
 - Solo revisar PRs del repositorio GitHub correspondiente al cwd. Si la URL apunta a otro repo, frenar y pedir ejecutar el skill dentro de ese checkout.
 
 ## Fase 1 — Preflight y change set
 
-1. Confirmar que el cwd esta dentro de un repo git y que `gh auth status` funciona. No ejecutar login ni cambiar credenciales.
+1. Confirmar que el cwd está dentro de un repo git y que `gh auth status` funciona. No ejecutar login ni cambiar credenciales.
 2. Resolver el PR y guardar metadata con `gh pr view`: `number`, `title`, `body`, `url`, `baseRefName`, `headRefName`, `headRefOid`, `author`, `isDraft`, `files`, `commits`, `comments`, `reviews` y `closingIssuesReferences`.
-3. Confirmar que el remote del checkout corresponde al repo del PR. No revisar una URL externa contra el codigo equivocado.
+3. Confirmar que el remote del checkout corresponde al repo del PR. No revisar una URL externa contra el código equivocado.
 4. Capturar `git status --porcelain`. Los cambios locales, staged, unstaged y untracked NO forman parte del PR: no mezclarlos con la review y declararlos en Limitaciones. Nunca hacer stash, reset, checkout ni commit.
 5. Traer objetos sin cambiar branches:
    - fetch de la branch base y guardar su SHA;
@@ -37,11 +37,11 @@ La review termina primero en pantalla. Despues muestra una preview exacta y usa 
    - lista de commits;
    - `--stat` y lista de archivos;
    - diff completo;
-   - diff `--unified=0`, que define que lineas admiten comments inline.
+   - diff `--unified=0`, que define qué líneas admiten comments inline.
 
-Una referencia invalida, un PR cerrado que no se pueda obtener, un head inconsistente o un diff vacio frenan la review con diagnostico concreto. No improvisar otra base.
+Una referencia inválida, un PR cerrado que no se pueda obtener, un head inconsistente o un diff vacío frenan la review con diagnóstico concreto. No improvisar otra base.
 
-Para leer el codigo completo en el estado del PR sin tocar el checkout, preferir un worktree temporal detached en `<head-sha>`. Eliminarlo al terminar. Si no se puede crear, usar `git show <head-sha>:<path>` y declarar la limitacion.
+Para leer el código completo en el estado del PR sin tocar el checkout, preferir un worktree temporal detached en `<head-sha>`. Eliminarlo al terminar. Si no se puede crear, usar `git show <head-sha>:<path>` y declarar la limitación.
 
 ## Fase 2 — Fuentes autoritativas
 
@@ -49,25 +49,25 @@ Para leer el codigo completo en el estado del PR sin tocar el checkout, preferir
 
 Buscar y leer las fuentes aplicables al archivo cambiado, incluyendo cuando existan:
 
-- `AGENTS.md` y `CLAUDE.md` (tambien los anidados; gana el mas cercano al archivo);
+- `AGENTS.md` y `CLAUDE.md` (también los anidados; gana el más cercano al archivo);
 - `.sdd/project.md`;
 - `CONTRIBUTING.md`, `CODING_STANDARDS.md`, `STYLEGUIDE.md`;
-- README y documentacion de arquitectura relevante;
-- configuracion de formatter, linter, typechecker, tests y CI.
+- README y documentación de arquitectura relevante;
+- configuración de formatter, linter, typechecker, tests y CI.
 
-Una regla documentada del repo gana sobre cualquier heuristica de este skill. Citar archivo y regla al reportar una violacion.
+Una regla documentada del repo gana sobre cualquier heurística de este skill. Citar archivo y regla al reportar una violación.
 
 ### Spec
 
 Buscar la fuente funcional en este orden:
 
-1. body, titulo, discussion y metadata del PR;
+1. body, título, discussion y metadata del PR;
 2. issues cerrados/referenciados por el PR;
 3. issue/spec mencionado en commits;
-4. `.sdd/specs/`, `specs/`, `docs/`, `prd/` u otra ruta explicita del repo que coincida con el PR;
+4. `.sdd/specs/`, `specs/`, `docs/`, `prd/` u otra ruta explícita del repo que coincida con el PR;
 5. ruta que haya dado el usuario.
 
-El PR body por si solo puede ser spec si declara comportamiento esperado. Si hay fuentes en conflicto, reportar el conflicto: no elegir silenciosamente. Si no hay spec, la seccion Spec dice `No hay spec verificable disponible`; no inventar requisitos.
+El PR body por sí solo puede ser spec si declara comportamiento esperado. Si hay fuentes en conflicto, reportar el conflicto: no elegir silenciosamente. Si no hay spec, la sección Spec dice `No hay spec verificable disponible`; no inventar requisitos.
 
 ## Fase 3 — Contexto y verificaciones
 
@@ -75,12 +75,12 @@ No revisar hunks aislados. Por cada zona relevante leer, desde el estado del hea
 
 - archivo completo;
 - callers y callees;
-- tipos, contratos y configuracion asociados;
+- tipos, contratos y configuración asociados;
 - tests existentes y nuevos;
-- implementaciones analogas;
+- implementaciones análogas;
 - migraciones y compatibilidad cuando aplique.
 
-Ejecutar checks seguros que el repo documente y que puedan correr sobre el head exacto del PR: primero focalizados, despues una escalera razonable de tests, typecheck, lint y build. Usar `.sdd/project.md` como fuente principal si existe. No instalar dependencias, levantar servicios pagos, desplegar, migrar datos compartidos ni escribir fuera de un worktree temporal solo para completar una review.
+Ejecutar checks seguros que el repo documente y que puedan correr sobre el head exacto del PR: primero focalizados, después una escalera razonable de tests, typecheck, lint y build. Usar `.sdd/project.md` como fuente principal si existe. No instalar dependencias, levantar servicios pagos, desplegar, migrar datos compartidos ni escribir fuera de un worktree temporal solo para completar una review.
 
 Cada comando queda como `PASS`, `FAIL` o `NO EJECUTADO`, con motivo. Un timeout o proceso interrumpido es no concluyente, nunca PASS. Una falla preexistente solo se atribuye al PR si hay evidencia causal.
 
@@ -88,22 +88,22 @@ Cada comando queda como `PASS`, `FAIL` o `NO EJECUTADO`, con motivo. Un timeout 
 
 ### Correctness & Risk
 
-Buscar problemas introducidos por el diff, no defectos historicos sin relacion. Evaluar segun aplique:
+Buscar problemas introducidos por el diff, no defectos históricos sin relación. Evaluar según aplique:
 
-- logica, estados invalidos, errores y casos borde;
-- autorizacion, privacidad, secretos e injection;
+- lógica, estados inválidos, errores y casos borde;
+- autorización, privacidad, secretos e injection;
 - concurrencia, idempotencia y orden de eventos;
 - integridad de datos, migraciones, rollback y compatibilidad;
-- contratos publicos, API, schemas y consumidores existentes;
+- contratos públicos, API, schemas y consumidores existentes;
 - performance, recursos, retries y failure modes;
-- observabilidad y operacion;
+- observabilidad y operación;
 - cobertura real de tests y tests que pasan sin observar el comportamiento.
 
 ### Standards
 
-Comparar con las fuentes documentadas. Ademas, usar como heuristicas — nunca como violaciones automaticas — nombres misteriosos, duplicacion, feature envy, data clumps, primitive obsession, switches repetidos, shotgun surgery, divergent change, speculative generality, message chains, middle man y herencia rechazada.
+Comparar con las fuentes documentadas. Además, usar como heurísticas — nunca como violaciones automáticas — nombres misteriosos, duplicación, feature envy, data clumps, primitive obsession, switches repetidos, shotgun surgery, divergent change, speculative generality, message chains, middle man y herencia rechazada.
 
-No recomendar una abstraccion solo porque aparece un smell. Explicar el costo concreto en este PR; si no hay impacto demostrable, omitirlo. No repetir findings que formatter/linter/typechecker ya reportan mejor: incluir el resultado de la herramienta.
+No recomendar una abstracción solo porque aparece un smell. Explicar el costo concreto en este PR; si no hay impacto demostrable, omitirlo. No repetir findings que formatter/linter/typechecker ya reportan mejor: incluir el resultado de la herramienta.
 
 ### Spec
 
@@ -131,13 +131,13 @@ Reportar solo problemas accionables introducidos por el PR. Omitir gustos person
 
 Severidades:
 
-- **BLOCKING** — riesgo de seguridad/integridad, comportamiento central incorrecto, perdida de datos o PR no desplegable.
-- **MAJOR** — bug, requisito importante faltante, regresion o riesgo significativo que deberia resolverse antes del merge.
-- **MINOR** — problema real y acotado que conviene corregir, sin bloquear por si solo.
+- **BLOCKING** — riesgo de seguridad/integridad, comportamiento central incorrecto, pérdida de datos o PR no desplegable.
+- **MAJOR** — bug, requisito importante faltante, regresión o riesgo significativo que debería resolverse antes del merge.
+- **MINOR** — problema real y acotado que conviene corregir, sin bloquear por sí solo.
 
 Confianza: `alta`, `media` o `baja`. No publicar findings de confianza baja como afirmaciones: presentarlos en Limitaciones/preguntas, no como comments inline.
 
-Cuando no haya findings, decirlo explicitamente; no inventar uno para justificar la review.
+Cuando no haya findings, decirlo explícitamente; no inventar uno para justificar la review.
 
 ## Reporte previo a publicar
 
@@ -169,43 +169,43 @@ Mostrar siempre, antes de preguntar:
 - head revisado: `<sha>`
 ```
 
-Despues mostrar `## Preview de publicacion` con el body del review y cada comment exactamente como se enviaria. Un finding sobre una linea agregada/modificada del diff va inline (`RIGHT`); uno sobre una linea eliminada va inline (`LEFT`). Si la ubicacion no pertenece al diff, incluirlo en el body general y no inventar una coordenada.
+Después mostrar `## Preview de publicacion` con el body del review y cada comment exactamente como se enviaría. Un finding sobre una línea agregada/modificada del diff va inline (`RIGHT`); uno sobre una línea eliminada va inline (`LEFT`). Si la ubicación no pertenece al diff, incluirlo en el body general y no inventar una coordenada.
 
-## Gate obligatorio de publicacion
+## Gate obligatorio de publicación
 
 Luego de mostrar reporte y preview, usar `ask_user_question` exactamente una vez:
 
 - Pregunta: `Review terminada para el PR #<n>. ¿Queres publicar estos comments en GitHub?`
-- `No publicar (Recomendado)` — termina dejando todo solo en la conversacion.
-- `Publicar comments` — crea un unico review de tipo `COMMENT` con el resumen y los comments inline.
+- `No publicar (Recomendado)` — termina dejando todo solo en la conversación.
+- `Publicar comments` — crea un único review de tipo `COMMENT` con el resumen y los comments inline.
 
-`No publicar` es la opcion recomendada porque escribir en GitHub es un side effect externo. Nunca interpretar silencio, un pedido previo de "revisar" ni una autorizacion generica como permiso para publicar.
+`No publicar` es la opción recomendada porque escribir en GitHub es un side effect externo. Nunca interpretar silencio, un pedido previo de "revisar" ni una autorización genérica como permiso para publicar.
 
-## Publicacion
+## Publicación
 
 Solo si el usuario elige `Publicar comments`:
 
-1. Volver a consultar `headRefOid` inmediatamente antes del POST. Si cambio respecto del SHA revisado, NO publicar: la review quedo stale y hay que correrla de nuevo.
+1. Volver a consultar `headRefOid` inmediatamente antes del POST. Si cambió respecto del SHA revisado, NO publicar: la review quedó stale y hay que correrla de nuevo.
 2. Construir un JSON temporal para `POST /repos/{owner}/{repo}/pulls/{number}/reviews` con:
    - `commit_id`: SHA revisado;
    - `event`: `COMMENT`;
    - `body`: resumen, verificaciones y findings no-inline;
-   - `comments`: `{path, line, side, body}` solo para coordenadas validas del diff.
-3. Hacer una sola llamada con `gh api --method POST ... --input <payload>`. No usar ademas `gh pr comment`, para no duplicar contenido.
-4. Si el POST da resultado ambiguo o timeout, inspeccionar reviews/comments existentes antes de reintentar. Nunca duplicar una review automaticamente.
+   - `comments`: `{path, line, side, body}` solo para coordenadas válidas del diff.
+3. Hacer una sola llamada con `gh api --method POST ... --input <payload>`. No usar además `gh pr comment`, para no duplicar contenido.
+4. Si el POST da resultado ambiguo o timeout, inspeccionar reviews/comments existentes antes de reintentar. Nunca duplicar una review automáticamente.
 5. Reportar URL/ID del review publicado y cantidad de comments inline. Borrar payloads y worktrees temporales.
 
-La publicacion siempre usa `COMMENT`: este skill nunca `APPROVE`, nunca `REQUEST_CHANGES`, nunca mergea y nunca modifica codigo.
+La publicación siempre usa `COMMENT`: este skill nunca `APPROVE`, nunca `REQUEST_CHANGES`, nunca mergea y nunca modifica código.
 
 ## MUST DO
 
 - Revisar el merge-base contra el head SHA exacto del PR.
 - Leer contexto completo y reglas del repo, no solo el patch.
 - Mantener Correctness & Risk, Standards y Spec separados.
-- Citar evidencia, severidad, confianza, impacto y ubicacion por finding.
+- Citar evidencia, severidad, confianza, impacto y ubicación por finding.
 - Mostrar reporte y preview antes del gate final.
-- Pedir confirmacion explicita con `ask_user_question` antes de cualquier escritura en GitHub.
-- Revalidar el head SHA antes de publicar y usar un unico review `COMMENT`.
+- Pedir confirmación explícita con `ask_user_question` antes de cualquier escritura en GitHub.
+- Revalidar el head SHA antes de publicar y usar un único review `COMMENT`.
 - Limpiar worktrees y archivos temporales.
 
 ## MUST NOT DO
@@ -215,4 +215,4 @@ La publicacion siempre usa `COMMENT`: este skill nunca `APPROVE`, nunca `REQUEST
 - No inventar spec, reglas, evidencia, resultados de checks ni coordenadas inline.
 - No confundir smells con reglas duras ni pedir abstracciones sin impacto concreto.
 - No publicar findings de confianza baja como acusaciones.
-- No postear, aprobar, pedir cambios, pushear, mergear ni cerrar el PR sin permiso explicito; incluso con permiso, este skill solo puede postear un review `COMMENT`.
+- No postear, aprobar, pedir cambios, pushear, mergear ni cerrar el PR sin permiso explícito; incluso con permiso, este skill solo puede postear un review `COMMENT`.
