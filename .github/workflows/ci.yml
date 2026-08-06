@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    name: Shell (bash -n + shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n
+        run: |
+          bash -n install.sh
+          bash -n scripts/lint-frontmatter.sh
+          bash -n scripts/drift-report.sh
+      - name: shellcheck
+        run: shellcheck install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh
+
+  frontmatter:
+    name: Frontmatter de skills
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint de frontmatter
+        run: bash scripts/lint-frontmatter.sh
+
+  tests:
+    name: Tests de extensiones Pi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - name: node --test
+        run: node --test pi-extensions/*/*.test.ts
+
+  drift:
+    name: Drift entre harnesses (informativo)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reporte de drift
+        continue-on-error: true
+        run: bash scripts/drift-report.sh | tee -a "$GITHUB_STEP_SUMMARY"
