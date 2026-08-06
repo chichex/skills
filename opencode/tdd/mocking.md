@@ -1,6 +1,6 @@
-# Cuando mockear
+# Cuándo mockear
 
-Mockear solo en **limites de sistema**:
+Mockear solo en **límites de sistema**:
 
 - APIs externas (pagos, email, etc.)
 - Bases de datos (a veces; preferir una DB de test)
@@ -9,44 +9,44 @@ Mockear solo en **limites de sistema**:
 
 No mockear:
 
-- Tus propias clases/modulos
+- Tus propias clases/módulos
 - Colaboradores internos
-- Cualquier cosa que controlas
+- Cualquier cosa que controlás
 
-## Disenar para mockeabilidad
+## Diseñar para mockeabilidad
 
-En los limites de sistema, disenar interfaces faciles de mockear:
+En los límites de sistema, diseñar interfaces fáciles de mockear:
 
 **1. Usar dependency injection**
 
-Pasar las dependencias externas por parametro en vez de crearlas adentro:
+Pasar las dependencias externas por parámetro en vez de crearlas adentro:
 
 ```typescript
-// Facil de mockear
+// Fácil de mockear
 function processPayment(order, paymentClient) {
   return paymentClient.charge(order.total);
 }
 
-// Dificil de mockear
+// Difícil de mockear
 function processPayment(order) {
   const client = new StripeClient(process.env.STRIPE_KEY);
   return client.charge(order.total);
 }
 ```
 
-**2. Preferir interfaces estilo SDK sobre fetchers genericos**
+**2. Preferir interfaces estilo SDK sobre fetchers genéricos**
 
-Crear funciones especificas por operacion externa en vez de una funcion generica con logica condicional:
+Crear funciones específicas por operación externa en vez de una función genérica con lógica condicional:
 
 ```typescript
-// GOOD: cada funcion es mockeable por separado
+// GOOD: cada función es mockeable por separado
 const api = {
   getUser: (id) => fetch(`/users/${id}`),
   getOrders: (userId) => fetch(`/users/${userId}/orders`),
   createOrder: (data) => fetch('/orders', { method: 'POST', body: data }),
 };
 
-// BAD: mockear exige logica condicional adentro del mock
+// BAD: mockear exige lógica condicional adentro del mock
 const api = {
   fetch: (endpoint, options) => fetch(endpoint, options),
 };
@@ -54,7 +54,7 @@ const api = {
 
 El enfoque SDK significa:
 
-- Cada mock devuelve una forma especifica
-- Cero logica condicional en el setup del test
-- Se ve facil que endpoints ejercita cada test
+- Cada mock devuelve una forma específica
+- Cero lógica condicional en el setup del test
+- Se ve fácil qué endpoints ejercita cada test
 - Type safety por endpoint

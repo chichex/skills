@@ -2,7 +2,7 @@
 
 ## Tests buenos
 
-**Estilo integracion**: testear a traves de interfaces reales, no mocks de partes internas.
+**Estilo integración**: testear a través de interfaces reales, no mocks de partes internas.
 
 ```typescript
 // GOOD: testea comportamiento observable
@@ -14,20 +14,20 @@ test("user can checkout with valid cart", async () => {
 });
 ```
 
-Caracteristicas:
+Características:
 
 - Testea comportamiento que le importa a usuarios/callers
-- Usa solo la API publica
+- Usa solo la API pública
 - Sobrevive refactors internos
-- Describe QUE, no COMO
-- Una asercion logica por test
+- Describe QUÉ, no CÓMO
+- Una aserción lógica por test
 
 ## Tests malos
 
-**Tests de detalle de implementacion**: acoplados a la estructura interna.
+**Tests de detalle de implementación**: acoplados a la estructura interna.
 
 ```typescript
-// BAD: testea detalles de implementacion
+// BAD: testea detalles de implementación
 test("checkout calls paymentService.process", async () => {
   const mockPayment = jest.mock(paymentService);
   await checkout(cart, payment);
@@ -35,13 +35,13 @@ test("checkout calls paymentService.process", async () => {
 });
 ```
 
-Senales de alarma:
+Señales de alarma:
 
 - Mockear colaboradores internos
-- Testear metodos privados
+- Testear métodos privados
 - Asertar sobre cantidad u orden de llamadas
 - El test se rompe al refactorizar sin cambio de comportamiento
-- El nombre del test describe COMO y no QUE
+- El nombre del test describe CÓMO y no QUÉ
 - Verificar por medios externos en vez de por la interfaz
 
 ```typescript
@@ -52,7 +52,7 @@ test("createUser saves to database", async () => {
   expect(row).toBeDefined();
 });
 
-// GOOD: verifica a traves de la interfaz
+// GOOD: verifica a través de la interfaz
 test("createUser makes user retrievable", async () => {
   const user = await createUser({ name: "Alice" });
   const retrieved = await getUser(user.id);
@@ -60,10 +60,10 @@ test("createUser makes user retrievable", async () => {
 });
 ```
 
-**Tests tautologicos**: el valor esperado re-enuncia la implementacion, asi que el test pasa por construccion.
+**Tests tautológicos**: el valor esperado re-enuncia la implementación, así que el test pasa por construcción.
 
 ```typescript
-// BAD: el valor esperado se recomputa igual que lo computa el codigo
+// BAD: el valor esperado se recomputa igual que lo computa el código
 test("calculateTotal sums line items", () => {
   const items = [{ price: 10 }, { price: 5 }];
   const expected = items.reduce((sum, i) => sum + i.price, 0);
