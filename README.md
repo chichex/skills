@@ -34,10 +34,11 @@ Las disciplinas sobre las que SDD se apoya — y que también uso sueltas, fuera
 | **`issue-triage`** *(Codex/Pi)* | Analiza uno o varios issues contra código, tests y dependencias; recomienda grill, spec, quick-run protegido o rechazo accionable. Para selecciones conjuntas crea un issue canónico y cierra los originales como reemplazados. |
 | **`repo-clean`** *(Codex/Pi)* | Deja el branch actual sin cambios pendientes y sincronizado con `origin/<branch>`. Si hay trabajo sin commit, muestra el impacto y pregunta si conservarlo o descartarlo; nunca cambia de branch ni hace force-push. |
 | **`find-skills`** *(Codex/Pi)* | Busca skills instalables en el ecosistema abierto mediante `npx skills`. Vendorizado desde `vercel-labs/skills`. |
-| **`harness-port`** *(Claude)* | Guía el porteo y mantenimiento de skills entre los cuatro harnesses de este repo: doctrina idéntica, solo cambia la capa de interacción (tool de preguntas, sintaxis de invocación, extras como el sidecar `agents/openai.yaml` en Codex o el campo `compatibility` en Pi). Usa el par codex/pi de `code-review` como ejemplo canónico y cierra con un checklist de consistencia. |
 | **`yt-summary`** *(Codex/Claude)* | Descarga con `yt-dlp` un único track de subtítulos de YouTube y guía un resumen con TL;DR, puntos clave y timestamps. |
 
 SDD no reemplaza a estos skills: los orquesta. El diseño previo a una spec se afila con `grill` y `domain-modeling`, y `sdd-run` implementa siguiendo la disciplina de `tdd`.
+
+Aparte, el repo tiene un **skill interno** en `.claude/skills/harness-port/`: guía el porteo y mantenimiento de skills entre los cuatro harnesses (doctrina idéntica, solo cambia la capa de interacción — tool de preguntas, sintaxis de invocación, extras como el sidecar `agents/openai.yaml` en Codex o el campo `compatibility` en Pi), con el par codex/pi de `code-review` como ejemplo canónico. Es un project skill de Claude Code: solo se carga trabajando dentro de este repo, y no se distribuye ni por `install.sh` ni por el plugin.
 
 ### Integración con Pi
 
@@ -71,6 +72,7 @@ skills/
 ├── pi/             # skills para Pi               (~/.agents/skills)
 ├── pi-extensions/  # extensiones de Pi             (~/.pi/agent/extensions)
 ├── pi-themes/      # themes de Pi                  (~/.pi/agent/themes)
+├── .claude/        # project skills internos del repo (harness-port)
 ├── .claude-plugin/ # marketplace + manifest del plugin de Claude Code
 ├── .github/        # CI (GitHub Actions)
 └── scripts/        # lint de frontmatter y reporte de drift (los usa el CI)
