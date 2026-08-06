@@ -1,29 +1,32 @@
 ---
 name: sdd-spec
 description: >-
-  Convierte un pedido de feature (texto libre o issue de GitHub) en una spec verificable — el "que" contra el que /sdd-run trabaja despues. Expone TODAS las inferencias que el modelo hace para que el usuario elija cuales desambiguar, cruza el pedido contra el contrato de autonomia (.sdd/project.md) y emite un veredicto de que tan verificable va a ser la ejecucion (TDD determinista vs e2e flaky vs exige prueba humana), con un plan de verificacion concreto elegido con criterio. Usar SIEMPRE que el usuario quiera especificar una feature antes de implementarla, escribir criterios de aceptacion, convertir un issue en spec, o diga "hagamos la spec de X", "definamos bien esto antes de codear", "especifica este issue". Exige .sdd/project.md: si no existe, hay que correr /sdd-init primero.
+  Convierte un pedido de feature (texto libre, issue de GitHub o handoff confirmado de grill) en una spec verificable — el "qué" contra el que /sdd-run trabaja después. Expone TODAS las inferencias que el modelo hace para que el usuario elija cuáles desambiguar, cruza el pedido contra el contrato de autonomía (.sdd/project.md) y emite un veredicto de qué tan verificable va a ser la ejecución (TDD determinista vs e2e flaky vs exige prueba humana), con un plan de verificación concreto elegido con criterio. Usar SIEMPRE que el usuario quiera especificar una feature antes de implementarla, convertir un handoff o sesión finalizada de grill en spec, escribir criterios de aceptación, convertir un issue en spec, o diga "hagamos la spec de X", "definamos bien esto antes de codear", "especifica este issue". Exige .sdd/project.md: si no existe, hay que correr /sdd-init primero.
 ---
 
-Convierte un pedido en una spec: el **"que" verificable** que `/sdd-run` usa como criterio de terminado. La spec no es prosa aspiracional: cada criterio de aceptacion declara COMO se va a verificar y que tan confiable es esa verificacion en ESTE repo. Los argumentos pueden traer el pedido libre ("agregar dark mode al settings"), una referencia a issue (`#42` o URL), y/o flags.
+Convierte un pedido en una spec: el **"qué" verificable** que `/sdd-run` usa como criterio de terminado. La spec no es prosa aspiracional: cada criterio de aceptación declara CÓMO se va a verificar y qué tan confiable es esa verificación en ESTE repo. Los argumentos pueden traer el pedido libre ("agregar dark mode al settings"), una referencia a issue (`#42` o URL), un handoff confirmado de `grill`, y/o flags.
 
 Dos ideas fuerza:
 
-1. **Sin contrato no hay spec.** El veredicto de verificabilidad sale de cruzar el pedido con lo que `.sdd/project.md` dice que este repo puede correr HOY. Sin contrato, ese veredicto seria inventado.
-2. **Las inferencias van sobre la mesa.** Toda decision que el pedido no fija explicitamente es una inferencia del modelo, y el usuario — no el skill — decide cuales revisar. Inferencias ocultas producen specs que parecen completas pero encodean decisiones que nadie tomo.
+1. **Sin contrato no hay spec.** El veredicto de verificabilidad sale de cruzar el pedido con lo que `.sdd/project.md` dice que este repo puede correr HOY. Sin contrato, ese veredicto sería inventado.
+2. **Las inferencias van sobre la mesa.** Toda decisión que el pedido no fija explícitamente es una inferencia del modelo, y el usuario — no el skill — decide cuáles revisar. Inferencias ocultas producen specs que parecen completas pero encodean decisiones que nadie tomó.
 
 ## Argumentos
 
 ```text
-/sdd-spec [pedido libre | #NN | URL de issue] [--out local|issue] [--assume] [--ultracode]
+/sdd-spec [pedido libre | #NN | URL de issue] [--from-grill [ruta.md]] [--out local|issue] [--assume] [--ultracode]
 ```
 
+- `--from-grill [ruta.md]` — usa como fuente autoritativa un handoff finalizado en `.sdd/grills/` o en la ruta indicada: las decisiones que el handoff ya cierra entran a la spec como confirmadas y NO se vuelven a preguntar; solo se desambigua lo que el handoff deja abierto. Si no trae ruta, listar los handoffs `finalized` del proyecto y preguntar cuál con `AskUserQuestion` solo cuando haya más de uno. Usar la ruta `Proyecto` declarada en el handoff como raíz operativa.
 - `--out local|issue` — destino de la spec sin preguntar. `local` = `.sdd/specs/`, `issue` = actualizar el issue de origen (o crear uno nuevo si el pedido fue libre).
-- `--assume` — cero preguntas: cada inferencia se resuelve con el sesgo minimo seguro y queda marcada `[ASSUMED]`; el mecanismo de verificacion propuesto se toma sin confirmar; la spec queda en estado `draft`. Para correr desatendido.
-- `--ultracode` — sube el motor a orquestacion multi-agente con la tool `Workflow`. NO cambia QUE se produce — misma spec, misma estructura, misma doctrina (inferencias TODAS sobre la mesa, veredicto anclado en el contrato) — cambia el COMO: exploracion en fan-out, y un panel adversarial que caza inferencias escondidas en la prosa, refuta grados de verificabilidad inflados y CAs no observables. Ortogonal a `--out`/`--assume` (componen). Default siempre normal; ultracode es opt-in. Ver "## Ultracode".
+- `--assume` — cero preguntas: cada inferencia nueva se resuelve con el sesgo mínimo seguro y queda marcada `[ASSUMED]`; el mecanismo de verificación propuesto se toma sin confirmar; la spec queda en estado `draft`. Para correr desatendido. Las decisiones ya confirmadas por grill nunca se degradan a supuestos.
+- `--ultracode` — sube el motor a orquestación multi-agente con la tool `Workflow`. NO cambia QUÉ se produce — misma spec, misma estructura, misma doctrina (inferencias TODAS sobre la mesa, veredicto anclado en el contrato) — cambia el CÓMO: exploración en fan-out, y un panel adversarial que caza inferencias escondidas en la prosa, refuta grados de verificabilidad inflados y CAs no observables. Ortogonal a `--from-grill`/`--out`/`--assume` (componen). Default siempre normal; ultracode es opt-in. Ver "## Ultracode".
 
 ## Fase 0 — Lanzador (solo con `/sdd-spec` pelado)
 
-Dispara SOLO cuando el pedido viene vacio. Si trajo pedido, issue o flags, saltear: el usuario ya dijo por donde va.
+Dispara SOLO cuando el pedido viene vacío y no vino `--from-grill`. Si trajo pedido, issue, handoff o flags, saltear: el usuario ya dijo por dónde va.
+
+Antes de imprimir el menú, chequear rápido si `.sdd/grills/` existe y contiene handoffs: si no hay ninguno, omitir la línea y la opción `De un grill cerrado`.
 
 ```text
 /sdd-spec convierte un pedido en una spec verificable: expone lo que el modelo esta
@@ -32,36 +35,41 @@ ejecucion segun el contrato de autonomia (.sdd/project.md).
 
   • De una descripcion   — me escribis el pedido y arranco.
   • De un issue abierto  — listo los issues del repo y elegis cual especificar.
+  • De un grill cerrado  — retomo un handoff confirmado de .sdd/grills/ como fuente.
 
-Atajo: /sdd-spec <pedido | #NN> [--out local|issue] [--assume] [--ultracode] saltea este menu.
+Atajo: /sdd-spec <pedido | #NN> [--from-grill [ruta.md]] [--out local|issue] [--assume] [--ultracode] saltea este menu.
 ```
 
-Luego usar `AskUserQuestion` — una pregunta, "¿De donde sale la spec?":
+Luego usar `AskUserQuestion` — una pregunta, "¿De dónde sale la spec?":
 
-1. `De una descripcion (Recomendado)` — el usuario escribe el pedido (via Other o en el mensaje siguiente).
-2. `De un issue abierto` — correr `gh issue list --state open --limit 20`, mostrar la lista y preguntar cual.
+1. `De una descripcion (Recomendado)` — el usuario escribe el pedido (vía Other o en el mensaje siguiente).
+2. `De un issue abierto` — correr `gh issue list --state open --limit 20`, mostrar la lista y preguntar cuál.
+3. `De un grill cerrado` — solo si hay handoffs en `.sdd/grills/`: listar `.sdd/grills/*.md` y filtrar los que declaren `Estado: finalized`. Si queda exactamente uno, usarlo directo informando cuál; solo cuando haya más de uno, preguntar cuál con un `AskUserQuestion` aparte (una opción por handoff, el más reciente primero y marcado `(Recomendado)`; si hay más de 4, los más recientes como opciones y el resto vía Other). El handoff elegido se usa sin mutarlo — equivale a `--from-grill <ruta>`.
 
-Resuelto el origen, preguntar la intensidad con un segundo `AskUserQuestion` — "¿Con que intensidad?": `Normal (Recomendado)` — un hilo, la de siempre — / `Ultracode` — exploracion en fan-out y un panel adversarial que ataca la spec (inferencias ocultas, veredictos inflados, CAs no observables), mas costo en tokens (equivale a `--ultracode`; ver "## Ultracode").
+Resuelto el origen, preguntar la intensidad con un segundo `AskUserQuestion` — "¿Con qué intensidad?": `Normal (Recomendado)` — un hilo, la de siempre — / `Ultracode` — exploración en fan-out y un panel adversarial que ataca la spec (inferencias ocultas, veredictos inflados, CAs no observables), más costo en tokens (equivale a `--ultracode`; ver "## Ultracode").
 
 ## Fase 1 — Contrato primero (bloqueante)
 
+Si vino `--from-grill`, resolver primero la raíz operativa sin explorar código: la ruta `Proyecto` declarada en el handoff. Si el handoff pertenece a otro proyecto, avisar y operar bajo esa raíz (contrato, exploración y spec); nunca escribir la spec en el cwd equivocado.
+
 Leer `.sdd/project.md` ANTES de cualquier otra cosa; interesan sobre todo `## Comandos`, `## Verificacion autonoma`, `## Limites` y `## Politicas de generacion` (los gates duros que `/sdd-run` va a aplicar — condicionan el veredicto y el tamaño sano de la spec).
 
-- **Si NO existe**: frenar. Explicar en una linea por que (sin contrato el veredicto de verificabilidad es inventado) y usar `AskUserQuestion`: 1. `Correr /sdd-init ahora (Recomendado)` — invocarlo, esperar el contrato y seguir; 2. `Abortar`. NO generar spec "provisoria" sin contrato, ni siquiera si el usuario insiste con que es una feature chica: ofrecer `/sdd-init --assume` como via rapida.
-- **Con `--assume` y sin contrato**: correr `/sdd-init --assume` automaticamente, anotarlo en el reporte, y seguir.
-- **Si existe pero esta viejo** (fecha de generacion > 30 dias, o los comandos que este pedido necesita figuran `FALLA` / `no probado`): avisar en una linea y ofrecer `/sdd-init --update`; no bloquear.
+- **Si NO existe**: frenar. Explicar en una línea por qué (sin contrato el veredicto de verificabilidad es inventado) y usar `AskUserQuestion`: 1. `Correr /sdd-init ahora (Recomendado)` — invocarlo, esperar el contrato y seguir; 2. `Abortar`. NO generar spec "provisoria" sin contrato, ni siquiera si el usuario insiste con que es una feature chica: ofrecer `/sdd-init --assume` como vía rápida.
+- **Con `--assume` y sin contrato**: correr `/sdd-init --assume` automáticamente, anotarlo en el reporte, y seguir.
+- **Si existe pero está viejo** (fecha de generación > 30 días, o los comandos que este pedido necesita figuran `FALLA` / `no probado`): avisar en una línea y ofrecer `/sdd-init --update`; no bloquear.
 
 ## Fase 2 — Entender el pedido
 
-1. Si el pedido es `#NN` o URL: `gh issue view NN --json title,body,comments,labels` (usar la URL con `-R` si es de otro repo). Guardar el numero: importa para el destino en Fase 6. Los comments cuentan como fuente — a veces desambiguan el body.
-2. Explorar el codigo que el pedido tocaria: subagents `Explore` con la tool `Agent` en paralelo (inline si el repo es chico) para relevar que existe hoy, que archivos se tocarian, que convenciones hay, y si hay tests previos en la zona. La spec se escribe contra el codigo real, no contra la idea del codigo. Piso verificable: la fase NO esta hecha si lo unico leido fue el contrato — las elecciones propuestas de la tabla de inferencias citan evidencia real (`archivo:linea` o convencion observada) donde aplique; una tabla sin ninguna cita al codigo es sintoma de que se escribio contra la idea del codigo.
-3. Revisar `.sdd/specs/`: si ya hay una spec para este mismo pedido (mismo issue o slug equivalente), avisar y tratar la corrida como actualizacion de esa spec, no crear otra.
+1. Si el pedido es `#NN` o URL: `gh issue view NN --json title,body,comments,labels` (usar la URL con `-R` si es de otro repo). Guardar el número: importa para el destino en Fase 6. Los comments cuentan como fuente — a veces desambiguan el body.
+2. Si la fuente es grill: leer el Markdown finalizado completo. Tratar hechos comprobados y decisiones resueltas como fuente confirmada; conservar restricciones, no-objetivos, supuestos, riesgos, pendientes y contexto recomendado. Si el archivo no declara `Estado: finalized` o no tiene `## Handoff`, frenar y pedir que se cierre el grill. No re-preguntar decisiones confirmadas. Si el encabezado `Fuente` referencia un issue, heredarlo como issue de origen de la spec.
+3. Explorar el código que el pedido tocaría: subagents `Explore` con la tool `Agent` en paralelo (inline si el repo es chico) para relevar qué existe hoy, qué archivos se tocarían, qué convenciones hay, y si hay tests previos en la zona. La spec se escribe contra el código real, no contra la idea del código. Piso verificable: la fase NO está hecha si lo único leído fue el contrato — las elecciones propuestas de la tabla de inferencias citan evidencia real (`archivo:linea` o convención observada) donde aplique; una tabla sin ninguna cita al código es síntoma de que se escribió contra la idea del código.
+4. Revisar `.sdd/specs/`: si ya hay una spec para este mismo pedido (mismo issue, misma ruta de handoff o slug equivalente), avisar y tratar la corrida como actualización de esa spec, no crear otra.
 
 ## Fase 3 — Inferencias sobre la mesa
 
-El corazon del skill. Toda decision que el pedido no fija explicitamente se lista como inferencia — tambien las de confianza alta, porque el usuario decide cuales revisar, no el skill. Categorias tipicas: alcance (que entra y que no), comportamiento en bordes y errores, UX/copys, datos (¿migracion? ¿backfill?), compatibilidad hacia atras, plataformas.
+El corazón del skill. Toda decisión que el pedido no fija explícitamente se lista como inferencia — también las de confianza alta, porque el usuario decide cuáles revisar, no el skill. Categorías típicas: alcance (qué entra y qué no), comportamiento en bordes y errores, UX/copys, datos (¿migración? ¿backfill?), compatibilidad hacia atrás, plataformas.
 
-Mostrar la tabla completa numerada. **"Mostrar" = imprimirla como texto visible en el MISMO mensaje que llama a `AskUserQuestion`, inmediatamente antes del tool call.** No cuenta haberla pensado en el razonamiento ni haberla emitido en un mensaje anterior: el razonamiento interno no lo ve el usuario y el dialogo de `AskUserQuestion` no arrastra contexto — la pregunta tiene que poder responderse leyendo solo la pantalla actual. Checklist previo al call: ¿el texto de ESTE mensaje contiene la tabla? Si no, emitirla primero. Tabla no impresa ⇒ pregunta prohibida.
+Mostrar la tabla completa numerada. **"Mostrar" = imprimirla como texto visible en el MISMO mensaje que llama a `AskUserQuestion`, inmediatamente antes del tool call.** No cuenta haberla pensado en el razonamiento ni haberla emitido en un mensaje anterior: el razonamiento interno no lo ve el usuario y el diálogo de `AskUserQuestion` no arrastra contexto — la pregunta tiene que poder responderse leyendo solo la pantalla actual. Checklist previo al call: ¿el texto de ESTE mensaje contiene la tabla? Si no, emitirla primero. Tabla no impresa ⇒ pregunta prohibida.
 
 ```markdown
 | # | Inferencia | Eleccion propuesta | Alternativa razonable | Confianza |
@@ -72,40 +80,40 @@ Mostrar la tabla completa numerada. **"Mostrar" = imprimirla como texto visible 
 
 Luego usar `AskUserQuestion` — "¿Alguna inferencia a revisar?":
 
-1. `Ninguna, todas bien (Recomendado)` — solo si ninguna quedo con confianza baja.
-2. `Revisar algunas` — el usuario dice cuales (numeros) via Other; por cada una, UNA pregunta con las alternativas concretas como opciones, la propuesta primera y marcada `(Recomendado)`. Esta opcion lleva la tabla completa como `preview`: si por cualquier motivo la impresion fallo, la tabla queda recuperable desde el propio dialogo (redundancia, no reemplazo — la obligacion de imprimirla no cambia).
+1. `Ninguna, todas bien (Recomendado)` — solo si ninguna quedó con confianza baja.
+2. `Revisar algunas` — el usuario dice cuáles (números) vía Other; por cada una, UNA pregunta con las alternativas concretas como opciones, la propuesta primera y marcada `(Recomendado)`. Esta opción lleva la tabla completa como `preview`: si por cualquier motivo la impresión falló, la tabla queda recuperable desde el propio diálogo (redundancia, no reemplazo — la obligación de imprimirla no cambia).
 
-Si alguna inferencia quedo con confianza **baja**, no dejarla enterrada detras de `Revisar algunas`: agregar en el MISMO call una pregunta dedicada por cada una (maximo 3; si hay mas, priorizar las que definen alcance), con sus alternativas concretas como opciones y la propuesta primera. La pregunta general cubre el resto de la tabla.
+Si alguna inferencia quedó con confianza **baja**, no dejarla enterrada detrás de `Revisar algunas`: agregar en el MISMO call una pregunta dedicada por cada una (máximo 3; si hay más, priorizar las que definen alcance), con sus alternativas concretas como opciones y la propuesta primera. La pregunta general cubre el resto de la tabla.
 
-Este dialogo va SOLO: no adjuntar en el mismo call las preguntas de mecanismo (Fase 5) ni de destino (Fase 6). Son fases secuenciales — revisar una inferencia puede cambiar los CA y por lo tanto invalidar el mecanismo que se estaria votando en paralelo.
+Este diálogo va SOLO: no adjuntar en el mismo call las preguntas de mecanismo (Fase 5) ni de destino (Fase 6). Son fases secuenciales — revisar una inferencia puede cambiar los CA y por lo tanto invalidar el mecanismo que se estaría votando en paralelo.
 
-Reglas: lo que el pedido ya fija NO es inferencia y no se lista (listarlo diluye la tabla). Si una inferencia de confianza baja define el alcance entero (ej. "¿esto es solo UI o tambien API?") pero el usuario ya dijo "todas bien", NO re-preguntarla por encima de esa eleccion: respetarla, pero marcarla en la spec como riesgo. Con `--assume`: elegir el sesgo minimo seguro (la opcion mas chica y reversible) y marcar `[ASSUMED]` en la spec.
+Reglas: lo que el pedido o el handoff confirmado ya fija NO es inferencia y no se lista (listarlo diluye la tabla; las decisiones del handoff entran a la spec como confirmadas, no como inferencias a revisar). Ante conflicto entre el handoff y el código actual, mostrarlo como gap/desviación de fuente; no reinterpretar silenciosamente la decisión. Si una inferencia de confianza baja define el alcance entero (ej. "¿esto es solo UI o también API?") pero el usuario ya dijo "todas bien", NO re-preguntarla por encima de esa elección: respetarla, pero marcarla en la spec como riesgo. Con `--assume`: elegir el sesgo mínimo seguro (la opción más chica y reversible) y marcar `[ASSUMED]` en la spec.
 
 ## Fase 4 — Veredicto de verificabilidad
 
-Cruzar cada criterio de aceptacion contra la escalera de `## Verificacion autonoma` del contrato. Grados:
+Cruzar cada criterio de aceptación contra la escalera de `## Verificacion autonoma` del contrato. Grados:
 
 | Grado | Cuando | Ejemplo |
 |---|---|---|
-| **ALTA** | El comportamiento se expresa como tests unit/integration deterministas que el contrato sabe correr en verde hoy. TDD puro: golazo. | logica de negocio, parsers, API handlers |
+| **ALTA** | El comportamiento se expresa como tests unit/integration deterministas que el contrato sabe correr en verde hoy. TDD puro: golazo. | lógica de negocio, parsers, API handlers |
 | **MEDIA** | Requiere levantar la app y probarla, o e2e con browser (playwright y similares): verificable pero flaky y lento. | UI web, flows con estado, integraciones locales |
-| **BAJA** | Solo llegan señales indirectas (typecheck, build, lint); el comportamiento real no se observa de forma autonoma. | detalle visual fino, copys, layout |
-| **NULA** | Exige algo fuera del alcance del agente: dispositivo fisico, servicio pago, ambiente inaccesible. Requiere prueba del usuario. | app en telefono real, push notifications, hardware |
+| **BAJA** | Solo llegan señales indirectas (typecheck, build, lint); el comportamiento real no se observa de forma autónoma. | detalle visual fino, copys, layout |
+| **NULA** | Exige algo fuera del alcance del agente: dispositivo físico, servicio pago, ambiente inaccesible. Requiere prueba del usuario. | app en teléfono real, push notifications, hardware |
 
 Reglas:
 
-- El grado sale de lo que el contrato dice que se puede correr HOY, no de lo teoricamente posible. Una feature TDD-able en un repo cuyo test runner figura `FALLA` NO es ALTA — es BAJA hasta que alguien arregle el runner, y se dice explicitamente ("seria ALTA si `pnpm test` funcionara — ver Gaps del contrato").
-- Si los criterios tienen grados distintos, NO promediar: desglosar por criterio y reportar mixto ("CA-1..CA-3 ALTA; CA-4 NULA — vibracion en dispositivo, exige prueba tuya").
-- Cruzar el alcance contra las politicas de generacion del contrato y decirlo en el veredicto: una spec cuyo blast-radius estimado excede el *tamaño maximo de PR* se reporta con propuesta de particion (2+ specs encadenadas, cada una dentro del limite) — mejor partir aca que descubrirlo con el PR en draft. Un *coverage minimo* activo sube la vara del plan de verificacion: los tests de los CA ALTA tienen que cubrir el codigo nuevo, no solo el happy path. *Dependencias nuevas: prohibido* convierte cualquier CA que exija una dep en conflicto a resolver en la spec, no en el run. Las politicas de la tecnologia con gate (linter, script) integran la vara igual que coverage; las filas `guia` no gatean ni cambian el veredicto.
-- Mostrar el veredicto al usuario con el porque ANTES de elegir mecanismo: es el dato que le dice cuanto puede delegar de la ejecucion. Misma regla que la tabla de inferencias: emitirlo como texto visible en el MISMO mensaje que el `AskUserQuestion` de mecanismo, inmediatamente antes del call — no darlo por mostrado en el razonamiento ni por emitido en un mensaje anterior.
+- El grado sale de lo que el contrato dice que se puede correr HOY, no de lo teóricamente posible. Una feature TDD-able en un repo cuyo test runner figura `FALLA` NO es ALTA — es BAJA hasta que alguien arregle el runner, y se dice explícitamente ("sería ALTA si `pnpm test` funcionara — ver Gaps del contrato").
+- Si los criterios tienen grados distintos, NO promediar: desglosar por criterio y reportar mixto ("CA-1..CA-3 ALTA; CA-4 NULA — vibración en dispositivo, exige prueba tuya").
+- Cruzar el alcance contra las políticas de generación del contrato y decirlo en el veredicto: una spec cuyo blast-radius estimado excede el *tamaño máximo de PR* se reporta con propuesta de partición (2+ specs encadenadas, cada una dentro del límite) — mejor partir acá que descubrirlo con el PR en draft. Un *coverage mínimo* activo sube la vara del plan de verificación: los tests de los CA ALTA tienen que cubrir el código nuevo, no solo el happy path. *Dependencias nuevas: prohibido* convierte cualquier CA que exija una dep en conflicto a resolver en la spec, no en el run. Las políticas de la tecnología con gate (linter, script) integran la vara igual que coverage; las filas `guia` no gatean ni cambian el veredicto.
+- Mostrar el veredicto al usuario con el porqué ANTES de elegir mecanismo: es el dato que le dice cuánto puede delegar de la ejecución. Misma regla que la tabla de inferencias: emitirlo como texto visible en el MISMO mensaje que el `AskUserQuestion` de mecanismo, inmediatamente antes del call — no darlo por mostrado en el razonamiento ni por emitido en un mensaje anterior.
 
-## Fase 5 — Mecanismo de verificacion
+## Fase 5 — Mecanismo de verificación
 
-Elegir con criterio = proponer el mecanismo MAS BARATO que observe el comportamiento real, no el mas impresionante. Orden de preferencia: test unit > integration > levantar la app con probe scripteado (curl, señal de log) > e2e browser > prueba humana. Un e2e de playwright para logica que se testea unit es eleccion incorrecta aunque funcione.
+Elegir con criterio = proponer el mecanismo MÁS BARATO que observe el comportamiento real, no el más impresionante. Orden de preferencia: test unit > integration > levantar la app con probe scripteado (curl, señal de log) > e2e browser > prueba humana. Un e2e de playwright para lógica que se testea unit es elección incorrecta aunque funcione.
 
-1. Proponer por cada criterio de aceptacion el como concreto: comando, assertion o señal observable, anclado en los comandos del contrato.
-2. Usar `AskUserQuestion` — "¿Con que lo verificamos?": la propuesta primera y marcada `(Recomendado)`, 1-2 alternativas reales (una mas exhaustiva, una mas barata) con su trade-off en la descripcion, y el usuario puede proponer otra via custom. Con `--assume`: tomar la propuesta sin preguntar.
-3. Para los criterios NULA: escribir el **protocolo de prueba humana** — pasos concretos y chequeables que el usuario va a seguir ("1. Abri la app en tu iPhone... 2. Confirma un pago... 3. Verifica que vibro"). La spec no esconde la parte manual: la agenda.
+1. Proponer por cada criterio de aceptación el cómo concreto: comando, assertion o señal observable, anclado en los comandos del contrato.
+2. Usar `AskUserQuestion` — "¿Con qué lo verificamos?": la propuesta primera y marcada `(Recomendado)`, 1-2 alternativas reales (una más exhaustiva, una más barata) con su trade-off en la descripción, y el usuario puede proponer otra vía custom. Con `--assume`: tomar la propuesta sin preguntar.
+3. Para los criterios NULA: escribir el **protocolo de prueba humana** — pasos concretos y chequeables que el usuario va a seguir ("1. Abrí la app en tu iPhone... 2. Confirma un pago... 3. Verifica que vibró"). La spec no esconde la parte manual: la agenda.
 
 ## Fase 6 — Escribir la spec
 
@@ -113,7 +121,7 @@ Con EXACTAMENTE esta estructura:
 
 ```markdown
 # Spec — <titulo>
-<!-- Generada por /sdd-spec el <fecha>. Fuente: <pedido libre | issue #NN>. Estado: <aprobada|draft> -->
+<!-- Generada por /sdd-spec el <fecha>. Fuente: <pedido libre | issue #NN | grill <ruta>>. Estado: <aprobada|draft> -->
 
 ## Contexto
 <por que existe el pedido + que hay en el codigo hoy; 2-4 lineas con referencias reales>
@@ -140,24 +148,24 @@ el protocolo de prueba paso a paso>
 conflictos con politicas de generacion del contrato (tamaño, coverage, deps)>
 ```
 
-Estado: `aprobada` si el usuario reviso inferencias y mecanismo; `draft` si corrio con `--assume`.
+Estado: `aprobada` si el usuario revisó inferencias y mecanismo; `draft` si corrió con `--assume`.
 
 Destino (saltear pregunta si vino `--out`):
 
 - **El pedido vino de un issue** — usar `AskUserQuestion`: 1. `Actualizar el issue (Recomendado)` — reescribir el body con la spec, archivando el body original al final dentro de un `<details><summary>Body original</summary>`; 2. `Local` — `.sdd/specs/issue-NN-<slug>.md`; 3. `Ambos`.
-- **Pedido libre** — usar `AskUserQuestion`: 1. `Local (Recomendado)` — `.sdd/specs/<slug>.md`; 2. `Crear issue` — `gh issue create` con la spec como body.
+- **Pedido libre o grill sin issue de origen** — usar `AskUserQuestion`: 1. `Local (Recomendado)` — `.sdd/specs/<slug>.md`; 2. `Crear issue` — `gh issue create` con la spec como body.
 - Con `--assume` y sin `--out`: local.
 
-## Ultracode — orquestacion adversarial
+## Ultracode — orquestación adversarial
 
-Motor alternativo para las Fases 2-6. Activo cuando el run corre con `--ultracode` o se eligio `Ultracode` en el lanzador. Produce la MISMA spec con la MISMA estructura y la MISMA doctrina — inferencias TODAS sobre la mesa, veredicto anclado en lo que el contrato corre HOY, CAs observables, cero codigo tocado. Ultracode no afloja NADA: cambia el COMO — de un hilo a fan-out determinista — y agrega una capa adversarial que es la forma mas fuerte de las dos ideas fuerza del skill (nada escondido en la prosa, veredicto no inflado): la spec no se cree, se ataca. Todos los MUST NOT DO siguen intactos — en particular, no toca codigo ni commitea.
+Motor alternativo para las Fases 2-6. Activo cuando el run corre con `--ultracode` o se eligió `Ultracode` en el lanzador. Produce la MISMA spec con la MISMA estructura y la MISMA doctrina — inferencias TODAS sobre la mesa, veredicto anclado en lo que el contrato corre HOY, CAs observables, cero código tocado. Ultracode no afloja NADA: cambia el CÓMO — de un hilo a fan-out determinista — y agrega una capa adversarial que es la forma más fuerte de las dos ideas fuerza del skill (nada escondido en la prosa, veredicto no inflado): la spec no se cree, se ataca. Todos los MUST NOT DO siguen intactos — en particular, no toca código ni commitea.
 
 Por fase (todo lo no mencionado queda igual):
 
-- **Fase 2 (entender)** — exploracion multi-modal en paralelo con `Workflow`: una rama `Explore` por lente (que existe hoy en la zona, archivos que se tocarian, convenciones, tests previos, dependencias y blast-radius del pedido). Cada lente devuelve evidencia, no opinion. La spec se sigue escribiendo contra el codigo real.
-- **Fase 3 (inferencias)** — panel adversarial de inferencias ocultas: N agentes releen el pedido + la exploracion buscando decisiones que el pedido NO fija y que quedarian enterradas en la prosa en vez de en la tabla (alcance, bordes, datos, compat, plataformas). Todo lo que encuentren entra a la tabla numerada ANTES del `AskUserQuestion` — la regla de "mostrar como texto visible" no cambia. Esto endurece "no esconder decisiones en la prosa": la tabla se ataca, no se completa a ojo.
-- **Fases 4-5 (veredicto + mecanismo)** — panel de escepticos que REFUTA: por cada CA, un esceptico intenta mostrar que el grado esta inflado (¿el runner que lo haria ALTA figura `FALLA`/`no probado` en el contrato? entonces NO es ALTA) y que el mecanismo propuesto NO observa el comportamiento real (un e2e para logica unit-testeable, un assert que no toca el seam). El grado y el mecanismo quedan en pie SOLO si sobreviven, con la cita al comando/gap del contrato como evidencia; una refutacion con evidencia baja el grado o cambia el mecanismo.
-- **Cierre (Fase 6)** — antes de escribir la spec, un completeness critic (loop-until-dry) audita: ¿quedo alguna inferencia sin listar? ¿algun CA no es observable (paso/no paso sin interpretacion)? ¿el veredicto es honesto contra el contrato? ¿el protocolo humano de los CA NULA es ejecutable? Lo que marque se resuelve o se anota como `[NEEDS-INPUT]`/riesgo — no se cierra con hallazgos abiertos.
+- **Fase 2 (entender)** — exploración multi-modal en paralelo con `Workflow`: una rama `Explore` por lente (qué existe hoy en la zona, archivos que se tocarían, convenciones, tests previos, dependencias y blast-radius del pedido). Cada lente devuelve evidencia, no opinión. La spec se sigue escribiendo contra el código real.
+- **Fase 3 (inferencias)** — panel adversarial de inferencias ocultas: N agentes releen el pedido + la exploración buscando decisiones que el pedido — o el handoff confirmado, si vino `--from-grill` — NO fija y que quedarían enterradas en la prosa en vez de en la tabla (alcance, bordes, datos, compat, plataformas). Todo lo que encuentren entra a la tabla numerada ANTES del `AskUserQuestion` — la regla de "mostrar como texto visible" no cambia. Esto endurece "no esconder decisiones en la prosa": la tabla se ataca, no se completa a ojo.
+- **Fases 4-5 (veredicto + mecanismo)** — panel de escépticos que REFUTA: por cada CA, un escéptico intenta mostrar que el grado está inflado (¿el runner que lo haría ALTA figura `FALLA`/`no probado` en el contrato? entonces NO es ALTA) y que el mecanismo propuesto NO observa el comportamiento real (un e2e para lógica unit-testeable, un assert que no toca el seam). El grado y el mecanismo quedan en pie SOLO si sobreviven, con la cita al comando/gap del contrato como evidencia; una refutación con evidencia baja el grado o cambia el mecanismo.
+- **Cierre (Fase 6)** — antes de escribir la spec, un completeness critic (loop-until-dry) audita: ¿quedó alguna inferencia sin listar? ¿algún CA no es observable (paso/no paso sin interpretación)? ¿el veredicto es honesto contra el contrato? ¿el protocolo humano de los CA NULA es ejecutable? Lo que marque se resuelve o se anota como `[NEEDS-INPUT]`/riesgo — no se cierra con hallazgos abiertos.
 
 Con `--assume`, ultracode corre igual pero sin los `AskUserQuestion`: los paneles emiten veredictos con evidencia y las inferencias quedan `[ASSUMED]`; la spec queda `draft` como siempre.
 
@@ -177,23 +185,25 @@ generacion condiciona la ejecucion (particion por tamaño, coverage), una linea 
 ## MUST DO
 
 - Leer `.sdd/project.md` antes que nada; si no existe, exigir `/sdd-init` primero (u orquestarlo con `--assume`).
-- Listar TODAS las inferencias, tambien las de confianza alta — elegir cuales revisar es del usuario.
+- Si la fuente es grill, validar que esté finalizado, trabajar en el proyecto declarado por el handoff y conservar sus decisiones como confirmadas.
+- Listar TODAS las inferencias nuevas, también las de confianza alta — elegir cuáles revisar es del usuario.
 - Anclar cada grado de verificabilidad en lo que el contrato dice que corre HOY, citando el comando o gap concreto.
-- Cruzar el alcance contra las politicas de generacion del contrato y avisar en el veredicto si la spec choca con alguna (en particular: proponer particion si no entra en el tamaño maximo de PR).
-- Proponer el mecanismo de verificacion mas barato que observe el comportamiento real, y dejar que el usuario lo cambie o proponga otro.
-- Escribir criterios de aceptacion observables: paso/no paso sin interpretacion.
+- Cruzar el alcance contra las políticas de generación del contrato y avisar en el veredicto si la spec choca con alguna (en particular: proponer partición si no entra en el tamaño máximo de PR).
+- Proponer el mecanismo de verificación más barato que observe el comportamiento real, y dejar que el usuario lo cambie o proponga otro.
+- Escribir criterios de aceptación observables: paso/no paso sin interpretación.
 - Ser idempotente: re-correr sobre el mismo pedido actualiza la spec existente, no crea otra.
 - Con `--ultracode`: producir la MISMA spec con la MISMA doctrina, solo orquestada; la tabla de inferencias y el veredicto sobreviven a un panel adversarial, y el completeness critic corre antes de escribir.
 
 ## MUST NOT DO
 
 - No generar spec sin contrato, ni "provisoria".
-- No esconder decisiones en la prosa: toda eleccion no fijada por el pedido va a la tabla de inferencias.
-- No inflar el veredicto: runner roto en el contrato = la feature no es ALTA por mas TDD-able que sea.
-- No prometer verificacion autonoma de lo que exige humano — declararlo NULA y escribir el protocolo manual.
-- No tocar codigo ni commitear: la spec (y el issue, si se eligio) es el unico output.
+- No esconder decisiones en la prosa: toda elección no fijada por el pedido va a la tabla de inferencias.
+- No inflar el veredicto: runner roto en el contrato = la feature no es ALTA por más TDD-able que sea.
+- No prometer verificación autónoma de lo que exige humano — declararlo NULA y escribir el protocolo manual.
+- No tocar código ni commitear: la spec (y el issue, si se eligió) es el único output.
 - No pisar el body de un issue sin archivar el original en un `<details>`.
-- No preguntar lo que el pedido ya fija.
-- No llamar a `AskUserQuestion` sobre las inferencias o el veredicto sin haberlos impreso como texto visible en el MISMO mensaje del call: "lo pense en el razonamiento" o "lo mostre mas arriba" no cuentan como mostrado.
-- No combinar en un solo `AskUserQuestion` preguntas de fases distintas (inferencias / mecanismo / destino): son dialogos secuenciales por diseño — el veredicto se emite despues de resolver las inferencias, y el mecanismo se pregunta despues de mostrar el veredicto. Un call por fase, en orden.
-- Ultracode multiplica verificadores (panel de inferencias, escepticos del veredicto, completeness critic), nunca afloja criterios: el fan-out no autoriza saltear la tabla de inferencias, inflar un grado, ni proponer un mecanismo que no observa el comportamiento. Los paneles atacan la spec, no la maquillan.
+- No preguntar lo que el pedido o el handoff confirmado ya fija.
+- No convertir decisiones confirmadas del grill en `[ASSUMED]` ni escribir la spec en un proyecto distinto al declarado por el handoff.
+- No llamar a `AskUserQuestion` sobre las inferencias o el veredicto sin haberlos impreso como texto visible en el MISMO mensaje del call: "lo pensé en el razonamiento" o "lo mostré más arriba" no cuentan como mostrado.
+- No combinar en un solo `AskUserQuestion` preguntas de fases distintas (inferencias / mecanismo / destino): son diálogos secuenciales por diseño — el veredicto se emite después de resolver las inferencias, y el mecanismo se pregunta después de mostrar el veredicto. Un call por fase, en orden.
+- Ultracode multiplica verificadores (panel de inferencias, escépticos del veredicto, completeness critic), nunca afloja criterios: el fan-out no autoriza saltear la tabla de inferencias, inflar un grado, ni proponer un mecanismo que no observa el comportamiento. Los paneles atacan la spec, no la maquillan.
