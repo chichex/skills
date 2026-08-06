@@ -2,3 +2,5 @@ interface:
   display_name: "SDD Run"
   short_description: "Implementá y verificá una spec SDD"
   default_prompt: "Usá $sdd-run para ejecutar esta spec SDD de punta a punta."
+policy:
+  allow_implicit_invocation: false
