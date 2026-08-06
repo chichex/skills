@@ -1,0 +1,21 @@
+{
+  "name": "chichex-skills",
+  "description": "Skills de chichex para Claude Code: familia SDD (contrato de autonomía → spec verificable → ejecución), grill y mini-grill para desambiguar planes y pedidos, TDD, domain modeling y yt-summary.",
+  "author": {
+    "name": "chichex"
+  },
+  "homepage": "https://github.com/chichex/skills",
+  "repository": "https://github.com/chichex/skills",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "sdd",
+    "spec-driven-development",
+    "tdd",
+    "grill",
+    "domain-modeling"
+  ],
+  "skills": [
+    "./claude"
+  ]
+}
