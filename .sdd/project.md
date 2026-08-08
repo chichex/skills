@@ -1,5 +1,6 @@
 # Contrato de autonomia — skills
 <!-- Generado por /sdd-init el 2026-08-08. Refrescar con /sdd-init --update. -->
+<!-- SDD-Tracking: version=1; type=project; generated-at=2026-08-08 -->
 
 ## Stack
 Repositorio de skills Markdown para cuatro harnesses — Claude Code (`claude/`), Codex (`codex/`), opencode (`opencode/`) y Pi (`pi/`) — mas extensiones TypeScript que Pi carga directamente con jiti; no hay `package.json`, lockfile, build ni dependencias locales (`README.md`, `install.sh`). Las extensiones usan APIs de `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, `@earendil-works/pi-tui` y `typebox` provistas por la instalacion global de Pi; `pi-extensions/sdd-artifacts/` es una libreria TypeScript pura (sin I/O ni APIs de Pi) que implementa el contrato normativo `docs/sdd-tracking-v1.md`. Los tests usan `node:test` sobre TypeScript nativo. Scripts de chequeo en `scripts/` y CI en `.github/workflows/ci.yml`. Verificado localmente con Node `v26.4.0`, Pi `0.84.1`, Bash `3.2.57` y GitHub CLI `2.96.0`.

@@ -101,7 +101,13 @@ Antes de levantar o presentar la app para validación humana:
    - `git diff --name-status <base>..HEAD` es la autoridad sobre qué cambió: cada CA verificado tiene que ser consistente con ese diff — sus tests nuevos aparecen, los archivos tocados son los del plan. Un CA "verificado" cuyos tests no están en el diff no está verificado.
    - Diffear los tests contra el base buscando verificación falsificada: asserts aflojados, `skip`/`only` colados, tests borrados, umbrales bajados. Si aparece algo, ese CA vuelve a rojo — no se narra.
    - La columna Evidencia cita SOLO comandos corridos en esta corrida (comando + resultado observado), y el título de la tabla anota el sha de HEAD sobre el que corrió la verificación final.
-5. Actualizar la spec (único artefacto que persiste): estado del header a `implementada`, y una sección nueva al final:
+5. Actualizar la spec (único artefacto que persiste): estado del header a `implementada` — tanto el campo `Estado:` del comentario humano (reconciliarlo si discrepa) como el marker `SDD-Tracking`, que queda:
+
+```markdown
+<!-- SDD-Tracking: version=1; type=spec; state=implemented; issue=<#NN|owner/repo#NN|none>; grill=<ref|none>; superseded-by=none -->
+```
+
+La transición preserva la identidad: `issue`, `grill` y `superseded-by` conservan exactamente los valores que la spec ya tenía (fuera de `superseded`, `superseded-by` es siempre `none`). Es un upsert del marker existente — nunca un segundo marker — y si la spec solo trae un marker legacy (sin `version=`) o ninguno, se inserta el v1 completo derivando `issue` y `grill` del preámbulo. Además, una sección nueva al final:
 
 ```markdown
 ## Resultado de ejecucion (<fecha> · HEAD <abc1234>)
@@ -179,6 +185,7 @@ Si falla un solo item, está prohibido emitir `Run completo`.
 - Respetar los Limites del contrato por encima de cualquier instrucción de este skill.
 - Verificar cada política de generación activa con el gate que declara el contrato, y reflejar el resultado (`POL-*`) en spec, PR y reporte.
 - Actualizar la spec con el Resultado de ejecucion — es el único artefacto persistente del run — con evidencia derivada del estado Git real (receipt de Fase 4.4), nunca de la narración acumulada de la conversación.
+- Mantener la identidad del marker `SDD-Tracking`: la transición a `state=implemented` es un upsert que preserva `issue`, `grill` y `superseded-by` tal como estaban.
 - Mantener ownership del cierre y reconciliar toda lectura o comprobación paralela antes de continuar.
 - Tratar timeouts y `SIGTERM` como resultados no concluyentes hasta diagnosticarlos y repetir el mecanismo requerido.
 

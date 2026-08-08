@@ -135,6 +135,7 @@ Escribir `.sdd/project.md` con EXACTAMENTE esta estructura:
 ```markdown
 # Contrato de autonomia — <proyecto>
 <!-- Generado por /skill:sdd-init el <fecha>. Refrescar con /skill:sdd-init --update. -->
+<!-- SDD-Tracking: version=1; type=project; generated-at=<YYYY-MM-DD> -->
 
 ## Stack
 <lenguajes, frameworks, package manager, estructura; 3-6 lineas>
@@ -176,6 +177,8 @@ con /skill:sdd-init --update." Formato tabla, cada fila con su gate concreto:
 ## Gaps
 <[NEEDS-INPUT] pendientes + comandos FALLA/no probados que un humano deberia mirar.>
 ```
+
+La línea `SDD-Tracking` es el marker canónico de tracking (contrato SDD-Tracking v1): `version` y `type` son fijos, y `generated-at` lleva la fecha de ESTA corrida en `YYYY-MM-DD`. Mantenerlo como upsert idempotente: exactamente un marker por contrato — en `--update` se actualiza la fecha en la línea existente (o se inserta si el contrato viejo no la tenía), nunca se duplica ni se mueve. El H1 y los headers de sección quedan intactos.
 
 En `--update`: regenerar todo salvo `## Decisiones humanas` y `## Politicas de generacion` (preservar verbatim — las políticas solo cambian si el usuario eligió `Revisar` en Fase 3.5) y los `[NEEDS-INPUT]` aún sin respuesta (mantenerlos, no duplicarlos).
 

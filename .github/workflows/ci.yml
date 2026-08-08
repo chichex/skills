@@ -41,6 +41,17 @@ jobs:
       - name: node --test
         run: node --test pi-extensions/*/*.test.ts
 
+  harness-gate:
+    name: Gate anti-drift de productores SDD
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - name: node --test (harness-gate)
+        run: node --test pi-extensions/harness-gate/harness-gate.test.ts
+
   drift:
     name: Drift entre harnesses (informativo)
     runs-on: ubuntu-latest

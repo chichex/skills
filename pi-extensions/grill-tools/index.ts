@@ -8,6 +8,7 @@ import { getMarkdownTheme, truncateHead, type ExtensionAPI } from "@earendil-wor
 import { Markdown, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { menuItems, selectMenu, type MenuItem } from "../lib/menu";
+import { handoffFileNames, planGrillHandoff, slugify } from "./logic.ts";
 
 const AGENT_DIR = join(homedir(), ".pi", "agent");
 const STORE_DIR = join(AGENT_DIR, "grill-sessions");
@@ -182,17 +183,6 @@ function now(): string {
 	return new Date().toISOString();
 }
 
-function slugify(text: string): string {
-	const slug = text
-		.normalize("NFKD")
-		.replace(/[\u0300-\u036f]/g, "")
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, 48);
-	return slug || "grill";
-}
-
 function jsonPath(id: string): string {
 	return join(STORE_DIR, `${id}.json`);
 }
@@ -205,11 +195,47 @@ async function ensureStore(): Promise<void> {
 	await mkdir(STORE_DIR, { recursive: true });
 }
 
-async function writeAtomic(path: string, content: string): Promise<void> {
-	await ensureStore();
+async function writeFileAtomic(path: string, content: string): Promise<void> {
 	const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
 	await writeFile(temporary, content, "utf8");
 	await rename(temporary, path);
+}
+
+async function writeAtomic(path: string, content: string): Promise<void> {
+	await ensureStore();
+	await writeFileAtomic(path, content);
+}
+
+// Escribe (o actualiza) el handoff interoperable en `.sdd/grills/` del
+// proyecto de la sesion. El snapshot JSON global sigue siendo la fuente de
+// verdad runtime; este archivo es el artefacto SDD que consumen los otros
+// harnesses y /skill:sdd-spec --from-grill. Nunca rompe la accion que lo
+// invoca: ante un proyecto inexistente devuelve el error como texto.
+async function writeRepoHandoff(
+	snapshot: GrillSnapshot,
+): Promise<{ path: string; diagnostics: string[] } | { error: string }> {
+	try {
+		const directory = join(snapshot.projectPath, ".sdd", "grills");
+		await mkdir(directory, { recursive: true });
+		let existing: string | null = null;
+		try {
+			existing = await readFile(join(directory, handoffFileNames(snapshot).primary), "utf8");
+		} catch {
+			existing = null;
+		}
+		const plan = planGrillHandoff(snapshot, existing);
+		const path = join(directory, plan.fileName);
+		await writeFileAtomic(path, plan.content);
+		return { path, diagnostics: plan.diagnostics };
+	} catch (error) {
+		return { error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+function repoHandoffNote(outcome: { path: string; diagnostics: string[] } | { error: string }): string {
+	if ("error" in outcome) return `\nRepo handoff could not be written: ${outcome.error}`;
+	const diagnostics = outcome.diagnostics.length ? ` (recovered: ${outcome.diagnostics.join(", ")})` : "";
+	return `\nRepo handoff: ${outcome.path}${diagnostics}`;
 }
 
 function isSnapshot(value: unknown): value is GrillSnapshot {
@@ -796,9 +822,18 @@ export default function grillTools(pi: ExtensionAPI) {
 				if (params.summary !== undefined) snapshot.summary = params.summary;
 				snapshot.status = "paused";
 				await saveSnapshot(snapshot);
+				const pausedHandoff = await writeRepoHandoff(snapshot);
 				return {
-					content: [{ type: "text", text: snapshotText("Grill session paused.", snapshot) }],
-					details: { action: "pause", snapshot, jsonPath: jsonPath(snapshot.id) },
+					content: [{
+						type: "text",
+						text: `${snapshotText("Grill session paused.", snapshot)}${repoHandoffNote(pausedHandoff)}`,
+					}],
+					details: {
+						action: "pause",
+						snapshot,
+						jsonPath: jsonPath(snapshot.id),
+						repoHandoffPath: "path" in pausedHandoff ? pausedHandoff.path : undefined,
+					},
 				};
 			}
 
@@ -811,16 +846,18 @@ export default function grillTools(pi: ExtensionAPI) {
 				snapshot.handoffMarkdown = params.handoffMarkdown.trim();
 				await writeAtomic(markdownPath(snapshot.id), `${snapshot.handoffMarkdown}\n`);
 				await saveSnapshot(snapshot);
+				const finalizedHandoff = await writeRepoHandoff(snapshot);
 				return {
 					content: [{
 						type: "text",
-						text: `${snapshotText("Grill session finalized.", snapshot)}\nMarkdown: ${markdownPath(snapshot.id)}`,
+						text: `${snapshotText("Grill session finalized.", snapshot)}\nMarkdown: ${markdownPath(snapshot.id)}${repoHandoffNote(finalizedHandoff)}`,
 					}],
 					details: {
 						action: "finalize",
 						snapshot,
 						jsonPath: jsonPath(snapshot.id),
 						markdownPath: markdownPath(snapshot.id),
+						repoHandoffPath: "path" in finalizedHandoff ? finalizedHandoff.path : undefined,
 					},
 				};
 			}
