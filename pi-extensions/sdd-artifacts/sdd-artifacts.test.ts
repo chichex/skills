@@ -620,16 +620,20 @@ test("runs the Markdown fixture conformance matrix", async () => {
 		type: "project",
 		generatedAt: "2026-08-08",
 	} as const;
-	for (const [file, eol] of [["upsert-lf.md", "\n"], ["upsert-crlf.md", "\r\n"]] as const) {
-		const markdown = await readFile(new URL(`./fixtures/${file}`, import.meta.url), "utf8");
+	const lfFixture = await readFile(new URL("./fixtures/upsert-lf.md", import.meta.url), "utf8");
+	const eolCases = [
+		{ name: "upsert-lf.md", markdown: lfFixture, eol: "\n" },
+		{ name: "upsert-lf.md as CRLF", markdown: lfFixture.replaceAll("\n", "\r\n"), eol: "\r\n" },
+	] as const;
+	for (const { name, markdown, eol } of eolCases) {
 		const once = upsertSddMetadata(markdown, metadata);
-		assert.equal(once.ok, true, file);
+		assert.equal(once.ok, true, name);
 		const twice = upsertSddMetadata(once.document, metadata);
-		assert.equal(twice.ok, true, file);
-		assert.equal(twice.document, once.document, file);
-		assert.equal(once.document.match(/SDD-Tracking/g)?.length, 1, file);
-		assert.ok(once.document.includes(eol), file);
-		if (eol === "\r\n") assert.equal(/(^|[^\r])\n/.test(once.document), false, file);
-		else assert.equal(once.document.includes("\r\n"), false, file);
+		assert.equal(twice.ok, true, name);
+		assert.equal(twice.document, once.document, name);
+		assert.equal(once.document.match(/SDD-Tracking/g)?.length, 1, name);
+		assert.ok(once.document.includes(eol), name);
+		if (eol === "\r\n") assert.equal(/(^|[^\r])\n/.test(once.document), false, name);
+		else assert.equal(once.document.includes("\r\n"), false, name);
 	}
 });
