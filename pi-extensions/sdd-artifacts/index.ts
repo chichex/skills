@@ -297,14 +297,46 @@ function sourceLines(markdown: string): SourceLine[] {
 	return lines;
 }
 
+const FENCE_LINE = /^[ \t]{0,3}(`{3,}|~{3,})/;
+const H2_LINE = /^##(?:[ \t]+.*|[ \t]*)$/;
+
 function preambleLines(markdown: string): SourceLine[] {
 	const lines = sourceLines(markdown);
-	const boundary = lines.findIndex((line) => /^##(?:[ \t]+.*|[ \t]*)$/.test(line.text));
-	return boundary === -1 ? lines : lines.slice(0, boundary);
+	let fenceChar: "`" | "~" | null = null;
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index];
+		if (!line) continue;
+		const fenceMatch = FENCE_LINE.exec(line.text);
+		if (fenceMatch) {
+			const char = fenceMatch[1]?.[0] === "~" ? "~" : "`";
+			fenceChar = fenceChar === char ? null : (fenceChar ?? char);
+			continue;
+		}
+		if (fenceChar === null && H2_LINE.test(line.text)) return lines.slice(0, index);
+	}
+	return lines;
 }
 
+// A strictly well-formed SDD-Tracking marker: an entire line, optionally
+// indented, that is a single-line HTML comment with the "SDD-Tracking:"
+// label and a capturable payload. Used where we need actual field data out
+// of the marker (historical field extraction) — a comment that merely
+// mentions the name with broken syntax does not satisfy this.
+const SDD_TRACKING_MARKER = /^[ \t]*<!--\s*SDD-Tracking\s*:\s*(.*?)\s*-->[ \t]*$/i;
+
+// Any entire line that is a well-formed single-line HTML comment. Used to
+// keep legacy field extraction (Estado/Status/..., SDD-Tracking mentions)
+// from matching body prose that never was a comment at all.
+const SINGLE_LINE_COMMENT = /^[ \t]*<!--.*-->[ \t]*$/;
+
+// A line that is shaped like a marker comment and names "SDD-Tracking",
+// whether or not its internal syntax is actually well-formed. This is
+// intentionally loose so that a malformed canonical attempt (e.g. a missing
+// colon) still reaches parseCanonicalMarker and is reported as invalid,
+// instead of silently falling back to legacy interpretation. Bare prose
+// that merely mentions "SDD-Tracking" outside a comment never matches.
 function markerLines(markdown: string): SourceLine[] {
-	return preambleLines(markdown).filter((line) => /SDD-Tracking/i.test(line.text));
+	return preambleLines(markdown).filter((line) => SINGLE_LINE_COMMENT.test(line.text) && /SDD-Tracking/i.test(line.text));
 }
 
 function absentState(): NormalizedStateResult {
@@ -449,6 +481,47 @@ function normalizedLegacyText(value: string): string {
 		.replace(/\s+/g, " ");
 }
 
+// Builds a source fragment that matches `word` while tolerating a combining
+// mark (accent) after any of its letters, so an NFD-decomposed accented
+// variant of the word still matches a plain-ASCII literal.
+function accentTolerantLiteral(word: string): string {
+	return [...word].map((letter) => `${letter}\\p{M}*`).join("");
+}
+
+const SUPERSEDED_PREFIX_NFD = new RegExp(
+	`^\\s*(?:${accentTolerantLiteral("reemplazada")}\\s+${accentTolerantLiteral("por")}` +
+		`|${accentTolerantLiteral("superseded")}\\s+${accentTolerantLiteral("by")})\\s+`,
+	"iu",
+);
+
+// Maps every NFD-normalized offset of `value` back to the raw UTF-16 offset
+// of the original character it decomposed from, so a prefix matched against
+// the accent-decomposed text can be sliced out of the untouched raw string.
+function nfdOffsetMap(value: string): number[] {
+	const map: number[] = [0];
+	let rawIndex = 0;
+	for (const character of value) {
+		rawIndex += character.length;
+		const decomposedLength = character.normalize("NFD").length;
+		for (let step = 0; step < decomposedLength; step += 1) map.push(rawIndex);
+	}
+	return map;
+}
+
+// Recovers the reference following a "reemplazada por"/"superseded by"
+// prefix directly from the raw text, tolerating a combining mark anywhere in
+// the prefix words (e.g. a stray accent from Unicode composition variance).
+// This never falls back to the lowercased, accent-stripped normalized text,
+// which would corrupt a case-sensitive or accented reference.
+function supersededReferenceFromRaw(raw: string): string | null {
+	const nfd = raw.normalize("NFD");
+	const match = SUPERSEDED_PREFIX_NFD.exec(nfd);
+	if (!match) return null;
+	const map = nfdOffsetMap(raw);
+	const rawEnd = map[Math.min(match[0].length, map.length - 1)] ?? raw.length;
+	return raw.slice(rawEnd).trim();
+}
+
 function normalizeLegacyState(raw: string): { value: NormalizedArtifactState; supersededBy: string | null } {
 	const normalized = normalizedLegacyText(raw);
 	if (normalized === "draft" || normalized === "borrador") return { value: "draft", supersededBy: null };
@@ -459,10 +532,10 @@ function normalizeLegacyState(raw: string): { value: NormalizedArtifactState; su
 	if (normalized === "reemplazada" || normalized === "superseded") return { value: "superseded", supersededBy: null };
 	const supersededMatch = /^(?:reemplazada por|superseded by) (.+)$/.exec(normalized);
 	if (supersededMatch?.[1]) {
-		const originalPrefix = /^\s*(?:reemplazada\s+por|superseded\s+by)\s+/iu.exec(raw);
+		const fromRaw = supersededReferenceFromRaw(raw);
 		return {
 			value: "superseded",
-			supersededBy: originalPrefix ? raw.slice(originalPrefix[0].length).trim() : supersededMatch[1],
+			supersededBy: fromRaw && fromRaw.length > 0 ? fromRaw : supersededMatch[1],
 		};
 	}
 	if (normalized === "paused") return { value: "paused", supersededBy: null };
@@ -477,10 +550,17 @@ interface LegacyStateCandidate {
 	supersededBy: string | null;
 }
 
+// Field-value lookahead: stop before another labeled field (including a
+// second Estado/Status field on the same line) or before a trailing period
+// that immediately precedes the comment's closing "-->".
+const LEGACY_STATE_FIELD_SOURCE =
+	String.raw`(?:Estado|Status)\s*:\s*(.*?)(?=(?:\.\s+(?:Proyecto|Project|Fuente|Source|Grill|Estado|Status)\s*:)|\.?\s*-->|$)`;
+
 function legacyStateCandidates(lines: SourceLine[]): LegacyStateCandidate[] {
 	const candidates: LegacyStateCandidate[] = [];
+	const expression = new RegExp(LEGACY_STATE_FIELD_SOURCE, "giu");
 	for (const line of lines) {
-		const expression = /(?:Estado|Status)\s*:\s*(.*?)(?=(?:\.\s+(?:Proyecto|Project|Fuente|Source|Grill)\s*:)|\s*-->|$)/giu;
+		if (!SINGLE_LINE_COMMENT.test(line.text)) continue;
 		for (const match of line.text.matchAll(expression)) {
 			const raw = match[1]?.trim();
 			if (!raw) continue;
@@ -500,13 +580,21 @@ function fieldFromPreamble(lines: SourceLine[], labels: readonly string[]): stri
 	return null;
 }
 
+// Splits a marker payload on ";" only when it is followed by the next
+// "key=" field, so a field value that itself contains ";" is preserved
+// instead of being silently truncated (or its tail dropped for lacking "=").
+function splitMarkerFields(payload: string): string[] {
+	return payload.length === 0 ? [] : payload.split(/;(?=\s*[a-z][a-z-]*\s*=)/i);
+}
+
 function historicalTracking(lines: SourceLine[]): { raw: string; fields: Map<string, string> } | undefined {
 	for (const line of lines) {
-		if (!/SDD-Tracking\s*:/i.test(line.text) || /(?:^|[;\s])(?:version|type)\s*=/i.test(line.text)) continue;
-		const payload = /^<!--\s*SDD-Tracking\s*:\s*(.*?)\s*-->$/i.exec(line.text)?.[1];
-		if (payload === undefined) return { raw: line.text, fields: new Map() };
+		const marker = SDD_TRACKING_MARKER.exec(line.text);
+		if (!marker) continue;
+		if (/(?:^|[;\s])(?:version|type)\s*=/i.test(line.text)) continue;
+		const payload = marker[1] ?? "";
 		const fields = new Map<string, string>();
-		for (const part of payload.split(";")) {
+		for (const part of splitMarkerFields(payload)) {
 			const match = /^\s*([a-z][a-z-]*)\s*=\s*(.*?)\s*$/i.exec(part);
 			if (match?.[1] && match[2] !== undefined) fields.set(match[1].toLowerCase(), match[2]);
 		}
@@ -529,12 +617,31 @@ function legacyReference(value: string | undefined | null): string | null {
 	return value.trim().replace(/\.$/, "");
 }
 
+// Derives the issue/grill identity for a legacy document using the same
+// fallbacks the parser applies (Fuente/Source when the tracked issue is
+// malformed, the Grill: label when the marker omits a grill field), so
+// callers comparing identity (e.g. upsert) see what the parser would parse.
+function legacyIdentity(
+	lines: SourceLine[],
+	tracking: ReturnType<typeof historicalTracking>,
+): { issue: IssueReference | null; grill: string | null } {
+	return {
+		issue: legacyIssue(lines, tracking),
+		grill: legacyReference(tracking?.fields.get("grill") ?? fieldFromPreamble(lines, ["Grill"])),
+	};
+}
+
 function parseLegacyArtifact(markdown: string): ParseResult {
 	const lines = preambleLines(markdown);
 	const preamble = lines.map((line) => line.text).join("\n");
 	const tracking = historicalTracking(lines);
 	const states = legacyStateCandidates(lines);
-	const distinctStates = new Set(states.map((state) => state.value === "unknown" ? `unknown:${normalizedLegacyText(state.raw)}` : state.value));
+	const distinctStates = new Set(states.map((state) => {
+		if (state.value === "unknown") return `unknown:${normalizedLegacyText(state.raw)}`;
+		// A shared normalized state ("superseded") can still disagree on the
+		// target reference; key on both so divergent successors conflict.
+		return `${state.value}:${state.supersededBy ?? ""}`;
+	}));
 	if (distinctStates.size > 1) {
 		return {
 			kind: "conflict",
@@ -545,8 +652,8 @@ function parseLegacyArtifact(markdown: string): ParseResult {
 	}
 	const explicit = states[0];
 	const headings = lines.filter((line) => /^#(?!#)(?:[ \t]+|$)/.test(line.text));
-	const hasSpecHeading = headings.some((line) => /^#\s+spec(?:\s|[—–-]|$)/i.test(line.text));
-	const hasGrillHeading = headings.some((line) => /^#\s+grill(?:\s|[—–-]|$)/i.test(line.text));
+	const hasSpecHeading = headings.some((line) => /^#\s+spec(?:[\s:—–-]|$)/i.test(line.text));
+	const hasGrillHeading = headings.some((line) => /^#\s+grill(?:[\s:—–-]|$)/i.test(line.text));
 	const hasProjectHeading = headings.some((line) => {
 		const normalized = normalizedLegacyText(line.text);
 		return normalized.startsWith("# contrato de autonomia") || normalized.startsWith("# autonomy contract");
@@ -595,13 +702,13 @@ function parseLegacyArtifact(markdown: string): ParseResult {
 	const generatedAt = type === "project"
 		? generatedLine?.text.match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0] ?? null
 		: null;
-	const grill = legacyReference(tracking?.fields.get("grill") ?? fieldFromPreamble(lines, ["Grill"]));
+	const identity = legacyIdentity(lines, tracking);
 	const project = legacyReference(fieldFromPreamble(lines, ["Proyecto", "Project"]));
 	const metadata: LegacyMetadata = {
 		version: null,
 		type,
-		issue: legacyIssue(lines, tracking),
-		grill,
+		issue: identity.issue,
+		grill: identity.grill,
 		project,
 		generatedAt,
 		supersededBy: explicit?.supersededBy ?? null,
@@ -664,40 +771,89 @@ function preferredEol(markdown: string): "\n" | "\r\n" {
 	return firstNewline > 0 && markdown[firstNewline - 1] === "\r" ? "\r\n" : "\n";
 }
 
+const BOM = "﻿";
+
 function insertCanonicalMarker(markdown: string, marker: string): string {
 	const eol = preferredEol(markdown);
-	const lines = sourceLines(markdown);
+	// A leading BOM, if present, must stay the first bytes of the document.
+	// Detect the H1 and the anchor on the BOM-stripped body, then restore
+	// the BOM prefix on every return path.
+	const hasBom = markdown.startsWith(BOM);
+	const prefix = hasBom ? BOM : "";
+	const body = hasBom ? markdown.slice(BOM.length) : markdown;
+
+	const lines = sourceLines(body);
 	const first = lines[0];
 	if (!first || !/^#(?!#)(?:[ \t]+|$)/.test(first.text)) {
-		return markdown.length === 0 ? marker : `${marker}${eol}${markdown}`;
+		return body.length === 0 ? `${prefix}${marker}` : `${prefix}${marker}${eol}${body}`;
 	}
 
+	// Walk contiguous initial HTML comments following the H1, advancing the
+	// anchor only past comments that actually close. An unclosed comment is
+	// left alone (not consumed) so the marker still lands inside the
+	// preamble instead of being pushed past it, which would make the upsert
+	// non-idempotent.
 	let lastInitialLine = 0;
 	let index = 1;
 	while (index < lines.length) {
 		const opening = lines[index];
 		if (!opening || !/^\s*<!--/.test(opening.text)) break;
-		lastInitialLine = index;
-		if (!/-->\s*$/.test(opening.text)) {
-			let closed = false;
-			for (index += 1; index < lines.length; index += 1) {
-				const continuation = lines[index];
-				if (!continuation) break;
-				lastInitialLine = index;
-				if (/-->\s*$/.test(continuation.text)) {
-					closed = true;
-					break;
-				}
-			}
-			if (!closed) break;
+		if (/-->\s*$/.test(opening.text)) {
+			lastInitialLine = index;
+			index += 1;
+			continue;
 		}
-		index += 1;
+		let closedAt = -1;
+		for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+			const continuation = lines[cursor];
+			if (!continuation) break;
+			if (/-->\s*$/.test(continuation.text)) {
+				closedAt = cursor;
+				break;
+			}
+		}
+		if (closedAt === -1) break;
+		lastInitialLine = closedAt;
+		index = closedAt + 1;
 	}
 	const anchor = lines[lastInitialLine] ?? first;
 	if (anchor.eol) {
-		return `${markdown.slice(0, anchor.end)}${marker}${eol}${markdown.slice(anchor.end)}`;
+		return `${prefix}${body.slice(0, anchor.end)}${marker}${eol}${body.slice(anchor.end)}`;
 	}
-	return `${markdown}${eol}${marker}`;
+	return `${prefix}${body}${eol}${marker}`;
+}
+
+// When an upsert migrates or updates a document that still carries a legacy
+// Estado:/Status: field, rewrite that field's captured value in place to the
+// new canonical state's keyword whenever it would otherwise disagree.
+// Legacy-only consumers (e.g. a plain "Estado:" text scan) that never learn
+// to read the canonical marker would otherwise keep showing a stale state
+// after every migration. The field, its label, and every other byte on the
+// line are left untouched; only the captured value span is replaced, and
+// only when it actually differs (so repeating an upsert stays idempotent).
+function reconcileLegacyStateField(document: string, canonicalState: string): string {
+	const lines = preambleLines(document);
+	const edits: Array<{ start: number; end: number }> = [];
+	const expression = new RegExp(LEGACY_STATE_FIELD_SOURCE, "giu");
+	for (const line of lines) {
+		if (!SINGLE_LINE_COMMENT.test(line.text)) continue;
+		for (const match of line.text.matchAll(expression)) {
+			const raw = match[1];
+			if (raw === undefined || match.index === undefined) continue;
+			const trimmed = raw.trim();
+			if (!trimmed || normalizeLegacyState(trimmed).value === canonicalState) continue;
+			// `raw` is always the tail of match[0] (the lookahead consumes
+			// nothing), so its start offset is match[0]'s length minus its own.
+			const groupStart = match.index + match[0].length - raw.length;
+			edits.push({ start: line.start + groupStart, end: line.start + groupStart + raw.length });
+		}
+	}
+	if (edits.length === 0) return document;
+	let result = document;
+	for (const edit of [...edits].sort((left, right) => right.start - left.start)) {
+		result = `${result.slice(0, edit.start)}${canonicalState}${result.slice(edit.end)}`;
+	}
+	return result;
 }
 
 export function upsertSddMetadata(markdown: string, metadata: SddMetadata): UpsertResult {
@@ -736,15 +892,18 @@ export function upsertSddMetadata(markdown: string, metadata: SddMetadata): Upse
 			message: "More than one historical SDD-Tracking marker is present",
 		}]);
 	} else if (historical[0]) {
-		const tracking = historicalTracking(preambleLines(markdown));
+		const historicalLines = preambleLines(markdown);
+		const tracking = historicalTracking(historicalLines);
 		if (metadata.type !== "spec") {
 			return upsertFailure(markdown, [{ code: "metadata-type-mismatch", message: "Historical SDD-Tracking identifies a spec" }]);
 		}
-		const trackedIssue = tracking?.fields.get("issue");
-		const trackedGrill = legacyReference(tracking?.fields.get("grill"));
-		const issueMatches = trackedIssue !== undefined
-			&& (trackedIssue === "none" ? metadata.issue === null : metadata.issue === trackedIssue);
-		const grillMatches = tracking?.fields.has("grill") === true && metadata.grill === trackedGrill;
+		// Compare against the same derived identity the parser would produce
+		// (Fuente/Source and Grill: fallbacks included), not only the raw
+		// marker fields — otherwise a document the parser reads correctly
+		// can still be rejected here as an identity mismatch.
+		const derived = legacyIdentity(historicalLines, tracking);
+		const issueMatches = metadata.issue === derived.issue;
+		const grillMatches = metadata.grill === derived.grill;
 		if (!issueMatches || !grillMatches) {
 			return upsertFailure(markdown, [{
 				code: "identity-mismatch",
@@ -755,6 +914,9 @@ export function upsertSddMetadata(markdown: string, metadata: SddMetadata): Upse
 		document = `${markdown.slice(0, marker.start)}${serialized.marker}${markdown.slice(marker.contentEnd)}`;
 	} else {
 		document = insertCanonicalMarker(markdown, serialized.marker);
+	}
+	if (metadata.type !== "project") {
+		document = reconcileLegacyStateField(document, metadata.state);
 	}
 	return { ok: true, document, marker: serialized.marker, diagnostics: parsed.diagnostics };
 }

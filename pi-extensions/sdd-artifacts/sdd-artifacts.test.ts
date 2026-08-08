@@ -567,7 +567,9 @@ test("round-trips every canonical type and arbitrary UTF-8 references byte-for-b
 		if (!serialized.ok) continue;
 		const parsed = parseSddArtifact(serialized.marker);
 		assert.equal(parsed.kind, "metadata", serialized.marker);
-		if (parsed.kind !== "metadata" || parsed.format !== "canonical") continue;
+		if (parsed.kind !== "metadata") continue; // unreachable: narrows the type after the assertion above
+		assert.equal(parsed.format, "canonical", serialized.marker);
+		if (parsed.format !== "canonical") continue; // unreachable: narrows the type after the assertion above
 		assert.deepEqual(parsed.metadata, input);
 		assert.deepEqual(serializeSddMetadata(parsed.metadata), serialized);
 	}
@@ -636,4 +638,179 @@ test("runs the Markdown fixture conformance matrix", async () => {
 		if (eol === "\r\n") assert.equal(/(^|[^\r])\n/.test(once.document), false, name);
 		else assert.equal(once.document.includes("\r\n"), false, name);
 	}
+});
+
+test("does not delete prose that merely mentions SDD-Tracking", () => {
+	const canonicalMarker = "<!-- SDD-Tracking: version=1; type=spec; state=draft; issue=#9; grill=none; superseded-by=none -->";
+	const original = `# Spec\n${canonicalMarker}\nSee the SDD-Tracking marker above for details.\n\nBody\n`;
+	const metadata = {
+		version: 1,
+		type: "spec",
+		state: "approved",
+		issue: "#9",
+		grill: null,
+		supersededBy: null,
+	} as const;
+	const result = upsertSddMetadata(original, metadata);
+	assert.equal(result.ok, true);
+	assert.ok(result.document.includes("See the SDD-Tracking marker above for details."));
+});
+
+test("does not let an unclosed initial comment push the marker past the preamble boundary", () => {
+	const metadata = {
+		version: 1,
+		type: "spec",
+		state: "draft",
+		issue: null,
+		grill: null,
+		supersededBy: null,
+	} as const;
+	const original = "# Spec\n<!-- Unclosed comment\n\n## Context\nBody\n";
+	const first = upsertSddMetadata(original, metadata);
+	assert.equal(first.ok, true);
+	const reparsed = parseSddArtifact(first.document);
+	assert.equal(reparsed.kind, "metadata");
+	assert.equal(reparsed.kind === "metadata" ? reparsed.format : undefined, "canonical");
+
+	const second = upsertSddMetadata(first.document, metadata);
+	assert.equal(second.ok, true);
+	assert.equal(second.document, first.document);
+	assert.equal(second.document.match(/SDD-Tracking/g)?.length, 1);
+});
+
+test("does not swallow a trailing period into the legacy state value", () => {
+	const result = parseSddArtifact("# Spec — Legacy\n<!-- Estado: implementada. -->\n");
+	assert.deepEqual(result.state, { value: "implemented", provenance: "legacy-explicit", raw: "implementada" });
+});
+
+test("treats divergent supersededBy targets as a legacy state conflict", () => {
+	const result = parseSddArtifact(
+		"# Spec — X\n<!-- Estado: Reemplazada por specs/a.md -->\n<!-- Estado: Reemplazada por specs/b.md -->\n",
+	);
+	assert.equal(result.kind, "conflict");
+	assert.equal(result.diagnostics[0]?.code, "legacy-state-conflict");
+});
+
+test("upsert accepts identity derived via legacy fallback fields", () => {
+	const original = "# Spec\n<!-- Generada por /skill:sdd-spec el 2026-08-08. Fuente: issue #9. Grill: sesión-1 -->\n<!-- SDD-Tracking: issue=not-an-issue -->\n";
+	const parsed = parseSddArtifact(original);
+	assert.equal(parsed.kind, "metadata");
+	assert.equal(parsed.kind === "metadata" ? parsed.format : undefined, "legacy");
+	assert.equal(parsed.kind === "metadata" && parsed.format === "legacy" ? parsed.metadata.issue : undefined, "#9");
+	assert.equal(parsed.kind === "metadata" && parsed.format === "legacy" ? parsed.metadata.grill : undefined, "sesión-1");
+
+	const migrated = updateSddSpecState(original, "implemented");
+	assert.equal(migrated.ok, true);
+});
+
+test("ignores an SDD-Tracking mention that is not a well-formed marker when classifying legacy type", () => {
+	const original = "# Grill — Test\n<!-- Estado: paused. Proyecto: /workspace/x. Fuente: issue #9. Grill: sesión-1. -->\nNote: the legacy SDD-Tracking: field was removed from this file.\n\n## Modo\nstandard\n";
+	const result = parseSddArtifact(original);
+	assert.equal(result.kind, "metadata");
+	assert.equal(result.kind === "metadata" ? result.metadata.type : undefined, "grill");
+
+	const upserted = upsertSddMetadata(original, {
+		version: 1,
+		type: "grill",
+		state: "finalized",
+		issue: "#9",
+		grill: "sesión-1",
+		project: "/workspace/x",
+	});
+	assert.equal(upserted.ok, true);
+});
+
+test("tolerates a reasonably indented historical SDD-Tracking marker", () => {
+	const original = "# Spec\n  <!-- SDD-Tracking: issue=#9; grill=none -->\n";
+	const metadata = {
+		version: 1,
+		type: "spec",
+		state: "approved",
+		issue: "#9",
+		grill: null,
+		supersededBy: null,
+	} as const;
+	const result = upsertSddMetadata(original, metadata);
+	assert.equal(result.ok, true);
+	assert.equal(result.document.match(/SDD-Tracking/g)?.length, 1);
+});
+
+test("ignores 'Estado:' occurring in prose outside an HTML comment", () => {
+	const result = parseSddArtifact("# Spec — Legacy\nEl Estado: final se decide en el PR.\n\n## Contexto\nBody\n");
+	assert.notEqual(result.kind, "conflict");
+	assert.deepEqual(result.state, { value: "unknown", provenance: "absent" });
+});
+
+test("treats two legacy state fields on one line as a conflict instead of merging their values", () => {
+	const result = parseSddArtifact("# Spec — Legacy\n<!-- Estado: draft. Status: implemented -->\n");
+	assert.equal(result.kind, "conflict");
+	assert.equal(result.diagnostics[0]?.code, "legacy-state-conflict");
+});
+
+test("recovers an accented supersededBy reference from raw text when the normalized prefix drifts", () => {
+	const result = parseSddArtifact("# Spec — Legacy\n<!-- Estado: Reemplazáda por Specs/Nueva-Á.md -->\n");
+	assert.equal(
+		result.kind === "metadata" && result.format === "legacy" ? result.metadata.supersededBy : undefined,
+		"Specs/Nueva-Á.md",
+	);
+});
+
+test("keeps a semicolon inside a historical marker value intact", () => {
+	const original = "# Spec\n<!-- SDD-Tracking: issue=#9; grill=a;b -->\n";
+	const metadata = {
+		version: 1,
+		type: "spec",
+		state: "approved",
+		issue: "#9",
+		grill: "a;b",
+		supersededBy: null,
+	} as const;
+	const result = upsertSddMetadata(original, metadata);
+	assert.equal(result.ok, true);
+});
+
+test("recognizes a Spec heading followed by a colon", () => {
+	const result = parseSddArtifact("# Spec: Login con 2FA\n\n## Contexto\nBody\n");
+	assert.equal(result.kind, "metadata");
+	assert.equal(result.kind === "metadata" ? result.metadata.type : undefined, "spec");
+});
+
+test("skips a leading BOM when detecting the initial H1 and keeps it first", () => {
+	const metadata = { version: 1, type: "project", generatedAt: "2026-08-08" } as const;
+	const marker = "<!-- SDD-Tracking: version=1; type=project; generated-at=2026-08-08 -->";
+	const original = "﻿# Contract\n\nBody\n";
+	const result = upsertSddMetadata(original, metadata);
+	assert.equal(result.ok, true);
+	assert.equal(result.document, `﻿# Contract\n${marker}\n\nBody\n`);
+	assert.ok(result.document.startsWith("﻿"));
+});
+
+test("does not treat a fenced-code '##' line as the preamble boundary", () => {
+	const marker = "<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=#9; grill=none; superseded-by=none -->";
+	const markdown = `# Spec\n\n\`\`\`\n## not a heading\n\`\`\`\n\n${marker}\n\nBody\n`;
+	const result = parseSddArtifact(markdown);
+	assert.equal(result.kind, "metadata");
+	assert.equal(result.kind === "metadata" ? result.format : undefined, "canonical");
+
+	const upserted = upsertSddMetadata(markdown, {
+		version: 1,
+		type: "spec",
+		state: "draft",
+		issue: "#9",
+		grill: null,
+		supersededBy: null,
+	});
+	assert.equal(upserted.ok, true);
+	assert.equal(upserted.document.match(/SDD-Tracking/g)?.length, 1);
+});
+
+test("migrating a legacy spec updates the stale legacy Estado field to match the new canonical state", async () => {
+	const legacy = await readFile(new URL("./fixtures/spec-es.md", import.meta.url), "utf8");
+	const migrated = updateSddSpecState(legacy, "implemented");
+	assert.equal(migrated.ok, true);
+	assert.ok(
+		!/Estado:\s*pendiente/i.test(migrated.document),
+		"stale 'pendiente de ejecución' Estado value must not survive a state change to implemented",
+	);
+	assert.match(migrated.document, /Estado:\s*implemented/i);
 });
