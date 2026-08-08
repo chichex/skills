@@ -86,6 +86,7 @@ Para pausar o guardar, escribí `.sdd/grills/<fecha>-<slug>.md` con:
 ```markdown
 # Grill — <tema>
 <!-- Estado: paused|finalized. Proyecto: <ruta absoluta>. Fuente: <issue o pedido>. -->
+<!-- SDD-Tracking: version=1; type=grill; state=<paused|finalized>; issue=<#NN|owner/repo#NN|none>; grill=<ref>; project=<ref> -->
 
 ## Modo
 <standard|domain-modeling>
@@ -102,6 +103,8 @@ Para pausar o guardar, escribí `.sdd/grills/<fecha>-<slug>.md` con:
 ## Handoff
 <vacío mientras esté paused; contrato completo cuando esté finalized>
 ```
+
+El marker `SDD-Tracking` es la identidad machine-readable del handoff (contrato SDD-Tracking v1) y acompaña al comentario humano: `state` refleja el `Estado:`; `issue` lleva el issue de origen (`#NN`, `owner/repo#NN` o `none`); `grill` una referencia estable de la sesión (el `<fecha>-<slug>` del archivo); `project` la misma ruta absoluta del campo `Proyecto:`. En `grill` y `project`, todo byte fuera de `[A-Za-z0-9._~-]` se escribe percent-encodeado (`%HH` en mayúsculas) — p. ej. `/workspace/demo` queda `%2Fworkspace%2Fdemo` — y ninguno de los dos admite `none`. Guardar de nuevo hace upsert: exactamente un marker, actualizado en su lugar.
 
 Al pausar, informá la ruta y ofrecé exportar el cuestionario de pendientes (ver "Exportar cuestionario").
 

@@ -205,9 +205,36 @@ Si `ask_user_question` indica cancelación:
 1. No hagas otra pregunta.
 2. Escribí un resumen visible de lo resuelto y pendiente.
 3. En modo `domain-modeling`, incluí glosarios modificados, términos resueltos y pendientes, y candidatos a ADR todavía no evaluados.
-4. Invocá `grill_session` con `action: "pause"`, incluyendo resumen, ramas pendientes, secciones y estimación actuales.
+4. Invocá `grill_session` con `action: "pause"`, incluyendo resumen, ramas pendientes, secciones y estimación actuales. La tool además escribe/actualiza el handoff interoperable en `.sdd/grills/` del proyecto (ver **Formato del handoff**).
 5. Ofrecé exportar las decisiones pendientes como cuestionario para un stakeholder sin agente (ver **Exportar cuestionario**).
-6. Informá el id de la sesión y que puede retomarse con `select_grill_session`.
+6. Informá el id de la sesión, la ruta del handoff en el repo, y que puede retomarse con `select_grill_session`.
+
+## Formato del handoff
+
+El handoff es el artefacto interoperable del grill: los cuatro harnesses lo escriben con el mismo template, y `sdd-spec --from-grill` de cualquier harness lo consume sin traducción. En Pi lo escribe y actualiza la tool: cada `pause` y `finalize` upsertea `.sdd/grills/<fecha>-<slug>.md` en el proyecto de la sesión y garantiza el marker `SDD-Tracking` con los valores autoritativos del snapshot (`state` según el estado real, `issue` desde `sourceIssue`, `grill` = id de la sesión, `project` = `projectPath`, percent-encodeados donde haga falta). El `handoffMarkdown` que generás en el cierre tiene que seguir este template:
+
+```markdown
+# Grill — <tema>
+<!-- Estado: paused|finalized. Proyecto: <ruta absoluta>. Fuente: <issue o pedido>. -->
+<!-- SDD-Tracking: version=1; type=grill; state=<paused|finalized>; issue=<#NN|owner/repo#NN|none>; grill=<ref>; project=<ref> -->
+
+## Modo
+<standard|domain-modeling>
+
+## Hechos comprobados
+...
+
+## Decisiones resueltas
+1. ...
+
+## Ramas pendientes
+...
+
+## Handoff
+<vacío mientras esté paused; contrato completo cuando esté finalized>
+```
+
+Si tu marker difiere del estado real de la sesión, la tool lo corrige: siempre queda exactamente un marker con la identidad autoritativa.
 
 ## Exportar cuestionario
 
@@ -260,9 +287,9 @@ No incluyas acciones para implementar o construir. En modo `domain-modeling`, es
 
 Si el usuario confirma, con o sin encadenado:
 
-1. Convertí el contrato visible en Markdown autocontenido.
+1. Convertí el contrato visible en Markdown autocontenido siguiendo el template de **Formato del handoff**.
 2. Invocá `grill_session` con `action: "finalize"`, el resumen y `handoffMarkdown`.
-3. Informá la ruta `.md` devuelta por la tool.
+3. Informá las dos rutas que devuelve la tool: el snapshot global y el handoff del repo en `.sdd/grills/`.
 4. Conservá si el usuario pidió encadenar `sdd-spec`.
 
 Si pide ajustar, retomá una sola rama y seguí el ciclo de pregunta + checkpoint. Si pausa, seguí el procedimiento de pausa.
