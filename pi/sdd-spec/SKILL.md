@@ -115,8 +115,8 @@ Con EXACTAMENTE esta estructura:
 
 ```markdown
 # Spec — <titulo>
-<!-- Generada por /skill:sdd-spec el <fecha>. Fuente: <pedido libre | issue #NN | grill <ID>>. Estado: <aprobada|draft> -->
-<!-- SDD-Tracking: issue=<#NN|owner/repo#NN|none>; grill=<ID|none> -->
+<!-- Generada por /skill:sdd-spec el <fecha>. Fuente: <pedido libre | issue #NN | grill <ref>>. Estado: <aprobada|draft> -->
+<!-- SDD-Tracking: version=1; type=spec; state=<draft|approved>; issue=<#NN|owner/repo#NN|none>; grill=<ref|none>; superseded-by=none -->
 
 ## Contexto
 <por que existe el pedido + que hay en el codigo hoy; 2-4 lineas con referencias reales>
@@ -145,13 +145,23 @@ conflictos con politicas de generacion del contrato (tamaño, coverage, deps)>
 
 Estado: `aprobada` si el usuario revisó inferencias y mecanismo; `draft` si corrió con `--assume`.
 
+El marker `SDD-Tracking` es la identidad machine-readable de la spec (contrato SDD-Tracking v1): permite a los consumidores asociar artefactos sin ensuciar GitHub con labels o comments de tracking, y acompaña al comentario humano, nunca lo reemplaza. `state` refleja el `Estado:` (`approved` ↔ `aprobada`, `draft` ↔ `draft`); `issue` lleva la referencia de origen (`#NN`, `owner/repo#NN` o `none`); `grill` la referencia del handoff de origen (o `none`); `superseded-by` nace `none`. Re-correr sobre la misma spec hace upsert: se actualiza EL marker existente en su lugar — nunca se agrega un segundo — y un marker `SDD-Tracking` legacy (sin `version=`) se migra al formato v1 en la misma pasada. Si la spec vive en el body del issue, el marker viaja con ella.
+
 Destino (saltear pregunta si vino `--out`):
 
 - **El pedido vino de un issue** — usar `ask_user_question`: 1. `Actualizar el issue (Recomendado)` — reescribir el body con la spec, archivando el body original al final dentro de un `<details><summary>Body original</summary>`; aclarar en la descripción de esta opción que **no crea un archivo en `.sdd/specs/`**. 2. `Local` — `.sdd/specs/issue-NN-<slug>.md`; 3. `Ambos`.
 - **Pedido libre o grill sin issue de origen** — usar `ask_user_question`: 1. `Local (Recomendado)` — `.sdd/specs/<slug>.md`; 2. `Crear issue` — `gh issue create` con la spec como body. Si se crea un issue nuevo, reemplazar inmediatamente `issue=none` por el número devuelto antes de dar la spec por lista.
 - Con `--assume` y sin `--out`: local.
 
-`SDD-Tracking` es metadata local/machine-readable para que `/issues` pueda asociar artefactos sin ensuciar GitHub con labels o comments de tracking. Si la spec vive en el body del issue, conservar también el marker allí.
+### Reemplazar una spec (`superseded`)
+
+Cuando la corrida re-especifica un pedido hacia un archivo nuevo o una revisión (la spec anterior queda obsoleta pero no se borra), la spec reemplazada se marca con:
+
+```markdown
+<!-- SDD-Tracking: version=1; type=spec; state=superseded; issue=<#NN|owner/repo#NN|none>; grill=<ref|none>; superseded-by=<ref> -->
+```
+
+`superseded-by` apunta a la sucesora (ruta del archivo nuevo o referencia del issue); `issue` y `grill` conservan los valores que la spec reemplazada ya tenía, y su campo `Estado:` humano se reconcilia a `reemplazada por <ref>`. El invariante no se negocia: en todo estado distinto de `superseded`, `superseded-by` es `none`.
 
 ## Reporte
 
@@ -175,8 +185,8 @@ generacion condiciona la ejecucion (particion por tamaño, coverage), una linea 
 - Cruzar el alcance contra las políticas de generación del contrato y avisar en el veredicto si la spec choca con alguna (en particular: proponer partición si no entra en el tamaño máximo de PR).
 - Proponer el mecanismo de verificación más barato que observe el comportamiento real, y dejar que el usuario lo cambie o proponga otro.
 - Escribir criterios de aceptación observables: pasó/no pasó sin interpretación.
-- Ser idempotente: re-correr sobre el mismo pedido actualiza la spec existente, no crea otra.
-- Emitir siempre el comment `SDD-Tracking` y preservar la referencia al issue heredada del pedido o del `sourceIssue` del grill.
+- Ser idempotente: re-correr sobre el mismo pedido actualiza la spec existente y upsertea su único marker `SDD-Tracking`, no crea otra copia ni otro marker.
+- Emitir siempre el marker `SDD-Tracking` v1 y preservar la referencia al issue heredada del pedido o del grill de origen.
 
 ## MUST NOT DO
 
