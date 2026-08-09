@@ -102,7 +102,9 @@ const MATERIAL_EVENTS = new Set<IssueEventKind>(["title", "body", "comment"]);
 
 function comparableTimestamp(value: string | null): number | null {
 	if (value === null || value.trim() === "") return null;
-	const timestamp = Date.parse(value);
+	const normalized = value.trim();
+	if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(normalized)) return null;
+	const timestamp = Date.parse(normalized);
 	return Number.isFinite(timestamp) ? timestamp : null;
 }
 
@@ -406,16 +408,12 @@ export interface WorkflowResolutionInput {
 	artifacts: ArtifactCandidate[];
 }
 
-export interface WorkflowResolutionV1 {
+interface WorkflowResolutionBaseV1 {
 	version: 1;
-	outcome: "start" | "stop" | "error";
-	code: WorkflowRoute | "canonicalization" | "cancelled";
 	recommendedClassification: NewWorkRoute | null;
 	fallbackClassification: NewWorkRoute | null;
 	recommendedRoute: WorkflowRoute | null;
 	selectedRoute: WorkflowRoute | null;
-	stage: WorkflowStage | null;
-	mode: WorkflowMode | null;
 	repo: string;
 	cwd: string;
 	sources: IssueRef[];
@@ -429,11 +427,29 @@ export interface WorkflowResolutionV1 {
 	artifacts: ArtifactRef[];
 }
 
-interface Dispatch {
-	outcome: "start" | "stop";
-	stage: WorkflowStage | null;
-	mode: WorkflowMode | null;
-}
+export type WorkflowResolutionV1 =
+	| (WorkflowResolutionBaseV1 & {
+		outcome: "start";
+		code: WorkflowRoute;
+		stage: WorkflowStage;
+		mode: WorkflowMode | null;
+	})
+	| (WorkflowResolutionBaseV1 & {
+		outcome: "stop";
+		code: WorkflowRoute | "cancelled";
+		stage: null;
+		mode: null;
+	})
+	| (WorkflowResolutionBaseV1 & {
+		outcome: "error";
+		code: "canonicalization";
+		stage: null;
+		mode: null;
+	});
+
+type Dispatch =
+	| { outcome: "start"; stage: WorkflowStage; mode: WorkflowMode | null }
+	| { outcome: "stop"; stage: null; mode: null };
 
 const STOP_CLASSIFICATIONS = new Set<NewWorkRoute>([
 	"blocked-dependency",
@@ -513,20 +529,33 @@ function canonicalizationError(input: WorkflowResolutionInput): WorkflowResoluti
 	};
 }
 
-function candidateCouldBelongToIssue(
+function explicitCandidateIssue(
 	candidate: ArtifactCandidate,
+	context: ArtifactInspectionContext,
+): IssueRef | null {
+	if (candidate.kind === "grill-snapshot") return normalizeIssueRef(candidate.issue, context.repository);
+	return candidate.location === "issue" && candidate.hostIssue
+		? normalizeIssueRef(candidate.hostIssue, context.repository)
+		: null;
+}
+
+function issueIsOriginalSource(issue: IssueRef, input: WorkflowResolutionInput, target: IssueRef): boolean {
+	return input.sources.length > 1
+		&& !sameIssue(issue, target)
+		&& input.sources.some((source) => {
+			const normalized = normalizeIssueRef(source, input.repository);
+			return normalized !== null && sameIssue(normalized, issue);
+		});
+}
+
+function candidateAllowedInInventory(
+	candidate: ArtifactCandidate,
+	input: WorkflowResolutionInput,
 	target: IssueRef,
 	context: ArtifactInspectionContext,
 ): boolean {
-	if (candidate.kind === "grill-snapshot") {
-		const snapshotIssue = normalizeIssueRef(candidate.issue, context.repository);
-		return snapshotIssue !== null && sameIssue(snapshotIssue, target);
-	}
-	if (candidate.location === "issue" && candidate.hostIssue) {
-		const host = normalizeIssueRef(candidate.hostIssue, context.repository);
-		return host !== null && sameIssue(host, target);
-	}
-	return true;
+	const explicitIssue = explicitCandidateIssue(candidate, context);
+	return explicitIssue === null || !issueIsOriginalSource(explicitIssue, input, target);
 }
 
 function candidateTargetsIssue(
@@ -541,6 +570,68 @@ function candidateTargetsIssue(
 	if (host && sameIssue(host, target)) return true;
 	const hint = candidate.expectedType === "spec" ? issueFromFileName(candidate.path, context.repository) : null;
 	return hint !== null && sameIssue(hint, target);
+}
+
+function candidateMatchesSuccessor(
+	source: InspectedArtifact,
+	candidate: InspectedArtifact,
+	input: WorkflowResolutionInput,
+	target: IssueRef,
+	context: ArtifactInspectionContext,
+): boolean {
+	const reference = source.artifact.supersededBy;
+	if (reference === null) return false;
+	const issueReference = issueReferenceFromSuccessor(reference, input.repository);
+	if (issueReference) {
+		if (issueReference.repository.toLowerCase() !== input.repository.toLowerCase()) return false;
+		if (issueIsOriginalSource(issueReference, input, target)) return false;
+		return candidateTargetsIssue(candidate.candidate, candidate.artifact, issueReference, context);
+	}
+	if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(reference)) return false;
+
+	const projectRoot = resolve(input.cwd);
+	const paths = new Set<string>();
+	if (isAbsolute(reference)) {
+		paths.add(resolve(reference));
+	} else {
+		paths.add(resolve(projectRoot, reference));
+		if (source.candidate.kind === "markdown" && source.candidate.location === "local") {
+			paths.add(resolve(dirname(source.candidate.path), reference));
+		}
+	}
+	if ([...paths].some((path) => !pathInsideProject(path, projectRoot))) return false;
+	if (candidate.candidate.kind !== "markdown" || candidate.candidate.location !== "local") return false;
+	if (candidate.artifact.issue && issueIsOriginalSource(candidate.artifact.issue, input, target)) return false;
+	return paths.has(resolve(candidate.candidate.path));
+}
+
+function relevantArtifactEntries(
+	allEntries: InspectedArtifact[],
+	input: WorkflowResolutionInput,
+	target: IssueRef,
+	context: ArtifactInspectionContext,
+): InspectedArtifact[] {
+	const selected = new Set<number>();
+	allEntries.forEach((entry, index) => {
+		if (candidateTargetsIssue(entry.candidate, entry.artifact, target, context)) selected.add(index);
+	});
+
+	let changed = true;
+	while (changed) {
+		changed = false;
+		for (const sourceIndex of [...selected]) {
+			const source = allEntries[sourceIndex];
+			if (!source || source.artifact.type !== "spec" || source.artifact.state !== "superseded") continue;
+			allEntries.forEach((candidate, candidateIndex) => {
+				if (selected.has(candidateIndex)) return;
+				if (candidateMatchesSuccessor(source, candidate, input, target, context)) {
+					selected.add(candidateIndex);
+					changed = true;
+				}
+			});
+		}
+	}
+	return allEntries.filter((_entry, index) => selected.has(index));
 }
 
 function normalizeIssueMarkers(markdown: string, repository: string): string {
@@ -1015,12 +1106,14 @@ export function resolveWorkflow(input: WorkflowResolutionInput): WorkflowResolut
 		repository: input.repository,
 		projectRoot: input.cwd,
 	};
-	const inspected: InspectedArtifact[] = target === null
+	const allInspected: InspectedArtifact[] = target === null
 		? []
 		: input.artifacts
-			.filter((candidate) => candidateCouldBelongToIssue(candidate, target, context))
-			.map((candidate) => ({ candidate, artifact: inspectArtifactCandidate(candidate, context) }))
-			.filter(({ candidate, artifact }) => candidateTargetsIssue(candidate, artifact, target, context));
+			.filter((candidate) => candidateAllowedInInventory(candidate, input, target, context))
+			.map((candidate) => ({ candidate, artifact: inspectArtifactCandidate(candidate, context) }));
+	const inspected = target === null
+		? []
+		: relevantArtifactEntries(allInspected, input, target, context);
 	let artifacts = inspected.map(({ artifact }) => ({ ...artifact, primary: false }));
 
 	if (artifacts.some((artifact) =>

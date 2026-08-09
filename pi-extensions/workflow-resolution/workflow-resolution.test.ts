@@ -281,6 +281,11 @@ test("builds conservative trivalent freshness from material and administrative h
 			historyComplete: true,
 			events: [{ kind: "body", at: "not-a-time" }],
 		}),
+		buildFreshnessEvidence({
+			baseline: { source: "local-file", at: "2026-08-08T10:00:00.000Z" },
+			historyComplete: true,
+			events: [{ kind: "comment", at: "2026-08-08T11:00:00" }],
+		}),
 	]) {
 		assert.equal(evidence.freshness, "unknown");
 		assert.ok(evidence.diagnostics.length > 0);
@@ -464,6 +469,27 @@ test("follows one explicit spec lineage and stops on unusable or conflicting gra
 		resolveWorkflow(resolutionInput({ artifacts: [toIssue, issueSuccessor] })).code,
 		"update-existing-spec",
 	);
+
+	const crossIssueSuccessor = {
+		...specAt({
+			id: "issue-21-successor",
+			path: "https://github.com/chichex/skills/issues/21",
+			state: "approved",
+			fresh: "fresh",
+			location: "issue",
+		}),
+		hostIssue: issue(21),
+	};
+	crossIssueSuccessor.markdown = crossIssueSuccessor.markdown.replace("issue=#11", "issue=#21");
+	const crossIssueOld = specAt({
+		id: "to-issue-21",
+		path: oldPath,
+		state: "superseded",
+		supersededBy: "chichex/skills#21",
+	});
+	const crossIssue = resolveWorkflow(resolutionInput({ artifacts: [crossIssueOld, crossIssueSuccessor] }));
+	assert.equal(crossIssue.code, "run-existing-spec");
+	assert.deepEqual(crossIssue.artifacts.find(({ id }) => id === crossIssueSuccessor.id)?.issue, issue(21));
 
 	for (const target of [".sdd/specs/missing.md", "../outside.md", "other/repo#11"]) {
 		const unresolved = resolveWorkflow(resolutionInput({
