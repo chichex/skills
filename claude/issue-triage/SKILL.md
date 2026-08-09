@@ -1,11 +1,11 @@
 ---
 name: issue-triage
-description: Analiza uno o varios issues de GitHub contra el código, tests y contrato del repo; decide con evidencia si hay que rechazarlos por dependencia/tamaño, grillar, crear spec o ejecutar un quick-run protegido. Para selecciones múltiples decide todo-o-nada y, si se confirma una ruta conjunta, crea un issue combinado y cierra los originales como reemplazados. Usar siempre cuando el usuario pida analizar o decidir cómo encarar uno o varios issues antes de implementar.
+description: Analiza issues contra código, tests, contrato y artefactos SDD; resuelve linaje, vigencia y próximo stage, y emite un resultado estructurado sin ejecutar el stage. Para selecciones múltiples decide todo-o-nada y canonicaliza en un issue combinado antes de inspeccionar artefactos. Usar siempre cuando el usuario pida analizar o decidir cómo encarar uno o varios issues antes de implementar.
 ---
 
 # Issue Triage
 
-Enrutá una selección de issues usando evidencia del repositorio real. Este skill elige **una** ruta primaria, muestra por qué, pide confirmación y recién entonces encadena grill, spec o un quick-run protegido.
+Enrutá una selección de issues usando evidencia del repositorio real y sus artefactos SDD. Este skill recomienda **una** ruta, registra la elección efectiva y emite `WorkflowResolutionV1`; nunca ejecuta el stage resultante.
 
 No es un selector de opiniones: después del análisis no muestres todas las rutas como equivalentes. Tampoco es un bypass para mandar cualquier trabajo a implementación directa.
 
@@ -40,6 +40,93 @@ Para varios issues:
 
 La selección múltiple es **todo-o-nada**. No propongas ni ejecutes grupos parciales. Si sólo un subconjunto es cohesivo, devolvé `incoherent-selection` y explicá exactamente qué quitar o reseleccionar.
 
+<!-- artifact-aware:start -->
+## Contrato normativo artifact-aware
+
+- Invocación del harness: `/issue-triage`.
+- Gate humano del harness: `AskUserQuestion`.
+
+### Orden y autoridad
+
+1. Para una fuente, el issue seleccionado es la fuente canónica. Para varias, primero recuperá o creá el issue combinado idempotente.
+2. Si una selección múltiple todavía no tiene issue canónico utilizable, emití `outcome=error`, `code=canonicalization` y no inspecciones artefactos de las fuentes.
+3. Con issue canónico, inventariá únicamente sus specs y grills. Las fuentes originales quedan en `sources` y `evidence`, pero sus artefactos nunca se fusionan ni se usan como fallback.
+4. Todo Markdown candidato se parsea con `parseSddArtifact`; está prohibido decidir estado o identidad con regex o parsers paralelos. El resolver puro recibe inputs explícitos y no consulta filesystem, red, reloj ni APIs del harness.
+5. Resolvé identidad, copias, linaje y vigencia antes de clasificar trabajo nuevo. Sólo si no hay grill/spec asociado aplican `blocked-dependency`, `split-too-large`, `grill`, `spec`, `quick-run` y sus variantes `join-*`.
+
+### Identidad, copias y metadata defectuosa
+
+- Normalizá `#11` y `owner/repo#11` contra el repo actual. Una identidad canónica válida es autoritativa. `Fuente`/`Source` y el nombre `issue-N-*` sólo recuperan identidad legacy o ausente y dejan provenance/diagnóstico.
+- Tipo incompatible, issue contradictorio, `ParseResult.kind=conflict`, markers divergentes o identidad canónica conflictiva producen `artifact-conflict`; nunca reasignes ni hagas fallback silencioso.
+- Un único artefacto con forma/ubicación de spec y estado legacy desconocido, metadata ausente o canonical inválida toma `audit-existing-spec` sólo si puede asociarse de forma segura. Conservá siempre format, provenance y diagnósticos.
+- Una copia local y otra en GitHub son una sola spec lógica únicamente si comparten identidad y contenido normativo después de: normalizar `CRLF`/`LF` y un único newline final; normalizar la forma relativa/fully-qualified del issue dentro del marker; y quitar de la copia GitHub sólo un bloque terminal `<details><summary>Body original</summary>…</details>`. Toda otra diferencia —estado, headings, criterios, resultados, prose o metadata— produce `artifact-conflict`. Si son equivalentes, la local es `primary`.
+
+### Linaje y vigencia
+
+- Las specs del mismo issue forman un grafo explícito por `superseded-by`. Seguí una referencia sólo si resuelve unívocamente a un artefacto dentro del proyecto o a un issue del mismo repo. No sigas rutas fuera de la raíz ni repos externos.
+- Una sucesora válida se reevalúa completa. Destino ausente/externo/no soportado produce `superseded-artifact`; ciclos, referencias ambiguas, specs no enlazadas o varias hojas vivas producen `artifact-conflict`. Nunca desempates por timestamp.
+- La vigencia es exactamente `fresh|stale|unknown`. El adapter separa eventos materiales (`title`, `body`, `comments`) de administrativos (`labels`, `assignees`, `milestone`). Baseline local = revisión/mtime del archivo; baseline en issue = revisión del body que aloja la spec.
+- Un evento material demostrablemente posterior da `stale`; historia completa sin eventos posteriores da `fresh`; timestamps faltantes/incomparables o historia insuficiente dan `unknown`. El core no usa la hora actual y `unknown` nunca habilita run.
+
+### Grills
+
+- El snapshot JSON manda para runtime `active`; el handoff Markdown manda para `paused|finalized`. Snapshot `active` + handoff previo `paused` del mismo grill es una sola sesión reanudada.
+- Para estado persistido, snapshot/handoff compatibles se deduplican; ausencia o desacuerdo no explicable se diagnostica y bloquea. `parentId`/`revision` forman el linaje runtime: sólo una revisión hoja puede avanzar y revisiones paralelas producen `artifact-conflict`.
+- Una spec cuyo `grill` enlaza la hoja finalizada es downstream y toma precedencia. Spec y grill no enlazados que compiten por el mismo issue producen `artifact-conflict`; el timestamp no los ordena.
+
+### Matriz del próximo stage
+
+| Situación resuelta | `recommendedRoute` | Resultado |
+|---|---|---|
+| Sin grill/spec | clasificación normal existente | no inventar continuación |
+| Grill único `active|paused`, sin spec downstream | `resume-grill` | `start`, stage `grill`, mode `resume` |
+| Grill único `finalized`, sin spec downstream | `spec-from-grill` | `start`, stage `spec`, mode `from-grill` |
+| Spec `draft` | `update-existing-spec` | `start`, stage `spec`, mode `update` |
+| Spec `approved` o legacy pendiente, `fresh` | `run-existing-spec` | `start`, stage `run-existing-spec` |
+| Spec `approved`, `stale|unknown` | `audit-existing-spec` | `start`, stage `spec`, mode `update` |
+| Spec `implemented`, `fresh` | `already-implemented` | `stop`; nunca ejecutar |
+| Spec `implemented`, `stale|unknown` | `audit-existing-spec` | `start`, stage `spec`, mode `update`; nunca reejecutar la vieja |
+| Spec `superseded` con sucesora unívoca | ruta de la sucesora | reevaluar recursivamente |
+| Spec `superseded` sin sucesora utilizable | `superseded-artifact` | `stop` explícito |
+| Estado único desconocido/ausente asociable | `audit-existing-spec` | `start`, stage `spec`, mode `update` |
+| Cualquier conflicto de identidad/copia/linaje | `artifact-conflict` | `stop`; no elegir |
+
+Una spec `draft` nunca salta a run. `implemented`/`already-implemented` nunca producen `run-existing-spec`, aunque el usuario hubiera preferido un fallback de trabajo nuevo.
+
+### Resultado y elección v1
+
+Antes del gate humano, `selectedRoute=null`. Confirmar la primaria copia exactamente `recommendedRoute`; elegir fallback registra el fallback sin sobrescribir la recomendación; cancelar devuelve `outcome=stop`, `code=cancelled` y conserva `selectedRoute=null`.
+
+```ts
+type WorkflowResolutionV1 = {
+  version: 1;
+  outcome: "start" | "stop" | "error";
+  code: string;
+  recommendedClassification: NewWorkRoute | null;
+  fallbackClassification: NewWorkRoute | null;
+  recommendedRoute: WorkflowRoute | null;
+  selectedRoute: WorkflowRoute | null;
+  stage: "grill" | "spec" | "quick-run" | "run-existing-spec" | null;
+  mode: "new" | "resume" | "update" | "from-grill" | null;
+  repo: string;
+  cwd: string;
+  sources: IssueRef[];
+  canonicalIssue: IssueRef | null;
+  summary: string;
+  impactExample: string;
+  scope: string[];
+  checklist: string[];
+  evidence: EvidenceRef[];
+  risks: string[];
+  artifacts: ArtifactRef[];
+};
+```
+
+`NewWorkRoute` conserva rutas single/join y rechazos; `WorkflowRoute` agrega las ocho rutas artifact-aware de la matriz. Cada `ArtifactRef` expone ubicación, identidad, tipo, estado, format/provenance, vigencia y diagnósticos. Los campos de dispatch son enums/códigos; prose y evidencia son payload. `JSON.parse(JSON.stringify(result))` preserva el valor completo.
+
+Este workflow termina después de confirmar y emitir el resultado, sin ejecutar ningún stage. Esta unidad no ejecuta grill, spec, run ni quick-run, no cambia sesiones y no crea branches/worktrees de implementación; el dispatch pertenece al consumidor downstream.
+<!-- artifact-aware:end -->
+
 ## Fase 1 — Resolver raíz y fuentes
 
 1. Resolvé la raíz con `git rev-parse --show-toplevel` y trabajá siempre desde allí.
@@ -57,7 +144,7 @@ gh issue view <N> --json number,title,body,url,state,updatedAt,author,labels,ass
    - catálogo de hasta 100 issues abiertos y cerrados con número, título, body, estado y labels;
    - componentes, seams o secuencias compartidas.
 6. Leé `.sdd/project.md` si existe. Su ausencia **no bloquea el triage ni el quick-run**; sí será manejada por `sdd-spec` si la ruta elegida es spec.
-7. Revisá `.sdd/specs/` y los bodies fuente para detectar specs o grills ya asociados. No recomiendes repetir trabajo existente sin explicarlo.
+7. Para varias fuentes, buscá primero el issue combinado por su marker idempotente. Si no existe o no es utilizable, emití `canonicalization`, pedí autorización específica para la Fase 5 y no leas Markdown de artefactos; tras canonicalizar, reiniciá esta fase usando sólo el issue nuevo. Para una fuente o un canónico ya disponible, inventariá specs locales/body, handoffs y snapshots, construí evidencia temporal explícita y aplicá completo el contrato artifact-aware.
 8. Prepará una síntesis autocontenida del pedido antes de clasificar:
    - explicá en lenguaje llano qué pasa hoy, qué cambio o resultado se busca y quién o qué flujo se beneficia;
    - para un issue, usá 2–4 frases; para varios, describí primero el objetivo común y después una línea breve por fuente con su aporte;
@@ -77,9 +164,9 @@ Antes de clasificar:
 5. No corras suites completas, builds costosos ni servidores durante el triage. Podés ejecutar comprobaciones baratas y finitas sólo si resuelven una duda material (por ejemplo, listar tests o validar que un comando focalizado existe).
 6. Si el texto del issue contradice el código, tratá el conflicto como ambigüedad o bloqueo; no lo resuelvas silenciosamente.
 
-## Fase 3 — Gates de clasificación
+## Fase 3 — Resolver artefactos o clasificar trabajo nuevo
 
-No uses límites rígidos de líneas, archivos o cantidad de issues. Evaluá estas señales:
+Aplicá primero el contrato artifact-aware. Si devuelve una ruta existente, salteá los gates de trabajo nuevo y pasá a la Fase 4 con esa ruta. Sólo cuando el inventario normalizado no contiene grill/spec asociado evaluá estas señales; no uses límites rígidos de líneas, archivos o cantidad de issues:
 
 ### `quick-run` / `join-quick-run`
 
@@ -157,21 +244,21 @@ La ruta primaria debe ser única. El fallback no es otra recomendación equivale
 
 ### Rechazos
 
-Para `blocked-dependency`, `split-too-large`, `combined-too-large` o `incoherent-selection`, no preguntes si ejecutar: mostrá el diagnóstico y terminá con una instrucción concreta para reseleccionar o resolver el bloqueo.
+Para `blocked-dependency`, `split-too-large`, `combined-too-large`, `incoherent-selection`, `already-implemented`, `superseded-artifact` o `artifact-conflict`, no abras gate de ejecución: construí el resultado `stop`, pasá a la Fase 6 para emitirlo y agregá una instrucción concreta sólo cuando haya un bloqueo reparable.
 
 ### Rutas accionables
 
-Para grill/spec/quick-run usá `AskUserQuestion`. El diagnóstico completo debe estar impreso como texto visible en el MISMO mensaje que hace el tool call: el diálogo de `AskUserQuestion` tapa la pantalla y no arrastra contexto. La pregunta debe repetir en una oración el outcome de `En pocas palabras`, para que la decisión sea autocontenida, y ofrecer:
+Para todo resultado `outcome=start` —ruta nueva o artifact-aware— usá `AskUserQuestion`. El diagnóstico completo debe estar impreso como texto visible en el MISMO mensaje que hace el tool call: el diálogo de `AskUserQuestion` tapa la pantalla y no arrastra contexto. La pregunta debe repetir en una oración el outcome de `En pocas palabras`, para que la decisión sea autocontenida, y ofrecer:
 
 - `Confirmar <ruta recomendada> (Recomendado)`
 - `Usar fallback: <ruta>`
 - `Cancelar`
 
-Una confirmación autoriza esa ruta, no cualquier otra. Si el usuario cancela, no crees issues, archivos, branches ni comentarios.
+Una confirmación sólo registra `selectedRoute`; no autoriza a ejecutar el stage. Antes del gate vale `selectedRoute=null`; primaria y fallback preservan la recomendación, y cancelar emite `code=cancelled` sin crear issues, archivos, branches ni comentarios.
 
 ## Fase 5 — Canonicalizar una selección múltiple
 
-Sólo para una ruta conjunta confirmada. Un único issue pasa directo a la Fase 6.
+Esta fase ocurre únicamente tras una autorización preliminar específica para canonicalizar una selección múltiple; no cuenta como elección del stage downstream. Un único issue y una selección ya canonicalizada la saltean.
 
 ### 5.1 Marker idempotente
 
@@ -229,82 +316,16 @@ Si falla crear el combinado, no toques los originales. Si falla algún comentari
 
 Desde este punto, la única fuente downstream es `#NEW`.
 
-## Fase 6 — Ejecutar la ruta confirmada
+## Fase 6 — Emitir el resultado y terminar
 
-Al encadenar cualquier ruta, conservá `En pocas palabras` y su `Ejemplo de impacto` como introducción breve del trabajo para que el lector sepa qué se va a grillar, especificar o implementar. La fuente sigue siendo autoritativa: la síntesis no reemplaza requisitos ni evidencia.
+1. Construí el `WorkflowResolutionV1` completo con la recomendación original, fallback, ruta artifact-aware, elección efectiva y toda la evidencia normalizada.
+2. Conservá `En pocas palabras` y `Ejemplo de impacto` en `summary`/`impactExample`; la fuente sigue siendo autoritativa.
+3. Mostrá el resultado serializado y una síntesis humana breve. Verificá el round-trip `JSON.parse(JSON.stringify(result))`.
+4. Terminá el workflow. No cargues ni invoques grill/sdd-spec/sdd-run, no implementes quick-run, no cambies sesión y no crees branch/worktree/PR.
 
-### Grill
+### Garantías downstream de quick-run
 
-Cargá el skill `grill` completo y seguí ese workflow usando el issue fuente (original único o combinado). No implementes durante el grill.
-
-### Spec
-
-Cargá el skill `sdd-spec` completo y continuá con el issue fuente. Sus precondiciones, incluida `.sdd/project.md`, siguen siendo autoritativas.
-
-### Quick-run protegido
-
-La confirmación del triage y el checklist visible reemplazan el gate de plan, pero no las garantías siguientes.
-
-#### Preflight bloqueante
-
-1. Determiná branch default desde remote/contrato; nunca asumas `main`.
-2. Ejecutá `git status --porcelain`, detectá rebase/merge, detached HEAD y divergencias.
-3. Ante cualquier estado raro o cambio local: **abortá**. No hagas stash, reset, checkout forzado ni “limpieza”.
-4. Si hay remote, hacé `git fetch` antes de ramificar.
-5. Creá un worktree hermano y branch `quick/issue-<N>-<slug>` desde el base actualizado.
-6. Todo el quick-run ocurre dentro del worktree; nunca edites el checkout original.
-
-#### Implementación
-
-1. Convertí el checklist del diagnóstico en verificaciones concretas.
-2. Cuando el comportamiento sea testeable, escribí/ajustá primero el test focalizado y comprobá que falle por la razón correcta.
-3. Implementá sólo lo necesario para ese checklist.
-4. Si aparece una decisión nueva, una migración, seguridad, integración externa, expansión transversal o falta de verificación fiable: frená. No amplíes el quick-run; recomendá grill o spec.
-5. Máximo tres intentos honestos por verificación. No debilites tests ni asserts.
-6. Ejecutá el test focalizado y el chequeo estático más barato que corresponda (typecheck/lint/build focalizado) según scripts y contrato disponible.
-7. No afirmes que la regresión completa está verde si no se corrió. Reportá exactamente qué se verificó.
-
-#### Commit y PR
-
-1. Commiteá pasos coherentes; no dejes cambios sin commit al declarar éxito.
-2. Si remote + `gh` + límites lo permiten, pusheá la branch y creá PR.
-3. El body del PR contiene:
-   - fuente y `Closes #N`;
-   - checklist observable;
-   - evidencia de comandos ejecutados;
-   - limitaciones/no ejecutado;
-   - firma estándar del repo si existe.
-4. No merges el PR.
-5. Si no se puede publicar, terminá en branch + commit local y mostrá el comando sugerido.
-6. Remové el worktree tras PR exitoso. Si el run se interrumpe o queda rojo, preservalo y reportá la ruta.
-
-#### Reporte
-
-Éxito:
-
-```text
-Quick-run completo: PR #N <url> | branch <name> en <commit>
-- issue: #N
-- checklist: X/X verificado
-- tests: <comandos y resultados exactos>
-- no ejecutado: <suite/build/etc.>
-- cambios: <resumen>
-- pendiente humano: <revisar PR o acción concreta>
-```
-
-Interrupción:
-
-```text
-QUICK-RUN INTERRUMPIDO
-- bloqueo: <detalle>
-- checklist verificado: X/Y
-- cambios sin commit: <paths o ninguno>
-- tests rojos/no concluyentes: <detalle>
-- worktree: <ruta>
-- reanudar con: <instrucción exacta>
-```
-
-Nunca llames “completo” a un run con tareas, procesos, cambios sin commit o verificaciones requeridas pendientes.
+Si `selectedRoute=quick-run|join-quick-run`, el `checklist` y `risks` deben conservar para el consumidor downstream: preflight de repo limpio, worktree aislado desde el base actualizado, tests primero cuando corresponda, máximo tres intentos por verificación, chequeos contractuales, commits coherentes y PR sin merge. Son payload del resultado; este skill no ejecuta ninguno de esos pasos.
 
 ## MUST DO
 
@@ -315,7 +336,7 @@ Nunca llames “completo” a un run con tareas, procesos, cambios sin commit o 
 - Pedir confirmación antes de cualquier ruta o canonicalización.
 - Evaluar selecciones múltiples todo-o-nada.
 - Hacer canonicalización idempotente y cerrar originales como reemplazados, nunca eliminarlos.
-- Mantener quick-run aislado en worktree y entregar PR por defecto.
+- Mantener separadas recomendación, fallback y elección efectiva; emitir siempre el resultado v1 serializable.
 - Reportar límites y fallos parciales honestamente.
 
 ## MUST NOT DO
@@ -325,6 +346,6 @@ Nunca llames “completo” a un run con tareas, procesos, cambios sin commit o 
 - No crear grupos parciales.
 - No crear el issue combinado antes de la confirmación.
 - No tocar originales si falla la creación canónica.
-- No editar el checkout del usuario en quick-run.
-- No improvisar una spec dentro de quick-run.
-- No presentar una interrupción como éxito.
+- No invocar ni ejecutar grill, spec, run o quick-run; no cambiar sesiones ni crear trabajo de implementación.
+- No reinterpretar prose, summary o timestamps como campos de protocolo.
+- No presentar canonicalización incompleta, conflicto o cancelación como un stage ejecutable.
