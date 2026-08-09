@@ -1,6 +1,6 @@
 # Spec — Resolver linaje y próximo stage de artefactos SDD
-<!-- Generada por /skill:sdd-spec el 2026-08-08. Fuente: issue #11. Estado: aprobada -->
-<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=#11; grill=none; superseded-by=none -->
+<!-- Generada por /skill:sdd-spec el 2026-08-08. Fuente: issue #11. Estado: implementada -->
+<!-- SDD-Tracking: version=1; type=spec; state=implemented; issue=#11; grill=none; superseded-by=none -->
 
 ## Contexto
 El contrato y normalizador canónicos ya existen en `docs/sdd-tracking-v1.md` y `pi-extensions/sdd-artifacts/index.ts:726`, pero `pi-extensions/github-issues.ts:102-113` y `pi-extensions/grill-tools/index.ts:396-414` todavía leen estado e identidad con regex parciales. Los tres `issue-triage` existentes detectan artefactos (`pi/issue-triage/SKILL.md:61`) pero sólo definen rutas para trabajo nuevo (`:27-40`), por lo que no resuelven linaje, vigencia ni próximo stage. Las dependencias #9 y #10 están cerradas y mergeadas en `main`.
@@ -159,3 +159,22 @@ Mecanismo confirmado: **TDD focalizado + adapters + regresión**, sin ejecutar `
 - No hay typecheck/lint TypeScript ni e2e automatizado de TUI/agentes. CI y el protocolo humano son las únicas señales adicionales al runtime unitario.
 - #13 y #14 dependen de la estabilidad de `WorkflowResolutionV1`; cambios incompatibles posteriores deberán versionar el schema, no reinterpretar v1.
 - Las dependencias declaradas #9 y #10 están cumplidas; #12, #13 y #14 quedan deliberadamente fuera de esta ejecución.
+
+## Resultado de ejecucion (2026-08-08 · HEAD 62e27b9)
+| CA | Estado | Evidencia |
+|---|---|---|
+| CA-1 | verificado | `node --test pi-extensions/*/*.test.ts`: 93/93; adapter canonical/legacy/ausente, identidad relativa/full y mismatches verdes |
+| CA-2 | verificado | Test `deduplicates only normatively equivalent local and GitHub spec copies`: EOL, marker y archive deduplican; estado/prose divergen con `artifact-conflict` |
+| CA-3 | verificado | Test de linaje: path e issue same-repo válidos; missing/externo/outside, ciclo y hojas paralelas cubiertos |
+| CA-4 | verificado | Test de vigencia trivaluada: material/admin, historia incompleta y timestamps sin zona; sin reloj implícito |
+| CA-5 | verificado | Matriz table-driven para trabajo nuevo, `draft`, `approved` e `implemented` con `fresh|stale|unknown` |
+| CA-6 | verificado | Tests snapshot/handoff, active+paused, handoff faltante, revisiones lineales/paralelas y precedencia downstream |
+| CA-7 | verificado | Tests legacy unknown, metadata ausente, canonical inválida segura/insegura y markers conflictivos |
+| CA-8 | verificado | Test `join-*`: `canonicalization` antes de leer; luego sólo canónico, sin fallback a fuentes |
+| CA-9 | verificado | Tests primaria/fallback/cancelación; recomendación inmutable y protecciones artifact-aware preservadas |
+| CA-10 | verificado | Unión discriminada v1 y round-trip `JSON.parse(JSON.stringify(result))` completo |
+| CA-11 | verificado | Gate de consumidores 2/2; parsers regex eliminados; smoke Pi cargó 11 entrypoints y listó 67 líneas de modelos |
+| CA-12 | verificado autónomo · pendiente humano | Gate cross-harness 3/3 (incluye drift inyectado y ausencia OpenCode); protocolo humano de esta spec no ejecutado |
+| CA-13 | verificado | `git diff --name-status origin/main...HEAD` limitado a resolver/adapters/doctrina/tests; búsqueda de dispatch/session/tool/install/contrato prohibidos: none |
+
+Escalera contractual: `bash -n` OK; frontmatter 44/44; tests 93/93 (15 nuevos); `git diff --check` OK; drift informativo ejecutado; smoke Pi OK. `shellcheck` no está instalado localmente y queda como señal de CI. No se ejecutaron `install.sh` ni el protocolo humano. Desviaciones de la spec: ninguna.
