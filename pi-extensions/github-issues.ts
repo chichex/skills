@@ -1,12 +1,13 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 
 import type { IssueListItem } from "./github-issue-selector";
 import { selectManyMenu, selectMenu, type MenuItem } from "./lib/menu";
+import { inspectMarkdownArtifact, type ArtifactRef } from "./workflow-resolution/index.ts";
 
 type IssueListAction =
 	| { kind: "select"; numbers: number[] }
@@ -34,6 +35,7 @@ interface AssociatedGrill {
 interface AssociatedSpec {
 	path: string;
 	state: string;
+	diagnostics: string[];
 	updatedAt?: string;
 	location: "local" | "issue";
 }
@@ -95,21 +97,15 @@ function workSummary(work: IssueWork | undefined): string {
 	if (work.specs.length > 0) {
 		const states = [...new Set(work.specs.map((spec) => spec.state))];
 		parts.push(`${work.specs.length === 1 ? "spec" : `specs (${work.specs.length})`}: ${states.join(" + ")}`);
+		const diagnostics = [...new Set(work.specs.flatMap((spec) => spec.diagnostics))];
+		if (diagnostics.length > 0) parts.push(`diagnósticos: ${diagnostics.join(" + ")}`);
 	}
 	return parts.join(" · ");
 }
 
-function specState(markdown: string): string {
-	return markdown.match(/Estado:\s*([^>\n.]+?)(?:\s*-->|[.\n])/i)?.[1]?.trim() || "sin estado";
-}
-
-function issueNumberFromSpec(markdown: string, path: string): number | undefined {
-	const header = markdown.slice(0, 8_192);
-	const tracking = header.match(/SDD-Tracking:[^>]*\bissue\s*=\s*(?:[^;\s]*#)?(\d+)/i)?.[1];
-	const source = header.match(/Fuente:[^>\n]*\bissue\s*#(\d+)/i)?.[1];
-	const filename = basename(path).match(/^issue-(\d+)(?:-|\.md$)/i)?.[1];
-	const number = Number(tracking ?? source ?? filename);
-	return Number.isInteger(number) && number > 0 ? number : undefined;
+function normalizedSpecState(artifact: ArtifactRef): string {
+	if (artifact.type !== "spec" || artifact.format === "invalid" || artifact.format === "conflict") return "unknown";
+	return artifact.state;
 }
 
 function issueNumberFromGrill(snapshot: StoredGrill): number | undefined {
@@ -135,6 +131,7 @@ function isStoredGrill(value: unknown): value is StoredGrill {
 
 async function collectWorkflowAssociations(
 	projectPath: string,
+	repository: string,
 	issues: IssueListItem[],
 ): Promise<Map<number, IssueWork>> {
 	const byIssue = new Map<number, IssueWork>();
@@ -176,11 +173,19 @@ async function collectWorkflowAssociations(
 		const path = join(specsDirectory, file);
 		try {
 			const [markdown, fileStat] = await Promise.all([readFile(path, "utf8"), stat(path)]);
-			const number = issueNumberFromSpec(markdown, path);
-			if (!number) return;
-			workFor(number).specs.push({
+			const artifact = inspectMarkdownArtifact({
+				kind: "markdown",
+				id: path,
+				expectedType: "spec",
+				location: "local",
 				path,
-				state: specState(markdown),
+				markdown,
+			}, { repository, projectRoot: projectPath });
+			if (!artifact.issue || artifact.issue.repository.toLowerCase() !== repository.toLowerCase()) return;
+			workFor(artifact.issue.number).specs.push({
+				path,
+				state: normalizedSpecState(artifact),
+				diagnostics: artifact.diagnostics.map(({ code }) => code),
 				updatedAt: fileStat.mtime.toISOString(),
 				location: "local",
 			});
@@ -192,9 +197,19 @@ async function collectWorkflowAssociations(
 	for (const issue of issues) {
 		const body = issue.body?.trim() ?? "";
 		if (!/^#\s+Spec\b/im.test(body) && !/SDD-Tracking:/i.test(body)) continue;
+		const artifact = inspectMarkdownArtifact({
+			kind: "markdown",
+			id: issue.url,
+			expectedType: "spec",
+			location: "issue",
+			path: issue.url,
+			markdown: body,
+			hostIssue: { repository, number: issue.number },
+		}, { repository, projectRoot: projectPath });
 		workFor(issue.number).specs.push({
 			path: issue.url,
-			state: specState(body),
+			state: normalizedSpecState(artifact),
+			diagnostics: artifact.diagnostics.map(({ code }) => code),
 			updatedAt: issue.updatedAt,
 			location: "issue",
 		});
@@ -327,12 +342,16 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 		ctx: ExtensionContext,
 	): Promise<{ issues: IssueListItem[]; workByIssue: Map<number, IssueWork> }> {
 		return withLoader(ctx, "Consultando issues y trabajo asociado…", async (signal) => {
-			const output = await runGh(
-				["issue", "list", "--state", "open", "--limit", "100", "--json", "number,title,body,url,state,updatedAt,author,labels"],
-				ctx,
-				signal,
-			);
+			const [output, repositoryOutput] = await Promise.all([
+				runGh(
+					["issue", "list", "--state", "open", "--limit", "100", "--json", "number,title,body,url,state,updatedAt,author,labels"],
+					ctx,
+					signal,
+				),
+				runGh(["repo", "view", "--json", "nameWithOwner"], ctx, signal),
+			]);
 			const issues = parseJson<IssueListItem[]>(output, "gh issue list");
+			const repository = parseJson<{ nameWithOwner: string }>(repositoryOutput, "gh repo view").nameWithOwner;
 			const rootResult = await pi.exec("git", ["rev-parse", "--show-toplevel"], {
 				cwd: ctx.cwd,
 				signal,
@@ -341,7 +360,7 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 			const projectPath = rootResult.code === 0 && rootResult.stdout.trim()
 				? resolve(rootResult.stdout.trim())
 				: resolve(ctx.cwd);
-			return { issues, workByIssue: await collectWorkflowAssociations(projectPath, issues) };
+			return { issues, workByIssue: await collectWorkflowAssociations(projectPath, repository, issues) };
 		});
 	}
 

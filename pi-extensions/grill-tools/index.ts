@@ -8,6 +8,12 @@ import { getMarkdownTheme, truncateHead, type ExtensionAPI } from "@earendil-wor
 import { Markdown, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { menuItems, selectMenu, type MenuItem } from "../lib/menu";
+import {
+	inspectMarkdownArtifact,
+	type ArtifactFormat,
+	type ArtifactProvenance,
+	type IssueRef,
+} from "../workflow-resolution/index.ts";
 import { handoffFileNames, planGrillHandoff, slugify } from "./logic.ts";
 
 const AGENT_DIR = join(homedir(), ".pi", "agent");
@@ -91,8 +97,17 @@ interface SpecDocument {
 	projectPath: string;
 	title: string;
 	state: string;
+	format: ArtifactFormat;
+	provenance: ArtifactProvenance;
+	issue: IssueRef | null;
+	diagnostics: string[];
 	updatedAt: string;
 	markdown: string;
+}
+
+interface SpecProject {
+	projectPath: string;
+	repository: string;
 }
 
 const EstimateSchema = Type.Object({
@@ -308,6 +323,21 @@ async function projectRoot(pi: ExtensionAPI, cwd: string): Promise<string> {
 	return result.code === 0 && result.stdout.trim() ? resolve(result.stdout.trim()) : resolve(cwd);
 }
 
+function repositoryFromRemote(remote: string): string | null {
+	const match = /github\.com[/:]([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/.exec(remote.trim());
+	return match?.[1] && match[2] ? `${match[1]}/${match[2]}` : null;
+}
+
+async function projectRepository(pi: ExtensionAPI, projectPath: string): Promise<string> {
+	const result = await pi.exec("git", ["config", "--get", "remote.origin.url"], {
+		cwd: projectPath,
+		timeout: 5_000,
+	});
+	return result.code === 0
+		? repositoryFromRemote(result.stdout) ?? `local/${basename(projectPath)}`
+		: `local/${basename(projectPath)}`;
+}
+
 function compactSnapshot(snapshot: GrillSnapshot): object {
 	return {
 		id: snapshot.id,
@@ -393,21 +423,39 @@ function inspectionMarkdown(snapshot: GrillSnapshot): string {
 	return lines.join("\n");
 }
 
-function specMetadata(markdown: string, path: string): Pick<SpecDocument, "title" | "state"> {
+function inspectSpecDocument(
+	markdown: string,
+	path: string,
+	project: SpecProject,
+): Pick<SpecDocument, "title" | "state" | "format" | "provenance" | "issue" | "diagnostics"> {
 	const heading = markdown.match(/^#\s+(?:Spec\s*[—–-]\s*)?(.+?)\s*$/m)?.[1]?.trim();
-	const state = markdown.match(/Estado:\s*([^>\n.]+?)(?:\s*-->|[.\n])/i)?.[1]?.trim();
+	const artifact = inspectMarkdownArtifact({
+		kind: "markdown",
+		id: path,
+		expectedType: "spec",
+		location: "local",
+		path,
+		markdown,
+	}, { repository: project.repository, projectRoot: project.projectPath });
+	const state = artifact.type === "spec" && artifact.format !== "invalid" && artifact.format !== "conflict"
+		? artifact.state
+		: "unknown";
 	return {
 		title: heading || basename(path, ".md").replace(/[-_]+/g, " "),
-		state: state || "sin estado",
+		state,
+		format: artifact.format,
+		provenance: artifact.provenance,
+		issue: artifact.issue,
+		diagnostics: artifact.diagnostics.map(({ code }) => code),
 	};
 }
 
 function specStatusRank(state: string): number {
-	const normalized = state.toLowerCase();
-	if (normalized.includes("aprobad") || normalized.includes("approved")) return 0;
-	if (normalized.includes("draft") || normalized.includes("borrador")) return 1;
-	if (normalized.includes("implement")) return 2;
-	return 3;
+	if (state === "approved") return 0;
+	if (state === "draft") return 1;
+	if (state === "implemented") return 2;
+	if (state === "superseded") return 3;
+	return 4;
 }
 
 function specStatusIcon(state: string): string {
@@ -419,21 +467,25 @@ function specStatusIcon(state: string): string {
 }
 
 function specMenuItem(spec: SpecDocument): MenuItem<string> {
+	const diagnostics = spec.diagnostics.length > 0 ? ` · ⚠ ${spec.diagnostics.join(" + ")}` : "";
 	return {
 		value: spec.path,
 		label: `${specStatusIcon(spec.state)} ${spec.title}`,
-		description: `${spec.state} · ${basename(spec.projectPath)} · ${formatDate(spec.updatedAt)} · ${basename(spec.path)}`,
+		description: `${spec.state} · ${spec.format}/${spec.provenance}${diagnostics} · ${basename(spec.projectPath)} · ${formatDate(spec.updatedAt)} · ${basename(spec.path)}`,
 	};
 }
 
 function specInspectionMarkdown(spec: SpecDocument): string {
-	return `${spec.markdown.trim()}\n\n---\n\n**Ruta:** \`${spec.path}\``;
+	const identity = spec.issue ? `${spec.issue.repository}#${spec.issue.number}` : "none";
+	const diagnostics = spec.diagnostics.length > 0 ? spec.diagnostics.join(", ") : "none";
+	return `${spec.markdown.trim()}\n\n---\n\n**Ruta:** \`${spec.path}\`  \n**Normalizado:** ${spec.state} · ${spec.format}/${spec.provenance} · issue ${identity}  \n**Diagnósticos:** ${diagnostics}`;
 }
 
-async function listSpecs(projectPaths: string[]): Promise<SpecDocument[]> {
-	const roots = [...new Set(projectPaths.map((path) => resolve(path)))];
-	const specs = (await Promise.all(roots.map(async (projectPath) => {
-		const directory = join(projectPath, ".sdd", "specs");
+async function listSpecs(projects: SpecProject[]): Promise<SpecDocument[]> {
+	const byRoot = new Map<string, SpecProject>();
+	for (const project of projects) byRoot.set(resolve(project.projectPath), { ...project, projectPath: resolve(project.projectPath) });
+	const specs = (await Promise.all([...byRoot.values()].map(async (project) => {
+		const directory = join(project.projectPath, ".sdd", "specs");
 		let files: string[];
 		try {
 			files = (await readdir(directory, { withFileTypes: true }))
@@ -448,8 +500,8 @@ async function listSpecs(projectPaths: string[]): Promise<SpecDocument[]> {
 			const [markdown, fileStat] = await Promise.all([readFile(path, "utf8"), stat(path)]);
 			return {
 				path,
-				projectPath,
-				...specMetadata(markdown, path),
+				projectPath: project.projectPath,
+				...inspectSpecDocument(markdown, path, project),
 				updatedAt: fileStat.mtime.toISOString(),
 				markdown,
 			};
@@ -541,17 +593,27 @@ export default function grillTools(pi: ExtensionAPI) {
 
 			try {
 				const currentProject = await projectRoot(pi, ctx.cwd);
+				const currentSpecProject: SpecProject = {
+					projectPath: currentProject,
+					repository: await projectRepository(pi, currentProject),
+				};
 				let effectiveScope: "current-project" | "all" = "current-project";
 				let allSpecs: SpecDocument[] | undefined;
-				const currentSpecs = await listSpecs([currentProject]);
+				const currentSpecs = await listSpecs([currentSpecProject]);
 				const showAllChoice = "🌐 Mostrar specs de todos los proyectos conocidos por Pi…";
 				const showProjectChoice = `⌂ Volver a specs de ${basename(currentProject)}`;
 				const backChoice = "← Volver a la lista de specs";
 
 				while (true) {
-					const specs = effectiveScope === "current-project"
-						? currentSpecs
-						: (allSpecs ??= await listSpecs(await knownProjectRoots(pi, currentProject)));
+					if (effectiveScope === "all" && allSpecs === undefined) {
+						const roots = await knownProjectRoots(pi, currentProject);
+						const projects = await Promise.all(roots.map(async (projectPath): Promise<SpecProject> => ({
+							projectPath,
+							repository: await projectRepository(pi, projectPath),
+						})));
+						allSpecs = await listSpecs(projects);
+					}
+					const specs = effectiveScope === "current-project" ? currentSpecs : allSpecs ?? [];
 					const scopeChoice = effectiveScope === "current-project" ? showAllChoice : showProjectChoice;
 					const items: MenuItem<string>[] = [
 						...specs.map(specMenuItem),
