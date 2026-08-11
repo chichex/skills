@@ -520,6 +520,14 @@ test("resource mismatch and kickoff failure are explicit post-switch failures wi
 	assert.equal(sends, 0);
 	assert.equal(wrongResources.ok ? undefined : wrongResources.target?.sessionFile, CHILD_FILE);
 
+	// Pi's real sendUserMessage awaits the child's ENTIRE first agent turn
+	// (agent-session.js: sendUserMessage -> prompt() -> await
+	// this._runAgentPrompt(messages)), not just message delivery. A provider
+	// error can therefore land minutes into the turn, after tools already ran
+	// with real side effects — this fake performs one such side effect and
+	// only fails after a tick, proving the result still surfaces the child
+	// that ran (no fake rollback) instead of reading like an instant no-op.
+	let toolRanInChild = false;
 	const kickoffFailure = await startFreshStage(
 		{ resolution: resolution(), skill: { name: "sdd-spec" } },
 		context({
@@ -527,6 +535,8 @@ test("resource mismatch and kickoff failure are explicit post-switch failures wi
 				await options.withSession(replacementContext({
 					async sendUserMessage() {
 						sends += 1;
+						toolRanInChild = true;
+						await new Promise((r) => setTimeout(r, 0));
 						throw new Error("provider unavailable");
 					},
 				}));
@@ -542,6 +552,7 @@ test("resource mismatch and kickoff failure are explicit post-switch failures wi
 	assert.equal(kickoffFailure.originPreserved, false);
 	assert.equal(kickoffFailure.ok ? undefined : kickoffFailure.target?.sessionFile, CHILD_FILE);
 	assert.equal(sends, 1);
+	assert.equal(toolRanInChild, true);
 });
 
 test("the replacement callback never rejects, even when it fails, so Pi's real newSession/switchSession never treats it as fatal", async () => {

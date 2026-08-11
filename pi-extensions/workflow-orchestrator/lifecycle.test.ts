@@ -188,6 +188,11 @@ test("starts a fresh linked same-project session and sends only materialized ski
 						};
 					},
 					async sendUserMessage(message: string) {
+						// Pi's real sendUserMessage only resolves after the child's entire
+						// first agent turn completes (tool calls included), never
+						// instantly. This tick proves startFreshStage doesn't assume
+						// synchronous/immediate delivery.
+						await new Promise((r) => setTimeout(r, 0));
 						calls.push("kickoff");
 						kickoff = message;
 					},
@@ -454,6 +459,9 @@ test("stages and switches to a fresh cross-project child using only the replacem
 						};
 					},
 					async sendUserMessage(message: string) {
+						// See the same-project test above: Pi's real sendUserMessage
+						// resolves only once the child's entire first turn is done.
+						await new Promise((r) => setTimeout(r, 0));
 						calls.push("kickoff");
 						kickoff = message;
 					},
