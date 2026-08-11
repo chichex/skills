@@ -1,6 +1,6 @@
 # Spec — Extraer quick-run protegido a un skill dedicado
-<!-- Generada por /skill:sdd-spec el 2026-08-10. Fuente: issue #12. Estado: aprobada -->
-<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=#12; grill=none; superseded-by=none -->
+<!-- Generada por /skill:sdd-spec el 2026-08-10. Fuente: issue #12. Estado: implementada -->
+<!-- SDD-Tracking: version=1; type=spec; state=implemented; issue=#12; grill=none; superseded-by=none -->
 
 ## Contexto
 El issue #12 se abrió cuando `issue-triage` todavía ejecutaba la vía rápida dentro de su Fase 6, pero #11 cambió esa frontera: hoy las tres copias emiten `WorkflowResolutionV1` y terminan sin ejecutar stages (`pi/issue-triage/SKILL.md:128,321-329`; equivalente en Claude/Codex). No existe ningún directorio `quick-run`; el resolver ya representa `quick-run|join-quick-run` como `stage="quick-run", mode="new"` (`pi-extensions/workflow-resolution/index.ts:397-423,464-466`). La doctrina completa retirada sigue recuperable, byte-equivalente entre harnesses, en `f5c138b:{claude,codex,pi}/issue-triage/SKILL.md:245-308`.
@@ -179,3 +179,17 @@ No tiene una dependencia técnica dura con las primeras tres unidades, pero debe
 
 
 </details>
+
+## Resultado de ejecucion (2026-08-10 · HEAD 0f528ab)
+| CA | Estado | Evidencia |
+|---|---|---|
+| CA-1 | verificado | `node --test pi-extensions/workflow-resolution/quick-run-gate.test.ts`: 5/5 verdes; `bash scripts/lint-frontmatter.sh`: 47 skills OK. |
+| CA-2 | doctrina verificada · conducta pendiente humano | Gate focalizado 5/5: envelope, autoridad y rechazo pre-mutation; protocolo humano diferido en esta spec. |
+| CA-3 | doctrina verificada · conducta pendiente humano | Gate focalizado 5/5: preflight, base, branch y worktree; protocolo humano diferido en esta spec. |
+| CA-4 | doctrina verificada · conducta pendiente humano | Rojo inicial 1/5 por skills ausentes → gate final 5/5; tests-first, tres intentos y frenos de alcance exigidos; protocolo humano diferido. |
+| CA-5 | doctrina verificada · conducta pendiente humano | Gate focalizado 5/5: ambos templates exactos, commits/PR y prohibiciones; protocolo humano diferido. |
+| CA-6 | verificado | `node --test pi-extensions/workflow-resolution/issue-triage-gate.test.ts pi-extensions/workflow-resolution/quick-run-gate.test.ts`: 8/8 verdes. |
+| CA-7 | verificado | Gate focalizado 5/5, incluida equivalencia y drift inyectado; `bash scripts/drift-report.sh` mostró los tres pares de `quick-run`. |
+| CA-8 | verificado | Frontmatter 47/47; `bash -n ...` y `git diff --check origin/main...HEAD` verdes; auditoría Git: 12 paths esperados, ningún path prohibido y OpenCode ausente. |
+
+Regresión contractual: `node --test pi-extensions/*/*.test.ts` terminó 98/98 verde; el smoke `pi ... --list-models` cargó todos los entrypoints y salió exitosamente. `shellcheck` no está instalado localmente y queda como señal bloqueante de CI; no se modificaron archivos shell.
