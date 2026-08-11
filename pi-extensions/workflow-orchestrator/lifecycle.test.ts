@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -269,6 +269,86 @@ test("starts a fresh linked same-project session and sends only materialized ski
 			"--assume",
 		].join("\n"));
 		assert.deepEqual(JSON.parse(envelope[2]!), handoff);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("accepts a project root reached through a symlink, matching Pi's resolve()-only cwd handling", async () => {
+	// Pi's SessionManager only ever resolve()s a cwd, never realpath()s it, so a
+	// project living behind a symlink (e.g. anything under macOS's /tmp, or a
+	// symlinked workspace dir) is exactly what Pi itself hands back through
+	// context.cwd/getCwd(). The handoff's cwd must be accepted as-is instead of
+	// being required to already equal its own realpath.
+	const root = await mkdtemp(join(tmpdir(), "workflow-orchestrator-symlink-"));
+	try {
+		const realProject = await realpath(root);
+		const symlinkProject = join(root, "linked-project");
+		await symlink(realProject, symlinkProject, "dir");
+		const skillDir = join(root, "skill");
+		const skillPath = join(skillDir, "SKILL.md");
+		const sessionDir = join(realProject, "sessions");
+		const originFile = join(sessionDir, "origin.jsonl");
+		const childFile = join(sessionDir, "child.jsonl");
+		await mkdir(skillDir);
+		await mkdir(sessionDir);
+		await writeFile(skillPath, "---\nname: quick-run\ndescription: Run\n---\n# Quick run\n", "utf8");
+		await writeFile(
+			originFile,
+			`${JSON.stringify({ type: "session", version: 3, id: "origin-id", cwd: symlinkProject })}\n`,
+			"utf8",
+		);
+
+		const handoff = resolution({ cwd: symlinkProject, canonicalIssue: null });
+		const context = {
+			cwd: symlinkProject,
+			sessionManager: {
+				getCwd: () => symlinkProject,
+				getSessionId: () => "origin-id",
+				getSessionFile: () => originFile,
+			},
+			async newSession(options: {
+				setup: (manager: { appendSessionInfo(name: string): string }) => Promise<void>;
+				withSession: (replacement: unknown) => Promise<void>;
+			}) {
+				await options.setup({ appendSessionInfo: () => "info-id" });
+				await options.withSession({
+					cwd: symlinkProject,
+					sessionManager: {
+						getCwd: () => symlinkProject,
+						getSessionId: () => "child-id",
+						getSessionFile: () => childFile,
+					},
+					getSystemPromptOptions: () => ({ cwd: symlinkProject, contextFiles: [], skills: [] }),
+					async sendUserMessage() {},
+				});
+				return { cancelled: false };
+			},
+			async switchSession() {
+				throw new Error("same-project must not switchSession");
+			},
+		};
+
+		const result = await startFreshStage(
+			{ resolution: handoff, skill: { name: "quick-run", args: "" } },
+			context as never,
+			{
+				commands: [{
+					name: "skill:quick-run",
+					source: "skill",
+					sourceInfo: { path: skillPath, baseDir: skillDir, source: "skills", scope: "temporary", origin: "top-level" },
+				}],
+				readSkillFile: (path, encoding) => readFile(path, encoding),
+				realpath: (path) => realpath(path),
+				stat: (path) => stat(path),
+				resolveGitRoot: async (cwd) => cwd,
+			} as never,
+		);
+
+		assert.equal(result.ok, true, JSON.stringify(result));
+		if (!result.ok) return;
+		assert.equal(result.source.cwd, symlinkProject);
+		assert.equal(result.target.cwd, symlinkProject);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

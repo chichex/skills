@@ -367,14 +367,23 @@ export async function startFreshStage(
 	const realpathPort = dependencies.realpath ?? realpathDefault;
 	const statPort = dependencies.stat ?? statDefault;
 	const gitRootPort = dependencies.resolveGitRoot ?? defaultGitRoot;
+	// Pi's own SessionManager only ever resolve()s a cwd, never realpath()s it
+	// (session-manager.js: `this.cwd = resolvePath(cwd)`), and hands that same
+	// resolve()-only form back to extensions via context.cwd/getCwd(). targetCwd
+	// is therefore kept in that same resolve()-only identity form below, so it
+	// can be compared directly against Pi-produced values without requiring the
+	// caller's raw input to already equal its own realpath — a requirement that
+	// any symlinked project root (e.g. anything under /tmp on macOS) could never
+	// satisfy. realpath is used only here, to confirm a real directory and Git
+	// root actually exist at that location.
 	let targetCwd: string;
 	try {
-		targetCwd = await realpathPort(resolution.cwd);
-		const targetStats = await statPort(targetCwd);
+		const targetRealCwd = await realpathPort(resolution.cwd);
+		const targetStats = await statPort(targetRealCwd);
 		if (!targetStats.isDirectory()) throw new Error("cwd is not a directory");
-		if (resolve(resolution.cwd) !== targetCwd) throw new Error("handoff cwd is not canonical");
-		const gitRoot = await realpathPort(await gitRootPort(targetCwd));
-		if (gitRoot !== targetCwd) throw new Error("cwd is not the Git root");
+		const gitRoot = await realpathPort(await gitRootPort(targetRealCwd));
+		if (gitRoot !== targetRealCwd) throw new Error("cwd is not the Git root");
+		targetCwd = resolve(resolution.cwd);
 	} catch (error) {
 		return errorResult("unresolved-cwd", "validation", error instanceof Error ? error.message : String(error));
 	}
@@ -386,8 +395,11 @@ export async function startFreshStage(
 		const canonicalSessionFile = await realpathPort(sessionFile);
 		const sessionStats = await statPort(canonicalSessionFile);
 		if (sessionStats.isDirectory()) throw new Error("Origin session path is not a file");
-		const contextCwd = await realpathPort(context.cwd);
-		const managerCwd = await realpathPort(context.sessionManager.getCwd());
+		// Same resolve()-only identity form as targetCwd above, so the
+		// same-vs-cross-project decision below and the post-switch identity
+		// check in replacementResourcesAreValid compare like with like.
+		const contextCwd = resolve(context.cwd);
+		const managerCwd = resolve(context.sessionManager.getCwd());
 		if (contextCwd !== managerCwd) throw new Error("Origin context and session manager cwd disagree");
 		source = {
 			sessionId: context.sessionManager.getSessionId(),
