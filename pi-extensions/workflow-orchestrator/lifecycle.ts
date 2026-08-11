@@ -468,20 +468,27 @@ export async function startFreshStage(
 	}
 
 	if (staged.sessionId === source.sessionId || staged.cwd !== targetCwd || !isAbsolute(staged.sessionFile)) {
-		try {
-			await (dependencies.removeFile ?? unlinkDefault)(staged.sessionFile);
-		} catch (error) {
-			return errorResult(
-				"staging-failed",
-				"staging",
-				`Staged session identity is invalid and cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
-				true,
-				{
-					source,
-					target: { ...targetBase, ...staged },
-					orphanSessionFile: staged.sessionFile,
-				},
-			);
+		// Never delete a path the code itself just deemed invalid: when the very
+		// reason we are here is that staged.sessionFile is NOT absolute, unlinking
+		// it would resolve against the running process's cwd (not any project we
+		// validated) and could silently remove an unrelated file. Only attempt
+		// cleanup once the path itself is trustworthy.
+		if (isAbsolute(staged.sessionFile)) {
+			try {
+				await (dependencies.removeFile ?? unlinkDefault)(staged.sessionFile);
+			} catch (error) {
+				return errorResult(
+					"staging-failed",
+					"staging",
+					`Staged session identity is invalid and cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+					true,
+					{
+						source,
+						target: { ...targetBase, ...staged },
+						orphanSessionFile: staged.sessionFile,
+					},
+				);
+			}
 		}
 		return errorResult("staging-failed", "staging", "Staged session identity does not match the target child", true, {
 			source,

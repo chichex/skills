@@ -255,6 +255,35 @@ test("invalid staged identity is removed before switch and leaves the origin pre
 	assert.deepEqual(calls, ["stage", `remove:${CHILD_FILE}`]);
 });
 
+test("invalid staged identity never unlinks a non-absolute path, since the code itself just deemed it untrustworthy", async () => {
+	const calls: string[] = [];
+	const result = await startFreshStage(
+		{ resolution: resolution(), skill: { name: "sdd-spec" } },
+		context({
+			async switchSession() {
+				calls.push("switch");
+				return { cancelled: false };
+			},
+		}) as never,
+		dependencies({
+			async stageCrossProjectSession() {
+				calls.push("stage");
+				// A relative sessionFile is itself the invalid-identity trigger here.
+				return { sessionId: "child-id", sessionFile: "./sessions/child.jsonl", cwd: TARGET };
+			},
+			async removeFile(path: string) {
+				calls.push(`remove:${path}`);
+			},
+		}) as never,
+	);
+	assert.equal(result.code, "staging-failed");
+	assert.equal(result.phase, "staging");
+	assert.equal(result.originPreserved, true);
+	// No cleanup attempt: removeFile must never be called with an untrusted relative path.
+	assert.deepEqual(calls, ["stage"]);
+	assert.equal(result.ok ? undefined : result.orphanSessionFile, undefined);
+});
+
 test("cross-project cancellation deletes only its staged file, or reports the orphan when cleanup fails", async () => {
 	for (const cleanupFails of [false, true]) {
 		const calls: string[] = [];
