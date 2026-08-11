@@ -1,0 +1,6 @@
+interface:
+  display_name: "Quick Run"
+  short_description: "Ejecutá un handoff confirmado de triage"
+  default_prompt: "Usá $quick-run para ejecutar este handoff confirmado de issue-triage."
+policy:
+  allow_implicit_invocation: false
