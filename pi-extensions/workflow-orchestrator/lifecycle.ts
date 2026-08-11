@@ -313,8 +313,22 @@ function defaultGitRoot(cwd: string): Promise<string> {
 	});
 }
 
+/**
+ * The handoff envelope is closed by a literal `</workflow-handoff>` sentinel.
+ * JSON.stringify never escapes `<`, so a string field that happens to contain
+ * that sequence (e.g. issue body text flowing into resolution.summary) would
+ * close the envelope early and let its remainder be read as content outside
+ * of it (prompt-injection with orchestrator authority). Escaping `<` to its
+ * JSON-valid \u form keeps the payload byte-identical once JSON.parse'd while
+ * making the sentinel unforgeable from inside the payload.
+ */
+function escapeHandoffEnvelope(json: string): string {
+	return json.replace(/</g, "\\u003c");
+}
+
 function buildKickoff(materializedSkill: string, resolution: WorkflowResolutionV1): string {
-	return `${materializedSkill}\n\n<workflow-handoff version="1">\n${JSON.stringify(resolution)}\n</workflow-handoff>`;
+	const payload = escapeHandoffEnvelope(JSON.stringify(resolution));
+	return `${materializedSkill}\n\n<workflow-handoff version="1">\n${payload}\n</workflow-handoff>`;
 }
 
 export async function startFreshStage(
