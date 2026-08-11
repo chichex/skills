@@ -544,7 +544,60 @@ test("resource mismatch and kickoff failure are explicit post-switch failures wi
 	assert.equal(sends, 1);
 });
 
-test("an exception before the replacement callback is conservatively non-rollback and preserves the child for diagnosis", async () => {
+test("the replacement callback never rejects, even when it fails, so Pi's real newSession/switchSession never treats it as fatal", async () => {
+	// Pi's real switchSession/newSession run more code AFTER awaiting
+	// finishSessionReplacement(withSession) (agent-session-runtime.js); in the
+	// interactive TUI, a withSession that rejects is instead caught and turned
+	// into process.exit(1) (interactive-mode.js handleFatalRuntimeError). These
+	// fakes mirror the "more code runs after" continuation directly, so this
+	// only stays green if withSession's promise actually resolves.
+	const continuedAfter: string[] = [];
+
+	const invalidResources = await startFreshStage(
+		{ resolution: resolution(), skill: { name: "sdd-spec" } },
+		context({
+			async switchSession(_path: string, options: { withSession(ctx: unknown): Promise<void> }) {
+				await options.withSession(replacementContext({
+					getSystemPromptOptions: () => ({ cwd: SOURCE, contextFiles: [], skills: [] }),
+				}));
+				continuedAfter.push("invalid-resources");
+				return { cancelled: false };
+			},
+		}) as never,
+		dependencies({
+			stageCrossProjectSession: async () => ({ sessionId: "child-id", sessionFile: CHILD_FILE, cwd: TARGET }),
+		}) as never,
+	);
+	assert.equal(invalidResources.code, "target-resources-invalid");
+
+	const kickoffFails = await startFreshStage(
+		{ resolution: resolution(), skill: { name: "sdd-spec" } },
+		context({
+			async switchSession(_path: string, options: { withSession(ctx: unknown): Promise<void> }) {
+				await options.withSession(replacementContext({
+					async sendUserMessage() {
+						throw new Error("provider unavailable");
+					},
+				}));
+				continuedAfter.push("kickoff-failed");
+				return { cancelled: false };
+			},
+		}) as never,
+		dependencies({
+			stageCrossProjectSession: async () => ({ sessionId: "child-id", sessionFile: CHILD_FILE, cwd: TARGET }),
+		}) as never,
+	);
+	assert.equal(kickoffFails.code, "kickoff-failed");
+
+	assert.deepEqual(continuedAfter, ["invalid-resources", "kickoff-failed"]);
+});
+
+test("an exception before the replacement callback ever runs leaves the origin intact, since Pi tears it down only afterward", async () => {
+	// Mirrors Pi's real switchSession (agent-session-runtime.js):
+	// SessionManager.open()/assertSessionCwdExists() can throw BEFORE
+	// teardownCurrent() ever runs, so withSession is never invoked and the
+	// origin survives untouched. Reporting originPreserved:false here would
+	// wrongly tell the user their triage session was destroyed.
 	let removed = false;
 	const result = await startFreshStage(
 		{ resolution: resolution(), skill: { name: "sdd-spec" } },
@@ -560,7 +613,91 @@ test("an exception before the replacement callback is conservatively non-rollbac
 	);
 	assert.equal(result.code, "session-switch-failed");
 	assert.equal(result.phase, "switch");
-	assert.equal(result.originPreserved, false);
+	assert.equal(result.originPreserved, true);
 	assert.equal(result.ok ? undefined : result.target?.sessionFile, CHILD_FILE);
+	// Preserved conservatively for diagnosis: no cleanup attempt either way.
 	assert.equal(removed, false);
+});
+
+test("an exception after the replacement callback already ran keeps originPreserved false, since Pi tore the origin down first", async () => {
+	const result = await startFreshStage(
+		{ resolution: resolution(), skill: { name: "sdd-spec" } },
+		context({
+			async switchSession(_path: string, options: { withSession(ctx: unknown): Promise<void> }) {
+				await options.withSession(replacementContext());
+				throw new Error("something failed after the replacement callback ran");
+			},
+		}) as never,
+		dependencies({
+			stageCrossProjectSession: async () => ({ sessionId: "child-id", sessionFile: CHILD_FILE, cwd: TARGET }),
+		}) as never,
+	);
+	assert.equal(result.code, "session-switch-failed");
+	assert.equal(result.phase, "switch");
+	assert.equal(result.originPreserved, false);
+});
+
+test("newSession resolving {cancelled:false} without ever invoking withSession leaves the origin preserved", async () => {
+	// Mirrors Pi's default ExtensionRunner newSessionHandler (runner.js),
+	// which resolves {cancelled:false} without invoking withSession at all
+	// when command-context actions are not bound.
+	const result = await startFreshStage(
+		{ resolution: resolution({ cwd: SOURCE }), skill: { name: "sdd-spec" } },
+		context({
+			async newSession() {
+				return { cancelled: false };
+			},
+		}) as never,
+		dependencies() as never,
+	);
+	assert.equal(result.code, "session-switch-failed");
+	assert.equal(result.phase, "switch");
+	assert.equal(result.originPreserved, true);
+});
+
+test("switchSession resolving {cancelled:false} without ever invoking withSession cleans up the staged file like a cancellation", async () => {
+	// Mirrors Pi's default ExtensionRunner switchSessionHandler (runner.js).
+	const calls: string[] = [];
+	const result = await startFreshStage(
+		{ resolution: resolution(), skill: { name: "sdd-spec" } },
+		context({
+			async switchSession(path: string) {
+				calls.push(`switch:${path}`);
+				return { cancelled: false };
+			},
+		}) as never,
+		dependencies({
+			async stageCrossProjectSession() {
+				calls.push("stage");
+				return { sessionId: "child-id", sessionFile: CHILD_FILE, cwd: TARGET };
+			},
+			async removeFile(path: string) {
+				calls.push(`remove:${path}`);
+			},
+		}) as never,
+	);
+	assert.equal(result.code, "session-switch-failed");
+	assert.equal(result.phase, "switch");
+	assert.equal(result.originPreserved, true);
+	assert.deepEqual(calls, ["stage", `switch:${CHILD_FILE}`, `remove:${CHILD_FILE}`]);
+	assert.equal(result.ok ? undefined : result.orphanSessionFile, undefined);
+});
+
+test("switchSession resolving {cancelled:false} without invoking withSession reports the orphan when cleanup also fails", async () => {
+	const result = await startFreshStage(
+		{ resolution: resolution(), skill: { name: "sdd-spec" } },
+		context({
+			async switchSession() {
+				return { cancelled: false };
+			},
+		}) as never,
+		dependencies({
+			stageCrossProjectSession: async () => ({ sessionId: "child-id", sessionFile: CHILD_FILE, cwd: TARGET }),
+			removeFile: async () => { throw new Error("EPERM"); },
+		}) as never,
+	);
+	assert.equal(result.code, "session-switch-failed");
+	assert.equal(result.phase, "switch");
+	assert.equal(result.originPreserved, true);
+	assert.equal(result.ok ? undefined : result.orphanSessionFile, CHILD_FILE);
 });

@@ -91,6 +91,16 @@ export interface ReplacementSessionContextLike {
 			sourceInfo?: { path?: string; scope?: string };
 		}>;
 	};
+	/**
+	 * Pi 0.84.1's real binding (agent-session.js createReplacedSessionContext ->
+	 * sendUserMessage -> prompt() -> await this._runAgentPrompt(messages))
+	 * resolves only after the child's ENTIRE first agent turn completes —
+	 * every tool call included — not merely after the message is delivered.
+	 * A rejection can therefore surface well into the turn, after real side
+	 * effects already ran in the child, and this promise blocks whatever
+	 * awaits the surrounding newSession/switchSession call (here, Pi's own
+	 * origin command handler) for the full duration of that turn.
+	 */
 	sendUserMessage(content: string): Promise<void>;
 }
 
@@ -245,6 +255,15 @@ function replacementResourcesAreValid(
 }
 
 interface PostSwitchReceipt {
+	/**
+	 * Set as the very first statement once the replacement callback starts
+	 * running. Pi's own newSession/switchSession runtime always tears down the
+	 * origin session BEFORE invoking withSession (agent-session-runtime.js:
+	 * teardownCurrent() precedes finishSessionReplacement(withSession) in both
+	 * newSession() and switchSession()), so this flag doubles as "the origin
+	 * has definitely already been torn down" for any code that observes it.
+	 */
+	callbackEntered?: boolean;
 	target?: Required<Pick<TargetSessionReference, "sessionId" | "sessionFile">> & TargetSessionReference;
 	failure?: { code: "target-resources-invalid" | "kickoff-failed"; message: string };
 }
@@ -260,43 +279,54 @@ interface ReplacementCallbackData {
 	receipt: PostSwitchReceipt;
 }
 
+/**
+ * This callback must NEVER throw. Pi 0.84.1's interactive command-context
+ * actions (interactive-mode.js: the newSession/switchSession bindings) catch
+ * any exception thrown out of withSession and call handleFatalRuntimeError,
+ * which does process.exit(1) — turning a recoverable, typed failure (a bad
+ * target or a failed kickoff) into the whole TUI dying, with the fresh child
+ * (and staged JSONL, for cross-project) left uninitialized and the user's
+ * live session gone. Every failure path below therefore records the failure
+ * on the receipt and returns normally instead of throwing; startFreshStage
+ * inspects the receipt once newSession/switchSession itself resolves.
+ */
 function createReplacementCallback(data: ReplacementCallbackData) {
 	return async (context: ReplacementSessionContextLike): Promise<void> => {
+		data.receipt.callbackEntered = true;
 		try {
 			if (!replacementResourcesAreValid(context, data.targetCwd, data.sourceCwd, data.sourceSessionId)) {
 				data.receipt.failure = {
 					code: "target-resources-invalid",
 					message: "Replacement context does not expose the validated target cwd/resources",
 				};
-				throw new Error(data.receipt.failure.message);
+				return;
 			}
-		} catch (error) {
-			if (!data.receipt.failure) {
+
+			const sessionId = context.sessionManager.getSessionId();
+			const sessionFile = context.sessionManager.getSessionFile();
+			if (!sessionFile) {
 				data.receipt.failure = {
 					code: "target-resources-invalid",
-					message: error instanceof Error ? error.message : String(error),
+					message: "Replacement session is not persisted",
 				};
+				return;
 			}
-			throw error;
-		}
-
-		const sessionId = context.sessionManager.getSessionId();
-		const sessionFile = context.sessionManager.getSessionFile();
-		if (!sessionFile) {
+			data.receipt.target = {
+				sessionId,
+				sessionFile,
+				cwd: data.targetCwd,
+				name: data.name,
+				repository: data.repository,
+				issueNumber: data.issueNumber,
+			};
+		} catch (error) {
 			data.receipt.failure = {
 				code: "target-resources-invalid",
-				message: "Replacement session is not persisted",
+				message: error instanceof Error ? error.message : String(error),
 			};
-			throw new Error(data.receipt.failure.message);
+			return;
 		}
-		data.receipt.target = {
-			sessionId,
-			sessionFile,
-			cwd: data.targetCwd,
-			name: data.name,
-			repository: data.repository,
-			issueNumber: data.issueNumber,
-		};
+
 		try {
 			await context.sendUserMessage(data.kickoff);
 		} catch (error) {
@@ -304,7 +334,6 @@ function createReplacementCallback(data: ReplacementCallbackData) {
 				code: "kickoff-failed",
 				message: error instanceof Error ? error.message : String(error),
 			};
-			throw error;
 		}
 	};
 }
@@ -454,17 +483,15 @@ export async function startFreshStage(
 				withSession,
 			});
 		} catch (error) {
-			if (receipt.failure) {
-				return errorResult(receipt.failure.code, "post-switch", receipt.failure.message, false, {
-					source,
-					target: receipt.target ?? targetBase,
-				});
-			}
+			// createReplacementCallback never throws, so this exception comes from
+			// Pi's own newSession runtime. Pi always tears down the origin BEFORE
+			// invoking withSession (agent-session-runtime.js), so if the callback
+			// never even started, the origin is still intact.
 			return errorResult(
 				"session-switch-failed",
 				"switch",
 				error instanceof Error ? error.message : String(error),
-				false,
+				!receipt.callbackEntered,
 				{ source, target: targetBase },
 			);
 		}
@@ -474,8 +501,18 @@ export async function startFreshStage(
 				target: targetBase,
 			});
 		}
+		if (receipt.failure) {
+			return errorResult(receipt.failure.code, "post-switch", receipt.failure.message, false, {
+				source,
+				target: receipt.target ?? targetBase,
+			});
+		}
 		if (!receipt.target) {
-			return errorResult("session-switch-failed", "switch", "Replacement callback did not run", false, {
+			// newSession resolved {cancelled:false} without ever invoking
+			// withSession (Pi's default ExtensionRunner newSessionHandler does
+			// exactly this when command-context actions are not bound), so the
+			// origin was never torn down either.
+			return errorResult("session-switch-failed", "switch", "Replacement callback did not run", true, {
 				source,
 				target: targetBase,
 			});
@@ -537,17 +574,17 @@ export async function startFreshStage(
 	try {
 		switchResult = await context.switchSession(staged.sessionFile, { withSession });
 	} catch (error) {
-		if (receipt.failure) {
-			return errorResult(receipt.failure.code, "post-switch", receipt.failure.message, false, {
-				source,
-				target: receipt.target ?? { ...targetBase, ...staged },
-			});
-		}
+		// createReplacementCallback never throws, so this exception comes from
+		// Pi's own switchSession runtime. SessionManager.open()/
+		// assertSessionCwdExists() run and can throw BEFORE teardownCurrent()
+		// (agent-session-runtime.js), so if the callback never even started, the
+		// origin is still intact — the user should retry, not assume their
+		// triage session was destroyed.
 		return errorResult(
 			"session-switch-failed",
 			"switch",
 			error instanceof Error ? error.message : String(error),
-			false,
+			!receipt.callbackEntered,
 			{ source, target: { ...targetBase, ...staged } },
 		);
 	}
@@ -572,8 +609,35 @@ export async function startFreshStage(
 			target: { ...targetBase, ...staged },
 		});
 	}
+	if (receipt.failure) {
+		return errorResult(receipt.failure.code, "post-switch", receipt.failure.message, false, {
+			source,
+			target: receipt.target ?? { ...targetBase, ...staged },
+		});
+	}
 	if (!receipt.target) {
-		return errorResult("session-switch-failed", "switch", "Replacement callback did not run", false, {
+		// switchSession resolved {cancelled:false} without ever invoking
+		// withSession (Pi's default ExtensionRunner switchSessionHandler does
+		// exactly this when command-context actions are not bound), so no
+		// switch actually happened and the origin was never torn down. Clean up
+		// the staged file exactly like the cancelled branch above, instead of
+		// silently orphaning it.
+		try {
+			await (dependencies.removeFile ?? unlinkDefault)(staged.sessionFile);
+		} catch (error) {
+			return errorResult(
+				"session-switch-failed",
+				"switch",
+				`Replacement callback did not run and staged cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+				true,
+				{
+					source,
+					target: { ...targetBase, ...staged },
+					orphanSessionFile: staged.sessionFile,
+				},
+			);
+		}
+		return errorResult("session-switch-failed", "switch", "Replacement callback did not run", true, {
 			source,
 			target: { ...targetBase, ...staged },
 		});
