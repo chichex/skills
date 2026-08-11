@@ -229,6 +229,32 @@ test("same-project cancellation leaves the origin active and never runs setup or
 	assert.equal(callbackRan, false);
 });
 
+test("invalid staged identity is removed before switch and leaves the origin preserved", async () => {
+	const calls: string[] = [];
+	const result = await startFreshStage(
+		{ resolution: resolution(), skill: { name: "sdd-spec" } },
+		context({
+			async switchSession() {
+				calls.push("switch");
+				return { cancelled: false };
+			},
+		}) as never,
+		dependencies({
+			async stageCrossProjectSession() {
+				calls.push("stage");
+				return { sessionId: "origin-id", sessionFile: CHILD_FILE, cwd: TARGET };
+			},
+			async removeFile(path: string) {
+				calls.push(`remove:${path}`);
+			},
+		}) as never,
+	);
+	assert.equal(result.code, "staging-failed");
+	assert.equal(result.phase, "staging");
+	assert.equal(result.originPreserved, true);
+	assert.deepEqual(calls, ["stage", `remove:${CHILD_FILE}`]);
+});
+
 test("cross-project cancellation deletes only its staged file, or reports the orphan when cleanup fails", async () => {
 	for (const cleanupFails of [false, true]) {
 		const calls: string[] = [];
@@ -279,6 +305,33 @@ function replacementContext(overrides: Record<string, unknown> = {}) {
 		...overrides,
 	};
 }
+
+test("rejects a replacement that reuses the origin session id before kickoff", async () => {
+	let sends = 0;
+	const result = await startFreshStage(
+		{ resolution: resolution(), skill: { name: "sdd-spec" } },
+		context({
+			async switchSession(_path: string, options: { withSession(ctx: unknown): Promise<void> }) {
+				await options.withSession(replacementContext({
+					sessionManager: {
+						getCwd: () => TARGET,
+						getSessionId: () => "origin-id",
+						getSessionFile: () => CHILD_FILE,
+					},
+					async sendUserMessage() { sends += 1; },
+				}));
+				return { cancelled: false };
+			},
+		}) as never,
+		dependencies({
+			stageCrossProjectSession: async () => ({ sessionId: "child-id", sessionFile: CHILD_FILE, cwd: TARGET }),
+		}) as never,
+	);
+	assert.equal(result.code, "target-resources-invalid");
+	assert.equal(result.phase, "post-switch");
+	assert.equal(result.originPreserved, false);
+	assert.equal(sends, 0);
+});
 
 test("resource mismatch and kickoff failure are explicit post-switch failures without fake rollback", async () => {
 	let sends = 0;

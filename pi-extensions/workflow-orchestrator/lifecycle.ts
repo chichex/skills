@@ -214,7 +214,9 @@ function replacementResourcesAreValid(
 	context: ReplacementSessionContextLike,
 	targetCwd: string,
 	sourceCwd: string,
+	sourceSessionId: string,
 ): boolean {
+	if (context.sessionManager.getSessionId() === sourceSessionId) return false;
 	if (resolve(context.cwd) !== targetCwd || resolve(context.sessionManager.getCwd()) !== targetCwd) return false;
 	const options = context.getSystemPromptOptions();
 	if (resolve(options.cwd) !== targetCwd) return false;
@@ -239,6 +241,7 @@ interface PostSwitchReceipt {
 interface ReplacementCallbackData {
 	targetCwd: string;
 	sourceCwd: string;
+	sourceSessionId: string;
 	name: string;
 	repository: string;
 	issueNumber: number;
@@ -249,7 +252,7 @@ interface ReplacementCallbackData {
 function createReplacementCallback(data: ReplacementCallbackData) {
 	return async (context: ReplacementSessionContextLike): Promise<void> => {
 		try {
-			if (!replacementResourcesAreValid(context, data.targetCwd, data.sourceCwd)) {
+			if (!replacementResourcesAreValid(context, data.targetCwd, data.sourceCwd, data.sourceSessionId)) {
 				data.receipt.failure = {
 					code: "target-resources-invalid",
 					message: "Replacement context does not expose the validated target cwd/resources",
@@ -397,6 +400,7 @@ export async function startFreshStage(
 	const withSession = createReplacementCallback({
 		targetCwd,
 		sourceCwd: source.cwd,
+		sourceSessionId: source.sessionId,
 		name,
 		repository: resolution.repo,
 		issueNumber: issue.number,
@@ -461,6 +465,28 @@ export async function startFreshStage(
 			true,
 			{ source, target: targetBase },
 		);
+	}
+
+	if (staged.sessionId === source.sessionId || staged.cwd !== targetCwd || !isAbsolute(staged.sessionFile)) {
+		try {
+			await (dependencies.removeFile ?? unlinkDefault)(staged.sessionFile);
+		} catch (error) {
+			return errorResult(
+				"staging-failed",
+				"staging",
+				`Staged session identity is invalid and cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+				true,
+				{
+					source,
+					target: { ...targetBase, ...staged },
+					orphanSessionFile: staged.sessionFile,
+				},
+			);
+		}
+		return errorResult("staging-failed", "staging", "Staged session identity does not match the target child", true, {
+			source,
+			target: targetBase,
+		});
 	}
 
 	let switchResult: { cancelled: boolean };
