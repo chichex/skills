@@ -63,6 +63,7 @@ function context(overrides: Record<string, unknown> = {}) {
 			getCwd: () => SOURCE,
 			getSessionId: () => "origin-id",
 			getSessionFile: () => ORIGIN_FILE,
+			getSessionDir: () => "/sessions",
 		},
 		async newSession() {
 			throw new Error("unexpected newSession");

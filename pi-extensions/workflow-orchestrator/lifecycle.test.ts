@@ -429,6 +429,10 @@ test("stages and switches to a fresh cross-project child using only the replacem
 				if (originStale) throw new Error("stale origin manager used");
 				return originFile;
 			},
+			getSessionDir: () => {
+				if (originStale) throw new Error("stale origin manager used");
+				return join(sourceCwd, "sessions");
+			},
 		};
 		const context = {
 			get cwd() {

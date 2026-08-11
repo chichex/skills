@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { link, mkdir, open, unlink } from "node:fs/promises";
-import { dirname, isAbsolute } from "node:path";
+import { basename, dirname, isAbsolute } from "node:path";
 
 export interface PreparedSessionManagerLike {
 	getHeader(): unknown;
@@ -36,6 +36,10 @@ function validatePreparedSession(manager: PreparedSessionManagerLike): {
 	const sessionId = manager.getSessionId();
 	const sessionFile = manager.getSessionFile();
 	const cwd = manager.getCwd();
+	// Required fields present and well-formed, unknown fields tolerated: Pi's
+	// session-file format is open (a future minor can add a header or
+	// session_info field), so rejecting anything beyond this fixed allowlist
+	// would break every cross-project stage the moment Pi adds one.
 	if (!isRecord(header)
 		|| header.type !== "session"
 		|| header.version !== 3
@@ -45,9 +49,6 @@ function validatePreparedSession(manager: PreparedSessionManagerLike): {
 		|| typeof header.parentSession !== "string"
 		|| header.parentSession.trim() === "") {
 		throw new Error("Prepared session requires one complete v3 child header");
-	}
-	if (Object.keys(header).some((key) => !["type", "version", "id", "timestamp", "cwd", "parentSession"].includes(key))) {
-		throw new Error("Prepared session header contains unsupported fields");
 	}
 	if (entries.length !== 1 || !isRecord(entries[0])) {
 		throw new Error("Prepared session must contain exactly one session_info entry");
@@ -60,9 +61,6 @@ function validatePreparedSession(manager: PreparedSessionManagerLike): {
 		|| typeof entry.name !== "string"
 		|| entry.name.trim() === "") {
 		throw new Error("Prepared session must contain one named session_info root entry");
-	}
-	if (Object.keys(entry).some((key) => !["type", "id", "parentId", "timestamp", "name"].includes(key))) {
-		throw new Error("Prepared session_info contains unsupported fields");
 	}
 	if (sessionId !== header.id || cwd !== header.cwd || !sessionFile || !isAbsolute(sessionFile)) {
 		throw new Error("Prepared session manager identity does not match its header/path");
@@ -113,6 +111,16 @@ export interface StageCrossProjectSessionInput {
 	cwd: string;
 	parentSession: string;
 	name: string;
+	/**
+	 * The origin session's own cwd and session directory (context.cwd and
+	 * sessionManager.getSessionDir()), used only to decide whether to
+	 * propagate an explicit --session-dir override to the staged child — see
+	 * resolveSessionDirOverride below. Optional so existing same-project-only
+	 * callers keep compiling; stageCrossProjectSession is cross-project by
+	 * definition and should always receive both in practice.
+	 */
+	sourceCwd?: string;
+	sourceSessionDir?: string;
 }
 
 export interface StageCrossProjectSessionDependencies {
@@ -120,11 +128,35 @@ export interface StageCrossProjectSessionDependencies {
 		| MutablePreparedSessionManagerLike;
 }
 
+/**
+ * Pi 0.84.1's SessionManager.create(cwd, sessionDir) falls back to a per-cwd
+ * default directory whenever sessionDir is falsy (session-manager.js
+ * getDefaultSessionDirPath: `${agentDir}/sessions/--<cwd with /, \, and :
+ * replaced by ->--`). Pi's own runtime newSession() always reuses the
+ * current session's getSessionDir() (agent-session-runtime.js), because it
+ * never changes cwd — so that reuse is a no-op whenever the current session
+ * already sits in its own per-cwd default. A cross-project child does
+ * change cwd, so blindly reusing the origin's getSessionDir() would misfile
+ * a child that should get ITS OWN per-cwd default under the origin's
+ * directory instead. Only propagate the origin's session dir when it does
+ * NOT look like its own per-cwd default (i.e. the user passed an explicit
+ * --session-dir override, which is cwd-independent and must reach the
+ * child); otherwise let SessionManager.create() compute the child's own
+ * default, exactly like it would for a fresh same-project session.
+ */
+export function resolveSessionDirOverride(sourceCwd: string, sourceSessionDir: string): string | undefined {
+	const safeSegment = `--${sourceCwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+	return basename(sourceSessionDir) === safeSegment ? undefined : sourceSessionDir;
+}
+
 async function createPiSessionManager(
 	input: StageCrossProjectSessionInput,
 ): Promise<MutablePreparedSessionManagerLike> {
 	const { SessionManager } = await import("@earendil-works/pi-coding-agent");
-	return SessionManager.create(input.cwd, undefined, { parentSession: input.parentSession });
+	const sessionDir = input.sourceCwd !== undefined && input.sourceSessionDir !== undefined
+		? resolveSessionDirOverride(input.sourceCwd, input.sourceSessionDir)
+		: undefined;
+	return SessionManager.create(input.cwd, sessionDir, { parentSession: input.parentSession });
 }
 
 export async function stageCrossProjectSession(

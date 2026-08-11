@@ -78,6 +78,8 @@ export interface SessionManagerLike {
 	getCwd(): string;
 	getSessionId(): string;
 	getSessionFile(): string | undefined;
+	/** Matches Pi's real ReadonlySessionManager (session-manager.ts Pick<...>). */
+	getSessionDir(): string;
 }
 
 export interface ReplacementSessionContextLike {
@@ -139,6 +141,8 @@ export interface StartFreshStageDependencies {
 		cwd: string;
 		parentSession: string;
 		name: string;
+		sourceCwd: string;
+		sourceSessionDir: string;
 	}) => Promise<StagedSessionReference>;
 	removeFile?: (path: string) => Promise<void>;
 }
@@ -533,7 +537,13 @@ export async function startFreshStage(
 	const stageSession = dependencies.stageCrossProjectSession ?? stageCrossProjectSessionDefault;
 	let staged: StagedSessionReference;
 	try {
-		staged = await stageSession({ cwd: targetCwd, parentSession: source.sessionFile, name });
+		staged = await stageSession({
+			cwd: targetCwd,
+			parentSession: source.sessionFile,
+			name,
+			sourceCwd: source.cwd,
+			sourceSessionDir: context.sessionManager.getSessionDir(),
+		});
 	} catch (error) {
 		return errorResult(
 			"staging-failed",
