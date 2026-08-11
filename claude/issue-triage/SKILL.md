@@ -124,7 +124,9 @@ type WorkflowResolutionV1 = {
 
 `NewWorkRoute` conserva rutas single/join y rechazos; `WorkflowRoute` agrega las ocho rutas artifact-aware de la matriz. Cada `ArtifactRef` expone ubicación, identidad, tipo, estado, format/provenance, vigencia y diagnósticos. Los campos de dispatch son enums/códigos; prose y evidencia son payload. `JSON.parse(JSON.stringify(result))` preserva el valor completo.
 
-Este workflow termina después de confirmar y emitir el resultado, sin ejecutar ningún stage. Esta unidad no ejecuta grill, spec, run ni quick-run, no cambia sesiones y no crea branches/worktrees de implementación; el dispatch pertenece al consumidor downstream.
+Este workflow termina después de confirmar, serializar y emitir el resultado, sin ejecutar ningún stage. Esta unidad no ejecuta grill, spec, run ni quick-run, no cambia sesiones y no crea branches/worktrees de implementación.
+
+Cuando `selectedRoute=quick-run|join-quick-run`, el consumidor downstream dedicado es `/quick-run`. El handoff conserva la fuente canónica en `canonicalIssue`, el resumen `summary`, el ejemplo de impacto `impactExample`, el `checklist`, la `evidence` y los `risks`; las fuentes originales quedan en `sources` como trazabilidad. `recommendedRoute` y `selectedRoute` permanecen separadas: triage produce contexto y termina, mientras el consumidor valida el envelope antes de mutar.
 <!-- artifact-aware:end -->
 
 ## Fase 1 — Resolver raíz y fuentes
