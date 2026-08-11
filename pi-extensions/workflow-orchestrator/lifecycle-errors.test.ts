@@ -74,10 +74,27 @@ function context(overrides: Record<string, unknown> = {}) {
 	};
 }
 
+/**
+ * Replicates Pi 0.84.1's real stripFrontmatter (utils/frontmatter.js) for
+ * well-formed input. materializeSkill's own default dynamically imports the
+ * real function from @earendil-works/pi-coding-agent, which only resolves
+ * when Pi's own runtime loads this extension, not under plain `node --test`
+ * — so this fixture injects it explicitly, same as staging.ts's
+ * createSessionManager dependency is faked in staging.test.ts.
+ */
+function fakeStripFrontmatter(content: string): string {
+	const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+	if (!normalized.startsWith("---")) return normalized;
+	const endIndex = normalized.indexOf("\n---", 3);
+	if (endIndex === -1) return normalized;
+	return normalized.slice(endIndex + 4).trim();
+}
+
 function dependencies(overrides: Record<string, unknown> = {}) {
 	return {
 		commands: [skillCommand()],
 		readSkillFile: async () => "---\nname: sdd-spec\ndescription: Spec\n---\n# Spec\n",
+		stripSkillFrontmatter: fakeStripFrontmatter,
 		realpath: async (path: string) => path,
 		stat: async (path: string) => ({ isDirectory: () => !path.endsWith(".jsonl") }),
 		resolveGitRoot: async (cwd: string) => cwd,
@@ -99,8 +116,10 @@ test("maps every canonical skill failure to a preserved pre-switch result", asyn
 			deps: dependencies({ commands: [skillCommand(), skillCommand({ sourceInfo: { path: "/other/SKILL.md", baseDir: "/other" } })] }),
 		},
 		{
+			// baseDir is now derived from dirname(path), so only a non-absolute
+			// (or missing) path makes provenance unusable — see materialize.ts.
 			code: "skill-provenance-invalid",
-			deps: dependencies({ commands: [skillCommand({ sourceInfo: { path: SKILL_PATH } })] }),
+			deps: dependencies({ commands: [skillCommand({ sourceInfo: { path: "relative/SKILL.md" } })] }),
 		},
 		{
 			code: "skill-unreadable",

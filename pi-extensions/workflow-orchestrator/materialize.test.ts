@@ -6,6 +6,22 @@ import { test } from "node:test";
 
 import { materializeSkill } from "./materialize.ts";
 
+/**
+ * Replicates Pi 0.84.1's real stripFrontmatter (utils/frontmatter.js) for
+ * well-formed input, so tests can inject it as a dependency instead of
+ * depending on @earendil-works/pi-coding-agent resolving under plain
+ * `node --test` (it only resolves when loaded through Pi's own runtime; see
+ * materialize.ts defaultStripFrontmatter and staging.ts createPiSessionManager
+ * for the same, already-established pattern).
+ */
+function fakeStripFrontmatter(content: string): string {
+	const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+	if (!normalized.startsWith("---")) return normalized;
+	const endIndex = normalized.indexOf("\n---", 3);
+	if (endIndex === -1) return normalized;
+	return normalized.slice(endIndex + 4).trim();
+}
+
 test("materializes one canonical skill exactly like Pi 0.84.1 without arguments", async () => {
 	const root = await mkdtemp(join(tmpdir(), "workflow-orchestrator-materialize-"));
 	try {
@@ -35,6 +51,7 @@ test("materializes one canonical skill exactly like Pi 0.84.1 without arguments"
 					origin: "top-level",
 				},
 			}],
+			stripFrontmatter: fakeStripFrontmatter,
 		});
 
 		assert.equal(result.ok, true);
@@ -77,6 +94,7 @@ test("matches Pi 0.84.1 for CRLF frontmatter, Unicode body, and trimmed argument
 			reads.push(path);
 			return "---\r\nname: demo\r\ndescription: Prueba\r\n---\r\n\r\n# Órbita 🚀\r\n\r\nVer `references/á.md`.\r\n";
 		},
+		stripFrontmatter: fakeStripFrontmatter,
 	});
 
 	assert.equal(result.ok, true);
@@ -99,12 +117,52 @@ test("normalizes EOL and trims a skill body even when no frontmatter exists", as
 	const result = await materializeSkill("demo", " \t ", {
 		commands: [command("/canonical/demo/SKILL.md", "/canonical/demo")],
 		readFile: async () => "\r\n# Sin frontmatter\rBody\r\n",
+		stripFrontmatter: fakeStripFrontmatter,
 	});
 
 	assert.equal(result.ok, true);
 	if (!result.ok) return;
 	assert.match(result.content, /\n# Sin frontmatter\nBody\n<\/skill>$/);
 	assert.doesNotMatch(result.content, /<\/skill>\n\n/);
+});
+
+test("derives baseDir from the canonical path, ignoring a stale or extension-overwritten sourceInfo.baseDir", async () => {
+	// Pi's own _expandSkillCommand never reads sourceInfo.baseDir — it reads
+	// skill.baseDir, which skills.js loadSkillFromFile always sets to
+	// dirname(filePath). sourceInfo itself CAN be overwritten with an unrelated
+	// baseDir by resource-loader's findSourceInfoForPath for extension-
+	// registered or metadata-matched skills, so a wrong/stale baseDir here must
+	// not affect the result: dirname(path) wins regardless.
+	const result = await materializeSkill("demo", "", {
+		commands: [command("/canonical/demo/SKILL.md", "/some/unrelated/registration/dir")],
+		readFile: async () => "# No frontmatter",
+		stripFrontmatter: fakeStripFrontmatter,
+	});
+
+	assert.equal(result.ok, true);
+	if (!result.ok) return;
+	assert.match(result.content, /References are relative to \/canonical\/demo\.\n/);
+	assert.deepEqual(result.source, { path: "/canonical/demo/SKILL.md", baseDir: "/canonical/demo" });
+});
+
+test("fails closed with skill-frontmatter-invalid on malformed frontmatter YAML, instead of silently stripping and succeeding", async () => {
+	// Pi's real stripFrontmatter parses the frontmatter YAML and throws on
+	// malformed input; _expandSkillCommand then refuses to expand at all
+	// (skill_expansion error, literal text passthrough). materializeSkill must
+	// fail the same way rather than producing content Pi would never produce
+	// for the same bytes.
+	const result = await materializeSkill("demo", "", {
+		commands: [command("/canonical/demo/SKILL.md", "/canonical/demo")],
+		readFile: async () => "---\nname: [unterminated\n---\nBody\n",
+		stripFrontmatter: () => {
+			throw new Error("Flow sequence in block collection must be sufficiently indented and end with a ]");
+		},
+	});
+
+	assert.equal(result.ok, false);
+	if (result.ok) return;
+	assert.equal(result.code, "skill-frontmatter-invalid");
+	assert.match(result.message, /unterminated|sequence|indented/);
 });
 
 test("fails closed on missing, non-skill, ambiguous, and unusable provenance without reading", async () => {
@@ -131,13 +189,6 @@ test("fails closed on missing, non-skill, ambiguous, and unusable provenance wit
 				command("/canonical/b/SKILL.md", "/canonical/b"),
 			],
 			code: "skill-ambiguous",
-		},
-		{
-			name: "missing baseDir",
-			commands: [command("/canonical/demo/SKILL.md", "/canonical/demo", {
-				sourceInfo: { path: "/canonical/demo/SKILL.md" },
-			})],
-			code: "skill-provenance-invalid",
 		},
 		{
 			name: "relative provenance",
@@ -170,4 +221,22 @@ test("reports an unreadable canonical file without falling back to another path"
 	assert.equal(result.code, "skill-unreadable");
 	assert.match(result.message, /permission denied/);
 	assert.deepEqual(attempted, ["/canonical/demo/SKILL.md"]);
+});
+
+test("without a stripFrontmatter override, falls back to Pi's real export and fails closed (not uncaught) where it cannot resolve", async () => {
+	// The default dependency dynamically imports stripFrontmatter from
+	// @earendil-works/pi-coding-agent, exactly like staging.ts's
+	// createPiSessionManager does for SessionManager. That package only
+	// resolves when Pi's own runtime loads this extension (verified manually
+	// via `pi --extension ... --list-models`); under plain `node --test` it
+	// does not resolve. Either way, materializeSkill must never reject
+	// uncaught — a failed default must still surface as a typed result.
+	const result = await materializeSkill("demo", "", {
+		commands: [command("/canonical/demo/SKILL.md", "/canonical/demo")],
+		readFile: async () => "# No frontmatter",
+	});
+
+	assert.equal(result.ok, false);
+	if (result.ok) return;
+	assert.equal(result.code, "skill-frontmatter-invalid");
 });

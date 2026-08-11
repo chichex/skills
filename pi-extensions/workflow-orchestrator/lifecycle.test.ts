@@ -7,6 +7,23 @@ import { test } from "node:test";
 import { startFreshStage } from "./lifecycle.ts";
 import { stageCrossProjectSession as persistCrossProjectSession } from "./staging.ts";
 
+/**
+ * Replicates Pi 0.84.1's real stripFrontmatter (utils/frontmatter.js) for
+ * well-formed input. materializeSkill's own default dynamically imports the
+ * real function from @earendil-works/pi-coding-agent, which only resolves
+ * when Pi's own runtime loads this extension (verified manually via
+ * `pi --extension ... --list-models`), not under plain `node --test` — so
+ * these end-to-end tests inject this fake explicitly, same as staging.ts's
+ * createSessionManager dependency is faked in staging.test.ts.
+ */
+function fakeStripFrontmatter(content: string): string {
+	const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+	if (!normalized.startsWith("---")) return normalized;
+	const endIndex = normalized.indexOf("\n---", 3);
+	if (endIndex === -1) return normalized;
+	return normalized.slice(endIndex + 4).trim();
+}
+
 function issue(number: number) {
 	return { repository: "chichex/skills", number };
 }
@@ -222,6 +239,7 @@ test("starts a fresh linked same-project session and sends only materialized ski
 					calls.push("read-skill");
 					return readFile(path, encoding);
 				},
+				stripSkillFrontmatter: fakeStripFrontmatter,
 				async realpath(path) {
 					calls.push(`realpath:${path}`);
 					return realpath(path);
@@ -344,6 +362,7 @@ test("accepts a project root reached through a symlink, matching Pi's resolve()-
 					sourceInfo: { path: skillPath, baseDir: skillDir, source: "skills", scope: "temporary", origin: "top-level" },
 				}],
 				readSkillFile: (path, encoding) => readFile(path, encoding),
+				stripSkillFrontmatter: fakeStripFrontmatter,
 				realpath: (path) => realpath(path),
 				stat: (path) => stat(path),
 				resolveGitRoot: async (cwd) => cwd,
@@ -486,6 +505,7 @@ test("stages and switches to a fresh cross-project child using only the replacem
 					},
 				}],
 				resolveGitRoot: async (cwd) => cwd,
+				stripSkillFrontmatter: fakeStripFrontmatter,
 				async stageCrossProjectSession(input) {
 					calls.push("MUTATE:stageSession");
 					return persistCrossProjectSession(input, {

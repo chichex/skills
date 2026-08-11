@@ -130,6 +130,8 @@ export interface StagedSessionReference {
 export interface StartFreshStageDependencies {
 	commands: readonly SkillCommandInfo[];
 	readSkillFile?: (path: string, encoding: "utf8") => Promise<string>;
+	/** Forwarded to materializeSkill; defaults to Pi 0.84.1's own exported stripFrontmatter. */
+	stripSkillFrontmatter?: (content: string) => string | Promise<string>;
 	realpath?: (path: string) => Promise<string>;
 	stat?: (path: string) => Promise<Pick<Stats, "isDirectory">>;
 	resolveGitRoot?: (cwd: string) => Promise<string>;
@@ -399,6 +401,7 @@ export async function startFreshStage(
 	const materialized = await materializeSkill(request.skill.name, request.skill.args ?? "", {
 		commands: dependencies.commands,
 		readFile: dependencies.readSkillFile ?? readFileDefault,
+		stripFrontmatter: dependencies.stripSkillFrontmatter,
 	});
 	if (!materialized.ok) {
 		return errorResult(materialized.code, "validation", materialized.message);
