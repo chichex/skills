@@ -63,7 +63,7 @@ export function normalizeArtifactAwareBlock(
 	const invocation = differences.invocation[harness];
 	const questionTool = differences.questionTool[harness];
 	let normalized = block.replace(
-		new RegExp(`${escapeRegExp(invocation)}(issue-triage|grill|sdd-spec|sdd-run)`, "g"),
+		new RegExp(`${escapeRegExp(invocation)}(issue-triage|quick-run|grill|sdd-spec|sdd-run)`, "g"),
 		(_match, name: string) => `«skill:${name}»`,
 	);
 	if (questionTool && questionTool !== "—") {
