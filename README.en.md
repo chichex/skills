@@ -33,7 +33,8 @@ The disciplines SDD builds on — which I also use standalone, outside the pipel
 | **`tdd`** | A test-driven development reference: the red → green loop, what makes a good test, where tests live (seams), the anti-patterns. Includes `mocking` and `tests` guides. Available in all four harnesses; `sdd-run` references its doctrine when declaring the plan's seams and in the tests-first step. |
 | **`code-review`** *(Codex/Pi/opencode)* | Reviews a PR across three separate axes—correctness and risk, standards, and spec—runs available checks, reports evidence-backed findings with the exact preview of the comments, and finally asks whether to post them to GitHub as a single COMMENT review. It never posts without explicit confirmation. |
 | **`github-issue-selector`** *(Codex/Pi)* | Lets you choose or inspect an issue when no specific number was provided. |
-| **`issue-triage`** *(Codex/Claude/Pi)* | Analyzes one or more issues against code, tests, and dependencies; recommends grill, spec, a protected quick-run, or an actionable rejection. Joint selections become one canonical issue while originals are closed as superseded. |
+| **`issue-triage`** *(Codex/Claude/Pi)* | Analyzes one or more issues against code, tests, and dependencies; classifies the next stage and emits a structured handoff after confirmation, but never executes it. Joint selections become one canonical issue while originals are closed as superseded. |
+| **`quick-run`** *(Codex/Claude/Pi)* | Consumes only a confirmed `issue-triage` handoff to implement a small change in an isolated worktree, with tests first when applicable, a finite attempt budget, and a PR or local commit carrying exact evidence. |
 | **`repo-clean`** *(Codex/Pi)* | Leaves the current branch with no pending changes and synchronized with `origin/<branch>`. When uncommitted work exists, it shows the impact and asks whether to preserve or discard it; it never switches branches or force-pushes. |
 | **`find-skills`** *(Codex/Pi)* | Searches the open ecosystem for installable skills through `npx skills`. Vendored from `vercel-labs/skills`. |
 | **`yt-summary`** *(Codex/Claude)* | Downloads a single YouTube subtitle track with `yt-dlp` and guides a summary with a TL;DR, key points, and timestamps. |
@@ -128,7 +129,7 @@ cp -R pi-extensions/*  ~/.pi/agent/extensions/
 cp pi-themes/*.json    ~/.pi/agent/themes/
 ```
 
-Once installed, Codex invokes them as `$grill`, `$code-review`, `$sdd-spec`, and so on, or loads them from their `description` — with one exception: `sdd-run`'s `agents/openai.yaml` sidecar declares `policy.allow_implicit_invocation: false`, so Codex never triggers it automatically from the user's input and it only runs when invoked explicitly with `$sdd-run`. Claude Code/opencode use their usual commands. Pi uses `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec`, and equivalents. Run `/reload` in an open Pi session after installing.
+Once installed, Codex invokes them as `$grill`, `$code-review`, `$sdd-spec`, and so on, or loads them from their `description` — except for `sdd-run` and `quick-run`: their `agents/openai.yaml` sidecars declare `policy.allow_implicit_invocation: false`, so they only run when explicitly invoked with `$sdd-run` or `$quick-run`. Claude Code/opencode use their usual commands. Pi uses `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec`, and equivalents. Run `/reload` in an open Pi session after installing.
 
 ## Credits
 
