@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import registerWorkflowOrchestrator from "./index.ts";
+import registerWorkflowOrchestrator, {
+	materializeSkill,
+	stageCrossProjectSession,
+	startFreshStage,
+} from "./index.ts";
 
 test("extension entrypoint registers exactly the terminal workflow-resolution tool", () => {
 	const tools: unknown[] = [];
@@ -13,4 +17,7 @@ test("extension entrypoint registers exactly the terminal workflow-resolution to
 
 	assert.equal(tools.length, 1);
 	assert.equal((tools[0] as { name?: string }).name, "submit_workflow_resolution");
+	assert.equal(typeof materializeSkill, "function");
+	assert.equal(typeof startFreshStage, "function");
+	assert.equal(typeof stageCrossProjectSession, "function");
 });
