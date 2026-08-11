@@ -220,15 +220,26 @@ function replacementResourcesAreValid(
 	if (resolve(context.cwd) !== targetCwd || resolve(context.sessionManager.getCwd()) !== targetCwd) return false;
 	const options = context.getSystemPromptOptions();
 	if (resolve(options.cwd) !== targetCwd) return false;
-	// Pi legitimately includes global/ancestor context files outside the project.
-	// What must never survive a cross-project replacement is a file scoped under
-	// the old project root.
-	if (sourceCwd !== targetCwd
-		&& (options.contextFiles ?? []).some(({ path }) => pathIsInside(sourceCwd, path))) return false;
-	if ((options.skills ?? []).some((skill) =>
-		skill.sourceInfo?.scope === "project"
-		&& !pathIsInside(targetCwd, typeof skill.sourceInfo.path === "string" ? skill.sourceInfo.path : skill.filePath))) {
-		return false;
+	// Pi legitimately surfaces resources whose path lies outside targetCwd:
+	// loadProjectContextFiles walks from targetCwd up to the filesystem root
+	// (picking up ancestor AGENTS.md files, including ones physically inside
+	// sourceCwd when sourceCwd is an ancestor of targetCwd), and the
+	// package-manager assigns sourceInfo.scope 'project' to any skill listed in
+	// the project's .pi settings even when its path is absolute/~ and outside
+	// the repo. "Outside targetCwd" is therefore not a valid signal of staleness
+	// on its own. What must never survive a cross-project replacement is a
+	// resource scoped under the OLD project root that the new target does not
+	// itself inherit as an ancestor — which can only happen when sourceCwd is
+	// NOT an ancestor of targetCwd (otherwise Pi's own ancestor walk from
+	// targetCwd would legitimately re-include it anyway).
+	const sourceIsAncestorOfTarget = sourceCwd === targetCwd || pathIsInside(sourceCwd, targetCwd);
+	if (!sourceIsAncestorOfTarget) {
+		if ((options.contextFiles ?? []).some(({ path }) => pathIsInside(sourceCwd, path))) return false;
+		if ((options.skills ?? []).some((skill) =>
+			skill.sourceInfo?.scope === "project"
+			&& pathIsInside(sourceCwd, typeof skill.sourceInfo.path === "string" ? skill.sourceInfo.path : skill.filePath))) {
+			return false;
+		}
 	}
 	return true;
 }
