@@ -74,10 +74,13 @@ test("Pi sdd-spec exposes Ejecutar ahora only after persistence and delegates to
 	assert.doesNotMatch(skill.slice(executeIndex), /encontrar.*ejecut/i);
 });
 
-test("Pi sdd-run recognizes a strict direct request envelope without weakening its own preconditions", async () => {
+test("Pi sdd-run recognizes direct and triage envelopes without weakening its own preconditions", async () => {
 	const skill = await readFile(new URL("../../pi/sdd-run/SKILL.md", import.meta.url), "utf8");
 	assert.match(skill, /workflow-launch version="1"/);
 	assert.match(skill, /DirectRunRequestV1/);
+	assert.match(skill, /workflow-handoff version="1"/);
+	assert.match(skill, /run-existing-spec/);
+	assert.match(skill, /exactamente uno|mutuamente excluyentes/i);
 	assert.match(skill, /no reemplaza|no saltea/i);
 	assert.match(skill, /precondiciones/i);
 });
@@ -91,6 +94,25 @@ test("Pi issue-triage shows its result before one terminal submission and keeps 
 	assert.match(phase, /activa|disponible/i);
 	assert.match(phase, /manual|no est[aá] activa|fallback/i);
 	assert.match(phase, /serializad/i);
+	assert.match(skill, /quick-run.*branch.*commit.*PR/is, "quick-run consent names its mutation capability before confirmation");
+	assert.doesNotMatch(skill, /confirmaci[oó]n s[oó]lo registra `selectedRoute`; no autoriza/i);
+});
+
+test("grill resume validates materialization before persistence and domain modeling cannot auto-continue on finalize", async () => {
+	const [source, skill] = await Promise.all([
+		readFile(new URL("../grill-tools/index.ts", import.meta.url), "utf8"),
+		readFile(new URL("../../pi/grill/SKILL.md", import.meta.url), "utf8"),
+	]);
+	assert.match(source, /allowsFinalizeSpecContinuation\(snapshot\.workflowMode\)/);
+	for (const marker of ["action === duplicateChoice", 'selected.status === "finalized"']) {
+		const start = source.indexOf(marker);
+		assert.ok(start >= 0, marker);
+		const region = source.slice(start, start + 2_600);
+		assert.ok(region.indexOf("prepareMaterializedSkill") >= 0, marker);
+		assert.ok(region.indexOf("prepareMaterializedSkill") < region.indexOf("saveSnapshot"), marker);
+	}
+	assert.match(skill, /domain-modeling[\s\S]*continueWithSpec:\s*false/i);
+	assert.match(skill, /ADRs[\s\S]*select_grill_session/is);
 });
 
 test("workflow validation, route contracts, and direct descriptors have one implementation", async () => {

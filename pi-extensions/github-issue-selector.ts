@@ -8,7 +8,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Markdown } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { grillTransitionFailureMessage } from "./github-consumer-logic.ts";
+import { grillDispatchArgs, grillTransitionFailureMessage } from "./github-consumer-logic.ts";
 import { menuItems, selectMenu, type MenuItem } from "./lib/menu";
 import { continueWithMaterializedSkill } from "./workflow-orchestrator/same-session.ts";
 
@@ -429,12 +429,12 @@ export default function (pi: ExtensionAPI) {
 			let nextAction: "inspect" | "analyze" | "grill-prerequisite" | "grill" | "cancelled" = "cancelled";
 			let grillTarget: number | null = null;
 			let grillTransition: Awaited<ReturnType<typeof continueWithMaterializedSkill>> | undefined;
-			const repoHint = params.repo?.trim() ? ` en el repo ${params.repo.trim()}` : "";
-			const queueGrill = async (number: number, instruction: string): Promise<void> => {
+			const repository = params.repo?.trim() || undefined;
+			const queueGrill = async (number: number, prerequisiteOf?: number): Promise<void> => {
 				grillTransition = await continueWithMaterializedSkill(
 					pi,
 					"grill",
-					`#${number}\n\n${instruction}`,
+					grillDispatchArgs(number, repository, prerequisiteOf),
 					{ deliverAs: "followUp" },
 				);
 			};
@@ -444,13 +444,7 @@ export default function (pi: ExtensionAPI) {
 			} else if (selectedAction === grillChoice) {
 				nextAction = "grill";
 				grillTarget = issue.number;
-				const instruction = [
-					`Grillá el issue #${issue.number} (${issue.title})${repoHint}.`,
-					"Antes de preguntar, usá los detalles completos del issue recién seleccionado y explorá el codebase.",
-					"No analices dependencias con otro modelo salvo que sea necesario para desambiguar el alcance.",
-					"No implementes hasta que confirme el entendimiento compartido.",
-				].join(" ");
-				await queueGrill(issue.number, instruction);
+				await queueGrill(issue.number);
 			} else if (selectedAction === analyzeChoice) {
 				nextAction = "analyze";
 				onUpdate?.({
@@ -535,19 +529,11 @@ export default function (pi: ExtensionAPI) {
 				if (prerequisite) {
 					nextAction = "grill-prerequisite";
 					grillTarget = prerequisite.number;
-					const instruction = [
-						`Grillá primero el issue #${prerequisite.number} (${prerequisite.title})${repoHint}.`,
-						`Fue detectado como prerrequisito del issue #${issue.number} (${issue.title}).`,
-						`Evidencia del análisis: ${prerequisite.reason}`,
-						"Antes de preguntar, obtené y leé sus detalles completos con gh issue view.",
-						"No implementes hasta que confirme el entendimiento compartido.",
-					].join(" ");
-					await queueGrill(prerequisite.number, instruction);
+					await queueGrill(prerequisite.number, issue.number);
 				} else if (nextChoice === grillSelectedChoice) {
 					nextAction = "grill";
 					grillTarget = issue.number;
-					const instruction = `Grillá el issue #${issue.number} (${issue.title})${repoHint}. Usá sus detalles y el análisis de dependencias recién completado. No implementes hasta que confirme el entendimiento compartido.`;
-					await queueGrill(issue.number, instruction);
+					await queueGrill(issue.number);
 				}
 			}
 

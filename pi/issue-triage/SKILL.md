@@ -251,13 +251,13 @@ Para `blocked-dependency`, `split-too-large`, `combined-too-large`, `incoherent-
 
 ### Rutas accionables
 
-Para todo resultado `outcome=start` —ruta nueva o artifact-aware— usá `ask_user_question`. La pregunta debe repetir en una oración el outcome de `En pocas palabras`, para que la decisión sea autocontenida, y ofrecer:
+Para todo resultado `outcome=start` —ruta nueva o artifact-aware— usá `ask_user_question`. La pregunta debe repetir en una oración el outcome de `En pocas palabras`, para que la decisión sea autocontenida. Si la primaria o fallback es `quick-run|join-quick-run`, declarale antes de elegir que confirmarla abre un run aislado capaz de crear branch, commits y PR (nunca merge), sujeto a su preflight y verificaciones. Ofrecé:
 
 - `Confirmar <ruta recomendada> (Recomendado)`
 - `Usar fallback: <ruta>`
 - `Cancelar`
 
-Una confirmación sólo registra `selectedRoute`; no autoriza a ejecutar el stage. Antes del gate vale `selectedRoute=null`; primaria y fallback preservan la recomendación, y cancelar emite `code=cancelled` sin crear issues, archivos, branches ni comentarios.
+Una confirmación registra `selectedRoute` y autoriza al consumidor orquestado a abrir el stage seleccionado en una sesión hija; este skill productor nunca lo ejecuta por su cuenta. Para quick-run, esa autorización informada cubre iniciar su workflow protegido con capacidad de branch/commit/PR, pero no merge ni ampliación de alcance. Antes del gate vale `selectedRoute=null`; primaria y fallback preservan la recomendación, y cancelar emite `code=cancelled` sin crear issues, archivos, branches ni comentarios.
 
 ## Fase 5 — Canonicalizar una selección múltiple
 

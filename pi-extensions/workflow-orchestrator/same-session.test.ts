@@ -28,10 +28,35 @@ test("same-session transition sends one canonical materialized skill and never a
 		},
 	);
 
-	assert.equal(result.ok, true);
+	assert.deepEqual(result, {
+		ok: true,
+		queued: true,
+		source: { path, baseDir: "/canonical/sdd-spec" },
+	});
 	assert.deepEqual(sent, [{
 		content: `<skill name="sdd-spec" location="${path}">\nReferences are relative to /canonical/sdd-spec.\n\n# SDD spec\n</skill>\n\n--from-grill grill-14`,
 		options: { deliverAs: "followUp" },
 	}]);
 	assert.doesNotMatch(sent[0]!.content, /\/skill:sdd-spec/);
+});
+
+test("same-session skill can be materialized before a caller persists state", async () => {
+	assert.equal(typeof (orchestrator as Record<string, unknown>).prepareMaterializedSkill, "function");
+	assert.equal(typeof (orchestrator as Record<string, unknown>).queueMaterializedSkill, "function");
+	const sent: string[] = [];
+	const path = "/canonical/grill/SKILL.md";
+	const pi = {
+		getCommands: () => [{ name: "skill:grill", source: "skill", sourceInfo: { path } }],
+		sendUserMessage(content: string) { sent.push(content); },
+	};
+	const prepared = await orchestrator.prepareMaterializedSkill(pi as never, "grill", "--resume session-1", {
+		readSkillFile: async () => "---\nname: grill\ndescription: Grill\n---\n# Grill\n",
+		stripSkillFrontmatter: fakeStripFrontmatter,
+	});
+	assert.equal(prepared.ok, true);
+	assert.deepEqual(sent, [], "preflight materialization has no delivery side effect");
+	if (!prepared.ok) return;
+	const queued = orchestrator.queueMaterializedSkill(pi as never, prepared, { deliverAs: "followUp" });
+	assert.equal(queued.queued, true);
+	assert.equal(sent.length, 1);
 });

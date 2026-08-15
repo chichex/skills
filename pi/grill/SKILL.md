@@ -297,9 +297,11 @@ No incluyas acciones para implementar o construir. En modo `domain-modeling`, es
 Si el usuario confirma, con o sin encadenado:
 
 1. Convertí el contrato visible en Markdown autocontenido siguiendo el template de **Formato del handoff**.
-2. Invocá `grill_session` con `action: "finalize"`, el resumen y `handoffMarkdown`. Si el usuario eligió **Confirmar y crear spec SDD**, incluí además `continueWithSpec: true`; la tool persiste primero y recién después encola el skill canónico materializado.
+2. Invocá `grill_session` con `action: "finalize"`, el resumen y `handoffMarkdown`.
+   - En modo `standard`, si el usuario eligió **Confirmar y crear spec SDD**, incluí `continueWithSpec: true`; la tool persiste primero y recién después encola el skill canónico materializado.
+   - En modo `domain-modeling`, usá siempre `continueWithSpec: false`, incluso si el usuario pidió crear la spec: primero deben resolverse por separado todos los candidatos a ADR del Paso 4.
 3. Informá las dos rutas que devuelve la tool: el snapshot global y el handoff del repo en `.sdd/grills/`.
-4. Si hubo encadenado, terminá este turno después de la persistencia: el follow-up materializado de `sdd-spec --from-grill` continúa en esta misma sesión.
+4. Si hubo encadenado en modo `standard`, terminá este turno después de la persistencia: el follow-up materializado de `sdd-spec --from-grill` continúa en esta misma sesión.
 
 Si pide ajustar, retomá una sola rama y seguí el ciclo de pregunta + checkpoint. Si pausa, seguí el procedimiento de pausa.
 
@@ -323,7 +325,9 @@ Nunca mezcles la confirmación del handoff con la aprobación de un ADR ni bundl
 Después de finalizar directamente en modo `standard`, o de resolver todos los candidatos a ADR en modo `domain-modeling`:
 
 - si eligió **Confirmar entendimiento**, terminá e informá el handoff y, cuando corresponda, glosarios actualizados y ADRs creados;
-- si eligió **Confirmar y crear spec SDD**, `grill_session finalize` con `continueWithSpec: true` entrega el skill canónico materializado con `--from-grill <sessionId>`; no leas un `SKILL.md` por un path inferido ni envíes slash commands;
+- si eligió **Confirmar y crear spec SDD** en modo `standard`, `grill_session finalize` con `continueWithSpec: true` entrega el skill canónico materializado con `--from-grill <sessionId>`;
+- si lo eligió en modo `domain-modeling`, después de resolver todos los ADRs invocá `select_grill_session` para que el usuario elija el handoff finalizado y confirme **Crear spec SDD**; este segundo gate materializa `sdd-spec --from-grill <sessionId>` sin saltear aprobaciones;
+- no leas un `SKILL.md` por un path inferido ni envíes slash commands;
 - el handoff confirmado es fuente autoritativa: no vuelvas a preguntar decisiones ya resueltas;
 - la spec sigue exigiendo `.sdd/project.md`.
 

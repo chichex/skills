@@ -9,14 +9,23 @@ import { Markdown, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { menuItems, selectMenu, type MenuItem } from "../lib/menu";
 import { requestSddRun } from "../workflow-orchestrator/controller.ts";
-import { continueWithMaterializedSkill } from "../workflow-orchestrator/same-session.ts";
+import {
+	continueWithMaterializedSkill,
+	prepareMaterializedSkill,
+	queueMaterializedSkill,
+} from "../workflow-orchestrator/same-session.ts";
 import {
 	inspectMarkdownArtifact,
 	type ArtifactFormat,
 	type ArtifactProvenance,
 	type IssueRef,
 } from "../workflow-resolution/index.ts";
-import { handoffFileNames, planGrillHandoff, slugify } from "./logic.ts";
+import {
+	allowsFinalizeSpecContinuation,
+	handoffFileNames,
+	planGrillHandoff,
+	slugify,
+} from "./logic.ts";
 
 const AGENT_DIR = join(homedir(), ".pi", "agent");
 const STORE_DIR = join(AGENT_DIR, "grill-sessions");
@@ -749,31 +758,26 @@ export default function grillTools(pi: ExtensionAPI) {
 						return;
 					}
 
-					let session = selected;
-					if (action === duplicateChoice) {
-						const timestamp = now();
-						session = {
+					const timestamp = now();
+					const session = action === duplicateChoice
+						? {
 							...selected,
 							id: `${slugify(selected.topic)}-${timestamp.slice(0, 10).replace(/-/g, "")}-${randomUUID().slice(0, 8)}`,
-							status: "active",
+							status: "active" as const,
 							createdAt: timestamp,
 							updatedAt: timestamp,
 							handoffMarkdown: undefined,
 							parentId: selected.id,
 							revision: selected.revision + 1,
-						};
-						await saveSnapshot(session);
-					} else if (action === resumeChoice) {
-						session.status = "active";
-						await saveSnapshot(session);
+						}
+						: { ...selected, status: "active" as const };
+					const prepared = await prepareMaterializedSkill(pi, "grill", `--resume ${session.id}`);
+					if (!prepared.ok) {
+						ctx.ui.notify(`No se pudo retomar grill: ${prepared.message}`, "error");
+						return;
 					}
-
-					const transition = await continueWithMaterializedSkill(
-						pi,
-						"grill",
-						`--resume ${session.id}`,
-					);
-					if (!transition.ok) ctx.ui.notify(`No se pudo retomar grill: ${transition.message}`, "error");
+					await saveSnapshot(session);
+					queueMaterializedSkill(pi, prepared);
 					return;
 				}
 			} catch (error) {
@@ -906,6 +910,9 @@ export default function grillTools(pi: ExtensionAPI) {
 			}
 
 			if (params.action === "finalize") {
+				if (params.continueWithSpec && !allowsFinalizeSpecContinuation(snapshot.workflowMode)) {
+					throw new Error("domain-modeling finalize cannot continue to sdd-spec before the separate ADR review completes");
+				}
 				if (!params.handoffMarkdown?.trim()) throw new Error("handoffMarkdown is required for finalize");
 				if (params.pendingBranches) snapshot.pendingBranches = params.pendingBranches;
 				if (params.sections) snapshot.sections = params.sections;
@@ -1118,32 +1125,24 @@ export default function grillTools(pi: ExtensionAPI) {
 						parentId: selected.id,
 						revision: selected.revision + 1,
 					};
+					const prepared = await prepareMaterializedSkill(pi, "grill", `--resume ${duplicate.id}`);
+					if (!prepared.ok) throw new Error(`Could not materialize grill: ${prepared.message}`);
 					await saveSnapshot(duplicate);
-					const transition = await continueWithMaterializedSkill(
-						pi,
-						"grill",
-						`--resume ${duplicate.id}`,
-						{ deliverAs: "followUp" },
-					);
-					if (!transition.ok) throw new Error(`Could not materialize grill: ${transition.message}`);
+					const transition = queueMaterializedSkill(pi, prepared, { deliverAs: "followUp" });
 					return {
 						content: [{ type: "text", text: snapshotText("Duplicated finalized grill session as a new active revision.", duplicate) }],
 						details: { selected: duplicate, action: "duplicate", sourceId: selected.id, jsonPath: jsonPath(duplicate.id), transition },
 					};
 				}
 
-				selected.status = "active";
-				await saveSnapshot(selected);
-				const transition = await continueWithMaterializedSkill(
-					pi,
-					"grill",
-					`--resume ${selected.id}`,
-					{ deliverAs: "followUp" },
-				);
-				if (!transition.ok) throw new Error(`Could not materialize grill: ${transition.message}`);
+				const resumed = { ...selected, status: "active" as const };
+				const prepared = await prepareMaterializedSkill(pi, "grill", `--resume ${resumed.id}`);
+				if (!prepared.ok) throw new Error(`Could not materialize grill: ${prepared.message}`);
+				await saveSnapshot(resumed);
+				const transition = queueMaterializedSkill(pi, prepared, { deliverAs: "followUp" });
 				return {
-					content: [{ type: "text", text: snapshotText("Resumed grill session in this conversation.", selected) }],
-					details: { selected, action: "resume", jsonPath: jsonPath(selected.id), transition },
+					content: [{ type: "text", text: snapshotText("Resumed grill session in this conversation.", resumed) }],
+					details: { selected: resumed, action: "resume", jsonPath: jsonPath(resumed.id), transition },
 				};
 			}
 		},
