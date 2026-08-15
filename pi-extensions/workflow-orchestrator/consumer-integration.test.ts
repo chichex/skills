@@ -5,8 +5,20 @@ import { test } from "node:test";
 test("/issues delegates Analyze to the structured orchestrator without slash skill dispatch", async () => {
 	const source = await readFile(new URL("../github-issues.ts", import.meta.url), "utf8");
 	assert.match(source, /requestIssueTriage/);
+	assert.match(source, /issueTriageFailureMessage/);
+	assert.doesNotMatch(source, /No se pudo iniciar issue-triage: \$\{result\.message\}/);
 	assert.doesNotMatch(source, /`?\/skill:issue-triage/);
 	assert.doesNotMatch(source, /sendUserMessage\([^\n]*issue-triage/);
+});
+
+test("/issues exposes localized actionable failures instead of internal materializer errors", async () => {
+	const module = await import("../github-consumer-logic.ts") as { issueTriageFailureMessage?: (code: string) => string };
+	assert.equal(typeof module.issueTriageFailureMessage, "function");
+	for (const code of ["skill-not-found", "skill-unreadable", "orchestrator-unavailable", "triage-already-active"]) {
+		const message = module.issueTriageFailureMessage!(code);
+		assert.match(message, /[áéíóúñ]|skill|orquestador|triage/i);
+		assert.doesNotMatch(message, /pi\.getCommands|Skill issue-triage is not present|workflow-orchestrator is not loaded/);
+	}
 });
 
 test("/specs calls the shared direct launcher and never injects run slash commands", async () => {
@@ -17,9 +29,11 @@ test("/specs calls the shared direct launcher and never injects run slash comman
 	assert.doesNotMatch(source, /sendUserMessage\([^\n]*sdd-run/);
 });
 
-test("github issue selector materializes grill actions without slash dispatch", async () => {
+test("github issue selector materializes grill actions without slash dispatch and preserves results on launch failure", async () => {
 	const source = await readFile(new URL("../github-issue-selector.ts", import.meta.url), "utf8");
 	assert.match(source, /continueWithMaterializedSkill/);
+	assert.match(source, /grillTransition/);
+	assert.doesNotMatch(source, /if \(!transition\.ok\) throw/);
 	assert.doesNotMatch(source, /`?\/skill:grill/);
 	assert.doesNotMatch(source, /sendUserMessage\([^\n]*grill/);
 });
@@ -68,11 +82,30 @@ test("Pi sdd-run recognizes a strict direct request envelope without weakening i
 	assert.match(skill, /precondiciones/i);
 });
 
-test("Pi issue-triage submits one terminal result when orchestrated and keeps manual fallback", async () => {
+test("Pi issue-triage shows its result before one terminal submission and keeps manual fallback", async () => {
 	const skill = await readFile(new URL("../../pi/issue-triage/SKILL.md", import.meta.url), "utf8");
 	const phase = skill.match(/## Fase 6 — Emitir el resultado y terminar([\s\S]*?)## MUST DO/)?.[1] ?? "";
-	assert.match(phase, /submit_workflow_resolution/);
+	const terminalStep = phase.match(/3\.([\s\S]*?)\n4\./)?.[1] ?? "";
+	assert.match(terminalStep, /submit_workflow_resolution/);
+	assert.match(terminalStep, /mostr[aá].*(?:resultado|s[ií]ntesis).*antes/is);
 	assert.match(phase, /activa|disponible/i);
 	assert.match(phase, /manual|no est[aá] activa|fallback/i);
 	assert.match(phase, /serializad/i);
+});
+
+test("workflow validation, route contracts, and direct descriptors have one implementation", async () => {
+	const [protocol, direct, lifecycle, dispatch] = await Promise.all([
+		readFile(new URL("./protocol.ts", import.meta.url), "utf8"),
+		readFile(new URL("./direct-launch.ts", import.meta.url), "utf8"),
+		readFile(new URL("./lifecycle.ts", import.meta.url), "utf8"),
+		readFile(new URL("./dispatch.ts", import.meta.url), "utf8"),
+	]);
+	assert.match(protocol, /from "\.\/validation\.ts"/);
+	assert.match(direct, /from "\.\/direct-protocol\.ts"/);
+	assert.doesNotMatch(protocol, /function (?:isRecord|exactObject)\b/);
+	assert.doesNotMatch(direct, /function (?:isRecord|exactObject)\b|const sourceLabel\b/);
+	assert.match(lifecycle, /from "\.\/route-contract\.ts"/);
+	assert.match(dispatch, /from "\.\/route-contract\.ts"/);
+	assert.doesNotMatch(lifecycle, /START_DISPATCH|const sourceLabel\b/);
+	assert.doesNotMatch(dispatch, /ROUTE_MATRIX|unsupported-route/);
 });

@@ -61,6 +61,45 @@ test("direct run request v1 strictly validates issue and issue-less spec targets
 	assert.equal(invalid.ok, false);
 	if (!invalid.ok) assert.ok(invalid.diagnostics.some((item) => item.code === "extra-field"));
 	assert.equal(orchestrator.validateDirectRunRequest({ ...issueRequest(), summary: "x".repeat(241) }).ok, false);
+
+	for (const [field, value] of [["repo", ""], ["cwd", ""], ["summary", ""]] as const) {
+		const result = orchestrator.validateDirectRunRequest({ ...issueRequest(), [field]: value });
+		assert.equal(result.ok, false);
+		if (!result.ok) {
+			const fieldDiagnostics = result.diagnostics.filter((item) => item.path === `$.${field}`);
+			assert.equal(fieldDiagnostics.length, 1, `${field} should produce one actionable diagnostic`);
+			assert.equal(fieldDiagnostics[0]!.code, "invalid-value");
+		}
+	}
+});
+
+test("issue targets require an SDD-aware project and reject unsafe integers before authorization", async () => {
+	const temporary = await mkdtemp(join(tmpdir(), "direct-sdd-contract-"));
+	try {
+		const root = await realpath(temporary);
+		const dependencies = {
+			resolveGitRoot: async () => root,
+			resolveRepository: async () => "chichex/skills",
+		};
+		const withoutContract = await orchestrator.resolveDirectRunRequest("#14", root, dependencies);
+		assert.deepEqual(withoutContract, {
+			ok: false,
+			code: "missing-contract",
+			message: `Create a canonical .sdd/project.md in ${root} before launching sdd-run`,
+		});
+
+		await mkdir(join(root, ".sdd"), { recursive: true });
+		await writeFile(join(root, ".sdd", "project.md"), [
+			"# Contract",
+			"<!-- SDD-Tracking: version=1; type=project; generated-at=2026-08-15 -->",
+			"",
+		].join("\n"), "utf8");
+		const unsafe = await orchestrator.resolveDirectRunRequest("#9007199254740993", root, dependencies);
+		assert.equal(unsafe.ok, false);
+		if (!unsafe.ok) assert.equal(unsafe.code, "invalid-target");
+	} finally {
+		await rm(temporary, { recursive: true, force: true });
+	}
 });
 
 test("the generic lifecycle cannot bypass strict DirectRunRequestV1 validation", async () => {
@@ -88,6 +127,15 @@ test("direct target resolution normalizes #NN and local/cross-project canonical 
 		const projectB = join(projectA, "project-b");
 		await mkdir(join(projectA, ".sdd", "specs"), { recursive: true });
 		await mkdir(join(projectB, ".sdd", "specs"), { recursive: true });
+		const contract = [
+			"# Contract",
+			"<!-- SDD-Tracking: version=1; type=project; generated-at=2026-08-15 -->",
+			"",
+		].join("\n");
+		await Promise.all([
+			writeFile(join(projectA, ".sdd", "project.md"), contract, "utf8"),
+			writeFile(join(projectB, ".sdd", "project.md"), contract, "utf8"),
+		]);
 		const localSpec = join(projectA, ".sdd", "specs", "local.md");
 		const crossSpec = join(projectB, ".sdd", "specs", "issue-7-cross.md");
 		await writeFile(localSpec, [

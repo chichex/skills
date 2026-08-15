@@ -92,6 +92,32 @@ test("workflow orchestrator exposes a controller without globally activating the
 	assert.ok(events.includes("agent_settled"));
 });
 
+test("launch_sdd_run is active only while the current project has a canonical SDD contract", async () => {
+	const handlers = new Map<string, (event: unknown, context: unknown) => unknown>();
+	let activeTools = ["read", "launch_sdd_run"];
+	let sddAware = false;
+	const pi = {
+		events: createEventBus(),
+		registerTool() {},
+		registerCommand() {},
+		on(name: string, handler: (event: unknown, context: unknown) => unknown) { handlers.set(name, handler); },
+		getActiveTools: () => [...activeTools],
+		setActiveTools(names: string[]) { activeTools = [...names]; },
+		getCommands: () => [],
+		sendUserMessage() {},
+	};
+	orchestrator.createWorkflowController(pi as never, {
+		isSddProject: async () => sddAware,
+	} as never);
+	const context = { cwd: "/workspace/project", sessionManager: { getSessionId: () => "origin" } };
+	await handlers.get("session_start")!({}, context);
+	assert.deepEqual(activeTools, ["read"]);
+
+	sddAware = true;
+	await handlers.get("agent_settled")!({}, context);
+	assert.deepEqual(activeTools, ["read", "launch_sdd_run"], "a contract created in-session re-enables only the gated tool");
+});
+
 test("beginIssueTriage materializes canonical issue-triage and activates the terminal tool only for that attempt", async () => {
 	const tools = new Map<string, { name: string }>();
 	const commands = new Map<string, { handler: (args: string, context: unknown) => Promise<void> }>();
@@ -231,6 +257,138 @@ test("terminal resolution is one-shot and hands an opaque same-session receipt t
 	await internal.handler("opaque-receipt", commandContext);
 	assert.equal(starts.length, 1, "a consumed receipt cannot be replayed");
 	assert.match(notifications.at(-1) ?? "", /invalid|expired|consumed/i);
+});
+
+test("invalid terminal payloads do not burn the attempt and a corrected result can still dispatch once", async () => {
+	const tools = new Map<string, { execute: (...args: unknown[]) => Promise<unknown> }>();
+	let activeTools = ["read"];
+	const sent: string[] = [];
+	const pi = {
+		events: createEventBus(),
+		registerTool(tool: { name: string; execute: (...args: unknown[]) => Promise<unknown> }) { tools.set(tool.name, tool); },
+		registerCommand() {},
+		on() {},
+		getCommands: () => [{ name: "skill:issue-triage", source: "skill", sourceInfo: { path: "/skills/triage/SKILL.md" } }],
+		getActiveTools: () => [...activeTools],
+		setActiveTools(names: string[]) { activeTools = [...names]; },
+		sendUserMessage(content: string) { sent.push(content); },
+	};
+	const controller = orchestrator.createWorkflowController(pi as never, {
+		readSkillFile: async () => "---\nname: issue-triage\ndescription: Triage\n---\n# Triage\n",
+		stripSkillFrontmatter: fakeStripFrontmatter,
+		createReceipt: () => "corrected-receipt",
+	});
+	const context = { cwd: "/workspace/skills", sessionManager: { getSessionId: () => "origin" } };
+	await controller.beginIssueTriage({ issueNumbers: [14] }, context as never);
+	const terminal = tools.get("submit_workflow_resolution")!;
+
+	await assert.rejects(terminal.execute("invalid-schema", {}, undefined, undefined, context), /invalid.*resolution/i);
+	assert.ok(activeTools.includes("submit_workflow_resolution"));
+	await assert.rejects(
+		terminal.execute("invalid-dispatch", workflowResolution({
+			code: "resume-grill",
+			recommendedRoute: "resume-grill",
+			selectedRoute: "resume-grill",
+			stage: "grill",
+			mode: "resume",
+		}), undefined, undefined, context),
+		/invalid-grill-reference/i,
+	);
+	assert.ok(activeTools.includes("submit_workflow_resolution"));
+
+	await terminal.execute("corrected", workflowResolution(), undefined, undefined, context);
+	assert.deepEqual(activeTools, ["read"]);
+	assert.equal(sent.filter((message) => message === "/__sdd-dispatch corrected-receipt").length, 1);
+	await assert.rejects(terminal.execute("duplicate", workflowResolution(), undefined, undefined, context), /consumed|not active/i);
+});
+
+test("beginIssueTriage reserves its attempt before asynchronous materialization", async () => {
+	let releaseFirstRead!: () => void;
+	const firstRead = new Promise<void>((resolve) => { releaseFirstRead = resolve; });
+	let reads = 0;
+	let activeTools = ["read"];
+	const sent: string[] = [];
+	const pi = {
+		events: createEventBus(),
+		registerTool() {},
+		registerCommand() {},
+		on() {},
+		getCommands: () => [{ name: "skill:issue-triage", source: "skill", sourceInfo: { path: "/skills/triage/SKILL.md" } }],
+		getActiveTools: () => [...activeTools],
+		setActiveTools(names: string[]) { activeTools = [...names]; },
+		sendUserMessage(content: string) { sent.push(content); },
+	};
+	const controller = orchestrator.createWorkflowController(pi as never, {
+		readSkillFile: async () => {
+			reads += 1;
+			if (reads === 1) await firstRead;
+			return "---\nname: issue-triage\ndescription: Triage\n---\n# Triage\n";
+		},
+		stripSkillFrontmatter: fakeStripFrontmatter,
+	});
+	const context = { cwd: "/workspace/skills", sessionManager: { getSessionId: () => "origin" } };
+	const first = controller.beginIssueTriage({ issueNumbers: [14] }, context as never);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	const second = await controller.beginIssueTriage({ issueNumbers: [15] }, context as never);
+	assert.deepEqual(second, {
+		ok: false,
+		code: "triage-already-active",
+		message: "An issue triage attempt is already active",
+	});
+	releaseFirstRead();
+	assert.equal((await first).ok, true);
+	assert.equal(reads, 1);
+	assert.equal(sent.length, 1);
+	assert.match(sent[0]!, /#14$/);
+});
+
+test("pending receipts expire and stay bounded when queued follow-ups are abandoned", async () => {
+	const tools = new Map<string, { execute: (...args: unknown[]) => Promise<unknown> }>();
+	const commands = new Map<string, { handler: (args: string, context: unknown) => Promise<void> }>();
+	const sent: string[] = [];
+	const notifications: string[] = [];
+	const starts: unknown[] = [];
+	const ids = ["receipt-1", "receipt-2", "receipt-3"];
+	let now = 1_000;
+	const pi = {
+		events: createEventBus(),
+		registerTool(tool: { name: string; execute: (...args: unknown[]) => Promise<unknown> }) { tools.set(tool.name, tool); },
+		registerCommand(name: string, command: { handler: (args: string, context: unknown) => Promise<void> }) { commands.set(name, command); },
+		on() {},
+		getCommands: () => [],
+		getActiveTools: () => ["launch_sdd_run"],
+		setActiveTools() {},
+		sendUserMessage(content: string) { sent.push(content); },
+	};
+	orchestrator.createWorkflowController(pi as never, {
+		createReceipt: () => ids.shift()!,
+		now: () => now,
+		receiptTtlMs: 50,
+		maxPendingReceipts: 2,
+		resolveDirectRunRequest: async () => ({ ok: true, request: directRunRequest() }),
+		startDirectRun: async (request: unknown) => { starts.push(request); return { ok: true } as never; },
+	} as never);
+	const toolContext = {
+		hasUI: true,
+		cwd: "/workspace/skills",
+		sessionManager: { getSessionId: () => "origin" },
+		ui: { async confirm() { return true; } },
+	};
+	for (let index = 0; index < 3; index += 1) {
+		await tools.get("launch_sdd_run")!.execute(`launch-${index}`, { target: "#14" }, undefined, undefined, toolContext);
+	}
+	assert.equal(sent.length, 3);
+	const commandContext = {
+		cwd: "/workspace/skills",
+		sessionManager: { getSessionId: () => "origin" },
+		ui: { notify(message: string) { notifications.push(message); } },
+	};
+	await commands.get("__sdd-dispatch")!.handler("receipt-1", commandContext);
+	assert.equal(starts.length, 0, "the oldest receipt is evicted at the configured bound");
+	now += 51;
+	await commands.get("__sdd-dispatch")!.handler("receipt-3", commandContext);
+	assert.equal(starts.length, 0, "an expired receipt cannot launch");
+	assert.equal(notifications.length, 2);
 });
 
 test("stop, error, and unconfirmed terminal results preserve the origin and queue no dispatch", async () => {

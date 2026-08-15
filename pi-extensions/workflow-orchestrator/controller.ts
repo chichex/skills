@@ -6,6 +6,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 
 import {
+	isSddProject as isSddProjectDefault,
 	resolveDirectRunRequest as resolveDirectRunRequestDefault,
 	startDirectRun as startDirectRunDefault,
 	type DirectRunRequestV1,
@@ -39,7 +40,11 @@ export interface WorkflowControllerDependencies {
 	readSkillFile?: (path: string, encoding: "utf8") => Promise<string>;
 	stripSkillFrontmatter?: (content: string) => string | Promise<string>;
 	createReceipt?: () => string;
+	now?: () => number;
+	receiptTtlMs?: number;
+	maxPendingReceipts?: number;
 	directRunDependencies?: ResolveDirectRunDependencies;
+	isSddProject?: (cwd: string, dependencies?: ResolveDirectRunDependencies) => Promise<boolean>;
 	resolveDirectRunRequest?: (
 		target: string,
 		cwd: string,
@@ -141,12 +146,17 @@ export function requestSddRun(
 
 interface ActiveTriageAttempt {
 	sessionId: string;
-	claimed: boolean;
+	status: "open" | "validating" | "claimed";
 }
 
 type DispatchReceipt =
 	| { kind: "workflow"; originSessionId: string; request: StartFreshStageRequest }
 	| { kind: "direct"; originSessionId: string; request: DirectRunRequestV1 };
+
+interface PendingDispatchReceipt {
+	value: DispatchReceipt;
+	expiresAt: number;
+}
 
 function validIssueNumbers(numbers: number[]): boolean {
 	return numbers.length >= 1
@@ -183,11 +193,20 @@ export function createWorkflowController(
 ): WorkflowController {
 	let activeAttempt: ActiveTriageAttempt | undefined;
 	let terminalRegistered = false;
-	const receipts = new Map<string, DispatchReceipt>();
+	let launchSuppressedByProjectGate = false;
+	const receipts = new Map<string, PendingDispatchReceipt>();
 	const startFreshStage = dependencies.startFreshStage ?? startFreshStageDefault;
 	const resolveDirectRunRequest = dependencies.resolveDirectRunRequest ?? resolveDirectRunRequestDefault;
 	const startDirectRun = dependencies.startDirectRun ?? startDirectRunDefault;
+	const isSddProject = dependencies.isSddProject ?? isSddProjectDefault;
 	const createReceipt = dependencies.createReceipt ?? randomUUID;
+	const now = dependencies.now ?? Date.now;
+	const receiptTtlMs = Number.isFinite(dependencies.receiptTtlMs) && (dependencies.receiptTtlMs ?? 0) > 0
+		? dependencies.receiptTtlMs!
+		: 5 * 60_000;
+	const maxPendingReceipts = Number.isInteger(dependencies.maxPendingReceipts) && (dependencies.maxPendingReceipts ?? 0) > 0
+		? dependencies.maxPendingReceipts!
+		: 32;
 
 	function deactivateTerminal(): void {
 		const current = pi.getActiveTools();
@@ -196,17 +215,30 @@ export function createWorkflowController(
 		}
 	}
 
-	function endAttempt(): void {
+	function endAttempt(expected = activeAttempt): void {
+		if (expected && activeAttempt !== expected) return;
 		activeAttempt = undefined;
 		deactivateTerminal();
 	}
 
+	function pruneReceipts(at = now()): void {
+		for (const [id, pending] of receipts) {
+			if (pending.expiresAt <= at) receipts.delete(id);
+		}
+	}
+
 	function queueReceipt(receipt: DispatchReceipt): string {
+		pruneReceipts();
 		const id = createReceipt();
 		if (!/^[A-Za-z0-9_-]+$/.test(id) || receipts.has(id)) {
 			throw new Error("Could not allocate a unique opaque workflow receipt");
 		}
-		receipts.set(id, receipt);
+		while (receipts.size >= maxPendingReceipts) {
+			const oldest = receipts.keys().next().value as string | undefined;
+			if (oldest === undefined) break;
+			receipts.delete(oldest);
+		}
+		receipts.set(id, { value: receipt, expiresAt: now() + receiptTtlMs });
 		try {
 			pi.sendUserMessage(`/${INTERNAL_DISPATCH_COMMAND} ${id}`, { deliverAs: "followUp" });
 		} catch (error) {
@@ -214,6 +246,23 @@ export function createWorkflowController(
 			throw error;
 		}
 		return id;
+	}
+
+	async function syncLaunchToolAvailability(cwd: string): Promise<void> {
+		let aware = false;
+		try {
+			aware = await isSddProject(cwd, dependencies.directRunDependencies);
+		} catch {
+			aware = false;
+		}
+		const active = pi.getActiveTools();
+		if (!aware && active.includes(LAUNCH_SDD_RUN_TOOL)) {
+			pi.setActiveTools(active.filter((name) => name !== LAUNCH_SDD_RUN_TOOL));
+			launchSuppressedByProjectGate = true;
+		} else if (aware && launchSuppressedByProjectGate && !active.includes(LAUNCH_SDD_RUN_TOOL)) {
+			pi.setActiveTools([...active, LAUNCH_SDD_RUN_TOOL]);
+			launchSuppressedByProjectGate = false;
+		}
 	}
 
 	pi.registerTool({
@@ -262,29 +311,35 @@ export function createWorkflowController(
 			...terminal,
 			async execute(toolCallId, params, signal, onUpdate, context) {
 				const attempt = activeAttempt;
-				if (!attempt || attempt.claimed) {
-					throw new Error("submit_workflow_resolution is not active or was already consumed");
+				if (!attempt || attempt.status !== "open") {
+					throw new Error("submit_workflow_resolution is not active, is validating, or was already consumed");
 				}
-				attempt.claimed = true;
-				endAttempt();
+				attempt.status = "validating";
+				try {
+					const sessionId = contextSessionId(context);
+					if (!sessionId || sessionId !== attempt.sessionId) {
+						throw new Error("submit_workflow_resolution belongs to a different session");
+					}
 
-				const sessionId = contextSessionId(context);
-				if (!sessionId || sessionId !== attempt.sessionId) {
-					throw new Error("submit_workflow_resolution belongs to a different session");
+					const terminalResult = await terminal.execute(toolCallId, params, signal, onUpdate, context);
+					const resolution = terminalResult.details;
+					if (activeAttempt !== attempt) throw new Error("submit_workflow_resolution attempt expired during validation");
+					if (resolution.outcome === "start" && resolution.selectedRoute !== null) {
+						const dispatch = resolveWorkflowDispatch(resolution);
+						if (!dispatch.ok) throw new Error(`${dispatch.code}: ${dispatch.message}`);
+						queueReceipt({
+							kind: "workflow",
+							originSessionId: attempt.sessionId,
+							request: dispatch.request,
+						});
+					}
+					attempt.status = "claimed";
+					endAttempt(attempt);
+					return terminalResult;
+				} catch (error) {
+					if (activeAttempt === attempt && attempt.status === "validating") attempt.status = "open";
+					throw error;
 				}
-
-				const terminalResult = await terminal.execute(toolCallId, params, signal, onUpdate, context);
-				const resolution = terminalResult.details;
-				if (resolution.outcome !== "start" || resolution.selectedRoute === null) return terminalResult;
-
-				const dispatch = resolveWorkflowDispatch(resolution);
-				if (!dispatch.ok) throw new Error(`${dispatch.code}: ${dispatch.message}`);
-				queueReceipt({
-					kind: "workflow",
-					originSessionId: attempt.sessionId,
-					request: dispatch.request,
-				});
-				return terminalResult;
 			},
 		} as never);
 		terminalRegistered = true;
@@ -298,13 +353,14 @@ export function createWorkflowController(
 				notify(context, "Invalid internal SDD workflow receipt");
 				return;
 			}
+			pruneReceipts();
 			const pending = receipts.get(receipt);
 			receipts.delete(receipt);
 			if (!pending) {
 				notify(context, "Invalid, expired, or already consumed SDD workflow receipt");
 				return;
 			}
-			if (context.sessionManager.getSessionId() !== pending.originSessionId) {
+			if (context.sessionManager.getSessionId() !== pending.value.originSessionId) {
 				notify(context, "SDD workflow receipt belongs to another session");
 				return;
 			}
@@ -314,9 +370,9 @@ export function createWorkflowController(
 				readSkillFile: dependencies.readSkillFile,
 				stripSkillFrontmatter: dependencies.stripSkillFrontmatter,
 			};
-			const result = pending.kind === "workflow"
-				? await startFreshStage(pending.request, context, launchDependencies)
-				: await startDirectRun(pending.request, context, launchDependencies);
+			const result = pending.value.kind === "workflow"
+				? await startFreshStage(pending.value.request, context, launchDependencies)
+				: await startDirectRun(pending.value.request, context, launchDependencies);
 			if (!result.ok && result.originPreserved) {
 				notify(context, `SDD dispatch failed before switch (${result.code}): ${result.message}`);
 			}
@@ -333,8 +389,14 @@ export function createWorkflowController(
 		},
 	});
 
-	pi.on("agent_settled", (_event, context) => {
-		if (activeAttempt && contextSessionId(context) === activeAttempt.sessionId) endAttempt();
+	pi.on("session_start", async (_event, context) => {
+		await syncLaunchToolAvailability(context.cwd);
+	});
+	pi.on("agent_settled", async (_event, context) => {
+		// Pi emits agent_settled only after the full run has no tool turn,
+		// retry, compaction, or follow-up left; dialog tools do not settle it.
+		if (activeAttempt && contextSessionId(context) === activeAttempt.sessionId) endAttempt(activeAttempt);
+		await syncLaunchToolAvailability(context.cwd);
 	});
 	pi.on("session_shutdown", () => {
 		endAttempt();
@@ -363,6 +425,8 @@ export function createWorkflowController(
 				return { ok: false, code: "triage-already-active", message: "An issue triage attempt is already active" };
 			}
 
+			const attempt: ActiveTriageAttempt = { sessionId, status: "open" };
+			activeAttempt = attempt;
 			const materialized = await materializeSkill(
 				"issue-triage",
 				input.issueNumbers.map((number) => `#${number}`).join(" "),
@@ -372,10 +436,15 @@ export function createWorkflowController(
 					stripFrontmatter: dependencies.stripSkillFrontmatter,
 				},
 			);
-			if (!materialized.ok) return materialized;
+			if (!materialized.ok) {
+				endAttempt(attempt);
+				return materialized;
+			}
+			if (activeAttempt !== attempt) {
+				return { ok: false, code: "triage-attempt-expired", message: "Issue triage ended before materialization completed" };
+			}
 
 			registerTerminal();
-			activeAttempt = { sessionId, claimed: false };
 			const activeTools = pi.getActiveTools();
 			if (!activeTools.includes(SUBMIT_WORKFLOW_RESOLUTION_TOOL)) {
 				pi.setActiveTools([...activeTools, SUBMIT_WORKFLOW_RESOLUTION_TOOL]);
@@ -383,7 +452,7 @@ export function createWorkflowController(
 			try {
 				pi.sendUserMessage(materialized.content);
 			} catch (error) {
-				endAttempt();
+				endAttempt(attempt);
 				return {
 					ok: false,
 					code: "triage-kickoff-failed",

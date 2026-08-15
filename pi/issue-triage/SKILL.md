@@ -323,7 +323,7 @@ Desde este punto, la única fuente downstream es `#NEW`.
 
 1. Construí el `WorkflowResolutionV1` completo con la recomendación original, fallback, ruta artifact-aware, elección efectiva y toda la evidencia normalizada.
 2. Conservá `En pocas palabras` y `Ejemplo de impacto` en `summary`/`impactExample`; la fuente sigue siendo autoritativa. Verificá el round-trip `JSON.parse(JSON.stringify(result))`.
-3. Si la tool `submit_workflow_resolution` está activa —sólo ocurre durante un intento iniciado por `/issues`— invocala **exactamente una vez** con el objeto v1 completo. Esa señal terminal entrega el resultado al consumidor; no cargues ni ejecutes el stage por tu cuenta.
+3. Si la tool `submit_workflow_resolution` está activa —sólo ocurre durante un intento iniciado por `/issues`— mostrá el resultado v1 serializado y una síntesis humana breve de recomendación, fallback y elección efectiva antes de invocarla **exactamente una vez** con el objeto v1 completo. Esa señal terminal entrega el resultado al consumidor; no cargues ni ejecutes el stage por tu cuenta.
 4. Si `submit_workflow_resolution` no está activa (invocación manual de `/skill:issue-triage`), usá el fallback manual: mostrá el resultado v1 serializado y una síntesis humana breve, como hasta ahora.
 5. Terminá el workflow. No cargues ni invoques grill/sdd-spec/sdd-run, no implementes quick-run, no cambies sesión y no crees branch/worktree/PR.
 

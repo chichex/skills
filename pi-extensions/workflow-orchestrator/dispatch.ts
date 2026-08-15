@@ -3,28 +3,14 @@ import { isAbsolute, relative, resolve } from "node:path";
 import type {
 	ArtifactRef,
 	WorkflowResolutionV1,
-	WorkflowRoute,
 } from "../workflow-resolution/index.ts";
 import type { StartFreshStageRequest } from "./lifecycle.ts";
 import { validateWorkflowResolution } from "./protocol.ts";
+import { isConfirmedCoherentStart } from "./route-contract.ts";
 
 export type WorkflowDispatchResult =
 	| { ok: true; request: StartFreshStageRequest }
 	| { ok: false; code: string; message: string };
-
-const ROUTE_MATRIX = new Map<WorkflowRoute, { stage: string; mode: string | null }>([
-	["grill", { stage: "grill", mode: "new" }],
-	["join-grill", { stage: "grill", mode: "new" }],
-	["spec", { stage: "spec", mode: "new" }],
-	["join-spec", { stage: "spec", mode: "new" }],
-	["quick-run", { stage: "quick-run", mode: "new" }],
-	["join-quick-run", { stage: "quick-run", mode: "new" }],
-	["resume-grill", { stage: "grill", mode: "resume" }],
-	["spec-from-grill", { stage: "spec", mode: "from-grill" }],
-	["update-existing-spec", { stage: "spec", mode: "update" }],
-	["audit-existing-spec", { stage: "spec", mode: "update" }],
-	["run-existing-spec", { stage: "run-existing-spec", mode: null }],
-]);
 
 function failure(code: string, message: string): WorkflowDispatchResult {
 	return { ok: false, code, message };
@@ -43,14 +29,6 @@ function sameIssue(
 
 function effectiveIssue(resolution: WorkflowResolutionV1): { repository: string; number: number } | null {
 	return resolution.canonicalIssue ?? (resolution.sources.length === 1 ? resolution.sources[0]! : null);
-}
-
-function coherentStart(resolution: WorkflowResolutionV1): boolean {
-	if (resolution.outcome !== "start" || resolution.selectedRoute === null || resolution.code !== resolution.selectedRoute) {
-		return false;
-	}
-	const expected = ROUTE_MATRIX.get(resolution.selectedRoute);
-	return expected !== undefined && resolution.stage === expected.stage && resolution.mode === expected.mode;
 }
 
 function pathInside(root: string, candidate: string): boolean {
@@ -120,7 +98,7 @@ export function resolveWorkflowDispatch(input: unknown): WorkflowDispatchResult 
 		);
 	}
 	const resolution = validation.value;
-	if (!coherentStart(resolution)) {
+	if (!isConfirmedCoherentStart(resolution)) {
 		return failure("not-actionable", "Resolution is not a confirmed coherent start");
 	}
 
@@ -128,36 +106,45 @@ export function resolveWorkflowDispatch(input: unknown): WorkflowDispatchResult 
 	if (!issue || !sameRepository(issue.repository, resolution.repo)) {
 		return failure("missing-effective-issue", "Dispatch requires one canonical issue in repo");
 	}
-	const route = resolution.selectedRoute!;
+	const route = resolution.selectedRoute;
 	if (route.startsWith("join-") && resolution.canonicalIssue === null) {
 		return failure("missing-effective-issue", "Join dispatch requires canonicalIssue");
 	}
 
-	if (route === "grill" || route === "join-grill") return request(resolution, "grill", `#${issue.number}`);
-	if (route === "spec" || route === "join-spec") return request(resolution, "sdd-spec", `#${issue.number}`);
-	if (route === "quick-run" || route === "join-quick-run") {
-		return request(resolution, "quick-run", JSON.stringify(resolution));
+	switch (route) {
+		case "grill":
+		case "join-grill":
+			return request(resolution, "grill", `#${issue.number}`);
+		case "spec":
+		case "join-spec":
+			return request(resolution, "sdd-spec", `#${issue.number}`);
+		case "quick-run":
+		case "join-quick-run":
+			return request(resolution, "quick-run", JSON.stringify(resolution));
+		case "resume-grill": {
+			const grill = validatedGrill(resolution, issue, true);
+			return grill
+				? request(resolution, "grill", `--resume ${grill.grill}`)
+				: failure("invalid-grill-reference", "resume-grill requires one canonical in-project grill leaf");
+		}
+		case "spec-from-grill": {
+			const grill = validatedGrill(resolution, issue, false);
+			return grill
+				? request(resolution, "sdd-spec", `--from-grill ${grill.grill}`)
+				: failure("invalid-grill-reference", "spec-from-grill requires one canonical in-project grill leaf");
+		}
+		case "update-existing-spec":
+		case "audit-existing-spec":
+		case "run-existing-spec": {
+			const spec = validatedSpec(resolution, issue);
+			if (!spec) return failure("invalid-spec-reference", `${route} requires one canonical in-project primary spec`);
+			return request(
+				resolution,
+				route === "run-existing-spec" ? "sdd-run" : "sdd-spec",
+				specArgument(spec),
+			);
+		}
 	}
-	if (route === "resume-grill") {
-		const grill = validatedGrill(resolution, issue, true);
-		return grill
-			? request(resolution, "grill", `--resume ${grill.grill}`)
-			: failure("invalid-grill-reference", "resume-grill requires one canonical in-project grill leaf");
-	}
-	if (route === "spec-from-grill") {
-		const grill = validatedGrill(resolution, issue, false);
-		return grill
-			? request(resolution, "sdd-spec", `--from-grill ${grill.grill}`)
-			: failure("invalid-grill-reference", "spec-from-grill requires one canonical in-project grill leaf");
-	}
-	if (route === "update-existing-spec" || route === "audit-existing-spec" || route === "run-existing-spec") {
-		const spec = validatedSpec(resolution, issue);
-		if (!spec) return failure("invalid-spec-reference", `${route} requires one canonical in-project primary spec`);
-		return request(
-			resolution,
-			route === "run-existing-spec" ? "sdd-run" : "sdd-spec",
-			specArgument(spec),
-		);
-	}
-	return failure("unsupported-route", `No dispatch mapping for ${route}`);
+	const exhaustive: never = route;
+	return exhaustive;
 }

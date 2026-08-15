@@ -6,6 +6,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 
 import type { IssueListItem } from "./github-issue-selector";
+import { issueTriageFailureMessage } from "./github-consumer-logic.ts";
 import { selectManyMenu, selectMenu, type MenuItem } from "./lib/menu";
 import { requestIssueTriage } from "./workflow-orchestrator/controller.ts";
 import { inspectMarkdownArtifact, type ArtifactRef } from "./workflow-resolution/index.ts";
@@ -372,7 +373,7 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 			ctx,
 		);
 		if (!result.ok) {
-			ctx.ui.notify(`No se pudo iniciar issue-triage: ${result.message}`, "warning");
+			ctx.ui.notify(issueTriageFailureMessage(result.code), "warning");
 			return false;
 		}
 		return true;

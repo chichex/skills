@@ -8,6 +8,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Markdown } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { grillTransitionFailureMessage } from "./github-consumer-logic.ts";
 import { menuItems, selectMenu, type MenuItem } from "./lib/menu";
 import { continueWithMaterializedSkill } from "./workflow-orchestrator/same-session.ts";
 
@@ -427,15 +428,15 @@ export default function (pi: ExtensionAPI) {
 			let relatedText: string | undefined;
 			let nextAction: "inspect" | "analyze" | "grill-prerequisite" | "grill" | "cancelled" = "cancelled";
 			let grillTarget: number | null = null;
+			let grillTransition: Awaited<ReturnType<typeof continueWithMaterializedSkill>> | undefined;
 			const repoHint = params.repo?.trim() ? ` en el repo ${params.repo.trim()}` : "";
 			const queueGrill = async (number: number, instruction: string): Promise<void> => {
-				const transition = await continueWithMaterializedSkill(
+				grillTransition = await continueWithMaterializedSkill(
 					pi,
 					"grill",
 					`#${number}\n\n${instruction}`,
 					{ deliverAs: "followUp" },
 				);
-				if (!transition.ok) throw new Error(`Could not materialize grill: ${transition.message}`);
 			};
 
 			if (selectedAction === inspectChoice) {
@@ -553,9 +554,20 @@ export default function (pi: ExtensionAPI) {
 			const sections = [formatIssue(issue)];
 			if (relatedText) sections.push(relatedText);
 			sections.push(`Next action selected: ${nextAction}${grillTarget ? ` (#${grillTarget})` : ""}.`);
+			const transitionFailure = grillTransitionFailureMessage(
+				grillTransition && !grillTransition.ok ? grillTransition : undefined,
+			);
+			if (transitionFailure) sections.push(transitionFailure);
 			return {
 				content: [{ type: "text", text: sections.join("\n\n") }],
-				details: { selected: issue, relatedAnalysis, cancelled: nextAction === "cancelled", nextAction, grillTarget },
+				details: {
+					selected: issue,
+					relatedAnalysis,
+					cancelled: nextAction === "cancelled",
+					nextAction,
+					grillTarget,
+					grillTransition,
+				},
 			};
 		},
 	});

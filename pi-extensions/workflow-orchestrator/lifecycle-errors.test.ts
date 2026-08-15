@@ -516,6 +516,7 @@ test("rejects a replacement that reuses the origin session id before kickoff", a
 
 test("resource mismatch and kickoff failure are explicit post-switch failures without fake rollback", async () => {
 	let sends = 0;
+	const childNotifications: string[] = [];
 	const wrongResources = await startFreshStage(
 		{ resolution: resolution(), skill: { name: "sdd-spec" } },
 		context({
@@ -525,6 +526,7 @@ test("resource mismatch and kickoff failure are explicit post-switch failures wi
 						cwd: TARGET,
 						contextFiles: [{ path: `${SOURCE}/AGENTS.md`, content: "origin" }],
 					}),
+					ui: { notify(message: string) { childNotifications.push(message); } },
 					async sendUserMessage() { sends += 1; },
 				}));
 				return { cancelled: false };
@@ -539,6 +541,7 @@ test("resource mismatch and kickoff failure are explicit post-switch failures wi
 	assert.equal(wrongResources.originPreserved, false);
 	assert.equal(sends, 0);
 	assert.equal(wrongResources.ok ? undefined : wrongResources.target?.sessionFile, CHILD_FILE);
+	assert.match(childNotifications[0] ?? "", /failed after switch.*target-resources-invalid/i);
 
 	// Pi's real sendUserMessage awaits the child's ENTIRE first agent turn
 	// (agent-session.js: sendUserMessage -> prompt() -> await
@@ -553,6 +556,7 @@ test("resource mismatch and kickoff failure are explicit post-switch failures wi
 		context({
 			async switchSession(_path: string, options: { withSession(ctx: unknown): Promise<void> }) {
 				await options.withSession(replacementContext({
+					ui: { notify(message: string) { childNotifications.push(message); } },
 					async sendUserMessage() {
 						sends += 1;
 						toolRanInChild = true;
@@ -573,6 +577,7 @@ test("resource mismatch and kickoff failure are explicit post-switch failures wi
 	assert.equal(kickoffFailure.ok ? undefined : kickoffFailure.target?.sessionFile, CHILD_FILE);
 	assert.equal(sends, 1);
 	assert.equal(toolRanInChild, true);
+	assert.match(childNotifications[1] ?? "", /failed after switch.*kickoff-failed.*provider unavailable/i);
 });
 
 test("the replacement callback never rejects, even when it fails, so Pi's real newSession/switchSession never treats it as fatal", async () => {

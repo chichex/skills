@@ -68,7 +68,7 @@ El repo también conserva todas las extensiones globales de Pi usadas por este w
 | **`ask-user-question`** | Herramienta `ask_user_question` con selección simple/múltiple, recomendaciones, respuesta libre y envío vacío opcional. |
 | **`claude-tool-renderer.ts`** | Presenta las ediciones con encabezado y diff compacto al estilo Claude Code. |
 | **`grill-tools`** | Persistencia con `grill_session`, selector `select_grill_session` y comandos `/grills` y `/specs`; resume Grill y Grill → Spec conservan la conversación. |
-| **`workflow-orchestrator`** | Consume `WorkflowResolutionV1`, materializa skills canónicos, administra receipts one-shot y abre sesiones hijas same/cross-project. También registra `/sdd-run` y el gate `launch_sdd_run`. |
+| **`workflow-orchestrator`** | Consume `WorkflowResolutionV1`, materializa skills canónicos, administra receipts one-shot acotados y abre sesiones hijas same/cross-project. También registra `/sdd-run`; el gate `launch_sdd_run` sólo queda activo cuando la raíz tiene un `.sdd/project.md` canónico. |
 | **`inline-skill-autocomplete`** | Abre el autocomplete de skills al escribir `/` o `/skill:…` en cualquier punto del borrador. Al enviar, antepone la invocación para que Pi la expanda correctamente. |
 | **`github-issue-selector.ts`** + **`github-issues.ts`** | Herramienta `select_github_issue` y comando `/issues` con selección múltiple. El menú unificado permite analizar mediante `issue-triage`, cerrar en bulk o eliminar en bulk. |
 | **`github-prs`** | Comando `/prs`; su acción de review invoca `/skill:code-review`. |

@@ -6,16 +6,17 @@ import {
 	stat as statDefault,
 	unlink as unlinkDefault,
 } from "node:fs/promises";
-import { basename, isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 
-import type { WorkflowResolutionV1, WorkflowRoute } from "../workflow-resolution/index.ts";
-import { validateDirectRunRequest } from "./direct-launch.ts";
+import type { WorkflowResolutionV1 } from "../workflow-resolution/index.ts";
+import { describeDirectRun, validateDirectRunRequest } from "./direct-protocol.ts";
 import {
 	materializeSkill,
 	type MaterializeSkillErrorCode,
 	type SkillCommandInfo,
 } from "./materialize.ts";
 import { validateWorkflowResolution } from "./protocol.ts";
+import { isConfirmedCoherentStart } from "./route-contract.ts";
 import { stageCrossProjectSession as stageCrossProjectSessionDefault } from "./staging.ts";
 
 export type StartFreshStagePhase = "validation" | "staging" | "switch" | "post-switch" | "complete";
@@ -107,6 +108,7 @@ export interface SessionManagerLike {
 export interface ReplacementSessionContextLike {
 	cwd: string;
 	sessionManager: SessionManagerLike;
+	ui?: { notify(message: string, level?: "info" | "warning" | "error"): void };
 	getSystemPromptOptions(): {
 		cwd: string;
 		contextFiles?: Array<{ path: string; content: string }>;
@@ -169,20 +171,6 @@ export interface StartFreshStageDependencies {
 	removeFile?: (path: string) => Promise<void>;
 }
 
-const START_DISPATCH = new Map<WorkflowRoute, { stage: string; mode: string | null }>([
-	["grill", { stage: "grill", mode: "new" }],
-	["join-grill", { stage: "grill", mode: "new" }],
-	["spec", { stage: "spec", mode: "new" }],
-	["join-spec", { stage: "spec", mode: "new" }],
-	["quick-run", { stage: "quick-run", mode: "new" }],
-	["join-quick-run", { stage: "quick-run", mode: "new" }],
-	["resume-grill", { stage: "grill", mode: "resume" }],
-	["spec-from-grill", { stage: "spec", mode: "from-grill" }],
-	["update-existing-spec", { stage: "spec", mode: "update" }],
-	["audit-existing-spec", { stage: "spec", mode: "update" }],
-	["run-existing-spec", { stage: "run-existing-spec", mode: null }],
-]);
-
 interface ResultReferences {
 	source?: SessionReference;
 	target?: TargetSessionReference;
@@ -197,15 +185,6 @@ function errorResult(
 	references: ResultReferences = {},
 ): StartFreshStageResult {
 	return { ok: false, code, phase, originPreserved, message, ...references };
-}
-
-function isConfirmedCoherentStart(resolution: WorkflowResolutionV1): boolean {
-	if (resolution.outcome !== "start" || resolution.selectedRoute === null) return false;
-	if (resolution.code !== resolution.selectedRoute) return false;
-	const expected = START_DISPATCH.get(resolution.selectedRoute);
-	return expected !== undefined
-		&& resolution.stage === expected.stage
-		&& resolution.mode === expected.mode;
 }
 
 function sameRepository(left: string, right: string): boolean {
@@ -320,6 +299,18 @@ interface ReplacementCallbackData {
  * on the receipt and returns normally instead of throwing; startFreshStage
  * inspects the receipt once newSession/switchSession itself resolves.
  */
+function notifyPostSwitchFailure(
+	context: ReplacementSessionContextLike,
+	code: "target-resources-invalid" | "kickoff-failed",
+	message: string,
+): void {
+	try {
+		context.ui?.notify(`SDD dispatch failed after switch (${code}): ${message}`, "error");
+	} catch {
+		// UI reporting must never turn a typed post-switch failure into a fatal callback rejection.
+	}
+}
+
 function createReplacementCallback(data: ReplacementCallbackData) {
 	return async (context: ReplacementSessionContextLike): Promise<void> => {
 		data.receipt.callbackEntered = true;
@@ -329,6 +320,7 @@ function createReplacementCallback(data: ReplacementCallbackData) {
 					code: "target-resources-invalid",
 					message: "Replacement context does not expose the validated target cwd/resources",
 				};
+				notifyPostSwitchFailure(context, data.receipt.failure.code, data.receipt.failure.message);
 				return;
 			}
 
@@ -339,6 +331,7 @@ function createReplacementCallback(data: ReplacementCallbackData) {
 					code: "target-resources-invalid",
 					message: "Replacement session is not persisted",
 				};
+				notifyPostSwitchFailure(context, data.receipt.failure.code, data.receipt.failure.message);
 				return;
 			}
 			data.receipt.target = {
@@ -356,6 +349,7 @@ function createReplacementCallback(data: ReplacementCallbackData) {
 				code: "target-resources-invalid",
 				message: error instanceof Error ? error.message : String(error),
 			};
+			notifyPostSwitchFailure(context, data.receipt.failure.code, data.receipt.failure.message);
 			return;
 		}
 
@@ -366,6 +360,7 @@ function createReplacementCallback(data: ReplacementCallbackData) {
 				code: "kickoff-failed",
 				message: error instanceof Error ? error.message : String(error),
 			};
+			notifyPostSwitchFailure(context, data.receipt.failure.code, data.receipt.failure.message);
 		}
 	};
 }
@@ -437,31 +432,23 @@ export async function startFreshStage(
 			);
 		}
 		const validated = directValidation.value;
-		const target = validated.target;
-		const expectedIssueNumber = target.type === "issue" ? target.issue.number : undefined;
-		const expectedArtifactPath = target.type === "spec" ? target.path : undefined;
-		const expectedArgs = target.type === "issue" ? `#${target.issue.number}` : target.path;
-		const sourceLabel = target.type === "issue"
-			? `${validated.repo}#${target.issue.number}`
-			: target.issue
-				? `${validated.repo}#${target.issue.number}`
-				: `${validated.repo}/${basename(target.path)}`;
-		if (direct.cwd !== validated.cwd
-			|| direct.repository !== validated.repo
-			|| direct.canonicalReference !== target.canonicalReference
-			|| direct.issueNumber !== expectedIssueNumber
-			|| direct.artifactPath !== expectedArtifactPath
-			|| direct.name !== `SDD run-existing-spec · ${sourceLabel}`
-			|| request.skill.name !== "sdd-run"
-			|| request.skill.args !== expectedArgs) {
+		const expected = describeDirectRun(validated);
+		if (direct.cwd !== expected.direct.cwd
+			|| direct.repository !== expected.direct.repository
+			|| direct.canonicalReference !== expected.direct.canonicalReference
+			|| direct.issueNumber !== expected.direct.issueNumber
+			|| direct.artifactPath !== expected.direct.artifactPath
+			|| direct.name !== expected.direct.name
+			|| request.skill.name !== expected.skill.name
+			|| request.skill.args !== expected.skill.args) {
 			return errorResult("invalid-direct-request", "validation", "Direct launch descriptor conflicts with its strict request");
 		}
-		launchCwd = validated.cwd;
-		name = direct.name;
-		repository = validated.repo;
-		canonicalReference = target.canonicalReference;
-		issueNumber = expectedIssueNumber;
-		artifactPath = expectedArtifactPath;
+		launchCwd = expected.direct.cwd;
+		name = expected.direct.name;
+		repository = expected.direct.repository;
+		canonicalReference = expected.direct.canonicalReference;
+		issueNumber = expected.direct.issueNumber;
+		artifactPath = expected.direct.artifactPath;
 		directRequest = validated;
 	} else {
 		const validation = validateWorkflowResolution(request.resolution);
