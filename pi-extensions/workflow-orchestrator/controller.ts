@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
-	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
 import {
@@ -356,6 +355,10 @@ export function createWorkflowController(
 			if (!validIssueNumbers(input.issueNumbers)) {
 				return { ok: false, code: "invalid-issues", message: "Issue selection must contain 1-12 unique positive integers" };
 			}
+			const sessionId = contextSessionId(context);
+			if (!sessionId) {
+				return { ok: false, code: "origin-session-unbound", message: "Issue triage requires a persisted origin session" };
+			}
 			if (activeAttempt) {
 				return { ok: false, code: "triage-already-active", message: "An issue triage attempt is already active" };
 			}
@@ -372,7 +375,7 @@ export function createWorkflowController(
 			if (!materialized.ok) return materialized;
 
 			registerTerminal();
-			activeAttempt = { sessionId: context.sessionManager.getSessionId(), claimed: false };
+			activeAttempt = { sessionId, claimed: false };
 			const activeTools = pi.getActiveTools();
 			if (!activeTools.includes(SUBMIT_WORKFLOW_RESOLUTION_TOOL)) {
 				pi.setActiveTools([...activeTools, SUBMIT_WORKFLOW_RESOLUTION_TOOL]);

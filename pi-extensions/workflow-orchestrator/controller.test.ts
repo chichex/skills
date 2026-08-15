@@ -128,9 +128,10 @@ test("beginIssueTriage materializes canonical issue-triage and activates the ter
 		stripSkillFrontmatter: fakeStripFrontmatter,
 	});
 
+	const originContext = { cwd: "/workspace/skills", sessionManager: { getSessionId: () => "origin-session" } };
 	const result = await controller.beginIssueTriage(
 		{ issueNumbers: [12, 13] },
-		{ cwd: "/workspace/skills", sessionManager: { getSessionId: () => "origin-session" } } as never,
+		originContext as never,
 	);
 
 	assert.deepEqual(result, { ok: true, code: "queued" });
@@ -142,6 +143,8 @@ test("beginIssueTriage materializes canonical issue-triage and activates the ter
 	assert.doesNotMatch(sent[0]!.content, /\/skill:issue-triage/);
 	assert.equal(commands.has("__sdd-dispatch"), true);
 	assert.equal(eventHandlers.has("agent_settled"), true);
+	await eventHandlers.get("agent_settled")!({}, originContext);
+	assert.deepEqual(activeTools, ["read", "foreign_tool"], "settling without a terminal result removes only its tool");
 });
 
 test("terminal resolution is one-shot and hands an opaque same-session receipt to the internal command", async () => {
@@ -228,6 +231,55 @@ test("terminal resolution is one-shot and hands an opaque same-session receipt t
 	await internal.handler("opaque-receipt", commandContext);
 	assert.equal(starts.length, 1, "a consumed receipt cannot be replayed");
 	assert.match(notifications.at(-1) ?? "", /invalid|expired|consumed/i);
+});
+
+test("stop, error, and unconfirmed terminal results preserve the origin and queue no dispatch", async () => {
+	const cases = [
+		workflowResolution({ outcome: "stop", code: "cancelled", selectedRoute: null, stage: null, mode: null }),
+		workflowResolution({
+			outcome: "error",
+			code: "canonicalization",
+			recommendedRoute: null,
+			selectedRoute: null,
+			stage: null,
+			mode: null,
+		}),
+		workflowResolution({ selectedRoute: null }),
+	];
+	for (const handoff of cases) {
+		const tools = new Map<string, { execute: (...args: unknown[]) => Promise<unknown> }>();
+		let activeTools = ["read"];
+		const sent: string[] = [];
+		let starts = 0;
+		const pi = {
+			events: createEventBus(),
+			registerTool(tool: { name: string; execute: (...args: unknown[]) => Promise<unknown> }) { tools.set(tool.name, tool); },
+			registerCommand() {},
+			on() {},
+			getCommands: () => [{ name: "skill:issue-triage", source: "skill", sourceInfo: { path: "/skills/triage/SKILL.md" } }],
+			getActiveTools: () => [...activeTools],
+			setActiveTools(names: string[]) { activeTools = [...names]; },
+			sendUserMessage(content: string) { sent.push(content); },
+		};
+		const controller = orchestrator.createWorkflowController(pi as never, {
+			readSkillFile: async () => "---\nname: issue-triage\ndescription: Triage\n---\n# Triage\n",
+			stripSkillFrontmatter: fakeStripFrontmatter,
+			startFreshStage: async () => { starts += 1; return { ok: true } as never; },
+		});
+		const context = { cwd: "/workspace/skills", sessionManager: { getSessionId: () => "origin" } };
+		await controller.beginIssueTriage({ issueNumbers: [14] }, context as never);
+		const result = await tools.get("submit_workflow_resolution")!.execute(
+			"terminal",
+			handoff,
+			undefined,
+			undefined,
+			context,
+		) as { terminate?: boolean };
+		assert.equal(result.terminate, true);
+		assert.equal(starts, 0);
+		assert.equal(sent.length, 1, "only the materialized triage kickoff was sent");
+		assert.deepEqual(activeTools, ["read"]);
+	}
 });
 
 test("a consumer extension requests triage through the shared event bus without owning controller state", async () => {

@@ -6,9 +6,10 @@ import {
 	stat as statDefault,
 	unlink as unlinkDefault,
 } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { basename, isAbsolute, relative, resolve } from "node:path";
 
 import type { WorkflowResolutionV1, WorkflowRoute } from "../workflow-resolution/index.ts";
+import { validateDirectRunRequest } from "./direct-launch.ts";
 import {
 	materializeSkill,
 	type MaterializeSkillErrorCode,
@@ -427,25 +428,41 @@ export async function startFreshStage(
 	let resolution: WorkflowResolutionV1 | undefined;
 	if ("direct" in request) {
 		const direct = request.direct;
-		const issueValid = direct.issueNumber === undefined
-			|| (Number.isInteger(direct.issueNumber) && direct.issueNumber > 0);
-		const artifactValid = direct.artifactPath === undefined || isAbsolute(direct.artifactPath);
-		const exactlyOneTarget = (direct.issueNumber === undefined) !== (direct.artifactPath === undefined);
-		if (typeof direct.cwd !== "string" || !isAbsolute(direct.cwd)
-			|| typeof direct.name !== "string" || direct.name.trim() === ""
-			|| typeof direct.repository !== "string" || direct.repository.trim() === ""
-			|| typeof direct.canonicalReference !== "string" || direct.canonicalReference.trim() === ""
-			|| !issueValid || !artifactValid || !exactlyOneTarget
-			|| typeof direct.request !== "object" || direct.request === null) {
-			return errorResult("invalid-direct-request", "validation", "Direct launch descriptor is invalid");
+		const directValidation = validateDirectRunRequest(direct.request);
+		if (!directValidation.ok) {
+			return errorResult(
+				"invalid-direct-request",
+				"validation",
+				directValidation.diagnostics.map(({ path, message }) => `${path} ${message}`).join("; "),
+			);
 		}
-		launchCwd = direct.cwd;
+		const validated = directValidation.value;
+		const target = validated.target;
+		const expectedIssueNumber = target.type === "issue" ? target.issue.number : undefined;
+		const expectedArtifactPath = target.type === "spec" ? target.path : undefined;
+		const expectedArgs = target.type === "issue" ? `#${target.issue.number}` : target.path;
+		const sourceLabel = target.type === "issue"
+			? `${validated.repo}#${target.issue.number}`
+			: target.issue
+				? `${validated.repo}#${target.issue.number}`
+				: `${validated.repo}/${basename(target.path)}`;
+		if (direct.cwd !== validated.cwd
+			|| direct.repository !== validated.repo
+			|| direct.canonicalReference !== target.canonicalReference
+			|| direct.issueNumber !== expectedIssueNumber
+			|| direct.artifactPath !== expectedArtifactPath
+			|| direct.name !== `SDD run-existing-spec · ${sourceLabel}`
+			|| request.skill.name !== "sdd-run"
+			|| request.skill.args !== expectedArgs) {
+			return errorResult("invalid-direct-request", "validation", "Direct launch descriptor conflicts with its strict request");
+		}
+		launchCwd = validated.cwd;
 		name = direct.name;
-		repository = direct.repository;
-		canonicalReference = direct.canonicalReference;
-		issueNumber = direct.issueNumber;
-		artifactPath = direct.artifactPath;
-		directRequest = direct.request;
+		repository = validated.repo;
+		canonicalReference = target.canonicalReference;
+		issueNumber = expectedIssueNumber;
+		artifactPath = expectedArtifactPath;
+		directRequest = validated;
 	} else {
 		const validation = validateWorkflowResolution(request.resolution);
 		if (!validation.ok) {

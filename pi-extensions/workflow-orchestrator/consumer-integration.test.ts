@@ -41,6 +41,15 @@ test("Pi grill uses structured resume and finalize continuation instead of ad-ho
 	assert.doesNotMatch(skill, /le[eé] `~\/\.agents\/skills\/sdd-spec\/SKILL\.md`/i);
 });
 
+test("Pi sdd-spec consumes orchestrated spec targets from the structured handoff", async () => {
+	const skill = await readFile(new URL("../../pi/sdd-spec/SKILL.md", import.meta.url), "utf8");
+	assert.match(skill, /workflow-handoff version="1"/);
+	assert.match(skill, /spec-from-grill/);
+	assert.match(skill, /update-existing-spec\|audit-existing-spec/);
+	assert.match(skill, /ArtifactRef.*primary|primary.*ArtifactRef/is);
+	assert.match(skill, /nunca.*scrap/i);
+});
+
 test("Pi sdd-spec exposes Ejecutar ahora only after persistence and delegates to launch_sdd_run", async () => {
 	const skill = await readFile(new URL("../../pi/sdd-spec/SKILL.md", import.meta.url), "utf8");
 	const reportIndex = skill.indexOf("## Reporte");

@@ -60,6 +60,24 @@ test("direct run request v1 strictly validates issue and issue-less spec targets
 	const invalid = orchestrator.validateDirectRunRequest(extra);
 	assert.equal(invalid.ok, false);
 	if (!invalid.ok) assert.ok(invalid.diagnostics.some((item) => item.code === "extra-field"));
+	assert.equal(orchestrator.validateDirectRunRequest({ ...issueRequest(), summary: "x".repeat(241) }).ok, false);
+});
+
+test("the generic lifecycle cannot bypass strict DirectRunRequestV1 validation", async () => {
+	const request = { ...issueRequest(), transcript: "must never cross the boundary" };
+	const result = await orchestrator.startFreshStage({
+		direct: {
+			request,
+			cwd: request.cwd,
+			name: "SDD run-existing-spec · chichex/skills#14",
+			repository: request.repo,
+			canonicalReference: request.target.canonicalReference,
+			issueNumber: request.target.issue.number,
+		},
+		skill: { name: "sdd-run", args: "#14" },
+	}, {} as never, { commands: [] });
+	assert.equal(result.ok, false);
+	if (!result.ok) assert.equal(result.code, "invalid-direct-request");
 });
 
 test("direct target resolution normalizes #NN and local/cross-project canonical specs without inventing issues", async () => {
@@ -73,7 +91,7 @@ test("direct target resolution normalizes #NN and local/cross-project canonical 
 		const localSpec = join(projectA, ".sdd", "specs", "local.md");
 		const crossSpec = join(projectB, ".sdd", "specs", "issue-7-cross.md");
 		await writeFile(localSpec, [
-			"# Spec — Local artifact",
+			`# Spec — ${"Local artifact ".repeat(40)}`,
 			"<!-- Generada. Estado: aprobada -->",
 			"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; grill=none; superseded-by=none -->",
 			"",
@@ -107,6 +125,7 @@ test("direct target resolution normalizes #NN and local/cross-project canonical 
 		assert.equal(local.ok, true);
 		if (local.ok) {
 			assert.equal(local.request.cwd, projectA);
+			assert.ok(local.request.summary.length <= 240, "the transport summary stays bounded");
 			assert.deepEqual(local.request.target, {
 				type: "spec",
 				canonicalReference: "chichex/skills:.sdd/specs/local.md",

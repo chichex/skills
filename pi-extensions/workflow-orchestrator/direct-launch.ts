@@ -59,6 +59,8 @@ const ISSUE_TARGET_FIELDS = ["type", "canonicalReference", "issue"] as const;
 const SPEC_TARGET_FIELDS = ["type", "canonicalReference", "path", "issue"] as const;
 const ISSUE_FIELDS = ["repository", "number"] as const;
 const EVIDENCE_FIELDS = ["kind", "reference", "detail"] as const;
+const MAX_SUMMARY_LENGTH = 240;
+const MAX_SPEC_TITLE_LENGTH = 220;
 
 function isRecord(value: unknown): value is RecordValue {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -149,7 +151,11 @@ export function validateDirectRunRequest(input: unknown): DirectRunValidation {
 	if (typeof object.cwd === "string" && !cwdOk) {
 		diagnostics.push({ path: "$.cwd", code: "invalid-value", message: "Expected an absolute project root" });
 	}
-	const summaryOk = nonEmptyString(object.summary, "$.summary", diagnostics);
+	const summaryOk = nonEmptyString(object.summary, "$.summary", diagnostics)
+		&& (object.summary as string).length <= MAX_SUMMARY_LENGTH;
+	if (typeof object.summary === "string" && object.summary.length > MAX_SUMMARY_LENGTH) {
+		diagnostics.push({ path: "$.summary", code: "invalid-value", message: `Summary exceeds ${MAX_SUMMARY_LENGTH} characters` });
+	}
 	const evidence = evidenceValue(object.evidence, diagnostics);
 
 	let target: DirectIssueTargetV1 | DirectSpecTargetV1 | null = null;
@@ -253,7 +259,10 @@ function resolverFailure(code: string, message: string): ResolveDirectRunResult 
 }
 
 function specTitle(markdown: string, path: string): string {
-	return markdown.match(/^#\s+(?:Spec\s*[—–-]\s*)?(.+?)\s*$/m)?.[1]?.trim() || basename(path, ".md");
+	const title = markdown.match(/^#\s+(?:Spec\s*[—–-]\s*)?(.+?)\s*$/m)?.[1]?.trim() || basename(path, ".md");
+	return title.length <= MAX_SPEC_TITLE_LENGTH
+		? title
+		: `${title.slice(0, MAX_SPEC_TITLE_LENGTH - 1).trimEnd()}…`;
 }
 
 function canonicalRepository(repository: string): string | null {
