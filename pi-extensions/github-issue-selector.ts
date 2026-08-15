@@ -9,6 +9,7 @@ import {
 import { Markdown } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { menuItems, selectMenu, type MenuItem } from "./lib/menu";
+import { continueWithMaterializedSkill } from "./workflow-orchestrator/same-session.ts";
 
 export interface IssueListItem {
 	number: number;
@@ -426,10 +427,16 @@ export default function (pi: ExtensionAPI) {
 			let relatedText: string | undefined;
 			let nextAction: "inspect" | "analyze" | "grill-prerequisite" | "grill" | "cancelled" = "cancelled";
 			let grillTarget: number | null = null;
-			const availableCommands = new Set(pi.getCommands().map((command) => command.name));
-			const grillCommand = availableCommands.has("skill:grill") ? "skill:grill" : undefined;
-			const grillPrompt = (instruction: string) => grillCommand ? `/${grillCommand} ${instruction}` : instruction;
 			const repoHint = params.repo?.trim() ? ` en el repo ${params.repo.trim()}` : "";
+			const queueGrill = async (number: number, instruction: string): Promise<void> => {
+				const transition = await continueWithMaterializedSkill(
+					pi,
+					"grill",
+					`#${number}\n\n${instruction}`,
+					{ deliverAs: "followUp" },
+				);
+				if (!transition.ok) throw new Error(`Could not materialize grill: ${transition.message}`);
+			};
 
 			if (selectedAction === inspectChoice) {
 				nextAction = "inspect";
@@ -442,7 +449,7 @@ export default function (pi: ExtensionAPI) {
 					"No analices dependencias con otro modelo salvo que sea necesario para desambiguar el alcance.",
 					"No implementes hasta que confirme el entendimiento compartido.",
 				].join(" ");
-				pi.sendUserMessage(grillPrompt(instruction), { deliverAs: "steer" });
+				await queueGrill(issue.number, instruction);
 			} else if (selectedAction === analyzeChoice) {
 				nextAction = "analyze";
 				onUpdate?.({
@@ -534,12 +541,12 @@ export default function (pi: ExtensionAPI) {
 						"Antes de preguntar, obtené y leé sus detalles completos con gh issue view.",
 						"No implementes hasta que confirme el entendimiento compartido.",
 					].join(" ");
-					pi.sendUserMessage(grillPrompt(instruction), { deliverAs: "steer" });
+					await queueGrill(prerequisite.number, instruction);
 				} else if (nextChoice === grillSelectedChoice) {
 					nextAction = "grill";
 					grillTarget = issue.number;
 					const instruction = `Grillá el issue #${issue.number} (${issue.title})${repoHint}. Usá sus detalles y el análisis de dependencias recién completado. No implementes hasta que confirme el entendimiento compartido.`;
-					pi.sendUserMessage(grillPrompt(instruction), { deliverAs: "steer" });
+					await queueGrill(issue.number, instruction);
 				}
 			}
 

@@ -11,6 +11,15 @@ Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. 
 
 Usá `ask_user_question` para toda interacción de elección, `grill_session` para persistir el progreso y `select_grill_session` para listar, inspeccionar o retomar entrevistas anteriores.
 
+## Argumentos Pi
+
+```text
+/skill:grill [#NN | --resume <sessionId>]
+```
+
+- `#NN` inicia el reconocimiento desde ese issue.
+- `--resume <sessionId>` viene de un selector o del orquestador: cargá directamente el snapshot autoritativo con `grill_session` (`action: "get"`), sin volver a abrir `select_grill_session`, y continuá en esta misma conversación.
+
 ## Principios
 
 - Después del mapa previo, dejá que el usuario elija primero el **modo de documentación** y después entre **Grillado rápido** y **Grillado pregunta a pregunta**.
@@ -48,8 +57,8 @@ Meramente leer un `CONTEXT.md` para entender el vocabulario no activa la documen
 
 Cuando el usuario quiera ver, inspeccionar o retomar sesiones de grilling:
 
-1. Invocá `select_grill_session`.
-2. Si devuelve `resume` o `duplicate`, tratá el snapshot seleccionado como estado autoritativo.
+1. Si recibiste `--resume <sessionId>`, cargá ese snapshot con `grill_session` (`action: "get"`); de lo contrario invocá `select_grill_session`.
+2. Si el snapshot o selector devuelve `resume` o `duplicate`, tratá la selección como estado autoritativo.
 3. Leé `workflowMode`. Para snapshots legacy sin modo, buscá una decisión explícita que active domain modeling; si sigue siendo ambiguo, preguntá el modo de documentación y persistilo con `grill_session` usando `action: "configure"` antes de continuar.
 4. Si el modo es `domain-modeling`, cargá el skill de domain modeling y contrastá el snapshot con los archivos actuales. Si difieren, mostrá la contradicción y resolvela antes de avanzar.
 5. Si existe un cuestionario exportado con respuestas completadas (ver **Exportar cuestionario**), leelo e incorporá cada respuesta como decisión resuelta con su checkpoint; repreguntá solo lo ambiguo.
@@ -288,9 +297,9 @@ No incluyas acciones para implementar o construir. En modo `domain-modeling`, es
 Si el usuario confirma, con o sin encadenado:
 
 1. Convertí el contrato visible en Markdown autocontenido siguiendo el template de **Formato del handoff**.
-2. Invocá `grill_session` con `action: "finalize"`, el resumen y `handoffMarkdown`.
+2. Invocá `grill_session` con `action: "finalize"`, el resumen y `handoffMarkdown`. Si el usuario eligió **Confirmar y crear spec SDD**, incluí además `continueWithSpec: true`; la tool persiste primero y recién después encola el skill canónico materializado.
 3. Informá las dos rutas que devuelve la tool: el snapshot global y el handoff del repo en `.sdd/grills/`.
-4. Conservá si el usuario pidió encadenar `sdd-spec`.
+4. Si hubo encadenado, terminá este turno después de la persistencia: el follow-up materializado de `sdd-spec --from-grill` continúa en esta misma sesión.
 
 Si pide ajustar, retomá una sola rama y seguí el ciclo de pregunta + checkpoint. Si pausa, seguí el procedimiento de pausa.
 
@@ -314,7 +323,7 @@ Nunca mezcles la confirmación del handoff con la aprobación de un ADR ni bundl
 Después de finalizar directamente en modo `standard`, o de resolver todos los candidatos a ADR en modo `domain-modeling`:
 
 - si eligió **Confirmar entendimiento**, terminá e informá el handoff y, cuando corresponda, glosarios actualizados y ADRs creados;
-- si eligió **Confirmar y crear spec SDD**, leé `~/.agents/skills/sdd-spec/SKILL.md` y continuá con `--from-grill <sessionId>`;
+- si eligió **Confirmar y crear spec SDD**, `grill_session finalize` con `continueWithSpec: true` entrega el skill canónico materializado con `--from-grill <sessionId>`; no leas un `SKILL.md` por un path inferido ni envíes slash commands;
 - el handoff confirmado es fuente autoritativa: no vuelvas a preguntar decisiones ya resueltas;
 - la spec sigue exigiendo `.sdd/project.md`.
 

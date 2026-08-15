@@ -6,6 +6,13 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
+import {
+	resolveDirectRunRequest as resolveDirectRunRequestDefault,
+	startDirectRun as startDirectRunDefault,
+	type DirectRunRequestV1,
+	type ResolveDirectRunDependencies,
+	type ResolveDirectRunResult,
+} from "./direct-launch.ts";
 import { resolveWorkflowDispatch } from "./dispatch.ts";
 import {
 	startFreshStage as startFreshStageDefault,
@@ -17,7 +24,9 @@ import { createSubmitWorkflowResolutionTool } from "./protocol.ts";
 
 export const INTERNAL_DISPATCH_COMMAND = "__sdd-dispatch" as const;
 export const SUBMIT_WORKFLOW_RESOLUTION_TOOL = "submit_workflow_resolution" as const;
+export const LAUNCH_SDD_RUN_TOOL = "launch_sdd_run" as const;
 export const ISSUE_TRIAGE_REQUEST_EVENT = "sdd:issue-triage-request" as const;
+export const SDD_RUN_REQUEST_EVENT = "sdd:run-request" as const;
 
 export type BeginIssueTriageResult =
 	| { ok: true; code: "queued" }
@@ -31,6 +40,21 @@ export interface WorkflowControllerDependencies {
 	readSkillFile?: (path: string, encoding: "utf8") => Promise<string>;
 	stripSkillFrontmatter?: (content: string) => string | Promise<string>;
 	createReceipt?: () => string;
+	directRunDependencies?: ResolveDirectRunDependencies;
+	resolveDirectRunRequest?: (
+		target: string,
+		cwd: string,
+		dependencies?: ResolveDirectRunDependencies,
+	) => Promise<ResolveDirectRunResult>;
+	startDirectRun?: (
+		request: DirectRunRequestV1,
+		context: ExtensionCommandContext,
+		dependencies: {
+			commands: readonly SkillCommandInfo[];
+			readSkillFile?: (path: string, encoding: "utf8") => Promise<string>;
+			stripSkillFrontmatter?: (content: string) => string | Promise<string>;
+		},
+	) => Promise<StartFreshStageResult>;
 	startFreshStage?: (
 		request: StartFreshStageRequest,
 		context: ExtensionCommandContext,
@@ -47,12 +71,19 @@ export interface WorkflowController {
 		input: IssueTriageRequest,
 		context: Pick<ExtensionCommandContext, "cwd" | "sessionManager">,
 	): Promise<BeginIssueTriageResult>;
+	launchSddRun(target: string, context: ExtensionCommandContext): Promise<ResolveDirectRunResult | StartFreshStageResult>;
 }
 
 interface IssueTriageEventRequest {
 	input: IssueTriageRequest;
 	context: Pick<ExtensionCommandContext, "cwd" | "sessionManager">;
 	accept: (result: Promise<BeginIssueTriageResult>) => void;
+}
+
+interface SddRunEventRequest {
+	target: string;
+	context: ExtensionCommandContext;
+	accept: (result: Promise<ResolveDirectRunResult | StartFreshStageResult>) => void;
 }
 
 export function requestIssueTriage(
@@ -82,15 +113,41 @@ export function requestIssueTriage(
 	});
 }
 
+export function requestSddRun(
+	pi: Pick<ExtensionAPI, "events">,
+	target: string,
+	context: ExtensionCommandContext,
+): Promise<ResolveDirectRunResult | StartFreshStageResult> {
+	return new Promise((resolvePromise, reject) => {
+		let accepted = false;
+		const request: SddRunEventRequest = {
+			target,
+			context,
+			accept(result) {
+				if (accepted) return;
+				accepted = true;
+				result.then(resolvePromise, reject);
+			},
+		};
+		pi.events.emit(SDD_RUN_REQUEST_EVENT, request);
+		if (!accepted) {
+			resolvePromise({
+				ok: false,
+				code: "orchestrator-unavailable",
+				message: "workflow-orchestrator is not loaded",
+			});
+		}
+	});
+}
+
 interface ActiveTriageAttempt {
 	sessionId: string;
 	claimed: boolean;
 }
 
-interface DispatchReceipt {
-	originSessionId: string;
-	request: StartFreshStageRequest;
-}
+type DispatchReceipt =
+	| { kind: "workflow"; originSessionId: string; request: StartFreshStageRequest }
+	| { kind: "direct"; originSessionId: string; request: DirectRunRequestV1 };
 
 function validIssueNumbers(numbers: number[]): boolean {
 	return numbers.length >= 1
@@ -129,6 +186,8 @@ export function createWorkflowController(
 	let terminalRegistered = false;
 	const receipts = new Map<string, DispatchReceipt>();
 	const startFreshStage = dependencies.startFreshStage ?? startFreshStageDefault;
+	const resolveDirectRunRequest = dependencies.resolveDirectRunRequest ?? resolveDirectRunRequestDefault;
+	const startDirectRun = dependencies.startDirectRun ?? startDirectRunDefault;
 	const createReceipt = dependencies.createReceipt ?? randomUUID;
 
 	function deactivateTerminal(): void {
@@ -142,6 +201,60 @@ export function createWorkflowController(
 		activeAttempt = undefined;
 		deactivateTerminal();
 	}
+
+	function queueReceipt(receipt: DispatchReceipt): string {
+		const id = createReceipt();
+		if (!/^[A-Za-z0-9_-]+$/.test(id) || receipts.has(id)) {
+			throw new Error("Could not allocate a unique opaque workflow receipt");
+		}
+		receipts.set(id, receipt);
+		try {
+			pi.sendUserMessage(`/${INTERNAL_DISPATCH_COMMAND} ${id}`, { deliverAs: "followUp" });
+		} catch (error) {
+			receipts.delete(id);
+			throw error;
+		}
+		return id;
+	}
+
+	pi.registerTool({
+		name: LAUNCH_SDD_RUN_TOOL,
+		label: "Launch SDD run",
+		description: "Validate an SDD spec target, ask for explicit execution authorization, and launch it in a fresh session.",
+		parameters: {
+			type: "object",
+			required: ["target"],
+			properties: { target: { type: "string" } },
+			additionalProperties: false,
+		},
+		async execute(_toolCallId, params, _signal, _onUpdate, context) {
+			if (!context.hasUI) throw new Error("launch_sdd_run requires interactive or RPC mode");
+			if (!params || typeof params !== "object" || typeof (params as { target?: unknown }).target !== "string") {
+				throw new Error("launch_sdd_run requires target=<ruta|#NN>");
+			}
+			const target = (params as { target: string }).target.trim();
+			const resolved = await resolveDirectRunRequest(target, context.cwd, dependencies.directRunDependencies);
+			if (!resolved.ok) throw new Error(`${resolved.code}: ${resolved.message}`);
+			const authorized = await context.ui.confirm(
+				"Ejecutar ahora",
+				`${resolved.request.summary}\n\nSe abrirá una sesión hija ligada a la actual.`,
+			);
+			if (!authorized) {
+				return {
+					content: [{ type: "text", text: "The user cancelled SDD execution; the current session is unchanged." }],
+					details: { authorized: false, target: resolved.request.target },
+				};
+			}
+			const sessionId = contextSessionId(context);
+			if (!sessionId) throw new Error("Cannot authorize SDD execution from an unbound session");
+			queueReceipt({ kind: "direct", originSessionId: sessionId, request: resolved.request });
+			return {
+				content: [{ type: "text", text: "SDD execution authorized; queued a fresh-session launch." }],
+				details: { authorized: true, target: resolved.request.target },
+				terminate: true,
+			};
+		},
+	} as never);
 
 	function registerTerminal(): void {
 		if (terminalRegistered) return;
@@ -167,17 +280,11 @@ export function createWorkflowController(
 
 				const dispatch = resolveWorkflowDispatch(resolution);
 				if (!dispatch.ok) throw new Error(`${dispatch.code}: ${dispatch.message}`);
-				const receipt = createReceipt();
-				if (!/^[A-Za-z0-9_-]+$/.test(receipt) || receipts.has(receipt)) {
-					throw new Error("Could not allocate a unique opaque workflow receipt");
-				}
-				receipts.set(receipt, { originSessionId: attempt.sessionId, request: dispatch.request });
-				try {
-					pi.sendUserMessage(`/${INTERNAL_DISPATCH_COMMAND} ${receipt}`, { deliverAs: "followUp" });
-				} catch (error) {
-					receipts.delete(receipt);
-					throw error;
-				}
+				queueReceipt({
+					kind: "workflow",
+					originSessionId: attempt.sessionId,
+					request: dispatch.request,
+				});
 				return terminalResult;
 			},
 		} as never);
@@ -203,13 +310,26 @@ export function createWorkflowController(
 				return;
 			}
 
-			const result = await startFreshStage(pending.request, context, {
+			const launchDependencies = {
 				commands: pi.getCommands() as readonly SkillCommandInfo[],
 				readSkillFile: dependencies.readSkillFile,
 				stripSkillFrontmatter: dependencies.stripSkillFrontmatter,
-			});
+			};
+			const result = pending.kind === "workflow"
+				? await startFreshStage(pending.request, context, launchDependencies)
+				: await startDirectRun(pending.request, context, launchDependencies);
 			if (!result.ok && result.originPreserved) {
 				notify(context, `SDD dispatch failed before switch (${result.code}): ${result.message}`);
+			}
+		},
+	});
+	pi.registerCommand("sdd-run", {
+		description: "Run an SDD spec target in a fresh linked session: /sdd-run <ruta|#NN>",
+		async handler(args, context) {
+			await context.waitForIdle();
+			const result = await controller.launchSddRun(args, context);
+			if (!result.ok && !("originPreserved" in result && !result.originPreserved)) {
+				notify(context, `SDD run launch failed (${result.code}): ${result.message}`);
 			}
 		},
 	});
@@ -223,6 +343,15 @@ export function createWorkflowController(
 	});
 
 	const controller: WorkflowController = {
+		async launchSddRun(target, context) {
+			const resolved = await resolveDirectRunRequest(target.trim(), context.cwd, dependencies.directRunDependencies);
+			if (!resolved.ok) return resolved;
+			return startDirectRun(resolved.request, context, {
+				commands: pi.getCommands() as readonly SkillCommandInfo[],
+				readSkillFile: dependencies.readSkillFile,
+				stripSkillFrontmatter: dependencies.stripSkillFrontmatter,
+			});
+		},
 		async beginIssueTriage(input, context) {
 			if (!validIssueNumbers(input.issueNumbers)) {
 				return { ok: false, code: "invalid-issues", message: "Issue selection must contain 1-12 unique positive integers" };
@@ -267,6 +396,12 @@ export function createWorkflowController(
 		const request = data as Partial<IssueTriageEventRequest>;
 		if (!request.input || !request.context || typeof request.accept !== "function") return;
 		request.accept(controller.beginIssueTriage(request.input, request.context));
+	});
+	pi.events.on(SDD_RUN_REQUEST_EVENT, (data) => {
+		if (!data || typeof data !== "object") return;
+		const request = data as Partial<SddRunEventRequest>;
+		if (typeof request.target !== "string" || !request.context || typeof request.accept !== "function") return;
+		request.accept(controller.launchSddRun(request.target, request.context));
 	});
 	return controller;
 }

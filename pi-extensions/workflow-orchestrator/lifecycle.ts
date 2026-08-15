@@ -22,6 +22,7 @@ export type StartFreshStagePhase = "validation" | "staging" | "switch" | "post-s
 export type StartFreshStageErrorCode =
 	| "invalid-resolution"
 	| "invalid-handoff"
+	| "invalid-direct-request"
 	| MaterializeSkillErrorCode
 	| "origin-session-unpersisted"
 	| "unresolved-cwd"
@@ -43,7 +44,9 @@ export interface TargetSessionReference {
 	cwd: string;
 	name: string;
 	repository: string;
-	issueNumber: number;
+	canonicalReference?: string;
+	issueNumber?: number;
+	artifactPath?: string;
 }
 
 export type StartFreshStageResult =
@@ -66,13 +69,31 @@ export type StartFreshStageResult =
 		orphanSessionFile?: string;
 	};
 
-export interface StartFreshStageRequest {
+export interface WorkflowFreshStageRequest {
 	resolution: unknown;
 	skill: {
 		name: string;
 		args?: string;
 	};
 }
+
+export interface DirectFreshStageRequest {
+	direct: {
+		request: unknown;
+		cwd: string;
+		name: string;
+		repository: string;
+		canonicalReference: string;
+		issueNumber?: number;
+		artifactPath?: string;
+	};
+	skill: {
+		name: string;
+		args?: string;
+	};
+}
+
+export type StartFreshStageRequest = WorkflowFreshStageRequest | DirectFreshStageRequest;
 
 export interface SessionManagerLike {
 	getCwd(): string;
@@ -280,7 +301,9 @@ interface ReplacementCallbackData {
 	sourceSessionId: string;
 	name: string;
 	repository: string;
-	issueNumber: number;
+	canonicalReference?: string;
+	issueNumber?: number;
+	artifactPath?: string;
 	kickoff: string;
 	receipt: PostSwitchReceipt;
 }
@@ -323,7 +346,9 @@ function createReplacementCallback(data: ReplacementCallbackData) {
 				cwd: data.targetCwd,
 				name: data.name,
 				repository: data.repository,
-				issueNumber: data.issueNumber,
+				...(data.canonicalReference === undefined ? {} : { canonicalReference: data.canonicalReference }),
+				...(data.issueNumber === undefined ? {} : { issueNumber: data.issueNumber }),
+				...(data.artifactPath === undefined ? {} : { artifactPath: data.artifactPath }),
 			};
 		} catch (error) {
 			data.receipt.failure = {
@@ -377,30 +402,71 @@ function buildKickoff(materializedSkill: string, resolution: WorkflowResolutionV
 	return `${materializedSkill}\n\n<workflow-handoff version="1">\n${payload}\n</workflow-handoff>`;
 }
 
+function buildDirectKickoff(materializedSkill: string, request: unknown): string {
+	const payload = escapeHandoffEnvelope(JSON.stringify(request));
+	return `${materializedSkill}\n\n<workflow-launch version="1">\n${payload}\n</workflow-launch>`;
+}
+
 export async function startFreshStage(
 	request: StartFreshStageRequest,
 	context: SessionCommandContextLike,
 	dependencies: StartFreshStageDependencies,
 ): Promise<StartFreshStageResult> {
-	const validation = validateWorkflowResolution(request.resolution);
-	if (!validation.ok) {
-		return errorResult(
-			"invalid-resolution",
-			"validation",
-			validation.diagnostics.map(({ path, message }) => `${path} ${message}`).join("; "),
-		);
-	}
-	const resolution = validation.value;
-	if (!isConfirmedCoherentStart(resolution)) {
-		return errorResult("invalid-handoff", "validation", "Resolution is not a confirmed coherent start dispatch");
-	}
 	if (typeof request.skill?.name !== "string" || request.skill.name.trim() === ""
 		|| (request.skill.args !== undefined && typeof request.skill.args !== "string")) {
 		return errorResult("invalid-handoff", "validation", "Skill name and arguments are invalid");
 	}
-	const payloadError = validateHandoffPayload(resolution);
-	if (payloadError) return errorResult("invalid-handoff", "validation", payloadError);
-	const issue = effectiveIssue(resolution)!;
+
+	let launchCwd: string;
+	let name: string;
+	let repository: string;
+	let canonicalReference: string | undefined;
+	let issueNumber: number | undefined;
+	let artifactPath: string | undefined;
+	let directRequest: unknown;
+	let resolution: WorkflowResolutionV1 | undefined;
+	if ("direct" in request) {
+		const direct = request.direct;
+		const issueValid = direct.issueNumber === undefined
+			|| (Number.isInteger(direct.issueNumber) && direct.issueNumber > 0);
+		const artifactValid = direct.artifactPath === undefined || isAbsolute(direct.artifactPath);
+		const exactlyOneTarget = (direct.issueNumber === undefined) !== (direct.artifactPath === undefined);
+		if (typeof direct.cwd !== "string" || !isAbsolute(direct.cwd)
+			|| typeof direct.name !== "string" || direct.name.trim() === ""
+			|| typeof direct.repository !== "string" || direct.repository.trim() === ""
+			|| typeof direct.canonicalReference !== "string" || direct.canonicalReference.trim() === ""
+			|| !issueValid || !artifactValid || !exactlyOneTarget
+			|| typeof direct.request !== "object" || direct.request === null) {
+			return errorResult("invalid-direct-request", "validation", "Direct launch descriptor is invalid");
+		}
+		launchCwd = direct.cwd;
+		name = direct.name;
+		repository = direct.repository;
+		canonicalReference = direct.canonicalReference;
+		issueNumber = direct.issueNumber;
+		artifactPath = direct.artifactPath;
+		directRequest = direct.request;
+	} else {
+		const validation = validateWorkflowResolution(request.resolution);
+		if (!validation.ok) {
+			return errorResult(
+				"invalid-resolution",
+				"validation",
+				validation.diagnostics.map(({ path, message }) => `${path} ${message}`).join("; "),
+			);
+		}
+		resolution = validation.value;
+		if (!isConfirmedCoherentStart(resolution)) {
+			return errorResult("invalid-handoff", "validation", "Resolution is not a confirmed coherent start dispatch");
+		}
+		const payloadError = validateHandoffPayload(resolution);
+		if (payloadError) return errorResult("invalid-handoff", "validation", payloadError);
+		const issue = effectiveIssue(resolution)!;
+		launchCwd = resolution.cwd;
+		name = `SDD ${resolution.stage} · ${resolution.repo}#${issue.number}`;
+		repository = resolution.repo;
+		issueNumber = issue.number;
+	}
 
 	const materialized = await materializeSkill(request.skill.name, request.skill.args ?? "", {
 		commands: dependencies.commands,
@@ -410,6 +476,9 @@ export async function startFreshStage(
 	if (!materialized.ok) {
 		return errorResult(materialized.code, "validation", materialized.message);
 	}
+	const kickoff = resolution
+		? buildKickoff(materialized.content, resolution)
+		: buildDirectKickoff(materialized.content, directRequest);
 
 	const realpathPort = dependencies.realpath ?? realpathDefault;
 	const statPort = dependencies.stat ?? statDefault;
@@ -425,12 +494,12 @@ export async function startFreshStage(
 	// root actually exist at that location.
 	let targetCwd: string;
 	try {
-		const targetRealCwd = await realpathPort(resolution.cwd);
+		const targetRealCwd = await realpathPort(launchCwd);
 		const targetStats = await statPort(targetRealCwd);
 		if (!targetStats.isDirectory()) throw new Error("cwd is not a directory");
 		const gitRoot = await realpathPort(await gitRootPort(targetRealCwd));
 		if (gitRoot !== targetRealCwd) throw new Error("cwd is not the Git root");
-		targetCwd = resolve(resolution.cwd);
+		targetCwd = resolve(launchCwd);
 	} catch (error) {
 		return errorResult("unresolved-cwd", "validation", error instanceof Error ? error.message : String(error));
 	}
@@ -461,13 +530,13 @@ export async function startFreshStage(
 		);
 	}
 
-	const name = `SDD ${resolution.stage} · ${resolution.repo}#${issue.number}`;
-	const kickoff = buildKickoff(materialized.content, resolution);
 	const targetBase: TargetSessionReference = {
 		cwd: targetCwd,
 		name,
-		repository: resolution.repo,
-		issueNumber: issue.number,
+		repository,
+		...(canonicalReference === undefined ? {} : { canonicalReference }),
+		...(issueNumber === undefined ? {} : { issueNumber }),
+		...(artifactPath === undefined ? {} : { artifactPath }),
 	};
 	const receipt: PostSwitchReceipt = {};
 	const withSession = createReplacementCallback({
@@ -475,8 +544,10 @@ export async function startFreshStage(
 		sourceCwd: source.cwd,
 		sourceSessionId: source.sessionId,
 		name,
-		repository: resolution.repo,
-		issueNumber: issue.number,
+		repository,
+		canonicalReference,
+		issueNumber,
+		artifactPath,
 		kickoff,
 		receipt,
 	});

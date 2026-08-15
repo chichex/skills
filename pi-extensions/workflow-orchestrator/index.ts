@@ -3,10 +3,12 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createWorkflowController } from "./controller.ts";
 
 export * from "./controller.ts";
+export * from "./direct-launch.ts";
 export * from "./dispatch.ts";
 export * from "./lifecycle.ts";
 export * from "./materialize.ts";
 export * from "./protocol.ts";
+export * from "./same-session.ts";
 export * from "./staging.ts";
 
 /**

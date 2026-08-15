@@ -21,6 +21,20 @@ Tres ideas fuerza:
 - `--no-pr` — frena después del commit en el branch: no pushea ni crea PR. Para repos sin remote o cuando el PR lo arma el usuario.
 - `--base <branch>` — branch base para ramificar y para el PR (default: el branch default que declara el contrato — main/master/otro).
 
+### Handoff directo de Pi
+
+El launcher de Pi puede entregar, después del skill materializado, un envelope terminal:
+
+```xml
+<workflow-launch version="1">
+<DirectRunRequestV1 JSON estricto>
+</workflow-launch>
+```
+
+`DirectRunRequestV1` es transporte de autorización y target, separado de `WorkflowResolutionV1`: declara `repo`, `cwd`, un target discriminado `issue|spec`, referencia canónica, resumen y evidencia. Validá que sea versión 1, exacto y serializable; que el argumento materializado coincida con el target; y que repo/cwd/spec sigan siendo los resueltos por el request. Un envelope ausente, extra, conflictivo o de otro proyecto falla cerrado antes de mutar Git.
+
+Este handoff **no reemplaza ni saltea** ninguna precondición de este skill: contrato, estado de la spec, repo limpio, worktree, gate del plan, tests y verificación completa siguen siendo obligatorios. Sólo saltea la Fase 0 porque el usuario ya eligió el target y autorizó el launcher. Para una spec artefacto con `issue=null`, conservá esa identidad: no inventes ni crees un issue.
+
 ## Fase 0 — Lanzador (solo con `/skill:sdd-run` pelado)
 
 Dispara SOLO cuando los argumentos vienen vacíos. Si trajo spec, issue o flags, saltear.

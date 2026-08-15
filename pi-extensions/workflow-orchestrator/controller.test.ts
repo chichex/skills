@@ -21,6 +21,22 @@ function createEventBus() {
 	};
 }
 
+function directRunRequest() {
+	return {
+		version: 1,
+		kind: "sdd-run",
+		repo: "chichex/skills",
+		cwd: "/workspace/skills",
+		target: {
+			type: "issue",
+			canonicalReference: "chichex/skills#14",
+			issue: { repository: "chichex/skills", number: 14 },
+		},
+		summary: "Run issue #14.",
+		evidence: [{ kind: "issue", reference: "chichex/skills#14", detail: "Explicit target" }],
+	};
+}
+
 function workflowResolution(overrides: Record<string, unknown> = {}) {
 	const issue = { repository: "chichex/skills", number: 14 };
 	return {
@@ -67,8 +83,12 @@ test("workflow orchestrator exposes a controller without globally activating the
 		},
 	} as never);
 
-	assert.deepEqual(tools, [], "submit_workflow_resolution is registered only for an active triage attempt");
-	assert.deepEqual(commands, ["__sdd-dispatch"]);
+	assert.deepEqual(
+		(tools as Array<{ name?: string }>).map((tool) => tool.name),
+		["launch_sdd_run"],
+		"only the explicitly confirmed direct-run tool is global; terminal triage remains lazy",
+	);
+	assert.deepEqual(commands, ["__sdd-dispatch", "sdd-run"]);
 	assert.ok(events.includes("agent_settled"));
 });
 
@@ -250,4 +270,144 @@ test("a consumer extension requests triage through the shared event bus without 
 	assert.deepEqual(result, { ok: true, code: "queued" });
 	assert.equal(sent.length, 1);
 	assert.match(sent[0]!, /#14$/);
+});
+
+test("/sdd-run validates its target and calls the shared direct launcher from a fresh command context", async () => {
+	const commands = new Map<string, { handler: (args: string, context: unknown) => Promise<void> }>();
+	const resolved: Array<{ target: string; cwd: string }> = [];
+	const starts: unknown[] = [];
+	const notifications: string[] = [];
+	const pi = {
+		events: createEventBus(),
+		registerTool() {},
+		registerCommand(name: string, command: { handler: (args: string, context: unknown) => Promise<void> }) {
+			commands.set(name, command);
+		},
+		on() {},
+		getCommands: () => [],
+		getActiveTools: () => ["read"],
+		setActiveTools() {},
+		sendUserMessage() {},
+	};
+	orchestrator.createWorkflowController(pi as never, {
+		resolveDirectRunRequest: async (target: string, cwd: string) => {
+			resolved.push({ target, cwd });
+			return { ok: true, request: directRunRequest() };
+		},
+		startDirectRun: async (request: unknown) => {
+			starts.push(request);
+			return { ok: true, code: "started" } as never;
+		},
+	} as never);
+	let waited = 0;
+	const context = {
+		cwd: "/workspace/skills",
+		sessionManager: { getSessionId: () => "origin-session" },
+		async waitForIdle() { waited += 1; },
+		ui: { notify(message: string) { notifications.push(message); } },
+	};
+
+	await commands.get("sdd-run")!.handler("  #14  ", context);
+	assert.equal(waited, 1);
+	assert.deepEqual(resolved, [{ target: "#14", cwd: "/workspace/skills" }]);
+	assert.deepEqual(starts, [directRunRequest()]);
+	assert.deepEqual(notifications, []);
+});
+
+test("/specs-style consumers call the same direct launcher through the shared event bus", async () => {
+	assert.equal(typeof (orchestrator as Record<string, unknown>).requestSddRun, "function");
+	const events = createEventBus();
+	const starts: unknown[] = [];
+	const controllerPi = {
+		events,
+		registerTool() {},
+		registerCommand() {},
+		on() {},
+		getCommands: () => [],
+		getActiveTools: () => ["read"],
+		setActiveTools() {},
+		sendUserMessage() {},
+	};
+	orchestrator.createWorkflowController(controllerPi as never, {
+		resolveDirectRunRequest: async () => ({ ok: true, request: directRunRequest() }),
+		startDirectRun: async (request: unknown) => {
+			starts.push(request);
+			return { ok: true, code: "started" } as never;
+		},
+	} as never);
+	const context = { cwd: "/origin/project", sessionManager: { getSessionId: () => "origin" } };
+
+	const result = await orchestrator.requestSddRun(
+		{ events } as never,
+		"/target/project/.sdd/specs/selected.md",
+		context as never,
+	);
+	assert.equal(result.ok, true);
+	assert.deepEqual(starts, [directRunRequest()]);
+});
+
+test("launch_sdd_run asks explicit authorization and bridges its direct request through a one-shot receipt", async () => {
+	const tools = new Map<string, { execute: (...args: unknown[]) => Promise<unknown> }>();
+	const commands = new Map<string, { handler: (args: string, context: unknown) => Promise<void> }>();
+	const sent: Array<{ content: string; options?: unknown }> = [];
+	const starts: unknown[] = [];
+	const pi = {
+		events: createEventBus(),
+		registerTool(tool: { name: string; execute: (...args: unknown[]) => Promise<unknown> }) {
+			tools.set(tool.name, tool);
+		},
+		registerCommand(name: string, command: { handler: (args: string, context: unknown) => Promise<void> }) {
+			commands.set(name, command);
+		},
+		on() {},
+		getCommands: () => [],
+		getActiveTools: () => ["read", "launch_sdd_run"],
+		setActiveTools() {},
+		sendUserMessage(content: string, options?: unknown) { sent.push({ content, options }); },
+	};
+	orchestrator.createWorkflowController(pi as never, {
+		createReceipt: () => "direct-receipt",
+		resolveDirectRunRequest: async () => ({ ok: true, request: directRunRequest() }),
+		startDirectRun: async (request: unknown) => {
+			starts.push(request);
+			return { ok: true, code: "started" } as never;
+		},
+	} as never);
+	let confirmations = 0;
+	const toolContext = {
+		hasUI: true,
+		cwd: "/workspace/skills",
+		sessionManager: { getSessionId: () => "origin-session" },
+		ui: {
+			async confirm(title: string) {
+				confirmations += 1;
+				assert.equal(title, "Ejecutar ahora");
+				return true;
+			},
+		},
+	};
+
+	const result = await tools.get("launch_sdd_run")!.execute(
+		"launch-1",
+		{ target: "#14" },
+		undefined,
+		undefined,
+		toolContext,
+	) as { terminate?: boolean; details?: { authorized?: boolean } };
+	assert.equal(confirmations, 1);
+	assert.equal(result.terminate, true);
+	assert.equal(result.details?.authorized, true);
+	assert.deepEqual(sent, [{
+		content: "/__sdd-dispatch direct-receipt",
+		options: { deliverAs: "followUp" },
+	}]);
+	assert.deepEqual(starts, [], "tools cannot mutate sessions directly");
+
+	const commandContext = {
+		cwd: "/workspace/skills",
+		sessionManager: { getSessionId: () => "origin-session" },
+		ui: { notify() {} },
+	};
+	await commands.get("__sdd-dispatch")!.handler("direct-receipt", commandContext);
+	assert.deepEqual(starts, [directRunRequest()]);
 });

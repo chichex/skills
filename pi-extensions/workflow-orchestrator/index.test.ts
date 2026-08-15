@@ -25,8 +25,12 @@ test("extension entrypoint registers the controller but keeps the terminal tool 
 		},
 	} as never);
 
-	assert.equal(tools.length, 0, "the terminating tool is registered lazily by an owned triage attempt");
-	assert.deepEqual(commands, ["__sdd-dispatch"]);
+	assert.deepEqual(
+		(tools as Array<{ name?: string }>).map((tool) => tool.name),
+		["launch_sdd_run"],
+		"the terminal triage tool stays lazy; direct run is globally available behind an explicit UI gate",
+	);
+	assert.deepEqual(commands, ["__sdd-dispatch", "sdd-run"]);
 	assert.ok(events.includes("agent_settled"));
 	assert.ok(events.includes("session_shutdown"));
 	assert.equal(typeof createSubmitWorkflowResolutionTool, "function");

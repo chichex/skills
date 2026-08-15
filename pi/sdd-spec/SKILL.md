@@ -176,6 +176,14 @@ Spec lista: <ruta local y/o issue #NN actualizado>
 generacion condiciona la ejecucion (particion por tamaño, coverage), una linea por cada uno>
 ```
 
+## Acción posterior en Pi
+
+Sólo **después** de que la spec quedó persistida y el reporte `Spec lista` ya fue mostrado, ofrecé la acción explícita **Ejecutar ahora** invocando `launch_sdd_run` con el target exacto que acabás de reportar (ruta local absoluta o `#NN`). La tool vuelve a mostrar el gate humano `Ejecutar ahora` / cancelar y, únicamente si se autoriza, usa el launcher compartido para abrir una sesión hija.
+
+- Cancelar o cerrar ese gate conserva esta sesión y no ejecuta nada.
+- Crear, actualizar, inspeccionar o meramente encontrar una spec nunca cuenta como autorización.
+- No envíes `/skill:sdd-run` ni `/sdd-run` como mensaje. Si `launch_sdd_run` no está disponible, terminá el reporte indicando que el usuario puede invocar manualmente el comando limpio `/sdd-run <target>`.
+
 ## MUST DO
 
 - Leer `.sdd/project.md` antes que nada; si no existe, exigir `/skill:sdd-init` primero (u orquestarlo con `--assume`).
