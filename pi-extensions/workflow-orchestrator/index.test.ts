@@ -8,21 +8,27 @@ import registerWorkflowOrchestrator, {
 	startFreshStage,
 } from "./index.ts";
 
-test("extension entrypoint registers no tool, since submit_workflow_resolution has no consumer yet (issue #14)", () => {
+test("extension entrypoint registers the controller but keeps the terminal tool inactive outside triage", () => {
 	const tools: unknown[] = [];
+	const commands: string[] = [];
+	const events: string[] = [];
 	registerWorkflowOrchestrator({
+		events: { on() { return () => {}; }, emit() {} },
 		registerTool(tool: unknown) {
 			tools.push(tool);
 		},
+		registerCommand(name: string) {
+			commands.push(name);
+		},
+		on(name: string) {
+			events.push(name);
+		},
 	} as never);
 
-	// Pi auto-activates every extension-registered tool in every session, so a
-	// terminate:true tool with no consumer must not be registered globally: a
-	// valid payload would hard-stop any unrelated agent run mid-task.
-	assert.equal(tools.length, 0);
-	// The building blocks remain exported and usable, ready for issue #14 to
-	// register createSubmitWorkflowResolutionTool explicitly once a real
-	// orchestration consumer exists.
+	assert.equal(tools.length, 0, "the terminating tool is registered lazily by an owned triage attempt");
+	assert.deepEqual(commands, ["__sdd-dispatch"]);
+	assert.ok(events.includes("agent_settled"));
+	assert.ok(events.includes("session_shutdown"));
 	assert.equal(typeof createSubmitWorkflowResolutionTool, "function");
 	assert.equal(createSubmitWorkflowResolutionTool().name, "submit_workflow_resolution");
 	assert.equal(typeof materializeSkill, "function");
