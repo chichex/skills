@@ -21,6 +21,28 @@ Tres ideas fuerza:
 - `--no-pr` — frena después del commit en el branch: no pushea ni crea PR. Para repos sin remote o cuando el PR lo arma el usuario.
 - `--base <branch>` — branch base para ramificar y para el PR (default: el branch default que declara el contrato — main/master/otro).
 
+### Handoffs orquestados de Pi
+
+El launcher de Pi entrega, después del skill materializado, **exactamente uno** de estos envelopes terminales mutuamente excluyentes:
+
+```xml
+<workflow-launch version="1">
+<DirectRunRequestV1 JSON estricto>
+</workflow-launch>
+```
+
+```xml
+<workflow-handoff version="1">
+<WorkflowResolutionV1 JSON estricto>
+</workflow-handoff>
+```
+
+`workflow-launch` es el transporte de una autorización directa desde `/sdd-run`, `/specs` o Spec → Run. Su `DirectRunRequestV1`, separado de `WorkflowResolutionV1`, declara `repo`, `cwd`, un target discriminado `issue|spec`, referencia canónica, resumen y evidencia. Validá que sea versión 1, exacto y serializable; que el argumento materializado coincida con el target; y que repo/cwd/spec sigan siendo los resueltos por el request.
+
+`workflow-handoff` sólo es válido desde triage para una resolución v1 confirmada y coherente con `code=selectedRoute=run-existing-spec`, `outcome=start`, `stage=run-existing-spec` y `mode=null`. Exigí una única spec primaria canónica cuyo issue, repo, cwd y path coincidan con el argumento materializado; no aceptes ninguna otra ruta de `WorkflowResolutionV1`.
+
+Un envelope ausente, doble, extra, conflictivo o de otro proyecto falla cerrado antes de mutar Git. Estos handoffs **no reemplazan ni saltean** ninguna precondición de este skill: contrato, estado de la spec, repo limpio, worktree, gate del plan, tests y verificación completa siguen siendo obligatorios. Sólo saltean la Fase 0 porque el usuario ya eligió el target y autorizó el launcher. Para una spec artefacto con `issue=null`, conservá esa identidad: no inventes ni crees un issue.
+
 ## Fase 0 — Lanzador (solo con `/skill:sdd-run` pelado)
 
 Dispara SOLO cuando los argumentos vienen vacíos. Si trajo spec, issue o flags, saltear.

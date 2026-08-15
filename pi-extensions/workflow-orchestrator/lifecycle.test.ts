@@ -199,8 +199,11 @@ test("starts a fresh linked same-project session and sends only materialized ski
 							cwd: project,
 							contextFiles: [{ path: join(project, "AGENTS.md"), content: "target" }],
 							skills: [{
-								filePath: join(project, ".agents/skills/project/SKILL.md"),
-								sourceInfo: { path: join(project, ".agents/skills/project/SKILL.md"), scope: "project" },
+								name: "quick-run",
+								description: "Run",
+								filePath: skillPath,
+								sourceInfo: { path: skillPath, scope: "temporary" },
+								disableModelInvocation: false,
 							}],
 						};
 					},
@@ -277,6 +280,7 @@ test("starts a fresh linked same-project session and sends only materialized ski
 			"MUTATE:newSession",
 			"session-info:SDD quick-run · chichex/skills#13",
 			"target-resources",
+			"read-skill",
 			"kickoff",
 		]);
 		assert.doesNotMatch(kickoff, /\/skill:/);
@@ -342,7 +346,17 @@ test("accepts a project root reached through a symlink, matching Pi's resolve()-
 						getSessionId: () => "child-id",
 						getSessionFile: () => childFile,
 					},
-					getSystemPromptOptions: () => ({ cwd: symlinkProject, contextFiles: [], skills: [] }),
+					getSystemPromptOptions: () => ({
+						cwd: symlinkProject,
+						contextFiles: [],
+						skills: [{
+							name: "quick-run",
+							description: "Run",
+							filePath: skillPath,
+							sourceInfo: { path: skillPath, scope: "temporary" },
+							disableModelInvocation: false,
+						}],
+					}),
 					async sendUserMessage() {},
 				});
 				return { cancelled: false };
@@ -383,15 +397,18 @@ test("stages and switches to a fresh cross-project child using only the replacem
 	try {
 		const sourceProject = join(root, "source");
 		const targetProject = join(root, "target");
-		const skillDir = join(root, "skill");
+		const skillDir = join(root, "source-skill");
+		const targetSkillDir = join(targetProject, ".pi", "skills", "sdd-spec");
 		await mkdir(sourceProject);
 		await mkdir(targetProject);
 		await mkdir(skillDir);
+		await mkdir(targetSkillDir, { recursive: true });
 		const sourceCwd = await realpath(sourceProject);
 		const targetCwd = await realpath(targetProject);
 		const originFile = join(sourceCwd, "origin.jsonl");
 		const targetSessionFile = join(targetCwd, "sessions", "child.jsonl");
 		const skillPath = join(skillDir, "SKILL.md");
+		const targetSkillPath = join(targetSkillDir, "SKILL.md");
 		const originTranscriptMarker = "ORIGIN_TRANSCRIPT_MUST_NOT_BE_COPIED";
 		await writeFile(originFile, [
 			JSON.stringify({ type: "session", version: 3, id: "origin-id", cwd: sourceCwd }),
@@ -404,7 +421,8 @@ test("stages and switches to a fresh cross-project child using only the replacem
 			}),
 			"",
 		].join("\n"), "utf8");
-		await writeFile(skillPath, "---\nname: sdd-spec\ndescription: Spec\n---\n# Spec stage\n", "utf8");
+		await writeFile(skillPath, "---\nname: sdd-spec\ndescription: Source spec\n---\n# Source spec stage\n", "utf8");
+		await writeFile(targetSkillPath, "---\nname: sdd-spec\ndescription: Target spec\n---\n# Target project spec stage\n", "utf8");
 
 		const handoff = resolution({
 			cwd: targetCwd,
@@ -476,8 +494,11 @@ test("stages and switches to a fresh cross-project child using only the replacem
 								{ path: join(targetCwd, "AGENTS.md"), content: "TARGET_MARKER" },
 							],
 							skills: [{
-								filePath: join(targetCwd, ".agents/skills/target/SKILL.md"),
-								sourceInfo: { path: join(targetCwd, ".agents/skills/target/SKILL.md"), scope: "project" },
+								name: "sdd-spec",
+								description: "Target spec",
+								filePath: targetSkillPath,
+								sourceInfo: { path: targetSkillPath, scope: "project" },
+								disableModelInvocation: false,
 							}],
 						};
 					},
@@ -562,7 +583,9 @@ test("stages and switches to a fresh cross-project child using only the replacem
 			repository: "chichex/skills",
 			issueNumber: 13,
 		});
-		assert.doesNotMatch(kickoff, new RegExp(`${originTranscriptMarker}|/skill:`));
+		assert.doesNotMatch(kickoff, new RegExp(`${originTranscriptMarker}|/skill:|Source spec stage`));
+		assert.match(kickoff, new RegExp(`<skill name="sdd-spec" location="${targetSkillPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}">`));
+		assert.match(kickoff, /# Target project spec stage/);
 		const envelopeJson = kickoff.match(/<workflow-handoff version="1">\n([^\n]+)\n<\/workflow-handoff>$/)?.[1];
 		assert.ok(envelopeJson);
 		assert.deepEqual(JSON.parse(envelopeJson), handoff);

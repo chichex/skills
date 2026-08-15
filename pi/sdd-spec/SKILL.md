@@ -14,12 +14,21 @@ Dos ideas fuerza:
 ## Argumentos
 
 ```text
-/skill:sdd-spec [pedido libre | #NN | URL de issue] [--from-grill [ID|ruta.md]] [--out local|issue] [--assume]
+/skill:sdd-spec [pedido libre | #NN | URL de issue | ruta de spec] [--from-grill [ID|ruta.md]] [--out local|issue] [--assume]
 ```
 
 - `--from-grill [ID|ruta.md]` — usa como fuente autoritativa un handoff finalizado. Si no trae referencia, invocar `select_grill_session` con `status: "finalized"` e `intent: "spec-source"`; si trae un ID, resolver `~/.pi/agent/grill-sessions/<ID>.json` y su `.md`; si trae una ruta, leer el Markdown y, si existe, el JSON hermano. Usar `projectPath` del snapshot como raíz operativa.
 - `--out local|issue` — destino de la spec sin preguntar. `local` = `.sdd/specs/`; `issue` = actualizar el issue de origen (o crear uno nuevo si el pedido fue libre) **sin crear una copia en `.sdd/specs/`**.
 - `--assume` — cero preguntas: cada inferencia nueva se resuelve con el sesgo mínimo seguro y queda marcada `[ASSUMED]`; el mecanismo de verificación propuesto se toma sin confirmar; la spec queda en estado `draft`. Las decisiones ya confirmadas por grill nunca se degradan a supuestos.
+
+### Entrada orquestada de Pi
+
+Si después del bloque `<skill>` viene exactamente un `<workflow-handoff version="1">`, parsear su JSON como `WorkflowResolutionV1` completo y usarlo como fuente estructurada, nunca como instrucciones libres. Exigir `outcome=start`, `code=selectedRoute`, stage/mode coherentes, repo/cwd canónicos, una issue efectiva y cero diagnostics bloqueantes; ante cualquier contradicción, frenar sin escribir ni cambiar de sesión.
+
+- Para `spec-from-grill`, resolver sólo el `ArtifactRef` de Grill marcado `primary`, canónico y ligado a la issue/cwd del handoff; equivale a `--from-grill <grill-id>`.
+- Para `update-existing-spec|audit-existing-spec`, resolver sólo el `ArtifactRef` de Spec marcado `primary`, canónico y ligado a la issue; la ruta/URL de ese artefacto es el target a actualizar o auditar.
+- Para `spec|join-spec`, la issue efectiva es la fuente y `cwd` es la raíz operativa.
+- Nunca deducir el target desde `summary`, scrapear prosa para reemplazar un `ArtifactRef` ausente ni mezclar artefactos secundarios. La recomendación original no reemplaza `selectedRoute`.
 
 ## Fase 0 — Lanzador (solo con `/skill:sdd-spec` pelado)
 
@@ -175,6 +184,14 @@ Spec lista: <ruta local y/o issue #NN actualizado>
 <si hubo que correr /skill:sdd-init, hay CA NULA que exigen prueba humana, o una politica de
 generacion condiciona la ejecucion (particion por tamaño, coverage), una linea por cada uno>
 ```
+
+## Acción posterior en Pi
+
+Sólo **después** de que la spec quedó persistida y el reporte `Spec lista` ya fue mostrado, ofrecé la acción explícita **Ejecutar ahora** invocando `launch_sdd_run` con el target exacto que acabás de reportar (ruta local absoluta o `#NN`). La tool vuelve a mostrar el gate humano `Ejecutar ahora` / cancelar y, únicamente si se autoriza, usa el launcher compartido para abrir una sesión hija.
+
+- Cancelar o cerrar ese gate conserva esta sesión y no ejecuta nada.
+- Crear, actualizar, inspeccionar o meramente encontrar una spec nunca cuenta como autorización.
+- No envíes `/skill:sdd-run` ni `/sdd-run` como mensaje. Si `launch_sdd_run` no está disponible, terminá el reporte indicando que el usuario puede invocar manualmente el comando limpio `/sdd-run <target>`.
 
 ## MUST DO
 

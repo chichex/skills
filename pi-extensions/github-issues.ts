@@ -6,7 +6,9 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 
 import type { IssueListItem } from "./github-issue-selector";
+import { issueTriageFailureMessage } from "./github-consumer-logic.ts";
 import { selectManyMenu, selectMenu, type MenuItem } from "./lib/menu";
+import { requestIssueTriage } from "./workflow-orchestrator/controller.ts";
 import { inspectMarkdownArtifact, type ArtifactRef } from "./workflow-resolution/index.ts";
 
 type IssueListAction =
@@ -364,13 +366,16 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 		});
 	}
 
-	function queueIssueTriage(issues: IssueListItem[], ctx: ExtensionContext): boolean {
-		const triageCommand = pi.getCommands().find((command) => command.name === "skill:issue-triage");
-		if (!triageCommand) {
-			ctx.ui.notify("Todavía no está instalado /skill:issue-triage", "warning");
+	async function queueIssueTriage(issues: IssueListItem[], ctx: ExtensionContext): Promise<boolean> {
+		const result = await requestIssueTriage(
+			pi,
+			{ issueNumbers: issues.map((issue) => issue.number) },
+			ctx,
+		);
+		if (!result.ok) {
+			ctx.ui.notify(issueTriageFailureMessage(result.code), "warning");
 			return false;
 		}
-		pi.sendUserMessage(`/skill:issue-triage ${issues.map((issue) => `#${issue.number}`).join(" ")}`);
 		return true;
 	}
 
@@ -466,7 +471,7 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 			const action = await showSelectionActions(ctx, selectedIssues);
 			if (action === "back") continue;
 			if (action === "analyze") {
-				if (queueIssueTriage(selectedIssues, ctx)) return;
+				if (await queueIssueTriage(selectedIssues, ctx)) return;
 				continue;
 			}
 			if (await mutateIssues(action, selectedIssues, ctx)) selectedNumbers = [];

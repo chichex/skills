@@ -8,13 +8,15 @@ import {
 } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
-import type { WorkflowResolutionV1, WorkflowRoute } from "../workflow-resolution/index.ts";
+import type { WorkflowResolutionV1 } from "../workflow-resolution/index.ts";
+import { describeDirectRun, validateDirectRunRequest } from "./direct-protocol.ts";
 import {
 	materializeSkill,
 	type MaterializeSkillErrorCode,
 	type SkillCommandInfo,
 } from "./materialize.ts";
 import { validateWorkflowResolution } from "./protocol.ts";
+import { isConfirmedCoherentStart } from "./route-contract.ts";
 import { stageCrossProjectSession as stageCrossProjectSessionDefault } from "./staging.ts";
 
 export type StartFreshStagePhase = "validation" | "staging" | "switch" | "post-switch" | "complete";
@@ -22,6 +24,7 @@ export type StartFreshStagePhase = "validation" | "staging" | "switch" | "post-s
 export type StartFreshStageErrorCode =
 	| "invalid-resolution"
 	| "invalid-handoff"
+	| "invalid-direct-request"
 	| MaterializeSkillErrorCode
 	| "origin-session-unpersisted"
 	| "unresolved-cwd"
@@ -29,6 +32,7 @@ export type StartFreshStageErrorCode =
 	| "session-switch-cancelled"
 	| "session-switch-failed"
 	| "target-resources-invalid"
+	| "target-skill-unavailable"
 	| "kickoff-failed";
 
 export interface SessionReference {
@@ -43,7 +47,9 @@ export interface TargetSessionReference {
 	cwd: string;
 	name: string;
 	repository: string;
-	issueNumber: number;
+	canonicalReference?: string;
+	issueNumber?: number;
+	artifactPath?: string;
 }
 
 export type StartFreshStageResult =
@@ -66,13 +72,31 @@ export type StartFreshStageResult =
 		orphanSessionFile?: string;
 	};
 
-export interface StartFreshStageRequest {
+export interface WorkflowFreshStageRequest {
 	resolution: unknown;
 	skill: {
 		name: string;
 		args?: string;
 	};
 }
+
+export interface DirectFreshStageRequest {
+	direct: {
+		request: unknown;
+		cwd: string;
+		name: string;
+		repository: string;
+		canonicalReference: string;
+		issueNumber?: number;
+		artifactPath?: string;
+	};
+	skill: {
+		name: string;
+		args?: string;
+	};
+}
+
+export type StartFreshStageRequest = WorkflowFreshStageRequest | DirectFreshStageRequest;
 
 export interface SessionManagerLike {
 	getCwd(): string;
@@ -85,12 +109,16 @@ export interface SessionManagerLike {
 export interface ReplacementSessionContextLike {
 	cwd: string;
 	sessionManager: SessionManagerLike;
+	ui?: { notify(message: string, level?: "info" | "warning" | "error"): void };
 	getSystemPromptOptions(): {
 		cwd: string;
 		contextFiles?: Array<{ path: string; content: string }>;
 		skills?: Array<{
+			name?: string;
+			description?: string;
 			filePath: string;
 			sourceInfo?: { path?: string; scope?: string };
+			disableModelInvocation?: boolean;
 		}>;
 	};
 	/**
@@ -147,20 +175,6 @@ export interface StartFreshStageDependencies {
 	removeFile?: (path: string) => Promise<void>;
 }
 
-const START_DISPATCH = new Map<WorkflowRoute, { stage: string; mode: string | null }>([
-	["grill", { stage: "grill", mode: "new" }],
-	["join-grill", { stage: "grill", mode: "new" }],
-	["spec", { stage: "spec", mode: "new" }],
-	["join-spec", { stage: "spec", mode: "new" }],
-	["quick-run", { stage: "quick-run", mode: "new" }],
-	["join-quick-run", { stage: "quick-run", mode: "new" }],
-	["resume-grill", { stage: "grill", mode: "resume" }],
-	["spec-from-grill", { stage: "spec", mode: "from-grill" }],
-	["update-existing-spec", { stage: "spec", mode: "update" }],
-	["audit-existing-spec", { stage: "spec", mode: "update" }],
-	["run-existing-spec", { stage: "run-existing-spec", mode: null }],
-]);
-
 interface ResultReferences {
 	source?: SessionReference;
 	target?: TargetSessionReference;
@@ -175,15 +189,6 @@ function errorResult(
 	references: ResultReferences = {},
 ): StartFreshStageResult {
 	return { ok: false, code, phase, originPreserved, message, ...references };
-}
-
-function isConfirmedCoherentStart(resolution: WorkflowResolutionV1): boolean {
-	if (resolution.outcome !== "start" || resolution.selectedRoute === null) return false;
-	if (resolution.code !== resolution.selectedRoute) return false;
-	const expected = START_DISPATCH.get(resolution.selectedRoute);
-	return expected !== undefined
-		&& resolution.stage === expected.stage
-		&& resolution.mode === expected.mode;
 }
 
 function sameRepository(left: string, right: string): boolean {
@@ -228,13 +233,13 @@ function pathIsInside(root: string, candidate: string): boolean {
 
 function replacementResourcesAreValid(
 	context: ReplacementSessionContextLike,
+	options: ReturnType<ReplacementSessionContextLike["getSystemPromptOptions"]>,
 	targetCwd: string,
 	sourceCwd: string,
 	sourceSessionId: string,
 ): boolean {
 	if (context.sessionManager.getSessionId() === sourceSessionId) return false;
 	if (resolve(context.cwd) !== targetCwd || resolve(context.sessionManager.getCwd()) !== targetCwd) return false;
-	const options = context.getSystemPromptOptions();
 	if (resolve(options.cwd) !== targetCwd) return false;
 	// Pi legitimately surfaces resources whose path lies outside targetCwd:
 	// loadProjectContextFiles walks from targetCwd up to the filesystem root
@@ -260,6 +265,24 @@ function replacementResourcesAreValid(
 	return true;
 }
 
+type PostSwitchFailureCode = "target-resources-invalid" | "target-skill-unavailable" | "kickoff-failed";
+
+function targetSkillCommands(
+	options: ReturnType<ReplacementSessionContextLike["getSystemPromptOptions"]>,
+): SkillCommandInfo[] {
+	return (options.skills ?? []).flatMap((skill) =>
+		typeof skill.name === "string"
+		&& skill.name.trim() !== ""
+		&& typeof skill.filePath === "string"
+		&& isAbsolute(skill.filePath)
+			? [{
+				name: `skill:${skill.name}`,
+				source: "skill",
+				sourceInfo: { ...skill.sourceInfo, path: skill.filePath },
+			}]
+			: []);
+}
+
 interface PostSwitchReceipt {
 	/**
 	 * Set as the very first statement once the replacement callback starts
@@ -271,7 +294,7 @@ interface PostSwitchReceipt {
 	 */
 	callbackEntered?: boolean;
 	target?: Required<Pick<TargetSessionReference, "sessionId" | "sessionFile">> & TargetSessionReference;
-	failure?: { code: "target-resources-invalid" | "kickoff-failed"; message: string };
+	failure?: { code: PostSwitchFailureCode; message: string };
 }
 
 interface ReplacementCallbackData {
@@ -280,8 +303,14 @@ interface ReplacementCallbackData {
 	sourceSessionId: string;
 	name: string;
 	repository: string;
-	issueNumber: number;
-	kickoff: string;
+	canonicalReference?: string;
+	issueNumber?: number;
+	artifactPath?: string;
+	skill: { name: string; args: string };
+	resolution?: WorkflowResolutionV1;
+	directRequest?: unknown;
+	readSkillFile: (path: string, encoding: "utf8") => Promise<string>;
+	stripSkillFrontmatter?: (content: string) => string | Promise<string>;
 	receipt: PostSwitchReceipt;
 }
 
@@ -296,15 +325,30 @@ interface ReplacementCallbackData {
  * on the receipt and returns normally instead of throwing; startFreshStage
  * inspects the receipt once newSession/switchSession itself resolves.
  */
+function notifyPostSwitchFailure(
+	context: ReplacementSessionContextLike,
+	code: PostSwitchFailureCode,
+	message: string,
+): void {
+	try {
+		context.ui?.notify(`SDD dispatch failed after switch (${code}): ${message}`, "error");
+	} catch {
+		// UI reporting must never turn a typed post-switch failure into a fatal callback rejection.
+	}
+}
+
 function createReplacementCallback(data: ReplacementCallbackData) {
 	return async (context: ReplacementSessionContextLike): Promise<void> => {
 		data.receipt.callbackEntered = true;
+		let options: ReturnType<ReplacementSessionContextLike["getSystemPromptOptions"]>;
 		try {
-			if (!replacementResourcesAreValid(context, data.targetCwd, data.sourceCwd, data.sourceSessionId)) {
+			options = context.getSystemPromptOptions();
+			if (!replacementResourcesAreValid(context, options, data.targetCwd, data.sourceCwd, data.sourceSessionId)) {
 				data.receipt.failure = {
 					code: "target-resources-invalid",
 					message: "Replacement context does not expose the validated target cwd/resources",
 				};
+				notifyPostSwitchFailure(context, data.receipt.failure.code, data.receipt.failure.message);
 				return;
 			}
 
@@ -315,6 +359,7 @@ function createReplacementCallback(data: ReplacementCallbackData) {
 					code: "target-resources-invalid",
 					message: "Replacement session is not persisted",
 				};
+				notifyPostSwitchFailure(context, data.receipt.failure.code, data.receipt.failure.message);
 				return;
 			}
 			data.receipt.target = {
@@ -323,23 +368,44 @@ function createReplacementCallback(data: ReplacementCallbackData) {
 				cwd: data.targetCwd,
 				name: data.name,
 				repository: data.repository,
-				issueNumber: data.issueNumber,
+				...(data.canonicalReference === undefined ? {} : { canonicalReference: data.canonicalReference }),
+				...(data.issueNumber === undefined ? {} : { issueNumber: data.issueNumber }),
+				...(data.artifactPath === undefined ? {} : { artifactPath: data.artifactPath }),
 			};
 		} catch (error) {
 			data.receipt.failure = {
 				code: "target-resources-invalid",
 				message: error instanceof Error ? error.message : String(error),
 			};
+			notifyPostSwitchFailure(context, data.receipt.failure.code, data.receipt.failure.message);
 			return;
 		}
 
+		const materialized = await materializeSkill(data.skill.name, data.skill.args, {
+			commands: targetSkillCommands(options),
+			readFile: data.readSkillFile,
+			stripFrontmatter: data.stripSkillFrontmatter,
+		});
+		if (!materialized.ok) {
+			data.receipt.failure = {
+				code: "target-skill-unavailable",
+				message: `${materialized.code}: ${materialized.message}`,
+			};
+			notifyPostSwitchFailure(context, data.receipt.failure.code, data.receipt.failure.message);
+			return;
+		}
+		const kickoff = data.resolution
+			? buildKickoff(materialized.content, data.resolution)
+			: buildDirectKickoff(materialized.content, data.directRequest);
+
 		try {
-			await context.sendUserMessage(data.kickoff);
+			await context.sendUserMessage(kickoff);
 		} catch (error) {
 			data.receipt.failure = {
 				code: "kickoff-failed",
 				message: error instanceof Error ? error.message : String(error),
 			};
+			notifyPostSwitchFailure(context, data.receipt.failure.code, data.receipt.failure.message);
 		}
 	};
 }
@@ -377,38 +443,91 @@ function buildKickoff(materializedSkill: string, resolution: WorkflowResolutionV
 	return `${materializedSkill}\n\n<workflow-handoff version="1">\n${payload}\n</workflow-handoff>`;
 }
 
+function buildDirectKickoff(materializedSkill: string, request: unknown): string {
+	const payload = escapeHandoffEnvelope(JSON.stringify(request));
+	return `${materializedSkill}\n\n<workflow-launch version="1">\n${payload}\n</workflow-launch>`;
+}
+
 export async function startFreshStage(
 	request: StartFreshStageRequest,
 	context: SessionCommandContextLike,
 	dependencies: StartFreshStageDependencies,
 ): Promise<StartFreshStageResult> {
-	const validation = validateWorkflowResolution(request.resolution);
-	if (!validation.ok) {
-		return errorResult(
-			"invalid-resolution",
-			"validation",
-			validation.diagnostics.map(({ path, message }) => `${path} ${message}`).join("; "),
-		);
-	}
-	const resolution = validation.value;
-	if (!isConfirmedCoherentStart(resolution)) {
-		return errorResult("invalid-handoff", "validation", "Resolution is not a confirmed coherent start dispatch");
-	}
 	if (typeof request.skill?.name !== "string" || request.skill.name.trim() === ""
 		|| (request.skill.args !== undefined && typeof request.skill.args !== "string")) {
 		return errorResult("invalid-handoff", "validation", "Skill name and arguments are invalid");
 	}
-	const payloadError = validateHandoffPayload(resolution);
-	if (payloadError) return errorResult("invalid-handoff", "validation", payloadError);
-	const issue = effectiveIssue(resolution)!;
 
-	const materialized = await materializeSkill(request.skill.name, request.skill.args ?? "", {
+	let launchCwd: string;
+	let name: string;
+	let repository: string;
+	let canonicalReference: string | undefined;
+	let issueNumber: number | undefined;
+	let artifactPath: string | undefined;
+	let directRequest: unknown;
+	let resolution: WorkflowResolutionV1 | undefined;
+	if ("direct" in request) {
+		const direct = request.direct;
+		const directValidation = validateDirectRunRequest(direct.request);
+		if (!directValidation.ok) {
+			return errorResult(
+				"invalid-direct-request",
+				"validation",
+				directValidation.diagnostics.map(({ path, message }) => `${path} ${message}`).join("; "),
+			);
+		}
+		const validated = directValidation.value;
+		const expected = describeDirectRun(validated);
+		if (direct.cwd !== expected.direct.cwd
+			|| direct.repository !== expected.direct.repository
+			|| direct.canonicalReference !== expected.direct.canonicalReference
+			|| direct.issueNumber !== expected.direct.issueNumber
+			|| direct.artifactPath !== expected.direct.artifactPath
+			|| direct.name !== expected.direct.name
+			|| request.skill.name !== expected.skill.name
+			|| request.skill.args !== expected.skill.args) {
+			return errorResult("invalid-direct-request", "validation", "Direct launch descriptor conflicts with its strict request");
+		}
+		launchCwd = expected.direct.cwd;
+		name = expected.direct.name;
+		repository = expected.direct.repository;
+		canonicalReference = expected.direct.canonicalReference;
+		issueNumber = expected.direct.issueNumber;
+		artifactPath = expected.direct.artifactPath;
+		directRequest = validated;
+	} else {
+		const validation = validateWorkflowResolution(request.resolution);
+		if (!validation.ok) {
+			return errorResult(
+				"invalid-resolution",
+				"validation",
+				validation.diagnostics.map(({ path, message }) => `${path} ${message}`).join("; "),
+			);
+		}
+		resolution = validation.value;
+		if (!isConfirmedCoherentStart(resolution)) {
+			return errorResult("invalid-handoff", "validation", "Resolution is not a confirmed coherent start dispatch");
+		}
+		const payloadError = validateHandoffPayload(resolution);
+		if (payloadError) return errorResult("invalid-handoff", "validation", payloadError);
+		const issue = effectiveIssue(resolution)!;
+		launchCwd = resolution.cwd;
+		name = `SDD ${resolution.stage} · ${resolution.repo}#${issue.number}`;
+		repository = resolution.repo;
+		issueNumber = issue.number;
+	}
+
+	// Preflight against the current resource set preserves the origin for the
+	// common missing/malformed global-skill failures. The replacement callback
+	// materializes again from the target session's winning resource set, so a
+	// project-scoped override in a cross-project launch is never ignored.
+	const preflightSkill = await materializeSkill(request.skill.name, request.skill.args ?? "", {
 		commands: dependencies.commands,
 		readFile: dependencies.readSkillFile ?? readFileDefault,
 		stripFrontmatter: dependencies.stripSkillFrontmatter,
 	});
-	if (!materialized.ok) {
-		return errorResult(materialized.code, "validation", materialized.message);
+	if (!preflightSkill.ok) {
+		return errorResult(preflightSkill.code, "validation", preflightSkill.message);
 	}
 
 	const realpathPort = dependencies.realpath ?? realpathDefault;
@@ -425,12 +544,12 @@ export async function startFreshStage(
 	// root actually exist at that location.
 	let targetCwd: string;
 	try {
-		const targetRealCwd = await realpathPort(resolution.cwd);
+		const targetRealCwd = await realpathPort(launchCwd);
 		const targetStats = await statPort(targetRealCwd);
 		if (!targetStats.isDirectory()) throw new Error("cwd is not a directory");
 		const gitRoot = await realpathPort(await gitRootPort(targetRealCwd));
 		if (gitRoot !== targetRealCwd) throw new Error("cwd is not the Git root");
-		targetCwd = resolve(resolution.cwd);
+		targetCwd = resolve(launchCwd);
 	} catch (error) {
 		return errorResult("unresolved-cwd", "validation", error instanceof Error ? error.message : String(error));
 	}
@@ -461,13 +580,13 @@ export async function startFreshStage(
 		);
 	}
 
-	const name = `SDD ${resolution.stage} · ${resolution.repo}#${issue.number}`;
-	const kickoff = buildKickoff(materialized.content, resolution);
 	const targetBase: TargetSessionReference = {
 		cwd: targetCwd,
 		name,
-		repository: resolution.repo,
-		issueNumber: issue.number,
+		repository,
+		...(canonicalReference === undefined ? {} : { canonicalReference }),
+		...(issueNumber === undefined ? {} : { issueNumber }),
+		...(artifactPath === undefined ? {} : { artifactPath }),
 	};
 	const receipt: PostSwitchReceipt = {};
 	const withSession = createReplacementCallback({
@@ -475,12 +594,22 @@ export async function startFreshStage(
 		sourceCwd: source.cwd,
 		sourceSessionId: source.sessionId,
 		name,
-		repository: resolution.repo,
-		issueNumber: issue.number,
-		kickoff,
+		repository,
+		canonicalReference,
+		issueNumber,
+		artifactPath,
+		skill: { name: request.skill.name, args: request.skill.args ?? "" },
+		resolution,
+		directRequest,
+		readSkillFile: dependencies.readSkillFile ?? readFileDefault,
+		stripSkillFrontmatter: dependencies.stripSkillFrontmatter,
 		receipt,
 	});
 
+	// Pi's newSession API cannot change cwd. A session opened from a Git
+	// subdirectory therefore must use the staged switch path when the requested
+	// destination is the repository root; comparing Git roots here would leave
+	// the child in the wrong cwd and fail the target-resource contract.
 	if (source.cwd === targetCwd) {
 		let replacementResult: { cancelled: boolean };
 		try {

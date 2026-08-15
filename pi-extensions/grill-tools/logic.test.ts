@@ -7,6 +7,7 @@ import { test } from "node:test";
 
 import { parseSddArtifact } from "../sdd-artifacts/index.ts";
 import {
+	allowsFinalizeSpecContinuation,
 	composeHandoffMarkdown,
 	grillMetadataFromSnapshot,
 	handoffBelongsToSession,
@@ -35,6 +36,11 @@ const MARKER_LINE = /^<!--\s*SDD-Tracking\s*:.*-->$/i;
 function markerCount(markdown: string): number {
 	return markdown.split("\n").filter((line) => MARKER_LINE.test(line.trim())).length;
 }
+
+test("solo el modo standard puede encadenar spec durante finalize", () => {
+	assert.equal(allowsFinalizeSpecContinuation("standard"), true);
+	assert.equal(allowsFinalizeSpecContinuation("domain-modeling"), false);
+});
 
 test("slugify normaliza acentos, espacios y mayusculas", () => {
 	assert.equal(slugify("Sesión de diseño"), "sesion-de-diseno");

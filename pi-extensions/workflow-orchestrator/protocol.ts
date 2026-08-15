@@ -8,6 +8,7 @@ import type {
 	WorkflowRoute,
 	WorkflowStage,
 } from "../workflow-resolution/index.ts";
+import { exactObject, type RecordValue } from "./validation.ts";
 
 export interface WorkflowResolutionDiagnostic {
 	path: string;
@@ -101,34 +102,13 @@ const ARTIFACT_FIELDS = [
 	"diagnostics",
 ] as const;
 
-type RecordValue = Record<string, unknown>;
-
-function isRecord(value: unknown): value is RecordValue {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function exactObject(
+function exactWorkflowObject(
 	value: unknown,
 	path: string,
 	fields: readonly string[],
 	diagnostics: WorkflowResolutionDiagnostic[],
 ): RecordValue | null {
-	if (!isRecord(value)) {
-		diagnostics.push({ path, code: "invalid-type", message: "Expected an object" });
-		return null;
-	}
-	const allowed = new Set(fields);
-	for (const field of fields) {
-		if (!Object.hasOwn(value, field)) {
-			diagnostics.push({ path: `${path}.${field}`, code: "missing-field", message: `Missing required field ${field}` });
-		}
-	}
-	for (const field of Object.keys(value)) {
-		if (!allowed.has(field)) {
-			diagnostics.push({ path: `${path}.${field}`, code: "extra-field", message: `Unexpected field ${field}` });
-		}
-	}
-	return value;
+	return exactObject(value, path, fields, (diagnostic) => diagnostics.push(diagnostic));
 }
 
 function stringValue(value: unknown, path: string, diagnostics: WorkflowResolutionDiagnostic[]): value is string {
@@ -177,7 +157,7 @@ function stringArray(value: unknown, path: string, diagnostics: WorkflowResoluti
 }
 
 function issueValue(value: unknown, path: string, diagnostics: WorkflowResolutionDiagnostic[]): IssueRef | null {
-	const object = exactObject(value, path, ISSUE_FIELDS, diagnostics);
+	const object = exactWorkflowObject(value, path, ISSUE_FIELDS, diagnostics);
 	if (!object) return null;
 	const repositoryOk = stringValue(object.repository, `${path}.repository`, diagnostics);
 	const numberOk = typeof object.number === "number" && Number.isInteger(object.number) && object.number > 0;
@@ -215,7 +195,7 @@ function evidenceArray(value: unknown, path: string, diagnostics: WorkflowResolu
 	}
 	return value.flatMap((item, index) => {
 		const itemPath = `${path}[${index}]`;
-		const object = exactObject(item, itemPath, EVIDENCE_FIELDS, diagnostics);
+		const object = exactWorkflowObject(item, itemPath, EVIDENCE_FIELDS, diagnostics);
 		if (!object) return [];
 		const kindOk = stringValue(object.kind, `${itemPath}.kind`, diagnostics);
 		const referenceOk = stringValue(object.reference, `${itemPath}.reference`, diagnostics);
@@ -233,7 +213,7 @@ function artifactArray(value: unknown, path: string, diagnostics: WorkflowResolu
 	}
 	return value.flatMap((item, index) => {
 		const itemPath = `${path}[${index}]`;
-		const object = exactObject(item, itemPath, ARTIFACT_FIELDS, diagnostics);
+		const object = exactWorkflowObject(item, itemPath, ARTIFACT_FIELDS, diagnostics);
 		if (!object) return [];
 		const idOk = stringValue(object.id, `${itemPath}.id`, diagnostics);
 		const locationOk = enumValue(object.location, ARTIFACT_LOCATIONS, `${itemPath}.location`, diagnostics);
@@ -266,7 +246,7 @@ function artifactArray(value: unknown, path: string, diagnostics: WorkflowResolu
 		} else {
 			object.diagnostics.forEach((diagnostic, diagnosticIndex) => {
 				const diagnosticPath = `${itemPath}.diagnostics[${diagnosticIndex}]`;
-				const diagnosticObject = exactObject(diagnostic, diagnosticPath, DIAGNOSTIC_FIELDS, diagnostics);
+				const diagnosticObject = exactWorkflowObject(diagnostic, diagnosticPath, DIAGNOSTIC_FIELDS, diagnostics);
 				if (!diagnosticObject) return;
 				const codeOk = stringValue(diagnosticObject.code, `${diagnosticPath}.code`, diagnostics);
 				const messageOk = stringValue(diagnosticObject.message, `${diagnosticPath}.message`, diagnostics);
@@ -335,7 +315,7 @@ function validateDiscriminant(object: RecordValue, diagnostics: WorkflowResoluti
 
 export function validateWorkflowResolution(value: unknown): WorkflowResolutionValidation {
 	const diagnostics: WorkflowResolutionDiagnostic[] = [];
-	const object = exactObject(value, "$", RESOLUTION_FIELDS, diagnostics);
+	const object = exactWorkflowObject(value, "$", RESOLUTION_FIELDS, diagnostics);
 	if (!object) return { ok: false, diagnostics };
 
 	if (object.version !== 1) {

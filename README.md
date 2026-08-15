@@ -43,7 +43,23 @@ Aparte, el repo tiene un **skill interno** en `.claude/skills/harness-port/`: gu
 
 ### Integración con Pi
 
-En Pi, `grill` es el único entry point de entrevista: el usuario elige si quiere solo handoff o también documentación de dominio. El encadenado `sdd-spec --from-grill` funciona igual que en Codex y Claude Code, con el agregado del selector de sesiones de `grill-tools`.
+En Pi, `grill` es el único entry point de entrevista: el usuario elige si quiere solo handoff o también documentación de dominio. El riel actual usa señales estructuradas y skills materializados desde la procedencia canónica de Pi; los entrypoints ya no se limitan a inyectar slash skills como texto.
+
+#### Riel orquestado y fronteras de sesión
+
+Los entrypoints públicos son `/issues` para triage, `/grills` para retomar entrevistas, `/specs` para buscar/inspeccionar specs y `/sdd-run <ruta|#NN>` para autorizar directamente una ejecución.
+
+| Transición | Frontera de sesión |
+|---|---|
+| `/issues` → Grill/Spec/Quick-run/Run confirmado | **Sesión hija** fresca, ligada mediante `parentSession`; stop, error, rechazo o cancelación conservan la sesión de triage. |
+| Grill activo/pausado → resume | **Misma sesión**; el snapshot autoritativo reconstruye el progreso. |
+| Grill finalizado → Spec | **Misma sesión**; primero se persiste el handoff y después se materializa `sdd-spec --from-grill`. |
+| Spec → Run | **Sesión hija**, sólo después de autorización explícita mediante **Ejecutar ahora**, `/sdd-run` o **Ejecutar** en `/specs`. |
+| Triage → Quick-run | **Sesión hija** limpia; `quick-run` conserva su propio preflight, worktree, TDD, presupuesto y PR sin merge. |
+
+En cross-project, el request usa la raíz, repo y artefacto del proyecto destino: la hija se almacena allí, carga sus recursos project-scoped y vuelve a materializar el skill desde el recurso ganador del destino —incluidos overrides del proyecto—, sin copiar el transcript de origen. Encontrar una spec no la ejecuta, inspeccionar/cancelar no cambia sesión y ningún flujo mergea PRs.
+
+Los errores son fail-closed antes del switch. Si el reemplazo ya ocurrió y falla el kickoff o la carga de recursos, se informa honestamente como error `post-switch`, con referencia a la hija y sin fingir rollback del origen.
 
 El repo también conserva todas las extensiones globales de Pi usadas por este workflow:
 
@@ -51,7 +67,8 @@ El repo también conserva todas las extensiones globales de Pi usadas por este w
 |---|---|
 | **`ask-user-question`** | Herramienta `ask_user_question` con selección simple/múltiple, recomendaciones, respuesta libre y envío vacío opcional. |
 | **`claude-tool-renderer.ts`** | Presenta las ediciones con encabezado y diff compacto al estilo Claude Code. |
-| **`grill-tools`** | Persistencia con `grill_session`, selector `select_grill_session` y comandos `/grills` y `/specs`. |
+| **`grill-tools`** | Persistencia con `grill_session`, selector `select_grill_session` y comandos `/grills` y `/specs`; resume Grill y Grill → Spec conservan la conversación. |
+| **`workflow-orchestrator`** | Consume `WorkflowResolutionV1`, materializa skills canónicos, administra receipts one-shot acotados y abre sesiones hijas same/cross-project. También registra `/sdd-run`; el gate `launch_sdd_run` sólo queda activo cuando la raíz tiene un `.sdd/project.md` canónico. |
 | **`inline-skill-autocomplete`** | Abre el autocomplete de skills al escribir `/` o `/skill:…` en cualquier punto del borrador. Al enviar, antepone la invocación para que Pi la expanda correctamente. |
 | **`github-issue-selector.ts`** + **`github-issues.ts`** | Herramienta `select_github_issue` y comando `/issues` con selección múltiple. El menú unificado permite analizar mediante `issue-triage`, cerrar en bulk o eliminar en bulk. |
 | **`github-prs`** | Comando `/prs`; su acción de review invoca `/skill:code-review`. |
@@ -127,7 +144,9 @@ cp -R pi-extensions/*  ~/.pi/agent/extensions/
 cp pi-themes/*.json    ~/.pi/agent/themes/
 ```
 
-Una vez instalados, Codex los invoca como `$grill`, `$code-review`, `$sdd-spec`, etc., o los carga según su `description` — salvo `sdd-run` y `quick-run`: sus sidecars `agents/openai.yaml` declaran `policy.allow_implicit_invocation: false`, así que sólo se ejecutan al invocarlos explícitamente con `$sdd-run` o `$quick-run`. Claude Code/opencode usan sus comandos habituales. En Pi se usan como `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec` y equivalentes. Ejecutá `/reload` en una sesión de Pi abierta después de instalarlos.
+Una vez instalados, Codex los invoca como `$grill`, `$code-review`, `$sdd-spec`, etc., o los carga según su `description` — salvo `sdd-run` y `quick-run`: sus sidecars `agents/openai.yaml` declaran `policy.allow_implicit_invocation: false`, así que sólo se ejecutan al invocarlos explícitamente con `$sdd-run` o `$quick-run`. Claude Code/opencode usan sus comandos habituales. En Pi se usan como `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec` y equivalentes.
+
+**Rollout de Pi:** corré `./install.sh pi` sólo con autorización explícita, porque actualiza el checkout y reemplaza las copias globales administradas; después ejecutá `/reload`. Las sesiones ya abiertas no reciben el código nuevo hasta recargar. Para la prueba interactiva usá una sesión persistida y dos repos descartables; los stages reales requieren un provider local/falso o consumo de proveedor explícitamente autorizado. El smoke autónomo no corre el instalador ni providers.
 
 ## Créditos
 

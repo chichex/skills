@@ -251,13 +251,13 @@ Para `blocked-dependency`, `split-too-large`, `combined-too-large`, `incoherent-
 
 ### Rutas accionables
 
-Para todo resultado `outcome=start` —ruta nueva o artifact-aware— usá `ask_user_question`. La pregunta debe repetir en una oración el outcome de `En pocas palabras`, para que la decisión sea autocontenida, y ofrecer:
+Para todo resultado `outcome=start` —ruta nueva o artifact-aware— usá `ask_user_question`. La pregunta debe repetir en una oración el outcome de `En pocas palabras`, para que la decisión sea autocontenida. Si la primaria o fallback es `quick-run|join-quick-run`, declarale antes de elegir que confirmarla abre un run aislado capaz de crear branch, commits y PR (nunca merge), sujeto a su preflight y verificaciones. Ofrecé:
 
 - `Confirmar <ruta recomendada> (Recomendado)`
 - `Usar fallback: <ruta>`
 - `Cancelar`
 
-Una confirmación sólo registra `selectedRoute`; no autoriza a ejecutar el stage. Antes del gate vale `selectedRoute=null`; primaria y fallback preservan la recomendación, y cancelar emite `code=cancelled` sin crear issues, archivos, branches ni comentarios.
+Una confirmación registra `selectedRoute` y autoriza al consumidor orquestado a abrir el stage seleccionado en una sesión hija; este skill productor nunca lo ejecuta por su cuenta. Para quick-run, esa autorización informada cubre iniciar su workflow protegido con capacidad de branch/commit/PR, pero no merge ni ampliación de alcance. Antes del gate vale `selectedRoute=null`; primaria y fallback preservan la recomendación, y cancelar emite `code=cancelled` sin crear issues, archivos, branches ni comentarios.
 
 ## Fase 5 — Canonicalizar una selección múltiple
 
@@ -322,9 +322,10 @@ Desde este punto, la única fuente downstream es `#NEW`.
 ## Fase 6 — Emitir el resultado y terminar
 
 1. Construí el `WorkflowResolutionV1` completo con la recomendación original, fallback, ruta artifact-aware, elección efectiva y toda la evidencia normalizada.
-2. Conservá `En pocas palabras` y `Ejemplo de impacto` en `summary`/`impactExample`; la fuente sigue siendo autoritativa.
-3. Mostrá el resultado serializado y una síntesis humana breve. Verificá el round-trip `JSON.parse(JSON.stringify(result))`.
-4. Terminá el workflow. No cargues ni invoques grill/sdd-spec/sdd-run, no implementes quick-run, no cambies sesión y no crees branch/worktree/PR.
+2. Conservá `En pocas palabras` y `Ejemplo de impacto` en `summary`/`impactExample`; la fuente sigue siendo autoritativa. Verificá el round-trip `JSON.parse(JSON.stringify(result))`.
+3. Si la tool `submit_workflow_resolution` está activa —sólo ocurre durante un intento iniciado por `/issues`— mostrá el resultado v1 serializado y una síntesis humana breve de recomendación, fallback y elección efectiva antes de invocarla **exactamente una vez** con el objeto v1 completo. Esa señal terminal entrega el resultado al consumidor; no cargues ni ejecutes el stage por tu cuenta.
+4. Si `submit_workflow_resolution` no está activa (invocación manual de `/skill:issue-triage`), usá el fallback manual: mostrá el resultado v1 serializado y una síntesis humana breve, como hasta ahora.
+5. Terminá el workflow. No cargues ni invoques grill/sdd-spec/sdd-run, no implementes quick-run, no cambies sesión y no crees branch/worktree/PR.
 
 ### Garantías downstream de quick-run
 

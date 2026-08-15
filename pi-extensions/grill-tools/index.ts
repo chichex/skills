@@ -8,13 +8,24 @@ import { getMarkdownTheme, truncateHead, type ExtensionAPI } from "@earendil-wor
 import { Markdown, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { menuItems, selectMenu, type MenuItem } from "../lib/menu";
+import { requestSddRun } from "../workflow-orchestrator/controller.ts";
+import {
+	continueWithMaterializedSkill,
+	prepareMaterializedSkill,
+	queueMaterializedSkill,
+} from "../workflow-orchestrator/same-session.ts";
 import {
 	inspectMarkdownArtifact,
 	type ArtifactFormat,
 	type ArtifactProvenance,
 	type IssueRef,
 } from "../workflow-resolution/index.ts";
-import { handoffFileNames, planGrillHandoff, slugify } from "./logic.ts";
+import {
+	allowsFinalizeSpecContinuation,
+	handoffFileNames,
+	planGrillHandoff,
+	slugify,
+} from "./logic.ts";
 
 const AGENT_DIR = join(homedir(), ".pi", "agent");
 const STORE_DIR = join(AGENT_DIR, "grill-sessions");
@@ -172,6 +183,7 @@ const GrillSessionParams = Type.Object({
 	),
 	summary: Type.Optional(Type.String()),
 	handoffMarkdown: Type.Optional(Type.String({ description: "Required for finalize" })),
+	continueWithSpec: Type.Optional(Type.Boolean({ description: "After finalize, materialize sdd-spec --from-grill in this session" })),
 });
 
 const SelectGrillSessionParams = Type.Object({
@@ -224,7 +236,7 @@ async function writeAtomic(path: string, content: string): Promise<void> {
 // Escribe (o actualiza) el handoff interoperable en `.sdd/grills/` del
 // proyecto de la sesion. El snapshot JSON global sigue siendo la fuente de
 // verdad runtime; este archivo es el artefacto SDD que consumen los otros
-// harnesses y /skill:sdd-spec --from-grill. Nunca rompe la accion que lo
+// harnesses y el handoff materializado de sdd-spec --from-grill. Nunca rompe la accion que lo
 // invoca: ante un proyecto inexistente devuelve el error como texto.
 async function writeRepoHandoff(
 	snapshot: GrillSnapshot,
@@ -640,7 +652,7 @@ export default function grillTools(pi: ExtensionAPI) {
 					if (!selected) throw new Error("No se pudo resolver la spec seleccionada");
 
 					const inspectChoice = "Inspeccionar";
-					const runChoice = "Ejecutar con /skill:sdd-run";
+					const runChoice = "Ejecutar";
 					const action = await selectMenu(
 						ctx,
 						`${selected.title} · ${selected.state}`,
@@ -655,11 +667,10 @@ export default function grillTools(pi: ExtensionAPI) {
 						return;
 					}
 
-					const hasSddRunSkill = pi.getCommands().some((command) => command.name === "skill:sdd-run");
-					const instruction = `Ejecutá la spec SDD en ${selected.path}. Su raíz de proyecto es ${selected.projectPath}.`;
-					pi.sendUserMessage(hasSddRunSkill
-						? `/skill:sdd-run ${selected.path}\n\nLa spec fue seleccionada mediante /specs. Trabajá desde la raíz ${selected.projectPath}.`
-						: instruction);
+					const result = await requestSddRun(pi, selected.path, ctx);
+					if (!result.ok && !("originPreserved" in result && !result.originPreserved)) {
+						ctx.ui.notify(`No se pudo ejecutar la spec (${result.code}): ${result.message}`, "error");
+					}
 					return;
 				}
 			} catch (error) {
@@ -738,39 +749,35 @@ export default function grillTools(pi: ExtensionAPI) {
 					}
 
 					if (action === createSpecChoice) {
-						const hasSddSpecSkill = pi.getCommands().some((command) => command.name === "skill:sdd-spec");
-						const instruction = `Create an SDD spec from finalized grill session ${selected.id}. Use project root ${selected.projectPath}. Treat the frozen handoff as authoritative and do not ask again about confirmed decisions.`;
-						pi.sendUserMessage(hasSddSpecSkill ? `/skill:sdd-spec --from-grill ${selected.id}` : instruction);
+						const transition = await continueWithMaterializedSkill(
+							pi,
+							"sdd-spec",
+							`--from-grill ${selected.id}`,
+						);
+						if (!transition.ok) ctx.ui.notify(`No se pudo abrir sdd-spec: ${transition.message}`, "error");
 						return;
 					}
 
-					let session = selected;
-					if (action === duplicateChoice) {
-						const timestamp = now();
-						session = {
+					const timestamp = now();
+					const session = action === duplicateChoice
+						? {
 							...selected,
 							id: `${slugify(selected.topic)}-${timestamp.slice(0, 10).replace(/-/g, "")}-${randomUUID().slice(0, 8)}`,
-							status: "active",
+							status: "active" as const,
 							createdAt: timestamp,
 							updatedAt: timestamp,
 							handoffMarkdown: undefined,
 							parentId: selected.id,
 							revision: selected.revision + 1,
-						};
-						await saveSnapshot(session);
-					} else if (action === resumeChoice) {
-						session.status = "active";
-						await saveSnapshot(session);
+						}
+						: { ...selected, status: "active" as const };
+					const prepared = await prepareMaterializedSkill(pi, "grill", `--resume ${session.id}`);
+					if (!prepared.ok) {
+						ctx.ui.notify(`No se pudo retomar grill: ${prepared.message}`, "error");
+						return;
 					}
-
-					const instruction = [
-						`Retomá la sesión de grill ${session.id}, ya seleccionada localmente mediante /grills.`,
-						`Cargá su snapshot autoritativo con grill_session usando action "get" y sessionId "${session.id}"; no vuelvas a abrir el selector.`,
-						"Mostrá brevemente lo resuelto y pendiente, y pedí autorización antes de continuar.",
-					].join(" ");
-					const availableCommands = new Set(pi.getCommands().map((command) => command.name));
-					const grillCommand = availableCommands.has("skill:grill") ? "skill:grill" : undefined;
-					pi.sendUserMessage(grillCommand ? `/${grillCommand} ${instruction}` : instruction);
+					await saveSnapshot(session);
+					queueMaterializedSkill(pi, prepared);
 					return;
 				}
 			} catch (error) {
@@ -789,6 +796,9 @@ export default function grillTools(pi: ExtensionAPI) {
 		executionMode: "sequential",
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (params.continueWithSpec && params.action !== "finalize") {
+				throw new Error("continueWithSpec is valid only for finalize");
+			}
 			if (params.action === "create") {
 				if (!params.topic?.trim()) throw new Error("topic is required for create");
 				if (!params.estimate) throw new Error("estimate is required for create");
@@ -900,6 +910,9 @@ export default function grillTools(pi: ExtensionAPI) {
 			}
 
 			if (params.action === "finalize") {
+				if (params.continueWithSpec && !allowsFinalizeSpecContinuation(snapshot.workflowMode)) {
+					throw new Error("domain-modeling finalize cannot continue to sdd-spec before the separate ADR review completes");
+				}
 				if (!params.handoffMarkdown?.trim()) throw new Error("handoffMarkdown is required for finalize");
 				if (params.pendingBranches) snapshot.pendingBranches = params.pendingBranches;
 				if (params.sections) snapshot.sections = params.sections;
@@ -909,10 +922,23 @@ export default function grillTools(pi: ExtensionAPI) {
 				await writeAtomic(markdownPath(snapshot.id), `${snapshot.handoffMarkdown}\n`);
 				await saveSnapshot(snapshot);
 				const finalizedHandoff = await writeRepoHandoff(snapshot);
+				const continuation = params.continueWithSpec
+					? await continueWithMaterializedSkill(
+						pi,
+						"sdd-spec",
+						`--from-grill ${snapshot.id}`,
+						{ deliverAs: "followUp" },
+					)
+					: undefined;
+				const continuationNote = continuation
+					? continuation.ok
+						? "\nNext stage: canonical sdd-spec queued in this session."
+						: `\nNext stage could not be materialized: ${continuation.message}`
+					: "";
 				return {
 					content: [{
 						type: "text",
-						text: `${snapshotText("Grill session finalized.", snapshot)}\nMarkdown: ${markdownPath(snapshot.id)}${repoHandoffNote(finalizedHandoff)}`,
+						text: `${snapshotText("Grill session finalized.", snapshot)}\nMarkdown: ${markdownPath(snapshot.id)}${repoHandoffNote(finalizedHandoff)}${continuationNote}`,
 					}],
 					details: {
 						action: "finalize",
@@ -920,6 +946,7 @@ export default function grillTools(pi: ExtensionAPI) {
 						jsonPath: jsonPath(snapshot.id),
 						markdownPath: markdownPath(snapshot.id),
 						repoHandoffPath: "path" in finalizedHandoff ? finalizedHandoff.path : undefined,
+						continuation,
 					},
 				};
 			}
@@ -1064,26 +1091,24 @@ export default function grillTools(pi: ExtensionAPI) {
 				}
 
 				if (selectedAction === createSpecChoice) {
-					const hasSddSpecSkill = pi.getCommands().some((command) => command.name === "skill:sdd-spec");
-					const instruction = [
-						`Create an SDD spec from finalized grill session ${selected.id}.`,
-						`Use project root ${selected.projectPath}.`,
-						"Treat the frozen handoff as authoritative and do not ask again about confirmed decisions.",
-					].join(" ");
-					pi.sendUserMessage(
-						hasSddSpecSkill ? `/skill:sdd-spec --from-grill ${selected.id}` : instruction,
-						{ deliverAs: "steer" },
+					const transition = await continueWithMaterializedSkill(
+						pi,
+						"sdd-spec",
+						`--from-grill ${selected.id}`,
+						{ deliverAs: "followUp" },
 					);
+					if (!transition.ok) throw new Error(`Could not materialize sdd-spec: ${transition.message}`);
 					return {
 						content: [{
 							type: "text",
-							text: `${snapshotText("Selected finalized grill session as SDD source.", selected)}\nNext action: ${instruction}`,
+							text: `${snapshotText("Selected finalized grill session as SDD source.", selected)}\nCanonical sdd-spec queued in this session.`,
 						}],
 						details: {
 							selected,
 							action: "create-sdd-spec",
 							jsonPath: jsonPath(selected.id),
 							markdownPath: markdownPath(selected.id),
+							transition,
 						},
 					};
 				}
@@ -1100,18 +1125,24 @@ export default function grillTools(pi: ExtensionAPI) {
 						parentId: selected.id,
 						revision: selected.revision + 1,
 					};
+					const prepared = await prepareMaterializedSkill(pi, "grill", `--resume ${duplicate.id}`);
+					if (!prepared.ok) throw new Error(`Could not materialize grill: ${prepared.message}`);
 					await saveSnapshot(duplicate);
+					const transition = queueMaterializedSkill(pi, prepared, { deliverAs: "followUp" });
 					return {
 						content: [{ type: "text", text: snapshotText("Duplicated finalized grill session as a new active revision.", duplicate) }],
-						details: { selected: duplicate, action: "duplicate", sourceId: selected.id, jsonPath: jsonPath(duplicate.id) },
+						details: { selected: duplicate, action: "duplicate", sourceId: selected.id, jsonPath: jsonPath(duplicate.id), transition },
 					};
 				}
 
-				selected.status = "active";
-				await saveSnapshot(selected);
+				const resumed = { ...selected, status: "active" as const };
+				const prepared = await prepareMaterializedSkill(pi, "grill", `--resume ${resumed.id}`);
+				if (!prepared.ok) throw new Error(`Could not materialize grill: ${prepared.message}`);
+				await saveSnapshot(resumed);
+				const transition = queueMaterializedSkill(pi, prepared, { deliverAs: "followUp" });
 				return {
-					content: [{ type: "text", text: snapshotText("Resumed grill session in this conversation.", selected) }],
-					details: { selected, action: "resume", jsonPath: jsonPath(selected.id) },
+					content: [{ type: "text", text: snapshotText("Resumed grill session in this conversation.", resumed) }],
+					details: { selected: resumed, action: "resume", jsonPath: jsonPath(resumed.id), transition },
 				};
 			}
 		},

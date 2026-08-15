@@ -35,6 +35,10 @@ export interface HandoffPlan {
 const MARKER_LINE = /^[ \t]*<!--\s*SDD-Tracking\s*:.*-->[ \t]*$/i;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
+export function allowsFinalizeSpecContinuation(workflowMode: HandoffSnapshot["workflowMode"]): boolean {
+	return workflowMode === "standard";
+}
+
 export function slugify(text: string): string {
 	const slug = text
 		.normalize("NFKD")

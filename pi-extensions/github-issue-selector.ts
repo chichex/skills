@@ -8,7 +8,9 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Markdown } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { grillDispatchArgs, grillTransitionFailureMessage } from "./github-consumer-logic.ts";
 import { menuItems, selectMenu, type MenuItem } from "./lib/menu";
+import { continueWithMaterializedSkill } from "./workflow-orchestrator/same-session.ts";
 
 export interface IssueListItem {
 	number: number;
@@ -426,23 +428,23 @@ export default function (pi: ExtensionAPI) {
 			let relatedText: string | undefined;
 			let nextAction: "inspect" | "analyze" | "grill-prerequisite" | "grill" | "cancelled" = "cancelled";
 			let grillTarget: number | null = null;
-			const availableCommands = new Set(pi.getCommands().map((command) => command.name));
-			const grillCommand = availableCommands.has("skill:grill") ? "skill:grill" : undefined;
-			const grillPrompt = (instruction: string) => grillCommand ? `/${grillCommand} ${instruction}` : instruction;
-			const repoHint = params.repo?.trim() ? ` en el repo ${params.repo.trim()}` : "";
+			let grillTransition: Awaited<ReturnType<typeof continueWithMaterializedSkill>> | undefined;
+			const repository = params.repo?.trim() || undefined;
+			const queueGrill = async (number: number, prerequisiteOf?: number): Promise<void> => {
+				grillTransition = await continueWithMaterializedSkill(
+					pi,
+					"grill",
+					grillDispatchArgs(number, repository, prerequisiteOf),
+					{ deliverAs: "followUp" },
+				);
+			};
 
 			if (selectedAction === inspectChoice) {
 				nextAction = "inspect";
 			} else if (selectedAction === grillChoice) {
 				nextAction = "grill";
 				grillTarget = issue.number;
-				const instruction = [
-					`Grillá el issue #${issue.number} (${issue.title})${repoHint}.`,
-					"Antes de preguntar, usá los detalles completos del issue recién seleccionado y explorá el codebase.",
-					"No analices dependencias con otro modelo salvo que sea necesario para desambiguar el alcance.",
-					"No implementes hasta que confirme el entendimiento compartido.",
-				].join(" ");
-				pi.sendUserMessage(grillPrompt(instruction), { deliverAs: "steer" });
+				await queueGrill(issue.number);
 			} else if (selectedAction === analyzeChoice) {
 				nextAction = "analyze";
 				onUpdate?.({
@@ -527,28 +529,31 @@ export default function (pi: ExtensionAPI) {
 				if (prerequisite) {
 					nextAction = "grill-prerequisite";
 					grillTarget = prerequisite.number;
-					const instruction = [
-						`Grillá primero el issue #${prerequisite.number} (${prerequisite.title})${repoHint}.`,
-						`Fue detectado como prerrequisito del issue #${issue.number} (${issue.title}).`,
-						`Evidencia del análisis: ${prerequisite.reason}`,
-						"Antes de preguntar, obtené y leé sus detalles completos con gh issue view.",
-						"No implementes hasta que confirme el entendimiento compartido.",
-					].join(" ");
-					pi.sendUserMessage(grillPrompt(instruction), { deliverAs: "steer" });
+					await queueGrill(prerequisite.number, issue.number);
 				} else if (nextChoice === grillSelectedChoice) {
 					nextAction = "grill";
 					grillTarget = issue.number;
-					const instruction = `Grillá el issue #${issue.number} (${issue.title})${repoHint}. Usá sus detalles y el análisis de dependencias recién completado. No implementes hasta que confirme el entendimiento compartido.`;
-					pi.sendUserMessage(grillPrompt(instruction), { deliverAs: "steer" });
+					await queueGrill(issue.number);
 				}
 			}
 
 			const sections = [formatIssue(issue)];
 			if (relatedText) sections.push(relatedText);
 			sections.push(`Next action selected: ${nextAction}${grillTarget ? ` (#${grillTarget})` : ""}.`);
+			const transitionFailure = grillTransitionFailureMessage(
+				grillTransition && !grillTransition.ok ? grillTransition : undefined,
+			);
+			if (transitionFailure) sections.push(transitionFailure);
 			return {
 				content: [{ type: "text", text: sections.join("\n\n") }],
-				details: { selected: issue, relatedAnalysis, cancelled: nextAction === "cancelled", nextAction, grillTarget },
+				details: {
+					selected: issue,
+					relatedAnalysis,
+					cancelled: nextAction === "cancelled",
+					nextAction,
+					grillTarget,
+					grillTransition,
+				},
 			};
 		},
 	});
