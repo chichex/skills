@@ -74,8 +74,8 @@ test("dispatch maps every actionable route to one canonical downstream skill and
 		["join-grill", "grill", "new", [], "grill", "#14"],
 		["spec", "spec", "new", [], "sdd-spec", "#14"],
 		["join-spec", "spec", "new", [], "sdd-spec", "#14"],
-		["quick-run", "quick-run", "new", [], "quick-run", "__resolution__"],
-		["join-quick-run", "quick-run", "new", [], "quick-run", "__resolution__"],
+		["quick-run", "quick-run", "new", [], "quick-run", ""],
+		["join-quick-run", "quick-run", "new", [], "quick-run", ""],
 		["resume-grill", "grill", "resume", [artifact("grill")], "grill", "--resume grill-leaf-14"],
 		[
 			"spec-from-grill",
@@ -130,10 +130,6 @@ test("dispatch maps every actionable route to one canonical downstream skill and
 		assert.equal(result.ok, true, route);
 		if (!result.ok) continue;
 		assert.equal(result.request.skill.name, skill, route);
-		assert.equal(
-			result.request.skill.args,
-			expectedArgs === "__resolution__" ? JSON.stringify(result.request.resolution) : expectedArgs,
-			route,
-		);
+		assert.equal(result.request.skill.args, expectedArgs, route);
 	}
 });

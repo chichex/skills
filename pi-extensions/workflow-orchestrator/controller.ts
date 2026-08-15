@@ -43,6 +43,7 @@ export interface WorkflowControllerDependencies {
 	now?: () => number;
 	receiptTtlMs?: number;
 	maxPendingReceipts?: number;
+	triageAttemptTtlMs?: number;
 	directRunDependencies?: ResolveDirectRunDependencies;
 	isSddProject?: (cwd: string, dependencies?: ResolveDirectRunDependencies) => Promise<boolean>;
 	resolveDirectRunRequest?: (
@@ -147,6 +148,7 @@ export function requestSddRun(
 interface ActiveTriageAttempt {
 	sessionId: string;
 	status: "open" | "validating" | "claimed";
+	expiresAt: number;
 }
 
 type DispatchReceipt =
@@ -207,6 +209,9 @@ export function createWorkflowController(
 	const maxPendingReceipts = Number.isInteger(dependencies.maxPendingReceipts) && (dependencies.maxPendingReceipts ?? 0) > 0
 		? dependencies.maxPendingReceipts!
 		: 32;
+	const triageAttemptTtlMs = Number.isFinite(dependencies.triageAttemptTtlMs) && (dependencies.triageAttemptTtlMs ?? 0) > 0
+		? dependencies.triageAttemptTtlMs!
+		: 2 * 60 * 60_000;
 
 	function deactivateTerminal(): void {
 		const current = pi.getActiveTools();
@@ -219,6 +224,10 @@ export function createWorkflowController(
 		if (expected && activeAttempt !== expected) return;
 		activeAttempt = undefined;
 		deactivateTerminal();
+	}
+
+	function expireTriageAttempt(at = now()): void {
+		if (activeAttempt && activeAttempt.expiresAt <= at) endAttempt(activeAttempt);
 	}
 
 	function pruneReceipts(at = now()): void {
@@ -240,7 +249,13 @@ export function createWorkflowController(
 		}
 		receipts.set(id, { value: receipt, expiresAt: now() + receiptTtlMs });
 		try {
-			pi.sendUserMessage(`/${INTERNAL_DISPATCH_COMMAND} ${id}`, { deliverAs: "followUp" });
+			// ExtensionAPI is fire-and-forget. This catch only handles synchronous
+			// queue rejection (for example, a stale runtime); later failures are
+			// emitted by Pi as extension_error and the bounded receipt expires.
+			pi.sendUserMessage(`/${INTERNAL_DISPATCH_COMMAND} ${id}`, {
+				deliverAs: "followUp",
+				expandPromptTemplates: true,
+			});
 		} catch (error) {
 			receipts.delete(id);
 			throw error;
@@ -310,6 +325,7 @@ export function createWorkflowController(
 		pi.registerTool({
 			...terminal,
 			async execute(toolCallId, params, signal, onUpdate, context) {
+				expireTriageAttempt();
 				const attempt = activeAttempt;
 				if (!attempt || attempt.status !== "open") {
 					throw new Error("submit_workflow_resolution is not active, is validating, or was already consumed");
@@ -348,6 +364,10 @@ export function createWorkflowController(
 	pi.registerCommand(INTERNAL_DISPATCH_COMMAND, {
 		description: "Consume an internal one-shot SDD workflow receipt",
 		async handler(args, context) {
+			// expandPromptTemplates dispatches extension commands immediately, even
+			// while the terminal tool turn is still streaming. The detached command
+			// must wait for that run to settle before replacing its session.
+			await context.waitForIdle();
 			const receipt = args.trim();
 			if (!/^[A-Za-z0-9_-]+$/.test(receipt)) {
 				notify(context, "Invalid internal SDD workflow receipt");
@@ -389,14 +409,18 @@ export function createWorkflowController(
 		},
 	});
 
-	pi.on("session_start", async (_event, context) => {
+	pi.on("resources_discover", async (_event, context) => {
+		// Project awareness changes when Pi discovers/reloads resources, not on
+		// every user turn. Avoid spawning Git from the agent_settled hot path.
 		await syncLaunchToolAvailability(context.cwd);
 	});
-	pi.on("agent_settled", async (_event, context) => {
-		// Pi emits agent_settled only after the full run has no tool turn,
-		// retry, compaction, or follow-up left; dialog tools do not settle it.
-		if (activeAttempt && contextSessionId(context) === activeAttempt.sessionId) endAttempt(activeAttempt);
-		await syncLaunchToolAvailability(context.cwd);
+	pi.on("before_agent_start", (_event, context) => {
+		if (!activeAttempt || contextSessionId(context) === activeAttempt.sessionId) expireTriageAttempt();
+	});
+	pi.on("agent_settled", (_event, context) => {
+		// A triage can span multiple user turns (or resume after ESC). Keep its
+		// terminal tool until a terminal submission, session shutdown, or TTL.
+		if (!activeAttempt || contextSessionId(context) === activeAttempt.sessionId) expireTriageAttempt();
 	});
 	pi.on("session_shutdown", () => {
 		endAttempt();
@@ -414,6 +438,7 @@ export function createWorkflowController(
 			});
 		},
 		async beginIssueTriage(input, context) {
+			expireTriageAttempt();
 			if (!validIssueNumbers(input.issueNumbers)) {
 				return { ok: false, code: "invalid-issues", message: "Issue selection must contain 1-12 unique positive integers" };
 			}
@@ -425,7 +450,11 @@ export function createWorkflowController(
 				return { ok: false, code: "triage-already-active", message: "An issue triage attempt is already active" };
 			}
 
-			const attempt: ActiveTriageAttempt = { sessionId, status: "open" };
+			const attempt: ActiveTriageAttempt = {
+				sessionId,
+				status: "open",
+				expiresAt: now() + triageAttemptTtlMs,
+			};
 			activeAttempt = attempt;
 			const materialized = await materializeSkill(
 				"issue-triage",
@@ -450,12 +479,14 @@ export function createWorkflowController(
 				pi.setActiveTools([...activeTools, SUBMIT_WORKFLOW_RESOLUTION_TOOL]);
 			}
 			try {
+				// Synchronous queue acceptance only; asynchronous provider failures are
+				// surfaced by Pi as extension_error. The result is deliberately `queued`.
 				pi.sendUserMessage(materialized.content);
 			} catch (error) {
 				endAttempt(attempt);
 				return {
 					ok: false,
-					code: "triage-kickoff-failed",
+					code: "triage-queue-rejected",
 					message: error instanceof Error ? error.message : String(error),
 				};
 			}

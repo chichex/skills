@@ -59,7 +59,7 @@ The public entrypoints are `/issues` for triage, `/grills` for resuming intervie
 | Spec → Run | **Child session**, only after explicit authorization through **Run now**, `/sdd-run`, or **Run** in `/specs`. |
 | Triage → Quick-run | Clean **child session**; `quick-run` retains its own preflight, worktree, TDD, budget, and no-merge PR delivery. |
 
-For cross-project launches, the request uses the target project's root, repository, and artifact: the child is stored there, loads its project-scoped resources, and copies no origin transcript. Finding a spec does not run it, inspecting/cancelling does not switch sessions, and the workflow never merges PRs.
+For cross-project launches, the request uses the target project's root, repository, and artifact: the child is stored there, loads its project-scoped resources, and re-materializes the skill from the target's winning resource — including project overrides — while copying no origin transcript. Finding a spec does not run it, inspecting/cancelling does not switch sessions, and the workflow never merges PRs.
 
 Errors fail closed before the switch. If replacement already happened and kickoff or resource loading fails, the result is reported honestly as a `post-switch` error, retains the child reference, and never pretends the origin was rolled back.
 

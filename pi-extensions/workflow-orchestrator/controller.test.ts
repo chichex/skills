@@ -90,12 +90,15 @@ test("workflow orchestrator exposes a controller without globally activating the
 	);
 	assert.deepEqual(commands, ["__sdd-dispatch", "sdd-run"]);
 	assert.ok(events.includes("agent_settled"));
+	assert.ok(events.includes("before_agent_start"));
+	assert.ok(events.includes("resources_discover"));
 });
 
 test("launch_sdd_run is active only while the current project has a canonical SDD contract", async () => {
 	const handlers = new Map<string, (event: unknown, context: unknown) => unknown>();
 	let activeTools = ["read", "launch_sdd_run"];
 	let sddAware = false;
+	let awarenessChecks = 0;
 	const pi = {
 		events: createEventBus(),
 		registerTool() {},
@@ -107,15 +110,23 @@ test("launch_sdd_run is active only while the current project has a canonical SD
 		sendUserMessage() {},
 	};
 	orchestrator.createWorkflowController(pi as never, {
-		isSddProject: async () => sddAware,
+		isSddProject: async () => {
+			awarenessChecks += 1;
+			return sddAware;
+		},
 	} as never);
 	const context = { cwd: "/workspace/project", sessionManager: { getSessionId: () => "origin" } };
-	await handlers.get("session_start")!({}, context);
+	await handlers.get("resources_discover")!({}, context);
 	assert.deepEqual(activeTools, ["read"]);
 
 	sddAware = true;
+	await handlers.get("resources_discover")!({}, context);
+	assert.deepEqual(activeTools, ["read", "launch_sdd_run"], "a resource reload re-enables only the gated tool");
+	const checksBeforeSettle = handlers.has("agent_settled");
 	await handlers.get("agent_settled")!({}, context);
-	assert.deepEqual(activeTools, ["read", "launch_sdd_run"], "a contract created in-session re-enables only the gated tool");
+	assert.equal(checksBeforeSettle, true);
+	assert.equal(awarenessChecks, 2, "settling a turn does not spawn Git or reread the contract");
+	assert.deepEqual(activeTools, ["read", "launch_sdd_run"]);
 });
 
 test("beginIssueTriage materializes canonical issue-triage and activates the terminal tool only for that attempt", async () => {
@@ -149,9 +160,12 @@ test("beginIssueTriage materializes canonical issue-triage and activates the ter
 			sent.push({ content, options });
 		},
 	};
+	let now = 1_000;
 	const controller = orchestrator.createWorkflowController(pi as never, {
 		readSkillFile: async () => "---\nname: issue-triage\ndescription: Triage\n---\n# Issue triage\n",
 		stripSkillFrontmatter: fakeStripFrontmatter,
+		now: () => now,
+		triageAttemptTtlMs: 60_000,
 	});
 
 	const originContext = { cwd: "/workspace/skills", sessionManager: { getSessionId: () => "origin-session" } };
@@ -170,7 +184,14 @@ test("beginIssueTriage materializes canonical issue-triage and activates the ter
 	assert.equal(commands.has("__sdd-dispatch"), true);
 	assert.equal(eventHandlers.has("agent_settled"), true);
 	await eventHandlers.get("agent_settled")!({}, originContext);
-	assert.deepEqual(activeTools, ["read", "foreign_tool"], "settling without a terminal result removes only its tool");
+	assert.deepEqual(
+		activeTools,
+		["read", "foreign_tool", "submit_workflow_resolution"],
+		"a settled user turn does not destroy a multi-turn triage attempt",
+	);
+	now += 60_001;
+	await eventHandlers.get("before_agent_start")!({}, originContext);
+	assert.deepEqual(activeTools, ["read", "foreign_tool"], "an abandoned attempt expires before a later turn");
 });
 
 test("terminal resolution is one-shot and hands an opaque same-session receipt to the internal command", async () => {
@@ -180,6 +201,7 @@ test("terminal resolution is one-shot and hands an opaque same-session receipt t
 	const sent: Array<{ content: string; options?: { deliverAs?: string } }> = [];
 	const notifications: string[] = [];
 	const starts: unknown[] = [];
+	let settledBeforeDispatch = false;
 	const pi = {
 		events: createEventBus(),
 		registerTool(tool: { name: string; execute: (...args: unknown[]) => Promise<unknown> }) {
@@ -209,6 +231,7 @@ test("terminal resolution is one-shot and hands an opaque same-session receipt t
 		stripSkillFrontmatter: fakeStripFrontmatter,
 		createReceipt: () => "opaque-receipt",
 		startFreshStage: async (request: unknown) => {
+			assert.equal(settledBeforeDispatch, true, "the internal command waits for the terminal tool turn");
 			starts.push(request);
 			return { ok: true } as never;
 		},
@@ -233,7 +256,7 @@ test("terminal resolution is one-shot and hands an opaque same-session receipt t
 	assert.equal(sent.length, 2);
 	assert.deepEqual(sent[1], {
 		content: "/__sdd-dispatch opaque-receipt",
-		options: { deliverAs: "followUp" },
+		options: { deliverAs: "followUp", expandPromptTemplates: true },
 	});
 
 	await assert.rejects(
@@ -245,13 +268,14 @@ test("terminal resolution is one-shot and hands an opaque same-session receipt t
 	assert.ok(internal);
 	const commandContext = {
 		...originContext,
+		async waitForIdle() { settledBeforeDispatch = true; },
 		ui: { notify(message: string) { notifications.push(message); } },
 	};
 	await internal.handler("opaque-receipt", commandContext);
 	assert.equal(starts.length, 1);
 	assert.deepEqual(starts[0], {
 		resolution: workflowResolution(),
-		skill: { name: "quick-run", args: JSON.stringify(workflowResolution()) },
+		skill: { name: "quick-run", args: "" },
 	});
 
 	await internal.handler("opaque-receipt", commandContext);
@@ -381,6 +405,7 @@ test("pending receipts expire and stay bounded when queued follow-ups are abando
 	const commandContext = {
 		cwd: "/workspace/skills",
 		sessionManager: { getSessionId: () => "origin" },
+		async waitForIdle() {},
 		ui: { notify(message: string) { notifications.push(message); } },
 	};
 	await commands.get("__sdd-dispatch")!.handler("receipt-1", commandContext);
@@ -609,13 +634,14 @@ test("launch_sdd_run asks explicit authorization and bridges its direct request 
 	assert.equal(result.details?.authorized, true);
 	assert.deepEqual(sent, [{
 		content: "/__sdd-dispatch direct-receipt",
-		options: { deliverAs: "followUp" },
+		options: { deliverAs: "followUp", expandPromptTemplates: true },
 	}]);
 	assert.deepEqual(starts, [], "tools cannot mutate sessions directly");
 
 	const commandContext = {
 		cwd: "/workspace/skills",
 		sessionManager: { getSessionId: () => "origin-session" },
+		async waitForIdle() {},
 		ui: { notify() {} },
 	};
 	await commands.get("__sdd-dispatch")!.handler("direct-receipt", commandContext);

@@ -38,9 +38,17 @@ export type ResolveDirectRunResult =
 	| { ok: true; request: DirectRunRequestV1 }
 	| { ok: false; code: string; message: string };
 
+export interface ResolvedIssueDocument {
+	number: number;
+	url: string;
+	state: string;
+	body: string;
+}
+
 export interface ResolveDirectRunDependencies {
 	resolveGitRoot?: (path: string) => Promise<string>;
 	resolveRepository?: (root: string) => Promise<string>;
+	resolveIssue?: (root: string, repository: string, number: number) => Promise<ResolvedIssueDocument>;
 	readFile?: (path: string, encoding: "utf8") => Promise<string>;
 	realpath?: (path: string) => Promise<string>;
 	stat?: (path: string) => Promise<Pick<Stats, "isFile">>;
@@ -68,6 +76,22 @@ async function defaultRepository(root: string): Promise<string> {
 	return parsed.nameWithOwner;
 }
 
+async function defaultIssue(root: string, repository: string, number: number): Promise<ResolvedIssueDocument> {
+	const output = await execText(
+		"gh",
+		["issue", "view", String(number), "--repo", repository, "--json", "number,url,state,body"],
+		root,
+	);
+	const parsed = JSON.parse(output) as Partial<ResolvedIssueDocument>;
+	if (parsed.number !== number
+		|| typeof parsed.url !== "string"
+		|| typeof parsed.state !== "string"
+		|| typeof parsed.body !== "string") {
+		throw new Error("gh issue view returned an incomplete or mismatched issue");
+	}
+	return parsed as ResolvedIssueDocument;
+}
+
 function resolverFailure(code: string, message: string): ResolveDirectRunResult {
 	return { ok: false, code, message };
 }
@@ -82,6 +106,10 @@ function specTitle(markdown: string, path: string): string {
 function canonicalRepository(repository: string): string | null {
 	const value = repository.trim();
 	return /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(value) ? value : null;
+}
+
+function sameRepository(left: string, right: string): boolean {
+	return left.toLowerCase() === right.toLowerCase();
 }
 
 async function hasCanonicalContract(
@@ -131,6 +159,7 @@ export async function resolveDirectRunRequest(
 	if (target === "") return resolverFailure("missing-target", "Use /sdd-run <ruta|#NN>");
 	const gitRootPort = dependencies.resolveGitRoot ?? defaultGitRoot;
 	const repositoryPort = dependencies.resolveRepository ?? defaultRepository;
+	const issuePort = dependencies.resolveIssue ?? defaultIssue;
 	const realpathPort = dependencies.realpath ?? realpathDefault;
 	const statPort = dependencies.stat ?? statDefault;
 	const readPort = dependencies.readFile ?? readFileDefault;
@@ -149,32 +178,67 @@ export async function resolveDirectRunRequest(
 			return resolverFailure("invalid-target", "Issue targets must use #NN with a positive safe integer");
 		}
 		if (!await hasCanonicalContract(originRoot, readPort)) return contractFailure(originRoot);
+		let repo: string;
 		try {
-			const repo = canonicalRepository(await repositoryPort(originRoot));
-			if (!repo) throw new Error("repository is not owner/repo");
-			const request: DirectRunRequestV1 = {
-				version: 1,
-				kind: "sdd-run",
-				repo,
-				cwd: originRoot,
-				target: {
-					type: "issue",
-					canonicalReference: `${repo}#${number}`,
-					issue: { repository: repo, number },
-				},
-				summary: `Run the SDD spec stored in ${repo}#${number}.`,
-				evidence: [{ kind: "issue", reference: `${repo}#${number}`, detail: "Explicit direct sdd-run target" }],
-			};
-			const validation = validateDirectRunRequest(request);
-			return validation.ok
-				? { ok: true, request: validation.value }
-				: resolverFailure("invalid-request", validation.diagnostics.map(({ path, message }) => `${path} ${message}`).join("; "));
+			const resolved = canonicalRepository(await repositoryPort(originRoot));
+			if (!resolved) throw new Error("repository is not owner/repo");
+			repo = resolved;
 		} catch (error) {
 			return resolverFailure("unresolved-repository", `Resolve the GitHub repository before retrying: ${error instanceof Error ? error.message : String(error)}`);
 		}
+		let issueDocument: ResolvedIssueDocument;
+		try {
+			issueDocument = await issuePort(originRoot, repo, number);
+			if (issueDocument.number !== number) throw new Error("resolved issue number does not match the target");
+		} catch (error) {
+			return resolverFailure("unresolved-issue", `Verify that ${repo}#${number} exists before retrying: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		const inspected = inspectMarkdownArtifact({
+			kind: "markdown",
+			id: issueDocument.url,
+			expectedType: "spec",
+			location: "issue",
+			path: issueDocument.url,
+			markdown: issueDocument.body,
+			hostIssue: { repository: repo, number },
+		}, { repository: repo, projectRoot: originRoot });
+		if (inspected.type !== "spec"
+			|| inspected.format !== "canonical"
+			|| inspected.provenance !== "canonical"
+			|| inspected.identityProvenance !== "canonical"
+			|| !inspected.issue
+			|| inspected.issue.number !== number
+			|| !sameRepository(inspected.issue.repository, repo)
+			|| inspected.diagnostics.length > 0) {
+			const diagnostics = inspected.diagnostics.map(({ code }) => code).join(", ") || `${inspected.type}/${inspected.format}`;
+			return resolverFailure("invalid-spec", `Store one canonical SDD spec for ${repo}#${number} before retrying: ${diagnostics}`);
+		}
+		const request: DirectRunRequestV1 = {
+			version: 1,
+			kind: "sdd-run",
+			repo,
+			cwd: originRoot,
+			target: {
+				type: "issue",
+				canonicalReference: `${repo}#${number}`,
+				issue: { repository: repo, number },
+			},
+			summary: `Run the canonical SDD spec stored in ${repo}#${number}.`,
+			evidence: [{
+				kind: "issue",
+				reference: `${repo}#${number}`,
+				detail: `Canonical issue-hosted SDD spec (${inspected.state})`,
+			}],
+		};
+		const validation = validateDirectRunRequest(request);
+		return validation.ok
+			? { ok: true, request: validation.value }
+			: resolverFailure("invalid-request", validation.diagnostics.map(({ path, message }) => `${path} ${message}`).join("; "));
 	}
 	if (target.startsWith("#")) return resolverFailure("invalid-target", "Issue targets must use #NN with a positive safe integer");
 
+	// CA-7 defines relative spec targets against the project root, regardless of
+	// the subdirectory from which the Pi session was opened.
 	const candidate = isAbsolute(target) ? resolve(target) : resolve(originRoot, target);
 	let path: string;
 	let root: string;

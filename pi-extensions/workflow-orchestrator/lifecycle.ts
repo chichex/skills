@@ -32,6 +32,7 @@ export type StartFreshStageErrorCode =
 	| "session-switch-cancelled"
 	| "session-switch-failed"
 	| "target-resources-invalid"
+	| "target-skill-unavailable"
 	| "kickoff-failed";
 
 export interface SessionReference {
@@ -113,8 +114,11 @@ export interface ReplacementSessionContextLike {
 		cwd: string;
 		contextFiles?: Array<{ path: string; content: string }>;
 		skills?: Array<{
+			name?: string;
+			description?: string;
 			filePath: string;
 			sourceInfo?: { path?: string; scope?: string };
+			disableModelInvocation?: boolean;
 		}>;
 	};
 	/**
@@ -229,13 +233,13 @@ function pathIsInside(root: string, candidate: string): boolean {
 
 function replacementResourcesAreValid(
 	context: ReplacementSessionContextLike,
+	options: ReturnType<ReplacementSessionContextLike["getSystemPromptOptions"]>,
 	targetCwd: string,
 	sourceCwd: string,
 	sourceSessionId: string,
 ): boolean {
 	if (context.sessionManager.getSessionId() === sourceSessionId) return false;
 	if (resolve(context.cwd) !== targetCwd || resolve(context.sessionManager.getCwd()) !== targetCwd) return false;
-	const options = context.getSystemPromptOptions();
 	if (resolve(options.cwd) !== targetCwd) return false;
 	// Pi legitimately surfaces resources whose path lies outside targetCwd:
 	// loadProjectContextFiles walks from targetCwd up to the filesystem root
@@ -261,6 +265,24 @@ function replacementResourcesAreValid(
 	return true;
 }
 
+type PostSwitchFailureCode = "target-resources-invalid" | "target-skill-unavailable" | "kickoff-failed";
+
+function targetSkillCommands(
+	options: ReturnType<ReplacementSessionContextLike["getSystemPromptOptions"]>,
+): SkillCommandInfo[] {
+	return (options.skills ?? []).flatMap((skill) =>
+		typeof skill.name === "string"
+		&& skill.name.trim() !== ""
+		&& typeof skill.filePath === "string"
+		&& isAbsolute(skill.filePath)
+			? [{
+				name: `skill:${skill.name}`,
+				source: "skill",
+				sourceInfo: { ...skill.sourceInfo, path: skill.filePath },
+			}]
+			: []);
+}
+
 interface PostSwitchReceipt {
 	/**
 	 * Set as the very first statement once the replacement callback starts
@@ -272,7 +294,7 @@ interface PostSwitchReceipt {
 	 */
 	callbackEntered?: boolean;
 	target?: Required<Pick<TargetSessionReference, "sessionId" | "sessionFile">> & TargetSessionReference;
-	failure?: { code: "target-resources-invalid" | "kickoff-failed"; message: string };
+	failure?: { code: PostSwitchFailureCode; message: string };
 }
 
 interface ReplacementCallbackData {
@@ -284,7 +306,11 @@ interface ReplacementCallbackData {
 	canonicalReference?: string;
 	issueNumber?: number;
 	artifactPath?: string;
-	kickoff: string;
+	skill: { name: string; args: string };
+	resolution?: WorkflowResolutionV1;
+	directRequest?: unknown;
+	readSkillFile: (path: string, encoding: "utf8") => Promise<string>;
+	stripSkillFrontmatter?: (content: string) => string | Promise<string>;
 	receipt: PostSwitchReceipt;
 }
 
@@ -301,7 +327,7 @@ interface ReplacementCallbackData {
  */
 function notifyPostSwitchFailure(
 	context: ReplacementSessionContextLike,
-	code: "target-resources-invalid" | "kickoff-failed",
+	code: PostSwitchFailureCode,
 	message: string,
 ): void {
 	try {
@@ -314,8 +340,10 @@ function notifyPostSwitchFailure(
 function createReplacementCallback(data: ReplacementCallbackData) {
 	return async (context: ReplacementSessionContextLike): Promise<void> => {
 		data.receipt.callbackEntered = true;
+		let options: ReturnType<ReplacementSessionContextLike["getSystemPromptOptions"]>;
 		try {
-			if (!replacementResourcesAreValid(context, data.targetCwd, data.sourceCwd, data.sourceSessionId)) {
+			options = context.getSystemPromptOptions();
+			if (!replacementResourcesAreValid(context, options, data.targetCwd, data.sourceCwd, data.sourceSessionId)) {
 				data.receipt.failure = {
 					code: "target-resources-invalid",
 					message: "Replacement context does not expose the validated target cwd/resources",
@@ -353,8 +381,25 @@ function createReplacementCallback(data: ReplacementCallbackData) {
 			return;
 		}
 
+		const materialized = await materializeSkill(data.skill.name, data.skill.args, {
+			commands: targetSkillCommands(options),
+			readFile: data.readSkillFile,
+			stripFrontmatter: data.stripSkillFrontmatter,
+		});
+		if (!materialized.ok) {
+			data.receipt.failure = {
+				code: "target-skill-unavailable",
+				message: `${materialized.code}: ${materialized.message}`,
+			};
+			notifyPostSwitchFailure(context, data.receipt.failure.code, data.receipt.failure.message);
+			return;
+		}
+		const kickoff = data.resolution
+			? buildKickoff(materialized.content, data.resolution)
+			: buildDirectKickoff(materialized.content, data.directRequest);
+
 		try {
-			await context.sendUserMessage(data.kickoff);
+			await context.sendUserMessage(kickoff);
 		} catch (error) {
 			data.receipt.failure = {
 				code: "kickoff-failed",
@@ -472,17 +517,18 @@ export async function startFreshStage(
 		issueNumber = issue.number;
 	}
 
-	const materialized = await materializeSkill(request.skill.name, request.skill.args ?? "", {
+	// Preflight against the current resource set preserves the origin for the
+	// common missing/malformed global-skill failures. The replacement callback
+	// materializes again from the target session's winning resource set, so a
+	// project-scoped override in a cross-project launch is never ignored.
+	const preflightSkill = await materializeSkill(request.skill.name, request.skill.args ?? "", {
 		commands: dependencies.commands,
 		readFile: dependencies.readSkillFile ?? readFileDefault,
 		stripFrontmatter: dependencies.stripSkillFrontmatter,
 	});
-	if (!materialized.ok) {
-		return errorResult(materialized.code, "validation", materialized.message);
+	if (!preflightSkill.ok) {
+		return errorResult(preflightSkill.code, "validation", preflightSkill.message);
 	}
-	const kickoff = resolution
-		? buildKickoff(materialized.content, resolution)
-		: buildDirectKickoff(materialized.content, directRequest);
 
 	const realpathPort = dependencies.realpath ?? realpathDefault;
 	const statPort = dependencies.stat ?? statDefault;
@@ -552,10 +598,18 @@ export async function startFreshStage(
 		canonicalReference,
 		issueNumber,
 		artifactPath,
-		kickoff,
+		skill: { name: request.skill.name, args: request.skill.args ?? "" },
+		resolution,
+		directRequest,
+		readSkillFile: dependencies.readSkillFile ?? readFileDefault,
+		stripSkillFrontmatter: dependencies.stripSkillFrontmatter,
 		receipt,
 	});
 
+	// Pi's newSession API cannot change cwd. A session opened from a Git
+	// subdirectory therefore must use the staged switch path when the requested
+	// destination is the repository root; comparing Git roots here would leave
+	// the child in the wrong cwd and fail the target-resource contract.
 	if (source.cwd === targetCwd) {
 		let replacementResult: { cancelled: boolean };
 		try {

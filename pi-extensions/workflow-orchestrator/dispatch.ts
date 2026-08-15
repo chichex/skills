@@ -120,7 +120,10 @@ export function resolveWorkflowDispatch(input: unknown): WorkflowDispatchResult 
 			return request(resolution, "sdd-spec", `#${issue.number}`);
 		case "quick-run":
 		case "join-quick-run":
-			return request(resolution, "quick-run", JSON.stringify(resolution));
+			// The complete resolution is carried once in the escaped workflow
+			// envelope. Repeating attacker-controlled issue prose as raw skill args
+			// would create a second, unframed authority channel.
+			return request(resolution, "quick-run", "");
 		case "resume-grill": {
 			const grill = validatedGrill(resolution, issue, true);
 			return grill

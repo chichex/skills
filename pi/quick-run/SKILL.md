@@ -14,7 +14,7 @@ Ejecutá únicamente la ruta rápida que `issue-triage` ya diagnosticó y el usu
 /skill:quick-run <WorkflowResolutionV1 serializado>
 ```
 
-La entrada es el objeto completo emitido por triage, no un número `#NN`, una URL ni una paráfrasis. La capa de interacción puede transportar el JSON en el argumento o en el contexto inmediato, pero nunca reconstruir campos ausentes.
+La entrada es el objeto completo emitido por triage, no un número `#NN`, una URL ni una paráfrasis. En el rail orquestado de Pi llega una sola vez dentro de `<workflow-handoff version="1">`; el argumento del skill queda vacío para no duplicar prose no confiable fuera del envelope escapado. Una invocación manual puede transportar el JSON como argumento, pero nunca mezcles ambos canales ni reconstruyas campos ausentes.
 
 <!-- quick-run-doctrine:start -->
 ## Contrato normativo de quick-run

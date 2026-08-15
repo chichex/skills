@@ -57,7 +57,7 @@ Los entrypoints públicos son `/issues` para triage, `/grills` para retomar entr
 | Spec → Run | **Sesión hija**, sólo después de autorización explícita mediante **Ejecutar ahora**, `/sdd-run` o **Ejecutar** en `/specs`. |
 | Triage → Quick-run | **Sesión hija** limpia; `quick-run` conserva su propio preflight, worktree, TDD, presupuesto y PR sin merge. |
 
-En cross-project, el request usa la raíz, repo y artefacto del proyecto destino: la hija se almacena allí, carga sus recursos project-scoped y no copia el transcript de origen. Encontrar una spec no la ejecuta, inspeccionar/cancelar no cambia sesión y ningún flujo mergea PRs.
+En cross-project, el request usa la raíz, repo y artefacto del proyecto destino: la hija se almacena allí, carga sus recursos project-scoped y vuelve a materializar el skill desde el recurso ganador del destino —incluidos overrides del proyecto—, sin copiar el transcript de origen. Encontrar una spec no la ejecuta, inspeccionar/cancelar no cambia sesión y ningún flujo mergea PRs.
 
 Los errores son fail-closed antes del switch. Si el reemplazo ya ocurrió y falla el kickoff o la carga de recursos, se informa honestamente como error `post-switch`, con referencia a la hija y sin fingir rollback del origen.
 

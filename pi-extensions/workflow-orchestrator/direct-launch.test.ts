@@ -31,6 +31,15 @@ function issueRequest() {
 	};
 }
 
+function canonicalIssueSpec(number = 14): string {
+	return [
+		`# Spec — Issue ${number}`,
+		"<!-- Generada. Estado: aprobada -->",
+		`<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=#${number}; grill=none; superseded-by=none -->`,
+		"",
+	].join("\n");
+}
+
 function specRequest() {
 	return {
 		version: 1,
@@ -80,6 +89,12 @@ test("issue targets require an SDD-aware project and reject unsafe integers befo
 		const dependencies = {
 			resolveGitRoot: async () => root,
 			resolveRepository: async () => "chichex/skills",
+			resolveIssue: async (_root: string, _repo: string, number: number) => ({
+				number,
+				url: `https://github.com/chichex/skills/issues/${number}`,
+				state: "OPEN",
+				body: canonicalIssueSpec(number),
+			}),
 		};
 		const withoutContract = await orchestrator.resolveDirectRunRequest("#14", root, dependencies);
 		assert.deepEqual(withoutContract, {
@@ -97,6 +112,23 @@ test("issue targets require an SDD-aware project and reject unsafe integers befo
 		const unsafe = await orchestrator.resolveDirectRunRequest("#9007199254740993", root, dependencies);
 		assert.equal(unsafe.ok, false);
 		if (!unsafe.ok) assert.equal(unsafe.code, "invalid-target");
+
+		const missing = await orchestrator.resolveDirectRunRequest("#14", root, {
+			...dependencies,
+			resolveIssue: async () => { throw new Error("issue not found"); },
+		});
+		assert.equal(missing.ok, false);
+		if (!missing.ok) assert.equal(missing.code, "unresolved-issue");
+
+		const noSpec = await orchestrator.resolveDirectRunRequest("#14", root, {
+			...dependencies,
+			resolveIssue: async () => ({ number: 14, url: "https://example.test/14", state: "OPEN", body: "# Bug" }),
+		});
+		assert.equal(noSpec.ok, false);
+		if (!noSpec.ok) assert.equal(noSpec.code, "invalid-spec");
+
+		const verified = await orchestrator.resolveDirectRunRequest("#14", root, dependencies);
+		assert.equal(verified.ok, true);
 	} finally {
 		await rm(temporary, { recursive: true, force: true });
 	}
@@ -126,6 +158,7 @@ test("direct target resolution normalizes #NN and local/cross-project canonical 
 		const projectA = await realpath(temporary);
 		const projectB = join(projectA, "project-b");
 		await mkdir(join(projectA, ".sdd", "specs"), { recursive: true });
+		await mkdir(join(projectA, "packages", "api"), { recursive: true });
 		await mkdir(join(projectB, ".sdd", "specs"), { recursive: true });
 		const contract = [
 			"# Contract",
@@ -158,6 +191,14 @@ test("direct target resolution normalizes #NN and local/cross-project canonical 
 			async resolveRepository(root: string) {
 				return root === projectB ? "owner/project-b" : "chichex/skills";
 			},
+			async resolveIssue(_root: string, repo: string, number: number) {
+				return {
+					number,
+					url: `https://github.com/${repo}/issues/${number}`,
+					state: "OPEN",
+					body: canonicalIssueSpec(number),
+				};
+			},
 		};
 		const issue = await orchestrator.resolveDirectRunRequest("#14", projectA, dependencies);
 		assert.equal(issue.ok, true);
@@ -169,8 +210,9 @@ test("direct target resolution normalizes #NN and local/cross-project canonical 
 			});
 		}
 
-		const local = await orchestrator.resolveDirectRunRequest(".sdd/specs/local.md", projectA, dependencies);
-		assert.equal(local.ok, true);
+		const originSubdirectory = join(projectA, "packages", "api");
+		const local = await orchestrator.resolveDirectRunRequest(".sdd/specs/local.md", originSubdirectory, dependencies);
+		assert.equal(local.ok, true, "CA-7 resolves relative spec targets against the project root");
 		if (local.ok) {
 			assert.equal(local.request.cwd, projectA);
 			assert.ok(local.request.summary.length <= 240, "the transport summary stays bounded");
@@ -244,7 +286,17 @@ test("startDirectRun creates a fresh linked child whose first message is materia
 						getSessionId: () => "child-id",
 						getSessionFile: () => childFile,
 					},
-					getSystemPromptOptions: () => ({ cwd: project, contextFiles: [], skills: [] }),
+					getSystemPromptOptions: () => ({
+						cwd: project,
+						contextFiles: [],
+						skills: [{
+							name: "sdd-run",
+							description: "Run",
+							filePath: skillPath,
+							sourceInfo: { path: skillPath, scope: "temporary" },
+							disableModelInvocation: false,
+						}],
+					}),
 					async sendUserMessage(message: string) { kickoff = message; },
 				});
 				return { cancelled: false };
@@ -312,7 +364,13 @@ test("startDirectRun stages a cross-project child under the selected spec projec
 					getSystemPromptOptions: () => ({
 						cwd: target,
 						contextFiles: [{ path: join(target, "AGENTS.md"), content: "target" }],
-						skills: [],
+						skills: [{
+							name: "sdd-run",
+							description: "Run",
+							filePath: skillPath,
+							sourceInfo: { path: skillPath, scope: "global" },
+							disableModelInvocation: false,
+						}],
 					}),
 					async sendUserMessage() {},
 				});

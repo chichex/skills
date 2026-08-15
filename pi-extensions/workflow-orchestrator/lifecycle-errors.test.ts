@@ -346,8 +346,11 @@ function replacementContext(overrides: Record<string, unknown> = {}) {
 			cwd: TARGET,
 			contextFiles: [{ path: `${TARGET}/AGENTS.md`, content: "target" }],
 			skills: [{
+				name: "sdd-spec",
+				description: "Spec",
 				filePath: `${TARGET}/.agents/skills/spec/SKILL.md`,
 				sourceInfo: { path: `${TARGET}/.agents/skills/spec/SKILL.md`, scope: "project" },
+				disableModelInvocation: false,
 			}],
 		}),
 		async sendUserMessage() {},
@@ -375,7 +378,13 @@ test("accepts an ancestor context file scoped under a source project that is an 
 						// to the filesystem root: SOURCE is an ancestor of nestedTarget, so
 						// a context file living directly under SOURCE is not stale here.
 						contextFiles: [{ path: `${SOURCE}/AGENTS.md`, content: "ancestor" }],
-						skills: [],
+						skills: [{
+							name: "sdd-spec",
+							description: "Spec",
+							filePath: `${nestedTarget}/.pi/skills/sdd-spec/SKILL.md`,
+							sourceInfo: { path: `${nestedTarget}/.pi/skills/sdd-spec/SKILL.md`, scope: "project" },
+							disableModelInvocation: false,
+						}],
 					}),
 					async sendUserMessage() {
 						sends += 1;
@@ -406,8 +415,11 @@ test("accepts a project-scoped skill whose absolute path lies outside both sourc
 						// skill listed in the target project's .pi settings, even when the
 						// entry is an absolute/~ path outside the repo.
 						skills: [{
+							name: "sdd-spec",
+							description: "Spec",
 							filePath: "/opt/shared-skills/audit/SKILL.md",
 							sourceInfo: { path: "/opt/shared-skills/audit/SKILL.md", scope: "project" },
+							disableModelInvocation: false,
 						}],
 					}),
 					async sendUserMessage() {
@@ -435,10 +447,22 @@ test("still rejects a project-scoped skill left over from an unrelated source pr
 					getSystemPromptOptions: () => ({
 						cwd: TARGET,
 						contextFiles: [],
-						skills: [{
-							filePath: `${SOURCE}/.agents/skills/stale/SKILL.md`,
-							sourceInfo: { path: `${SOURCE}/.agents/skills/stale/SKILL.md`, scope: "project" },
-						}],
+						skills: [
+							{
+								name: "sdd-spec",
+								description: "Spec",
+								filePath: `${TARGET}/.pi/skills/sdd-spec/SKILL.md`,
+								sourceInfo: { path: `${TARGET}/.pi/skills/sdd-spec/SKILL.md`, scope: "project" },
+								disableModelInvocation: false,
+							},
+							{
+								name: "stale",
+								description: "Stale",
+								filePath: `${SOURCE}/.agents/skills/stale/SKILL.md`,
+								sourceInfo: { path: `${SOURCE}/.agents/skills/stale/SKILL.md`, scope: "project" },
+								disableModelInvocation: false,
+							},
+						],
 					}),
 					async sendUserMessage() {
 						sends += 1;
@@ -453,6 +477,32 @@ test("still rejects a project-scoped skill left over from an unrelated source pr
 	);
 	assert.equal(result.code, "target-resources-invalid");
 	assert.equal(sends, 0);
+});
+
+test("a missing target-project skill fails honestly after switch instead of reusing the origin override", async () => {
+	const notifications: string[] = [];
+	let sends = 0;
+	const result = await startFreshStage(
+		{ resolution: resolution(), skill: { name: "sdd-spec", args: "#13" } },
+		context({
+			async switchSession(_path: string, options: { withSession(ctx: unknown): Promise<void> }) {
+				await options.withSession(replacementContext({
+					getSystemPromptOptions: () => ({ cwd: TARGET, contextFiles: [], skills: [] }),
+					ui: { notify(message: string) { notifications.push(message); } },
+					async sendUserMessage() { sends += 1; },
+				}));
+				return { cancelled: false };
+			},
+		}) as never,
+		dependencies({
+			stageCrossProjectSession: async () => ({ sessionId: "child-id", sessionFile: CHILD_FILE, cwd: TARGET }),
+		}) as never,
+	);
+	assert.equal(result.code, "target-skill-unavailable");
+	assert.equal(result.phase, "post-switch");
+	assert.equal(result.originPreserved, false);
+	assert.equal(sends, 0);
+	assert.match(notifications[0] ?? "", /target-skill-unavailable/i);
 });
 
 test("escapes a literal </workflow-handoff> sentinel injected through a resolution field", async () => {
