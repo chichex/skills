@@ -12,6 +12,7 @@
 #   ./install.sh claude       # solo los de Claude Code
 #   ./install.sh opencode     # solo los de opencode
 #   ./install.sh pi           # solo los de Pi
+#   ./install.sh pi-clean --confirm  # elimina solo las copias Pi administradas
 #   ./install.sh codex        # solo los de Codex
 #
 # Overrides por variable de entorno (destinos):
@@ -36,9 +37,10 @@ CODEX_DEST="${CODEX_SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
 CODEX_CONFIG="${CODEX_CONFIG_FILE:-${CODEX_HOME:-$HOME/.codex}/config.toml}"
 CODEX_DEDUPLICATE="${CODEX_DEDUPLICATE_PI_SKILLS:-1}"
 WHICH="${1:-all}"
+CONFIRMATION="${2:-}"
 
-# 1. traer lo último (si es un clon git)
-if [ -d "$REPO_DIR/.git" ]; then
+# 1. traer lo último (si es un clon git). La limpieza nunca actualiza el repo.
+if [ "$WHICH" != "pi-clean" ] && [ -d "$REPO_DIR/.git" ]; then
   echo "→ git pull"
   git -C "$REPO_DIR" pull --ff-only
 fi
@@ -101,6 +103,40 @@ install_pi() {
   install_set "Pi skills" "$REPO_DIR/pi" "$PI_DEST"
   install_extensions "$REPO_DIR/pi-extensions" "$PI_EXTENSIONS_DEST"
   install_themes "$REPO_DIR/pi-themes" "$PI_THEMES_DEST"
+}
+
+clean_pi() {
+  if [ "$CONFIRMATION" != "--confirm" ]; then
+    echo "✗ Limpieza Pi no confirmada; no se borró nada." >&2
+    echo "  Para borrar únicamente las copias administradas: ./install.sh pi-clean --confirm" >&2
+    return 2
+  fi
+
+  echo "→ Limpieza Pi confirmada"
+  for skill in "$REPO_DIR/pi"/*/; do
+    [ -d "$skill" ] || continue
+    local base target; base="$(basename "$skill")"; target="$PI_DEST/$base"
+    if [ -e "$target" ] || [ -L "$target" ]; then
+      rm -rf "$target"
+      echo "   ✓ skill $base"
+    fi
+  done
+  for extension in "$REPO_DIR/pi-extensions"/*; do
+    [ -e "$extension" ] || continue
+    local base target; base="$(basename "$extension")"; target="$PI_EXTENSIONS_DEST/$base"
+    if [ -e "$target" ] || [ -L "$target" ]; then
+      rm -rf "$target"
+      echo "   ✓ extensión $base"
+    fi
+  done
+  for theme in "$REPO_DIR/pi-themes"/*.json; do
+    [ -f "$theme" ] || continue
+    local base target; base="$(basename "$theme")"; target="$PI_THEMES_DEST/$base"
+    if [ -e "$target" ] || [ -L "$target" ]; then
+      rm -f "$target"
+      echo "   ✓ theme $base"
+    fi
+  done
 }
 
 configure_codex_skill_precedence() {
@@ -191,8 +227,9 @@ case "$WHICH" in
   claude)   install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST" ;;
   opencode) install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
   pi)       install_pi ;;
+  pi-clean) clean_pi ;;
   codex)    install_codex ;;
-  *) echo "Argumento inválido: '$WHICH' (usá: all | both | codex | claude | opencode | pi)" >&2; exit 2 ;;
+  *) echo "Argumento inválido: '$WHICH' (usá: all | both | codex | claude | opencode | pi | pi-clean --confirm)" >&2; exit 2 ;;
 esac
 
 echo

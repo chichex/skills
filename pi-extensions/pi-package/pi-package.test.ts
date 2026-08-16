@@ -3,6 +3,8 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
 	access,
+	chmod,
+	copyFile,
 	lstat,
 	mkdir,
 	mkdtemp,
@@ -10,9 +12,10 @@ import {
 	readdir,
 	readlink,
 	rm,
+	writeFile,
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join, relative, resolve, sep } from "node:path";
+import { delimiter, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
@@ -377,6 +380,48 @@ async function realPiConfigDigest(): Promise<string> {
 	return hash.digest("hex");
 }
 
+async function absolutePathExists(path: string): Promise<boolean> {
+	return access(path).then(
+		() => true,
+		() => false,
+	);
+}
+
+async function fileTree(root: string): Promise<string[]> {
+	if (!await absolutePathExists(root)) return [];
+	const entries: string[] = [];
+	for (const path of await walkFiles(root)) {
+		entries.push(`${relative(root, path).split(sep).join("/")}\0${await readFile(path, "utf8")}`);
+	}
+	return entries.sort();
+}
+
+function runInstaller(script: string, args: string[], env: NodeJS.ProcessEnv) {
+	const result = spawnSync("bash", [script, ...args], {
+		env: { ...process.env, ...env },
+		encoding: "utf8",
+		maxBuffer: 10 * 1024 * 1024,
+		timeout: 30_000,
+	});
+	if (result.error) throw result.error;
+	return {
+		status: result.status,
+		stdout: result.stdout ?? "",
+		stderr: result.stderr ?? "",
+	};
+}
+
+async function seedManagedPath(source: string, destination: string): Promise<void> {
+	const info = await lstat(source);
+	if (info.isDirectory()) {
+		await mkdir(destination, { recursive: true });
+		await writeFile(join(destination, "managed-marker"), "managed\n");
+		return;
+	}
+	await mkdir(resolve(destination, ".."), { recursive: true });
+	await writeFile(destination, "managed\n");
+}
+
 function assertExpectedPackageCommands(commands: PiCommand[]): void {
 	assert.deepEqual(commands.map((command) => command.name).sort(), EXPECTED_COMMANDS);
 	assert.deepEqual(
@@ -515,4 +560,88 @@ test("native local install, discovery, deduplication, and removal stay isolated"
 		await rm(isolated.root, { recursive: true, force: true });
 	}
 	assert.equal(await realPiConfigDigest(), realConfigBefore, "real Pi configuration changed during isolated lifecycle");
+});
+
+test("Pi cleanup requires exact confirmation, never pulls, and removes only managed copies", async () => {
+	const root = await mkdtemp(join(tmpdir(), "chichex-pi-clean-"));
+	const fixtureRepo = join(root, "repo");
+	const fakeBin = join(root, "bin");
+	const skillsDest = join(root, "dest", "skills");
+	const extensionsDest = join(root, "dest", "extensions");
+	const themesDest = join(root, "dest", "themes");
+	const gitMarker = join(root, "git-called");
+	try {
+		await mkdir(join(fixtureRepo, ".git"), { recursive: true });
+		await mkdir(fakeBin, { recursive: true });
+		await copyFile(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+		await writeFile(
+			join(fakeBin, "git"),
+			"#!/bin/sh\nprintf called > \"$GIT_MARKER\"\nexit 97\n",
+		);
+		await chmod(join(fakeBin, "git"), 0o755);
+
+		const managedSkills = (await readdir(repoPath("pi"), { withFileTypes: true }))
+			.filter((entry) => entry.isDirectory())
+			.map((entry) => entry.name)
+			.sort();
+		const managedExtensions = (await readdir(repoPath("pi-extensions")))
+			.sort();
+		const managedThemes = (await readdir(repoPath("pi-themes"), { withFileTypes: true }))
+			.filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+			.map((entry) => entry.name)
+			.sort();
+
+		for (const name of managedSkills) {
+			await mkdir(join(fixtureRepo, "pi", name), { recursive: true });
+			await seedManagedPath(repoPath(`pi/${name}`), join(skillsDest, name));
+		}
+		for (const name of managedExtensions) {
+			await seedManagedPath(repoPath(`pi-extensions/${name}`), join(fixtureRepo, "pi-extensions", name));
+			await seedManagedPath(repoPath(`pi-extensions/${name}`), join(extensionsDest, name));
+		}
+		for (const name of managedThemes) {
+			await mkdir(join(fixtureRepo, "pi-themes"), { recursive: true });
+			await writeFile(join(fixtureRepo, "pi-themes", name), "{}\n");
+			await seedManagedPath(repoPath(`pi-themes/${name}`), join(themesDest, name));
+		}
+		await mkdir(join(skillsDest, "foreign-skill"), { recursive: true });
+		await writeFile(join(skillsDest, "foreign-skill", "keep"), "foreign\n");
+		await writeFile(join(extensionsDest, "foreign-extension.ts"), "foreign\n");
+		await writeFile(join(themesDest, "foreign-theme.json"), "foreign\n");
+
+		const env = {
+			HOME: join(root, "home"),
+			PI_SKILLS_DIR: skillsDest,
+			PI_EXTENSIONS_DIR: extensionsDest,
+			PI_THEMES_DIR: themesDest,
+			PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ""}`,
+			GIT_MARKER: gitMarker,
+		};
+		const before = await fileTree(join(root, "dest"));
+		const unconfirmed = runInstaller(join(fixtureRepo, "install.sh"), ["pi-clean"], env);
+		assert.equal(unconfirmed.status, 2, `${unconfirmed.stdout}\n${unconfirmed.stderr}`);
+		assert.match(`${unconfirmed.stdout}\n${unconfirmed.stderr}`, /pi-clean --confirm/);
+		assert.deepEqual(await fileTree(join(root, "dest")), before, "unconfirmed cleanup mutated a destination");
+		assert.equal(await absolutePathExists(gitMarker), false, "cleanup attempted git pull before confirmation");
+
+		const confirmed = runInstaller(join(fixtureRepo, "install.sh"), ["pi-clean", "--confirm"], env);
+		assert.equal(confirmed.status, 0, `${confirmed.stdout}\n${confirmed.stderr}`);
+		assert.match(confirmed.stdout, /Limpieza Pi/);
+		assert.equal(await absolutePathExists(gitMarker), false, "confirmed cleanup attempted git pull");
+		for (const name of managedSkills) assert.equal(await absolutePathExists(join(skillsDest, name)), false, name);
+		for (const name of managedExtensions) {
+			assert.equal(await absolutePathExists(join(extensionsDest, name)), false, name);
+		}
+		for (const name of managedThemes) assert.equal(await absolutePathExists(join(themesDest, name)), false, name);
+		assert.equal(await readFile(join(skillsDest, "foreign-skill", "keep"), "utf8"), "foreign\n");
+		assert.equal(await readFile(join(extensionsDest, "foreign-extension.ts"), "utf8"), "foreign\n");
+		assert.equal(await readFile(join(themesDest, "foreign-theme.json"), "utf8"), "foreign\n");
+
+		const repeated = runInstaller(join(fixtureRepo, "install.sh"), ["pi-clean", "--confirm"], env);
+		assert.equal(repeated.status, 0, `${repeated.stdout}\n${repeated.stderr}`);
+		assert.equal(await absolutePathExists(gitMarker), false, "idempotent cleanup attempted git pull");
+		assert.equal(await readFile(join(extensionsDest, "foreign-extension.ts"), "utf8"), "foreign\n");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
