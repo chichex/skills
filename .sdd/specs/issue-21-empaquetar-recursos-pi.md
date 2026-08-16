@@ -90,7 +90,7 @@ Mecanismo confirmado: **gate determinista + Pi aislado + smoke Git + protocolo p
 3. **CA-6:** con los mismos directorios temporales, ejecutar `pi install <ruta-absoluta>`, `pi list`, un probe RPC sin `-e` y `pi remove <ruta-absoluta>`; afirmar una sola entrada antes del remove y ninguna después. Comparar hash/listado de los paths reales de configuración antes y después para demostrar cero mutación.
 4. **CA-7:** tests shell o Node con destinos `PI_*_DIR` temporales: sembrar recursos administrados y ajenos, correr el modo sin confirmación y confirmado, repetirlo, y afirmar no-op/borrado/idempotencia/preservación. `bash -n install.sh` y shellcheck remoto cubren la sintaxis/calidad del cambio.
 5. **CA-8 y CA-10:** assertions ES/EN sobre README y `.sdd/project.md`, más `bash scripts/lint-frontmatter.sh`, `node --test pi-extensions/*/*.test.ts`, `node --test pi-extensions/harness-gate/harness-gate.test.ts`, el smoke contractual de extensiones, `bash -n install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh` y `git diff --check`. `shellcheck` queda como señal de CI según el contrato.
-6. **CA-9:** después de pushear la branch, ejecutar con configuración temporal `pi -e git:github.com/chichex/skills@<branch> --use-theme claude-code --list-models --offline` y el probe RPC equivalente; registrar comando, ref y salida exacta. Un error de red queda inconcluso y no se reintenta más de tres veces.
+6. **CA-9:** después de pushear la branch, ejecutar con configuración temporal `pi -e git:github.com/chichex/skills@<branch> --use-theme claude-code --list-models` y el probe RPC equivalente; fijar `PI_SKIP_VERSION_CHECK=1` y `PI_TELEMETRY=0`, sin provider ni sesión, permitiendo únicamente la red necesaria para clonar la fuente Git e instalar sus peers. Registrar comando, ref y salida exacta. Un error de red queda inconcluso y no se reintenta más de tres veces.
 7. **CA-11 — protocolo post-merge:** en un directorio descartable, fijar `HOME` y `PI_CODING_AGENT_DIR`; ejecutar `pi install git:github.com/chichex/skills`; comprobar `pi list`; iniciar RPC y validar los 20 comandos; comprobar `--use-theme claude-code`; ejecutar `pi update --extensions`; remover con `pi remove git:github.com/chichex/skills`; comprobar lista vacía. Registrar la evidencia antes de cerrar #8. Para hacer rollout en el home real, pedir autorización separada, migrar primero las copias manuales y luego repetir instalación + `/reload`.
 
 ## Riesgos y gaps
@@ -101,6 +101,9 @@ Mecanismo confirmado: **gate determinista + Pi aislado + smoke Git + protocolo p
 - RPC permite observar skills y comandos, pero no enumera directamente todos los tools; la equivalencia de tools queda respaldada por el inventario exacto de entrypoints y las suites existentes de cada extensión.
 - Pi 0.84.2 es la versión observada durante la especificación; el contrato todavía nombra 0.84.1 y debe reconciliarse en CA-10.
 - CA-11 queda pendiente hasta después del merge y debe mantenerse visible al decidir el cierre de #8.
+
+## Changelog de desviaciones
+- 2026-08-15 — **[DEVIATION] CA-9:** se retiró `--offline` sólo del smoke Git publicado. En Pi 0.84.2, `PI_OFFLINE` hace que una fuente Git temporal ausente se omita antes de clonar (`DefaultPackageManager.resolvePackageSources`); tres probes con configuración nueva salieron 0 pero expusieron únicamente `llama`. El mecanismo corregido mantiene `HOME`/`PI_CODING_AGENT_DIR` descartables, desactiva version check y telemetría, no usa provider ni sesión y conserva las mismas assertions de inventario. No cambia el alcance.
 
 <details><summary>Body original</summary>
 
