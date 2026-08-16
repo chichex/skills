@@ -645,3 +645,52 @@ test("Pi cleanup requires exact confirmation, never pulls, and removes only mana
 		await rm(root, { recursive: true, force: true });
 	}
 });
+
+function assertNativePackageDocumentation(document: string): void {
+	for (const literal of [
+		"pi install git:github.com/chichex/skills",
+		"pi install git:github.com/chichex/skills -l",
+		"pi update --extensions",
+		"pi remove git:github.com/chichex/skills",
+		"./install.sh pi-clean --confirm",
+		"pi --use-theme claude-code",
+		".sdd/specs",
+		".sdd/grills",
+	]) {
+		assert.ok(document.includes(literal), `missing package documentation: ${literal}`);
+	}
+	assert.match(document, /git:github\.com\/chichex\/skills@<[^>]+>/);
+}
+
+test("Spanish and English READMEs document the safe native package lifecycle", async () => {
+	const spanish = await readFile(repoFile("README.md"), "utf8");
+	const english = await readFile(repoFile("README.en.md"), "utf8");
+	assertNativePackageDocumentation(spanish);
+	assertNativePackageDocumentation(english);
+
+	assert.match(spanish, /revis[aá].*(c[oó]digo|fuente).*antes de instalar/is);
+	assert.match(spanish, /no mantengas.*Pi Package.*install\.sh pi/is);
+	assert.match(spanish, /pin.*no avanz/is);
+	assert.match(spanish, /global.*por defecto.*-l.*local/is);
+	assert.match(spanish, /legacy|manual/is);
+
+	assert.match(english, /review.*source.*before install/is);
+	assert.match(english, /do not keep.*Pi Package.*install\.sh pi/is);
+	assert.match(english, /pin.*do not advance/is);
+	assert.match(english, /global.*by default.*-l.*local/is);
+	assert.match(english, /legacy|manual/is);
+});
+
+test("autonomy contract and CI expose the verified Pi 0.84.2 package harness", async () => {
+	const contract = await readFile(repoFile(".sdd/project.md"), "utf8");
+	const workflow = await readFile(repoFile(".github/workflows/ci.yml"), "utf8");
+
+	assert.doesNotMatch(contract, /no hay `package\.json`/);
+	assert.match(contract, /package\.json.*Pi Package/is);
+	assert.match(contract, /Pi `0\.84\.2`/);
+	assert.match(contract, /node --test pi-extensions\/pi-package\/pi-package\.test\.ts/);
+	assert.match(contract, /HOME.*PI_CODING_AGENT_DIR.*tempor/is);
+	assert.match(contract, /## Politicas de generacion\nSin politicas activas\./);
+	assert.match(contract, /## Decisiones humanas\n/);
+	assert.match(workflow, /@earendil-works\/pi-coding-agent@0\.84\.2/);
+});

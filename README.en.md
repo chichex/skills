@@ -113,7 +113,51 @@ The `claude/` skills can be installed as a Claude Code plugin, without cloning t
 
 The plugin exposes every skill in `claude/` and updates itself with each push to the repo (no pinned version: Claude Code versions by commit, so each push arrives as an automatic update).
 
-### All harnesses: with `install.sh`
+### Pi: as a native Pi Package (recommended)
+
+> **Security:** a Pi Package runs extensions and skills with full system access. Review the source in this repository before installing it.
+
+Installation is global by default, with updates and rollback managed by Pi:
+
+```bash
+pi install git:github.com/chichex/skills
+pi update --extensions
+pi remove git:github.com/chichex/skills
+```
+
+For an optional project-local installation, add `-l`; Pi records it in `.pi/settings.json`, and the project must be trusted:
+
+```bash
+pi install git:github.com/chichex/skills -l
+```
+
+You can pin a reproducible version to a tag or commit:
+
+```bash
+pi install git:github.com/chichex/skills@<tag-or-commit>
+```
+
+Pins do not advance with `pi update --extensions`: the update reconciles the checkout to the pinned ref. Install a different ref explicitly to move it; without a pin, the source follows the repository's default branch.
+
+The package makes the `claude-code` theme available but does not change your saved selection. Choose it manually through `/settings`, or for one run only:
+
+```bash
+pi --use-theme claude-code
+```
+
+If you previously installed Pi by copying this repository's resources, migrate first from an up-to-date checkout:
+
+```bash
+./install.sh pi-clean            # refuses and deletes nothing
+./install.sh pi-clean --confirm  # removes only names managed by this repository
+pi install git:github.com/chichex/skills
+```
+
+Cleanup honors `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR`, and `PI_THEMES_DIR`, is idempotent, never runs `git pull`, and preserves resources with other names. Do not keep the Pi Package and copies created by `./install.sh pi` at the same time: they would duplicate skills, tools, or commands.
+
+`pi remove` removes the package source and its loaded resources, but it does not delete `.sdd/specs`, `.sdd/grills`, sessions, snapshots, or other generated data.
+
+### All harnesses: with `install.sh` (Pi legacy/manual)
 
 Clone the repo and run `install.sh`. It runs `git pull` and copies each skill—plus Pi extensions, both standalone `.ts` files and directories with `index.ts`—into its tool's folder **without wiping anything else you already have** (it only adds/updates items from this repo):
 
@@ -148,7 +192,7 @@ cp pi-themes/*.json    ~/.pi/agent/themes/
 
 Once installed, Codex invokes them as `$grill`, `$code-review`, `$sdd-spec`, and so on, or loads them from their `description` — except for `sdd-run` and `quick-run`: their `agents/openai.yaml` sidecars declare `policy.allow_implicit_invocation: false`, so they only run when explicitly invoked with `$sdd-run` or `$quick-run`. Claude Code/opencode use their usual commands. Pi uses `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec`, and equivalents.
 
-**Pi rollout:** run `./install.sh pi` only with explicit authorization, because it updates the checkout and replaces the managed global copies; then run `/reload`. Already-open sessions do not receive the new code until they reload. Interactive testing requires a persisted session and two disposable repositories; real stages require a local/fake provider or explicitly authorized provider usage. The autonomous smoke test runs neither the installer nor providers.
+**Pi legacy/manual alternative:** `./install.sh pi` remains available for compatibility, but the Pi Package is the recommended path. Run the installer only with explicit authorization because it updates the checkout and replaces the managed global copies; then run `/reload`. Already-open sessions do not receive the new code until they reload. Do not use it while the native package remains installed. Claude Code, Codex, and OpenCode installation behavior is unchanged. Interactive testing uses persisted sessions and disposable repositories; real stages require a local/fake provider or explicitly authorized provider usage. The autonomous smoke uses temporary configuration and no providers.
 
 ## Credits
 
