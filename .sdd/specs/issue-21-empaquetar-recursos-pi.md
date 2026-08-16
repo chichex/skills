@@ -1,6 +1,6 @@
 # Spec — Empaquetar los recursos de Pi como paquete Git nativo
-<!-- Generada por /skill:sdd-spec el 2026-08-15. Fuente: issue #21. Estado: aprobada -->
-<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=#21; grill=none; superseded-by=none -->
+<!-- Generada por /skill:sdd-spec el 2026-08-15. Fuente: issue #21. Estado: implementada -->
+<!-- SDD-Tracking: version=1; type=spec; state=implemented; issue=#21; grill=none; superseded-by=none -->
 
 ## Contexto
 Pi 0.84.2 soporta Pi Packages desde Git mediante un manifest `pi` en `package.json`, pero este repo todavía no tiene `package.json` y `pi -e ./` falla intentando cargar la raíz como una extensión. Los recursos destinados a Pi viven en tres seams existentes: 12 skills bajo `pi/`, 10 factories de extensión bajo `pi-extensions/` y el theme `pi-themes/claude-code.json`; `install.sh` hoy los copia a ubicaciones globales. Claude Code ya ofrece una instalación administrada mediante `.claude-plugin/`, por lo que #21 agrega la vía nativa equivalente para Pi sin cambiar el comportamiento de esos recursos.
@@ -157,3 +157,20 @@ Unidad adicional requerida antes de cerrar #8.
 
 
 </details>
+
+## Resultado de ejecucion (2026-08-15 · HEAD f867731)
+| CA | Estado | Evidencia |
+|---|---|---|
+| CA-1 | verificado | `node --test pi-extensions/pi-package/pi-package.test.ts`: 9/9; rojo inicial 0/2 por `package.json` ausente, luego metadata privada Git-only verde; receipt: manifest nuevo y lockfiles ausentes. |
+| CA-2 | verificado | Gate focalizado 9/9: peers exactos `*`, sin `dependencies` ni bundled deps; autotest de peer incorrecto verde. |
+| CA-3 | verificado | Gate focalizado 9/9: censo exacto de 12 skills, 10 factories con `export default` y `claude-code.json`; helpers/tests excluidos. |
+| CA-4 | verificado | Rojo 2/6 por bloque `pi` ausente y carga de raíz fallida → verde 9/9; autotests diagnostican recurso omitido, factory nueva, helper falso, metadata pública y peer incorrecto. |
+| CA-5 | verificado | Gate focalizado: `pi -e ./` aislado devolvió exactamente 20 comandos, cero `extension_error`; smoke `--use-theme claude-code --list-models --offline` terminó 0. |
+| CA-6 | verificado | Gate focalizado: dos `pi install <ruta>` dejaron una entrada, `pi list` + RPC descubrieron 20 comandos, `pi remove` dejó lista vacía; digest de configuración real sin cambios. |
+| CA-7 | verificado (aislado) | Rojo 6/7 porque `pi-clean` intentaba `git pull` → verde 9/9: rechazo sin `--confirm`, borrado acotado confirmado, idempotencia, overrides `PI_*_DIR` y recursos ajenos preservados; home real no tocado. |
+| CA-8 | verificado | Assertions ES/EN rojas 7/9 → verdes 9/9; `workflow-orchestrator/readme-gate.test.ts`: 2/2; lifecycle, seguridad, migración, pins, rollback, theme y prohibición de coexistencia documentados. |
+| CA-9 | verificado con desviación documentada | `pi -e git:github.com/chichex/skills@sdd/issue-21-pi-package`: intento 1 del mecanismo corregido, theme status 0, 20 comandos RPC y cero `extension_error`. Tres probes previos con `--offline` devolvieron sólo `llama`; ver changelog. |
+| CA-10 | verificado local · pendiente CI | `node --test pi-extensions/*/*.test.ts`: 194/194; harness gate 25/25; frontmatter 47/47; `bash -n`, drift (63 líneas), smoke legacy (13 candidatos), `git diff --check` y diff contra base verdes. `shellcheck` queda pendiente del job remoto declarado. |
+| CA-11 | pendiente humano post-merge | Ejecutar el protocolo exacto de esta spec contra `main`, registrar evidencia en #21/#8 y recién entonces decidir el cierre del epic; no se tocó el home real. |
+
+Sin politicas de generacion activas. La primera regresion completa detecto y corrigio dos garantias documentales retiradas accidentalmente; la corrida final sobre `f867731` termino 194/194 verde.
