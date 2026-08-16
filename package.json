@@ -1,0 +1,41 @@
+{
+  "name": "chichex-skills",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/chichex/skills.git",
+  "homepage": "https://github.com/chichex/skills",
+  "keywords": [
+    "pi-package"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./pi-extensions/ask-user-question/index.ts",
+      "./pi-extensions/claude-tool-renderer.ts",
+      "./pi-extensions/github-issue-selector.ts",
+      "./pi-extensions/github-issues.ts",
+      "./pi-extensions/github-prs/index.ts",
+      "./pi-extensions/grill-tools/index.ts",
+      "./pi-extensions/inline-skill-autocomplete/index.ts",
+      "./pi-extensions/visual-footer.ts",
+      "./pi-extensions/warp-status.ts",
+      "./pi-extensions/workflow-orchestrator/index.ts"
+    ],
+    "skills": [
+      "./pi"
+    ],
+    "themes": [
+      "./pi-themes"
+    ]
+  }
+}

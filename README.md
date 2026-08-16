@@ -111,7 +111,51 @@ Los skills de `claude/` se pueden instalar como plugin de Claude Code, sin clona
 
 El plugin expone todos los skills de `claude/` y se actualiza solo con cada push al repo (sin versión pineada: Claude Code versiona por commit y cada push llega como update automático).
 
-### Todos los harnesses: con `install.sh`
+### Pi: como Pi Package nativo (recomendado)
+
+> **Seguridad:** un Pi Package ejecuta extensiones y skills con acceso completo al sistema. Revisá el código fuente de este repo antes de instalarlo.
+
+La instalación nativa es global por defecto y deja actualizaciones y rollback a cargo de Pi:
+
+```bash
+pi install git:github.com/chichex/skills
+pi update --extensions
+pi remove git:github.com/chichex/skills
+```
+
+Para una instalación project-local opcional, agregá `-l`; Pi la registra en `.pi/settings.json` y el proyecto debe ser de confianza:
+
+```bash
+pi install git:github.com/chichex/skills -l
+```
+
+Podés fijar una versión reproducible por tag o commit:
+
+```bash
+pi install git:github.com/chichex/skills@<tag-o-commit>
+```
+
+Los pins no avanzan con `pi update --extensions`: el update reconcilia el checkout al ref fijado. Para moverlo, instalá explícitamente otro ref; sin pin, la fuente sigue el branch default del repo.
+
+El package deja disponible el theme `claude-code`, pero no cambia tu selección guardada. Elegilo manualmente desde `/settings` o sólo para una corrida:
+
+```bash
+pi --use-theme claude-code
+```
+
+Si antes instalaste Pi mediante las copias de este repo, migrá primero desde un checkout actualizado:
+
+```bash
+./install.sh pi-clean            # rechaza la operación y no borra nada
+./install.sh pi-clean --confirm  # elimina sólo los nombres administrados por este repo
+pi install git:github.com/chichex/skills
+```
+
+La limpieza respeta `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR` y `PI_THEMES_DIR`, es idempotente, no hace `git pull` y preserva recursos con otros nombres. No mantengas simultáneamente el Pi Package y las copias creadas por `./install.sh pi`: duplicarían skills, tools o comandos.
+
+`pi remove` retira la fuente y sus recursos cargados, pero no borra `.sdd/specs`, `.sdd/grills`, sesiones, snapshots ni otros datos generados.
+
+### Todos los harnesses: con `install.sh` (Pi legacy/manual)
 
 Cloná el repo y corré `install.sh`. Hace `git pull` y copia cada skill —y las extensiones de Pi, tanto archivos `.ts` como carpetas con `index.ts`— a la carpeta de su herramienta **sin pisar lo demás que ya tengas** (solo agrega/actualiza lo que viene de este repo):
 
@@ -146,7 +190,7 @@ cp pi-themes/*.json    ~/.pi/agent/themes/
 
 Una vez instalados, Codex los invoca como `$grill`, `$code-review`, `$sdd-spec`, etc., o los carga según su `description` — salvo `sdd-run` y `quick-run`: sus sidecars `agents/openai.yaml` declaran `policy.allow_implicit_invocation: false`, así que sólo se ejecutan al invocarlos explícitamente con `$sdd-run` o `$quick-run`. Claude Code/opencode usan sus comandos habituales. En Pi se usan como `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec` y equivalentes.
 
-**Rollout de Pi:** corré `./install.sh pi` sólo con autorización explícita, porque actualiza el checkout y reemplaza las copias globales administradas; después ejecutá `/reload`. Las sesiones ya abiertas no reciben el código nuevo hasta recargar. Para la prueba interactiva usá una sesión persistida y dos repos descartables; los stages reales requieren un provider local/falso o consumo de proveedor explícitamente autorizado. El smoke autónomo no corre el instalador ni providers.
+**Alternativa legacy/manual de Pi:** `./install.sh pi` se conserva para compatibilidad, pero el Pi Package es la vía recomendada. Corré el instalador sólo con autorización explícita, porque actualiza el checkout y reemplaza las copias globales administradas; después ejecutá `/reload`. Las sesiones ya abiertas no reciben el código nuevo hasta recargar. No lo uses si el package nativo sigue instalado. Las instalaciones de Claude Code, Codex y OpenCode no cambian. Para la prueba interactiva usá una sesión persistida y repos descartables; los stages reales requieren un provider local/falso o consumo de proveedor explícitamente autorizado. El smoke autónomo usa configuración temporal y no ejecuta providers.
 
 ## Créditos
 
