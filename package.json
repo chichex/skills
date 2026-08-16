@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "license": "MIT",
   "repository": "https://github.com/chichex/skills.git",
   "homepage": "https://github.com/chichex/skills",

@@ -14,6 +14,7 @@ import {
 	rm,
 	writeFile,
 } from "node:fs/promises";
+import { builtinModules } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +25,7 @@ interface PiPackageManifest {
 	version?: unknown;
 	private?: unknown;
 	type?: unknown;
+	engines?: unknown;
 	license?: unknown;
 	repository?: unknown;
 	homepage?: unknown;
@@ -41,6 +43,9 @@ interface ProductionInventory {
 	themes: string[];
 	factoryCandidates: string[];
 	factories: string[];
+	// package (bare specifier) -> ejemplo de archivo que lo importa. Solo imports
+	// externos (no relativos, no builtins de Node) de codigo TRACKEADO en git.
+	externalImports: Record<string, string>;
 }
 
 interface IsolatedPiEnvironment {
@@ -80,18 +85,14 @@ const EXPECTED_SKILLS = [
 
 const EXPECTED_THEMES = ["./pi-themes/claude-code.json"];
 
-const EXPECTED_EXTENSIONS = [
-	"./pi-extensions/ask-user-question/index.ts",
-	"./pi-extensions/claude-tool-renderer.ts",
-	"./pi-extensions/github-issue-selector.ts",
-	"./pi-extensions/github-issues.ts",
-	"./pi-extensions/github-prs/index.ts",
-	"./pi-extensions/grill-tools/index.ts",
-	"./pi-extensions/inline-skill-autocomplete/index.ts",
-	"./pi-extensions/visual-footer.ts",
-	"./pi-extensions/warp-status.ts",
-	"./pi-extensions/workflow-orchestrator/index.ts",
-];
+// No hay EXPECTED_EXTENSIONS: a diferencia de skills/themes (donde el manifest
+// solo declara el directorio "./pi" / "./pi-themes" completo, sin listar
+// archivos), el manifest de extensiones YA es una lista explicita por archivo
+// (manifest.pi.extensions). Esa lista, comparada directamente contra el arbol
+// (inventory.factories, ver validatePiPackage mas abajo), es la unica fuente
+// de verdad que hace falta: agregar una tercera constante hardcodeada con el
+// mismo contenido solo duplicaba el mantenimiento sin sumar seguridad
+// (hallazgo F10 del review de PR #22).
 
 const EXPECTED_EXTENSION_COMMANDS = [
 	"__sdd-dispatch",
@@ -106,7 +107,155 @@ const EXPECTED_EXTENSION_COMMANDS = [
 
 const EXPECTED_SKILL_COMMANDS = EXPECTED_SKILLS.map((path) => `skill:${path.split("/").at(-2)}`).sort();
 const EXPECTED_COMMANDS = [...EXPECTED_EXTENSION_COMMANDS, ...EXPECTED_SKILL_COMMANDS].sort();
-const FACTORY_EXPORT = /\bexport\s+default\s+(?:async\s+)?function\b/;
+
+// Deteccion de "esto es un entrypoint de extension de Pi" a partir del fuente.
+// Cubre las formas de default-export que jiti/Pi aceptan como factory
+// (function, async function, arrow, y un identificador que en el propio
+// archivo se liga a una funcion) e ignora comentarios y literales de string
+// para no confundir texto de ejemplo con codigo real (hallazgo F5 del review
+// de PR #22).
+//
+// stripComments elimina SOLO comentarios (// y /* */) sin tocar el contenido
+// de strings/template literals: recorre el fuente caracter a caracter
+// llevando el estado string-vs-codigo, en vez de usar una sola regex, porque
+// distinguir "// dentro de un string" (p.ej. un specifier de import como
+// "http://algo") de "// que abre un comentario" no se puede resolver bien
+// con una regex simple. Limitacion conocida y aceptada: no distingue un
+// literal de regex (`/algo/g`) de un comentario si aparece pegado a otro
+// `/` fuera de contexto de string — no ocurre en el estilo de este repo (sin
+// regex literales en posicion de module specifier).
+//
+// externalImportPeers (mas abajo) usa stripComments a secas: el contenido
+// del string ES el module specifier que necesita leer, y vaciarlo lo rompe
+// (bug real detectado en review: la primera version de este fix reusaba
+// stripCommentsAndStringLiterals -que vacia strings- para el censo de
+// imports, asi que "zod" en `import { z } from "zod"` quedaba vaciado ANTES
+// de que IMPORT_SPECIFIER lo viera, y el censo devolvia {} siempre, para
+// cualquier archivo). hasFactoryExport, en cambio, SI quiere vaciar strings
+// ademas de sacar comentarios (para no confundir un ejemplo de codigo dentro
+// de un string/template con una factory real) — por eso compone
+// stripCommentsAndStringLiterals = stripComments + blanqueo de strings,
+// aplicado en ESE orden para no tener que lidiar con comentarios dentro de
+// strings en la misma pasada (hallazgo F3 del review de PR #22).
+function stripComments(source: string): string {
+	let out = "";
+	let i = 0;
+	const n = source.length;
+	while (i < n) {
+		const ch = source[i];
+		const next = source[i + 1];
+		if (ch === "/" && next === "/") {
+			while (i < n && source[i] !== "\n") i++;
+			continue;
+		}
+		if (ch === "/" && next === "*") {
+			i += 2;
+			while (i < n && !(source[i] === "*" && source[i + 1] === "/")) i++;
+			i = Math.min(i + 2, n);
+			continue;
+		}
+		if (ch === '"' || ch === "'" || ch === "`") {
+			const quote = ch;
+			out += ch;
+			i++;
+			while (i < n && source[i] !== quote) {
+				if (source[i] === "\\" && i + 1 < n) {
+					out += source[i] + source[i + 1];
+					i += 2;
+					continue;
+				}
+				out += source[i];
+				i++;
+			}
+			if (i < n) {
+				out += source[i];
+				i++;
+			}
+			continue;
+		}
+		out += ch;
+		i++;
+	}
+	return out;
+}
+
+function stripCommentsAndStringLiterals(source: string): string {
+	return stripComments(source)
+		.replace(/`(?:\\.|[^`\\])*`/g, "``")
+		.replace(/"(?:\\.|[^"\\])*"/g, '""')
+		.replace(/'(?:\\.|[^'\\])*'/g, "''");
+}
+
+const DEFAULT_EXPORT_FUNCTION = /^\s*export\s+default\s+(?:async\s+)?function\b/m;
+const DEFAULT_EXPORT_ARROW = /^\s*export\s+default\s+(?:async\s+)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/m;
+const DEFAULT_EXPORT_IDENTIFIER = /^\s*export\s+default\s+([A-Za-z_$][\w$]*)\s*;?\s*$/m;
+
+function bindsFunctionValue(source: string, name: string): boolean {
+	const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const pattern = new RegExp(
+		`\\b(?:const|let|var)\\s+${escaped}\\s*(?::[^=]+)?=\\s*(?:async\\s*)?` +
+			`(?:function\\b|\\([^)]*\\)\\s*(?::[^=]+)?=>|[A-Za-z_$][\\w$]*\\s*=>)` +
+			`|\\bfunction\\s+${escaped}\\s*\\(`,
+	);
+	return pattern.test(source);
+}
+
+function hasFactoryExport(rawSource: string): boolean {
+	const source = stripCommentsAndStringLiterals(rawSource);
+	if (DEFAULT_EXPORT_FUNCTION.test(source)) return true;
+	if (DEFAULT_EXPORT_ARROW.test(source)) return true;
+	const identifierMatch = source.match(DEFAULT_EXPORT_IDENTIFIER);
+	return identifierMatch ? bindsFunctionValue(source, identifierMatch[1]) : false;
+}
+
+// Archivos trackeados por git bajo pi/, pi-extensions/ y pi-themes/: es lo que
+// realmente shippea con el paquete (lo que `pi install git:...` clona), no
+// necesariamente lo que haya en el working tree de un dev (scratch files,
+// WIP sin agregar). Si git no esta disponible, no filtra nada (degrada al
+// comportamiento anterior en vez de romper la suite) (hallazgo F9 del review
+// de PR #22).
+function gitTrackedPackagePaths(): Set<string> | null {
+	const result = spawnSync("git", ["ls-files", "--", "pi", "pi-extensions", "pi-themes"], {
+		cwd: REPO_ROOT,
+		encoding: "utf8",
+	});
+	if (result.error || result.status !== 0) return null;
+	return new Set(
+		result.stdout
+			.split("\n")
+			.filter(Boolean)
+			.map((relPath) => `./${relPath}`),
+	);
+}
+
+// Peers derivados de los imports reales de codigo de produccion trackeado,
+// en vez de una lista de peers hardcodeada que nunca lee los fuentes: un
+// import externo nuevo (p.ej. "zod") tiene que aparecer aca para que
+// validatePiPackage lo exija en peerDependencies (hallazgo F3 del review de
+// PR #22). No intenta ser un parser JS/TS: es una heuristica de regex, igual
+// que hasFactoryExport arriba.
+const IMPORT_SPECIFIER =
+	/\bfrom\s+["']([^"']+)["']|\brequire\(\s*["']([^"']+)["']\s*\)|\bimport\(\s*["']([^"']+)["']\s*\)|^\s*import\s+["']([^"']+)["']/gm;
+
+function packageNameFromSpecifier(spec: string): string {
+	return spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : (spec.split("/")[0] ?? spec);
+}
+
+async function externalImportPeers(paths: string[]): Promise<Record<string, string>> {
+	const found: Record<string, string> = {};
+	for (const path of paths) {
+		const source = stripComments(await readFile(repoPath(path.slice(2)), "utf8"));
+		for (const match of source.matchAll(IMPORT_SPECIFIER)) {
+			const spec = match[1] ?? match[2] ?? match[3] ?? match[4];
+			if (!spec || spec.startsWith(".") || spec.startsWith("/")) continue;
+			const bareBuiltin = spec.startsWith("node:") ? spec.slice("node:".length) : spec;
+			if (spec.startsWith("node:") || builtinModules.includes(bareBuiltin)) continue;
+			const pkg = packageNameFromSpecifier(spec);
+			if (!(pkg in found)) found[pkg] = path;
+		}
+	}
+	return found;
+}
 
 function repoFile(path: string): URL {
 	return new URL(`../../${path}`, import.meta.url);
@@ -152,13 +301,18 @@ async function walkFiles(root: string): Promise<string[]> {
 }
 
 async function productionInventory(): Promise<ProductionInventory> {
+	const tracked = gitTrackedPackagePaths();
+	const isTracked = (path: string) => tracked === null || tracked.has(path);
+
 	const skills = (await walkFiles(repoPath("pi")))
 		.filter((path) => path.endsWith(`${sep}SKILL.md`))
 		.map(packagePath)
+		.filter(isTracked)
 		.sort();
 	const themes = (await readdir(repoPath("pi-themes"), { withFileTypes: true }))
 		.filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
 		.map((entry) => packagePath(repoPath(`pi-themes/${entry.name}`)))
+		.filter(isTracked)
 		.sort();
 
 	const factoryCandidates: string[] = [];
@@ -171,13 +325,21 @@ async function productionInventory(): Promise<ProductionInventory> {
 			factoryCandidates.push(packagePath(repoPath(`pi-extensions/${entry.name}/index.ts`)));
 		}
 	}
-	factoryCandidates.sort();
+	const trackedCandidates = factoryCandidates.filter(isTracked).sort();
 
 	const factories: string[] = [];
-	for (const path of factoryCandidates) {
-		if (FACTORY_EXPORT.test(await readFile(repoPath(path.slice(2)), "utf8"))) factories.push(path);
+	for (const path of trackedCandidates) {
+		if (hasFactoryExport(await readFile(repoPath(path.slice(2)), "utf8"))) factories.push(path);
 	}
-	return { skills, themes, factoryCandidates, factories };
+
+	const allSourceFiles = (await walkFiles(repoPath("pi-extensions")))
+		.filter((path) => path.endsWith(".ts") && !path.endsWith(".test.ts"))
+		.map(packagePath)
+		.filter(isTracked)
+		.sort();
+	const externalImports = await externalImportPeers(allSourceFiles);
+
+	return { skills, themes, factoryCandidates: trackedCandidates, factories, externalImports };
 }
 
 function sameStringRecord(value: unknown, expected: Record<string, string>): boolean {
@@ -208,10 +370,20 @@ function validatePiPackage(manifest: PiPackageManifest, inventory: ProductionInv
 	if (Object.hasOwn(manifest, "bundledDependencies") || Object.hasOwn(manifest, "bundleDependencies")) {
 		problems.push("bundledDependencies: bundled packages are not allowed");
 	}
+	// Un import externo nuevo (p.ej. `import { z } from "zod"`) tiene que
+	// declararse como peer; si no, el manifest queda incompleto y `pi install`
+	// instala un paquete que va a explotar al cargar la extension que lo usa.
+	for (const pkg of Object.keys(inventory.externalImports).sort()) {
+		const declared = isRecord(manifest.peerDependencies) && Object.hasOwn(manifest.peerDependencies, pkg);
+		if (!declared) {
+			problems.push(
+				`peerDependencies: missing declared peer for import ${pkg} (used in ${inventory.externalImports[pkg]})`,
+			);
+		}
+	}
 
 	comparePaths("skill census", EXPECTED_SKILLS, inventory.skills, problems);
 	comparePaths("theme census", EXPECTED_THEMES, inventory.themes, problems);
-	comparePaths("factory census", EXPECTED_EXTENSIONS, inventory.factories, problems);
 
 	if (!isRecord(manifest.pi)) {
 		problems.push("manifest: missing pi resource block");
@@ -227,8 +399,8 @@ function validatePiPackage(manifest: PiPackageManifest, inventory: ProductionInv
 	if (!extensions) problems.push("manifest extensions: expected a string array");
 	else {
 		comparePaths("manifest extensions", inventory.factories, extensions, problems);
-		if (extensions.join("\n") !== EXPECTED_EXTENSIONS.join("\n")) {
-			problems.push("manifest extensions: paths or order differ from the approved inventory");
+		if (extensions.join("\n") !== inventory.factories.join("\n")) {
+			problems.push("manifest extensions: paths must be sorted and match the tree exactly");
 		}
 		for (const path of extensions) {
 			if (/\.test\.ts$|\/lib\/|\/sdd-artifacts\/|\/workflow-resolution\//.test(path)) {
@@ -250,7 +422,11 @@ function validatePiPackage(manifest: PiPackageManifest, inventory: ProductionInv
 	return problems;
 }
 
-function runPi(args: string[], env: NodeJS.ProcessEnv, input?: string, timeout = 30_000) {
+// 60s (en vez de los 30s originales) da margen a runners frios/lentos antes
+// de que Node mate el proceso: con 30s, un `pi install` lento en CI devolvia
+// status=null/signal=SIGTERM y assertPiSuccess lo reportaba como "failed"
+// indistinguible de un fallo real de Pi (hallazgo F14 del review de PR #22).
+function runPi(args: string[], env: NodeJS.ProcessEnv, input?: string, timeout = 60_000) {
 	const result = spawnSync("pi", args, {
 		cwd: REPO_ROOT,
 		env: { ...process.env, ...env },
@@ -263,18 +439,34 @@ function runPi(args: string[], env: NodeJS.ProcessEnv, input?: string, timeout =
 	return {
 		status: result.status,
 		signal: result.signal,
+		timedOut: result.status === null && result.signal === "SIGTERM",
 		stdout: result.stdout ?? "",
 		stderr: result.stderr ?? "",
 	};
 }
 
 function assertPiSuccess(result: ReturnType<typeof runPi>, operation: string): void {
+	const timeoutHint = result.timedOut
+		? " (status=null + signal=SIGTERM usually means runPi's timeout fired, not a real Pi failure — consider a slower runner or a larger timeout)"
+		: "";
 	assert.equal(
 		result.status,
 		0,
-		`${operation} failed (signal=${result.signal ?? "none"})\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+		`${operation} failed${timeoutHint} (signal=${result.signal ?? "none"})\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
 	);
 }
+
+// Los probes nativos (RPC, lifecycle) necesitan el binario `pi` en PATH. Antes
+// de este chequeo, correr `node --test pi-extensions/*/*.test.ts` sin Pi
+// instalado hacia que `spawnSync("pi", ...)` devolviera ENOENT y runPi lo
+// relanzara como excepcion cruda, rompiendo la suite entera para cualquier
+// contribuidor sin Pi — CI instala Pi aparte, así que esos probes siguen
+// corriendo ahí (hallazgo F4 del review de PR #22).
+function detectPiAvailable(): boolean {
+	const probe = spawnSync("pi", ["--version"], { encoding: "utf8" });
+	return !probe.error && probe.status === 0;
+}
+const PI_AVAILABLE = detectPiAvailable();
 
 function rpcCommands(extraArgs: string[], env: NodeJS.ProcessEnv): PiCommand[] {
 	const result = runPi(
@@ -331,13 +523,18 @@ async function isolatedPiEnvironment(): Promise<IsolatedPiEnvironment> {
 
 async function realPiConfigDigest(): Promise<string> {
 	const configRoot = process.env.PI_CODING_AGENT_DIR ?? join(process.env.HOME ?? homedir(), ".pi", "agent");
+	// Deliberadamente NO incluye "npm" ni "packages": en una maquina real esos
+	// arboles contienen los node_modules de paquetes instalados (decenas de
+	// miles de archivos), y ninguno de los tres comandos que este isolation
+	// check rodea (`pi install <local-path>`, `pi list`, `pi remove`) los toca
+	// — solo escriben/leen settings.json (y, para specs Git, "git", que sí
+	// sigue incluido). Hashearlos dos veces por corrida era carísimo sin sumar
+	// cobertura real (hallazgo F6 del review de PR #22).
 	const trackedEntries = [
 		"auth.json",
 		"extensions",
 		"git",
 		"models.json",
-		"npm",
-		"packages",
 		"prompts",
 		"settings.json",
 		"skills",
@@ -441,6 +638,11 @@ test("package manifest is deterministic, Git-only, and non-publishable", async (
 	assert.equal(manifest.version, "0.0.0");
 	assert.equal(manifest.private, true);
 	assert.equal(manifest.type, "module");
+	// >=22.19.0 es el engine que declara @earendil-works/pi-coding-agent: como el
+	// package se consume via `pi install`, no tiene sentido pedir mas que Pi. El piso
+	// propio del repo es 22.18.0 (type stripping nativo sin flag); suite verificada
+	// en 22.18.0, 22.23.2, 24.19.0 y 26.4.0 — 22.17.1 y 20.x fallan al cargar los .ts.
+	assert.deepEqual(manifest.engines, { node: ">=22.19.0" });
 	assert.equal(manifest.license, "MIT");
 	assert.equal(manifest.repository, "https://github.com/chichex/skills.git");
 	assert.equal(manifest.homepage, "https://github.com/chichex/skills");
@@ -471,16 +673,16 @@ test("inventory gate diagnoses omitted resources, false modules, public metadata
 	assert.ok(isRecord(manifest.pi), "test setup requires the approved pi block");
 
 	const withoutExtension = structuredClone(manifest);
-	(withoutExtension.pi as Record<string, unknown>).extensions = EXPECTED_EXTENSIONS.slice(1);
+	(withoutExtension.pi as Record<string, unknown>).extensions = inventory.factories.slice(1);
 	assert.ok(
 		validatePiPackage(withoutExtension, inventory).some(
-			(problem) => problem === `manifest extensions: missing ${EXPECTED_EXTENSIONS[0]}`,
+			(problem) => problem === `manifest extensions: missing ${inventory.factories[0]}`,
 		),
 	);
 
 	const withHelper = structuredClone(manifest);
 	(withHelper.pi as Record<string, unknown>).extensions = [
-		...EXPECTED_EXTENSIONS,
+		...inventory.factories,
 		"./pi-extensions/sdd-artifacts/index.ts",
 	];
 	assert.ok(
@@ -510,7 +712,122 @@ test("inventory gate diagnoses omitted resources, false modules, public metadata
 	);
 });
 
-test("temporary package load exposes exactly the approved commands and theme", async () => {
+test("inventory gate flags a production import with no declared peer dependency", async () => {
+	// OJO: esto prueba SOLO la capa de reporte (validatePiPackage), inyectando
+	// el resultado directo en el inventory en vez de pasar por
+	// externalImportPeers(). Por eso NO hubiera detectado el bug real de
+	// review (externalImportPeers devolvia {} siempre por vaciar los strings
+	// antes de leerlos) — ese camino lo cubre el test de abajo,
+	// "externalImportPeers reads real imports from disk...", que llama a la
+	// funcion real sobre un archivo real en disco.
+	const manifest = await readManifest();
+	const inventory = await productionInventory();
+
+	const withUndeclaredImport = {
+		...inventory,
+		externalImports: { ...inventory.externalImports, zod: "./pi-extensions/warp-status.ts" },
+	};
+	assert.deepEqual(
+		validatePiPackage(manifest, withUndeclaredImport).filter((problem) => problem.startsWith("peerDependencies:")),
+		["peerDependencies: missing declared peer for import zod (used in ./pi-extensions/warp-status.ts)"],
+	);
+});
+
+test("externalImportPeers reads real imports from disk, ignoring comments but not string module specifiers", async () => {
+	// Regression del bug real detectado en review: la primera version de este
+	// fix reusaba stripCommentsAndStringLiterals (que vacia el CONTENIDO de
+	// los strings) para el censo de imports, asi que `import { z } from
+	// "zod"` perdia el specifier "zod" ANTES de que IMPORT_SPECIFIER lo
+	// viera, y externalImportPeers devolvia {} siempre, para cualquier
+	// archivo — el test de arriba no lo detectaba porque inyecta el
+	// resultado en vez de llamar a la funcion real. Este SI escribe un
+	// archivo real en disco (dentro del arbol censado, no trackeado — se
+	// borra al final) y llama a externalImportPeers de verdad, para que un
+	// futuro cambio que rompa el parser ponga esto en rojo.
+	const scratchAbsolute = repoPath("pi-extensions/.chichex-test-scratch-external-import.ts");
+	const scratchRelative = packagePath(scratchAbsolute);
+	try {
+		await writeFile(
+			scratchAbsolute,
+			[
+				'// example only, not a real import: import { fake } from "not-a-real-package";',
+				'/* also fake: import x from "still-not-real"; */',
+				'import { z } from "zod";',
+				'import { readFile } from "node:fs/promises";',
+				'import "./local-sibling.ts";',
+				"",
+			].join("\n"),
+			"utf8",
+		);
+		const found = await externalImportPeers([scratchRelative]);
+		assert.deepEqual(found, { zod: scratchRelative });
+	} finally {
+		await rm(scratchAbsolute, { force: true });
+	}
+});
+
+test("productionInventory excludes untracked scratch files from the factory census", async () => {
+	// Regression guard in the same spirit as the externalImportPeers test
+	// above: writes a REAL untracked .ts file with a valid factory export
+	// under pi-extensions/ (deliberately not `git add`-ed) and asserts it is
+	// excluded from both gitTrackedPackagePaths() and the real
+	// productionInventory() census. If gitTrackedPackagePaths() ever
+	// regresses to a silent no-op (e.g. always returning null, or building
+	// an empty/wrong set), this untracked file would leak into
+	// inventory.factories and this test goes red — matching the F9 scenario
+	// from the review (a WIP scratch file breaking the gate for local devs
+	// is the inverse failure mode this guards against not regressing back
+	// into "untracked files always counted").
+	const scratchAbsolute = repoPath("pi-extensions/.chichex-test-scratch-untracked-factory.ts");
+	const scratchRelative = packagePath(scratchAbsolute);
+	try {
+		await writeFile(scratchAbsolute, "export default function (pi) {\n\treturn {};\n}\n", "utf8");
+
+		const tracked = gitTrackedPackagePaths();
+		assert.ok(tracked, "this checkout must have git available for the test to be meaningful");
+		assert.equal(tracked.has(scratchRelative), false, "scratch file must not be reported as git-tracked");
+
+		const inventory = await productionInventory();
+		assert.equal(inventory.factoryCandidates.includes(scratchRelative), false);
+		assert.equal(inventory.factories.includes(scratchRelative), false);
+	} finally {
+		await rm(scratchAbsolute, { force: true });
+	}
+});
+
+test("factory export detection recognizes function/async/arrow/const default exports and ignores comments and string literals", () => {
+	const positive = [
+		"export default function (pi) {}",
+		"export default async function (pi) {}",
+		"export default (pi) => {};",
+		"export default async (pi) => {};",
+		"export default pi => {};",
+		"const factory = (pi) => {};\nexport default factory;",
+		"const factory = async (pi) => {};\nexport default factory;",
+		"async function factory(pi) {}\nexport default factory;",
+		"function factory(pi) {}\nexport default factory;",
+	];
+	for (const source of positive) {
+		assert.equal(hasFactoryExport(source), true, `expected factory export in: ${source}`);
+	}
+
+	const negative = [
+		"export default 42;",
+		"const notAFactory = 42;\nexport default notAFactory;",
+		'// export default function (pi) {}\nexport default 42;',
+		'const note = "export default function (pi) {}";\nexport default 42;',
+		"const doc = `Example: export default function (pi) {}`;\nexport default 42;",
+	];
+	for (const source of negative) {
+		assert.equal(hasFactoryExport(source), false, `did not expect factory export in: ${source}`);
+	}
+});
+
+test("temporary package load exposes exactly the approved commands and theme", async (t) => {
+	if (!PI_AVAILABLE) {
+		t.skip("`pi` no está en PATH; se saltea el probe nativo (CI lo instala aparte)");
+		return;
+	}
 	const isolated = await isolatedPiEnvironment();
 	try {
 		assertExpectedPackageCommands(rpcCommands(["-e", "./"], isolated.env));
@@ -524,7 +841,19 @@ test("temporary package load exposes exactly the approved commands and theme", a
 	}
 });
 
-test("native local install, discovery, deduplication, and removal stay isolated", async () => {
+// Los asserts de este test (wording de `pi list`, y que "llama" sea el UNICO
+// comando built-in con cero paquetes) acoplan a la version de Pi que corre
+// contra el binario en PATH. En CI eso es la version pineada en
+// .github/workflows/ci.yml (`@earendil-works/pi-coding-agent@X.Y.Z`); si se
+// sube ese pin y estos asserts empiezan a fallar, lo mas probable es que Pi
+// haya cambiado el wording de `list` o agregado un comando built-in — hay
+// que actualizar ambos juntos, no es un defecto de este repo (hallazgo F14
+// del review de PR #22).
+test("native local install, discovery, deduplication, and removal stay isolated", async (t) => {
+	if (!PI_AVAILABLE) {
+		t.skip("`pi` no está en PATH; se saltea el probe nativo (CI lo instala aparte)");
+		return;
+	}
 	const isolated = await isolatedPiEnvironment();
 	const realConfigBefore = await realPiConfigDigest();
 	try {
@@ -559,7 +888,11 @@ test("native local install, discovery, deduplication, and removal stay isolated"
 	} finally {
 		await rm(isolated.root, { recursive: true, force: true });
 	}
-	assert.equal(await realPiConfigDigest(), realConfigBefore, "real Pi configuration changed during isolated lifecycle");
+	assert.equal(
+		await realPiConfigDigest(),
+		realConfigBefore,
+		"real Pi configuration changed during isolated lifecycle (or a concurrent Pi session touched ~/.pi/agent while this test ran)",
+	);
 });
 
 test("Pi cleanup requires exact confirmation, never pulls, and removes only managed copies", async () => {
@@ -609,6 +942,21 @@ test("Pi cleanup requires exact confirmation, never pulls, and removes only mana
 		await writeFile(join(extensionsDest, "foreign-extension.ts"), "foreign\n");
 		await writeFile(join(themesDest, "foreign-theme.json"), "foreign\n");
 
+		// F2 regression: simula un nombre que un install.sh anterior instaló y
+		// que la version ACTUAL del checkout ya renombró/eliminó. Sin el
+		// manifest (.chichex-skills-managed), un clean derivado solo del árbol
+		// fuente actual nunca ve estos nombres y los deja huérfanos.
+		const orphanSkill = "legacy-orphan-skill";
+		const orphanExtension = "legacy-orphan-extension.ts";
+		const orphanTheme = "legacy-orphan-theme.json";
+		await mkdir(join(skillsDest, orphanSkill), { recursive: true });
+		await writeFile(join(skillsDest, orphanSkill, "SKILL.md"), "legacy\n");
+		await writeFile(join(skillsDest, ".chichex-skills-managed"), `${orphanSkill}\n`);
+		await writeFile(join(extensionsDest, orphanExtension), "legacy\n");
+		await writeFile(join(extensionsDest, ".chichex-skills-managed"), `${orphanExtension}\n`);
+		await writeFile(join(themesDest, orphanTheme), "{}\n");
+		await writeFile(join(themesDest, ".chichex-skills-managed"), `${orphanTheme}\n`);
+
 		const env = {
 			HOME: join(root, "home"),
 			PI_SKILLS_DIR: skillsDest,
@@ -637,10 +985,184 @@ test("Pi cleanup requires exact confirmation, never pulls, and removes only mana
 		assert.equal(await readFile(join(extensionsDest, "foreign-extension.ts"), "utf8"), "foreign\n");
 		assert.equal(await readFile(join(themesDest, "foreign-theme.json"), "utf8"), "foreign\n");
 
+		// F2: los nombres huérfanos (renombrados/eliminados upstream, pero
+		// registrados en el manifest de una instalación previa) también deben
+		// desaparecer, y el manifest se "olvida" tras una limpieza completa.
+		assert.equal(await absolutePathExists(join(skillsDest, orphanSkill)), false, "orphaned skill must be cleaned");
+		assert.equal(
+			await absolutePathExists(join(extensionsDest, orphanExtension)),
+			false,
+			"orphaned extension must be cleaned",
+		);
+		assert.equal(await absolutePathExists(join(themesDest, orphanTheme)), false, "orphaned theme must be cleaned");
+		assert.equal(
+			await absolutePathExists(join(skillsDest, ".chichex-skills-managed")),
+			false,
+			"manifest must be forgotten after a full clean",
+		);
+
 		const repeated = runInstaller(join(fixtureRepo, "install.sh"), ["pi-clean", "--confirm"], env);
 		assert.equal(repeated.status, 0, `${repeated.stdout}\n${repeated.stderr}`);
 		assert.equal(await absolutePathExists(gitMarker), false, "idempotent cleanup attempted git pull");
 		assert.equal(await readFile(join(extensionsDest, "foreign-extension.ts"), "utf8"), "foreign\n");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("install.sh refuses to lay down legacy Pi copies when the native Pi Package is already registered", async () => {
+	// F1 regression: `./install.sh pi` / `all` used to silently recreate the
+	// legacy copies the README now says must never coexist with the native
+	// Pi Package. This fakes `pi list` (read-only, no mutation) to report the
+	// package as already installed and asserts install_pi refuses instead.
+	const root = await mkdtemp(join(tmpdir(), "chichex-pi-conflict-"));
+	const fixtureRepo = join(root, "repo");
+	const fakeBin = join(root, "bin");
+	const skillsDest = join(root, "dest", "skills");
+	try {
+		await mkdir(join(fixtureRepo, "pi", "grill"), { recursive: true });
+		await writeFile(join(fixtureRepo, "pi", "grill", "SKILL.md"), "---\nname: grill\n---\n");
+		await copyFile(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+		await mkdir(fakeBin, { recursive: true });
+		await writeFile(
+			join(fakeBin, "pi"),
+			"#!/bin/sh\n" +
+				'if [ "$1" = "list" ]; then\n' +
+				"  printf 'User packages:\\n  git:github.com/chichex/skills\\n    /cache/path\\n'\n" +
+				"  exit 0\n" +
+				"fi\n" +
+				"exit 0\n",
+		);
+		await chmod(join(fakeBin, "pi"), 0o755);
+
+		const env = {
+			HOME: join(root, "home"),
+			PI_SKILLS_DIR: skillsDest,
+			PI_EXTENSIONS_DIR: join(root, "dest", "extensions"),
+			PI_THEMES_DIR: join(root, "dest", "themes"),
+			PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ""}`,
+		};
+
+		const result = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], env);
+		assert.notEqual(result.status, 0, `${result.stdout}\n${result.stderr}`);
+		assert.match(`${result.stdout}${result.stderr}`, /Pi Package nativo.*ya está instalado/is);
+		assert.equal(
+			await absolutePathExists(skillsDest),
+			false,
+			"install_pi must not copy anything when a native package is already registered",
+		);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("install.sh proceeds with legacy Pi copies when no `pi` binary is on PATH", async () => {
+	// Contributors without Pi installed must keep getting the old behaviour:
+	// the conflict guard degrades to "no conflict" rather than blocking them.
+	const root = await mkdtemp(join(tmpdir(), "chichex-pi-no-pi-binary-"));
+	const fixtureRepo = join(root, "repo");
+	const skillsDest = join(root, "dest", "skills");
+	try {
+		await mkdir(join(fixtureRepo, "pi", "grill"), { recursive: true });
+		await writeFile(join(fixtureRepo, "pi", "grill", "SKILL.md"), "---\nname: grill\n---\n");
+		await copyFile(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+
+		const env = {
+			HOME: join(root, "home"),
+			PI_SKILLS_DIR: skillsDest,
+			PI_EXTENSIONS_DIR: join(root, "dest", "extensions"),
+			PI_THEMES_DIR: join(root, "dest", "themes"),
+			// PATH POSIX minimo (bash, basename, mkdir, etc.) sin ningun `pi`:
+			// pi_native_package_conflict debe degradar a "no hay conflicto",
+			// no romper el install.
+			PATH: "/usr/bin:/bin",
+		};
+
+		const result = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], env);
+		assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+		assert.equal(await absolutePathExists(join(skillsDest, "grill")), true, "install must proceed without `pi` on PATH");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("Pi cleanup warns instead of silently succeeding when a source directory is missing and nothing was ever installed", async () => {
+	// F15 regression: unlike install_set/install_extensions/install_themes,
+	// clean_pi used to return 0 with no warning at all when pi/, pi-extensions/
+	// or pi-themes/ were missing from the checkout (e.g. a partial clone).
+	const root = await mkdtemp(join(tmpdir(), "chichex-pi-clean-partial-"));
+	const fixtureRepo = join(root, "repo");
+	const skillsDest = join(root, "dest", "skills");
+	try {
+		await mkdir(fixtureRepo, { recursive: true });
+		await copyFile(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+		await mkdir(skillsDest, { recursive: true });
+
+		const env = {
+			HOME: join(root, "home"),
+			PI_SKILLS_DIR: skillsDest,
+			PI_EXTENSIONS_DIR: join(root, "dest", "extensions"),
+			PI_THEMES_DIR: join(root, "dest", "themes"),
+			PATH: process.env.PATH ?? "",
+		};
+		const result = runInstaller(join(fixtureRepo, "install.sh"), ["pi-clean", "--confirm"], env);
+		assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+		const combined = `${result.stdout}\n${result.stderr}`;
+		assert.match(combined, /no existe .*[/\\]pi en el repo/);
+		assert.match(combined, /no existe .*pi-extensions en el repo/);
+		assert.match(combined, /no existe .*pi-themes en el repo/);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("Pi cleanup reconciles the Codex managed skill-precedence block instead of leaving it pointing at deleted paths", async () => {
+	// F8 regression: clean_pi deleted $PI_DEST/<skill> but never touched the
+	// Codex managed block in config.toml, leaving [[skills.config]] entries
+	// pointing at files it had just removed.
+	const root = await mkdtemp(join(tmpdir(), "chichex-pi-clean-codex-"));
+	const fixtureRepo = join(root, "repo");
+	const skillsDest = join(root, "dest", "skills");
+	const codexConfig = join(root, "codex", "config.toml");
+	try {
+		await mkdir(join(fixtureRepo, "pi", "grill"), { recursive: true });
+		await writeFile(join(fixtureRepo, "pi", "grill", "SKILL.md"), "---\nname: grill\n---\n");
+		await mkdir(join(fixtureRepo, "codex", "grill"), { recursive: true });
+		await writeFile(join(fixtureRepo, "codex", "grill", "SKILL.md"), "---\nname: grill\n---\n");
+		await copyFile(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+
+		await mkdir(join(skillsDest, "grill"), { recursive: true });
+		await writeFile(join(skillsDest, "grill", "SKILL.md"), "installed\n");
+		await writeFile(join(skillsDest, ".chichex-skills-managed"), "grill\n");
+
+		await mkdir(join(root, "codex"), { recursive: true });
+		await writeFile(
+			codexConfig,
+			[
+				"# >>> chichex/skills: prefer Codex over Pi >>>",
+				"# Administrado por install.sh. Codex no fusiona skills con el mismo name.",
+				"",
+				"[[skills.config]]",
+				`path = "${join(skillsDest, "grill", "SKILL.md")}"`,
+				"enabled = false",
+				"# <<< chichex/skills: prefer Codex over Pi <<<",
+				"",
+			].join("\n"),
+		);
+
+		const env = {
+			HOME: join(root, "home"),
+			PI_SKILLS_DIR: skillsDest,
+			PI_EXTENSIONS_DIR: join(root, "dest", "extensions"),
+			PI_THEMES_DIR: join(root, "dest", "themes"),
+			CODEX_CONFIG_FILE: codexConfig,
+			PATH: process.env.PATH ?? "",
+		};
+		const result = runInstaller(join(fixtureRepo, "install.sh"), ["pi-clean", "--confirm"], env);
+		assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+		const configAfter = await readFile(codexConfig, "utf8");
+		assert.doesNotMatch(configAfter, /\[\[skills\.config\]\]/, "dead skills.config entries must be reconciled away");
+		assert.match(configAfter, /chichex\/skills: prefer Codex over Pi/, "managed block markers must remain");
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
