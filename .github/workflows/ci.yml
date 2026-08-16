@@ -38,6 +38,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 26
+      - name: Instalar Pi 0.84.2 para probes del paquete
+        run: npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.84.2
       - name: node --test
         run: node --test pi-extensions/*/*.test.ts
 
