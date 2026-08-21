@@ -74,6 +74,7 @@ const EXPECTED_SKILLS = [
 	"./pi/find-skills/SKILL.md",
 	"./pi/github-issue-selector/SKILL.md",
 	"./pi/grill/SKILL.md",
+	"./pi/herdr-detach/SKILL.md",
 	"./pi/issue-triage/SKILL.md",
 	"./pi/quick-run/SKILL.md",
 	"./pi/repo-clean/SKILL.md",
