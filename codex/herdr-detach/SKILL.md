@@ -23,9 +23,9 @@ Si falla, decilo y pará: fuera de Herdr los comandos apuntan al pane que el usu
 
 Detectar el riesgo y escribirlo en el briefing **no** es mitigarlo. "Hay WIP sin trackear, no lo toques" es una instrucción que el agente destino puede desobedecer por accidente veinte minutos después, cuando ya nadie mira. El worktree lo hace imposible. Y el aislamiento no es una preferencia que haya que consultar: es el default cuando el encargo escribe archivos versionados. Para trabajo de solo lectura —revisar, investigar, explicar, correr tests— es peso muerto y va a un pane hermano con el mismo `cwd`.
 
-**2. No uses `--wait`.** Existe y es tentador, y convierte el detach en una llamada bloqueante: el usuario pidió despegar el trabajo y termina esperando diez minutos igual. Despachás y volvés. Lo mismo con quedarte chequeando el estado "una última vez".
+**2. Confirmá que el prompt entró; no esperes a que el trabajo termine.** Sólo lo segundo está prohibido, y confundirlos sale caro: el arranque del agente destino se traga el prompt mandado enseguida —pasó tres veces— y el detach muere sin haber empezado. Por eso el prompt va con `--wait --until working --timeout 20000`: tarda segundos y devuelve `working` si entró, `agent_prompt_stalled` si se lo tragó. Si salta, leé el pane antes de reaccionar. **Si el texto quedó encolado no reenvíes**: duplicarías el encargo. Eso pasa cuando el agente ya venía trabajando y no hubo transición que observar, y ahí el síntoma sale como `timeout`. Si el prompt está limpio, reenviá una vez; si tampoco entra, decilo en lugar de reintentar en loop. Lo prohibido es esperar el resultado: el usuario pidió despegar el trabajo, no esperarlo diez minutos. Despachás y volvés, sin chequear el estado "una última vez".
 
-**3. El detach no amplía permisos.** Un agente desatendido con autoridad que nadie le dio es la peor combinación. Frená en commit local: nada de pushear, abrir PR, mergear ni tocar `main` salvo que el usuario lo haya dicho. Si el trabajo va a necesitar aprobaciones interactivas, decilo en la confirmación en vez de pasarle flags para saltearlas — es la máquina del usuario.
+**3. El detach no amplía permisos.** Un agente desatendido con autoridad que nadie le dio es la peor combinación. Frená en commit local: nada de pushear, abrir PR, mergear ni tocar `main` salvo que el usuario lo haya dicho. Si el trabajo va a necesitar aprobaciones interactivas, decilo en la confirmación en vez de pasarle flags para saltearlas — es la máquina del usuario. Y en un detach "va a pedir aprobación" significa "se va a colgar en silencio": nadie mira ese pane. El modo que el destino hereda se lee en el footer de su pane.
 
 **4. El briefing viaja como archivo, no como argumento.** Escribilo en `~/.herdr-detach/<nombre>/briefing.md` y mandá un prompt fino: `"Leé <ruta> y ejecutá lo que dice."` Un texto largo como argumento de shell es un infierno de quoting, el usuario no lo puede editar antes de que salga, y el destino no lo puede releer cuando compacte contexto y se olvide para qué fue creado. Fuera del repo a propósito: dentro ensucia el diff del usuario y termina en un commit.
 
@@ -52,14 +52,17 @@ El nombre sale del pedido, no de un contador: `review-pr-22`, `migrar-auth`. Tie
 ```bash
 herdr pane split --current --direction right --cwd "$PWD" --no-focus
 herdr agent start <nombre> --kind codex --pane <pane-id>
-herdr agent prompt <nombre> "Leé ~/.herdr-detach/<nombre>/briefing.md y ejecutá lo que dice."
+herdr agent prompt <nombre> "Leé ~/.herdr-detach/<nombre>/briefing.md y ejecutá lo que dice." \
+  --wait --until working --timeout 20000
 ```
 
-`--no-focus` porque el usuario está trabajando acá. `--cwd` explícito porque sin eso el pane puede no heredar el directorio que asumiste. La dirección sale de `herdr pane layout --pane "$HERDR_PANE_ID"`: pane ancho → `right`, angosto o alto → `down`. Para el camino aislado, `herdr worktree create` con `--no-focus` y el pane sale de la respuesta.
+`--no-focus` porque el usuario está trabajando acá. `--cwd` explícito porque sin eso el pane puede no heredar el directorio que asumiste. La dirección sale de `herdr pane layout --pane "$HERDR_PANE_ID"`: pane ancho → `right`, angosto o alto → `down`.
 
-Leé los IDs del JSON de respuesta (`.result.pane.pane_id`), no los predigas. Antes de despachar algo que escribe, mirá `herdr agent list`: si ya hay un detach vivo sobre el mismo `cwd`, avisalo.
+El camino aislado es `herdr worktree create --cwd <raíz del repo> --base origin/<branch> --no-focus`. `--cwd` apunta a la raíz del repo —desde un worktree linkeado falla con `linked_worktree_source`— y la base sale de `origin/...` con un `git fetch` antes, porque una branch local atrasada manda al agente a trabajar sobre código viejo sin un solo error visible. Como `--cwd` excluye a `--workspace`, el pane **siempre** nace en un workspace nuevo: si el usuario lo quiere en el suyo, mudalo con `herdr pane move <root-pane> --tab "$HERDR_TAB_ID" --split right --no-focus`, que de paso cierra sola la cáscara vacía. Cerrar ese workspace no poda el worktree —podar es `herdr worktree remove`, otro comando—, así que no le tengas miedo.
 
-Después, escribí `~/.herdr-detach/<nombre>/handle.json` con el pedido original, nombre, `pane_id`, `workspace_id`, `cwd` y kind — es lo que hace posible el modo pelado. Cerrá con tres líneas: qué agente quedó, dónde, y que `$herdr-detach` pelado muestra el estado.
+Leé los IDs del JSON de respuesta (`.result.pane.pane_id`), no los predigas; el `move` le cambia el id al pane y vale el de su respuesta. El root pane recién nacido tarda unos segundos en ser un shell usable: si `agent start` contesta `agent_pane_busy`, esperá y reintentá. Antes de despachar algo que escribe, mirá `herdr agent list`: si ya hay un detach vivo sobre el mismo `cwd`, avisalo.
+
+Escribí `~/.herdr-detach/<nombre>/handle.json` apenas tengas worktree y pane —antes del `agent start`, no al final— y completalo después: si esta sesión se muere en el medio, el worktree queda huérfano sin nada que apunte a él. Van el pedido original, nombre, `pane_id`, `workspace_id`, `cwd`, kind, los permisos autorizados y, en el camino aislado, el path del worktree con su branch y su base. No es metadata para listar: es el plan de recuperación. Cerrá con tres líneas: qué agente quedó, dónde, y que `$herdr-detach` pelado muestra el estado.
 
 ## `$herdr-detach` pelado
 
@@ -75,6 +78,8 @@ herdr agent read <nombre> --source recent-unwrapped --lines 120
 `blocked` significa que Herdr reconoció una aprobación o pregunta esperando. `idle` y `done` son el mismo estado —listo para input—, `done` es el nombre que toma cuando el trabajo terminó sin que nadie mirara ese tab. `unknown` no prueba nada.
 
 Si subir `--lines` no revela más, el agente corre en pantalla alternativa y esas filas no entran al scrollback: no hay lectura que las recupere. **Recién ahí** pedile que escriba su respuesta en Markdown en un temporal y responda solo con la ruta.
+
+Un agente muerto deja de resolver por nombre —`agent get` contesta `agent_not_found`—, pero el worktree sobrevive en disco con su branch y el registro dice dónde está: se retoma con `herdr worktree open --cwd <raíz> --path <worktree> --no-focus` y un `agent start` en el pane nuevo. **No** con otro `worktree create`: el path ya existe y falla.
 
 `herdr agent focus <nombre>` mueve el foco del usuario: solo si lo pidió. Cerrá panes o workspaces únicamente si te lo piden; los que creó un detach son candidatos legítimos, los demás no se tocan.
 
