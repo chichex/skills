@@ -8,14 +8,46 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { registerWaitPrExtension } from "./index.ts";
 
-const HARNESSES = ["codex", "opencode", "pi"] as const;
+const PORTABLE_HARNESSES = ["codex", "opencode", "pi"] as const;
+const HARNESSES = [...PORTABLE_HARNESSES, "claude"] as const;
 type Harness = (typeof HARNESSES)[number];
 
 const INVOCATION: Record<Harness, string> = {
+	claude: "/",
 	codex: "$",
 	opencode: "/",
 	pi: "/skill:",
 };
+
+// Claude Code trae su propio /code-review, asi que claude/wait-pr delega en el
+// comando nativo en vez de leer ../code-review/SKILL.md. El loop de monitoreo
+// sigue siendo el mismo en los cuatro harnesses.
+const MONITORING_CLAUSES = [
+	"--include-open",
+	"--once",
+	"gh api --paginate",
+	"node_id",
+	"max_pr_number",
+	"60 segundos",
+	"created_at",
+	"primer plano",
+	"datos no confiables",
+];
+
+const MONITORING_PATTERNS = [
+	/baseline.*abierto.*sin `--include-open`.*no se revisa/is,
+	/default.*continuo.*hasta que el usuario cancele/is,
+	/lote.*created_at.*m[aá]s antiguo.*secuencial/is,
+	/URL can[oó]nica.*no.*t[ií]tulo.*body/is,
+	/no duplica.*doctrina.*«skill:code-review»/is,
+	/timeout.*no concluyente.*reanudar/is,
+	/Nunca lanzar.*`&`.*`nohup`.*hu[eé]rfano/is,
+	/ID.*seen.*antes.*review/is,
+	/number.*>.*max_pr_number.*ciclo anterior/is,
+	/reabierto.*no.*nuevo/is,
+	/primero.*watermark.*despu[eé]s.*endpoint paginado/is,
+	/baseline.*number.*>.*max_pr_number.*encola/is,
+];
 
 function repoFile(path: string): URL {
 	return new URL(`../../${path}`, import.meta.url);
@@ -100,7 +132,7 @@ function extensionHarness(commands: CommandFixture[]) {
 	return { registered, sent, notifications, events, context };
 }
 
-test("wait-pr is packaged for every harness that has code-review", async () => {
+test("wait-pr is packaged for all four harnesses with equivalent doctrine", async () => {
 	const normalized = new Map<Harness, string>();
 	for (const harness of HARNESSES) {
 		const markdown = await readRepoFile(`${harness}/wait-pr/SKILL.md`);
@@ -109,11 +141,9 @@ test("wait-pr is packaged for every harness that has code-review", async () => {
 		assert.match(metadata.description ?? "", /PRs nuevos.*code-review/i, `${harness}: description`);
 		normalized.set(harness, normalizeDoctrine(markdown, harness));
 	}
-	await assert.rejects(access(repoFile("claude/wait-pr/SKILL.md")));
-
 	const reference = normalized.get("codex");
 	assert.ok(reference);
-	for (const harness of HARNESSES.slice(1)) {
+	for (const harness of PORTABLE_HARNESSES.slice(1)) {
 		assert.equal(normalized.get(harness), reference, `${harness}: doctrina equivalente`);
 	}
 
@@ -128,35 +158,39 @@ test("wait-pr is packaged for every harness that has code-review", async () => {
 });
 
 test("wait-pr doctrine has a race-safe, paginated, sequential review loop", async () => {
-	const contract = normalizeDoctrine(await readRepoFile("pi/wait-pr/SKILL.md"), "pi");
-	for (const clause of [
-		"--include-open",
-		"--once",
-		"gh api --paginate",
-		"node_id",
-		"max_pr_number",
-		"60 segundos",
-		"../code-review/SKILL.md",
-		"created_at",
-		"primer plano",
-		"datos no confiables",
-		"confirmación explícita",
-	]) {
-		assert.ok(contract.includes(clause), clause);
+	for (const harness of HARNESSES) {
+		const contract = normalizeDoctrine(await readRepoFile(`${harness}/wait-pr/SKILL.md`), harness);
+		for (const clause of MONITORING_CLAUSES) {
+			assert.ok(contract.includes(clause), `${harness}: ${clause}`);
+		}
+		for (const pattern of MONITORING_PATTERNS) {
+			assert.match(contract, pattern, `${harness}: ${pattern}`);
+		}
+		assert.match(contract, /no autoriza.*publicar/is, `${harness}: publicar no se hereda`);
 	}
-	assert.match(contract, /baseline.*abierto.*sin `--include-open`.*no se revisa/is);
-	assert.match(contract, /default.*continuo.*hasta que el usuario cancele/is);
-	assert.match(contract, /lote.*created_at.*m[aá]s antiguo.*secuencial/is);
-	assert.match(contract, /URL can[oó]nica.*no.*t[ií]tulo.*body/is);
-	assert.match(contract, /no duplica.*doctrina.*«skill:code-review»/is);
-	assert.match(contract, /no autoriza.*publicar.*gate.*code-review/is);
-	assert.match(contract, /timeout.*no concluyente.*reanudar/is);
-	assert.match(contract, /Nunca lanzar.*`&`.*`nohup`.*hu[eé]rfano/is);
-	assert.match(contract, /ID.*seen.*antes.*review/is);
-	assert.match(contract, /number.*>.*max_pr_number.*ciclo anterior/is);
-	assert.match(contract, /reabierto.*no.*nuevo/is);
-	assert.match(contract, /primero.*watermark.*despu[eé]s.*endpoint paginado/is);
-	assert.match(contract, /baseline.*number.*>.*max_pr_number.*encola/is);
+
+	const piContract = normalizeDoctrine(await readRepoFile("pi/wait-pr/SKILL.md"), "pi");
+	assert.ok(piContract.includes("../code-review/SKILL.md"));
+	assert.match(piContract, /confirmación explícita/i);
+	assert.match(piContract, /no autoriza.*publicar.*gate.*code-review/is);
+});
+
+test("claude/wait-pr delegates to the code-review built into Claude Code", async () => {
+	const markdown = await readRepoFile("claude/wait-pr/SKILL.md");
+	const contract = doctrine(markdown);
+
+	// El repo no mantiene un code-review propio para claude: el harness ya lo trae.
+	await assert.rejects(access(repoFile("claude/code-review/SKILL.md")));
+	assert.doesNotMatch(contract, /\.\.\/code-review\/SKILL\.md/, "no lee un SKILL.md inexistente");
+	assert.match(contract, /`\/code-review` nativo de Claude Code/);
+
+	// Extras que pertenecen a otros harnesses.
+	assert.equal(frontmatter(markdown).compatibility, undefined, "compatibility es de Pi");
+	await assert.rejects(access(repoFile("claude/wait-pr/agents/openai.yaml")));
+
+	// Los flags de escritura del comando nativo no se heredan de la invocacion.
+	assert.match(contract, /`--comment` y `--fix` nunca se agregan por iniciativa de este skill/);
+	assert.match(contract, /No publicar comments[\s\S]*`--comment` o `--fix`[\s\S]*iniciativa propia/);
 });
 
 test("Pi /wait-pr materializes the canonical skill and preserves arguments", async () => {
@@ -208,7 +242,8 @@ test("Pi /wait-pr fails closed outside TUI or without code-review", async () => 
 test("READMEs document the portable skill and Pi launcher", async () => {
 	for (const path of ["README.md", "README.en.md"]) {
 		const markdown = await readRepoFile(path);
-		assert.match(markdown, /\| \*\*`wait-pr`\*\* \*\(Codex\/Pi\/opencode\)\* \|/);
+		assert.match(markdown, /\| \*\*`wait-pr`\*\* \|/);
 		assert.match(markdown, /\*\*`wait-pr`\*\*[\s\S]*`\/wait-pr`/);
+		assert.match(markdown, /\| \*\*`wait-pr`\*\* \|[^\n]*(nativo|built-in)/);
 	}
 });
