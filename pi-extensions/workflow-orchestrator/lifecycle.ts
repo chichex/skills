@@ -231,6 +231,13 @@ function pathIsInside(root: string, candidate: string): boolean {
 	return relationship === "" || (!relationship.startsWith("..") && !isAbsolute(relationship));
 }
 
+function errorHasCode(error: unknown, code: string): boolean {
+	return typeof error === "object"
+		&& error !== null
+		&& "code" in error
+		&& (error as { code?: unknown }).code === code;
+}
+
 function replacementResourcesAreValid(
 	context: ReplacementSessionContextLike,
 	options: ReturnType<ReplacementSessionContextLike["getSystemPromptOptions"]>,
@@ -557,7 +564,13 @@ export async function startFreshStage(
 	let source: SessionReference;
 	try {
 		const sessionFile = context.sessionManager.getSessionFile();
-		if (!sessionFile) throw new Error("Origin session has no persisted file");
+		if (!sessionFile) {
+			return errorResult(
+				"origin-session-unpersisted",
+				"validation",
+				"La sesión actual es efímera (`--no-session`), por lo que no se puede abrir una sesión hija vinculada. Reiniciá Pi con persistencia de sesiones y volvé a intentarlo.",
+			);
+		}
 		const canonicalSessionFile = await realpathPort(sessionFile);
 		const sessionStats = await statPort(canonicalSessionFile);
 		if (sessionStats.isDirectory()) throw new Error("Origin session path is not a file");
@@ -576,7 +589,9 @@ export async function startFreshStage(
 		return errorResult(
 			"origin-session-unpersisted",
 			"validation",
-			error instanceof Error ? error.message : String(error),
+			errorHasCode(error, "ENOENT")
+				? "Pi todavía no guardó la sesión actual. Enviá cualquier mensaje, esperá la primera respuesta completa del asistente y volvé a intentarlo."
+				: error instanceof Error ? error.message : String(error),
 		);
 	}
 
