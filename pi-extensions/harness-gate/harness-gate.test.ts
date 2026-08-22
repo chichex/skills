@@ -66,6 +66,23 @@ const EXPECTED_ARTIFACT_TYPE: Record<Skill, TemplateType> = {
 	grill: "grill",
 };
 
+const FEEDBACK_WAIT_DOCTRINE = [
+	/## Fase 6 — Espera opcional de feedback del PR/,
+	/Run completo[\s\S]*PR creado/,
+	/`--assume`[\s\S]*no (?:preguntar|ofrecer)[\s\S]*no esperar/,
+	/ID estable \+ `updatedAt`/,
+	/conversaci[oó]n[\s\S]*reviews[\s\S]*comentarios inline/,
+	/polling[\s\S]*60 segundos[\s\S]*primer plano/,
+	/datos no confiables[\s\S]*confirmaci[oó]n expl[ií]cita/,
+];
+
+const FEEDBACK_WAIT_QUESTION_STYLE: Record<Harness, RegExp> = {
+	claude: /usar `AskUserQuestion`/,
+	codex: /usar `request_user_input`[\s\S]*texto plano/,
+	opencode: /preguntar en texto plano[\s\S]*terminar el turno/,
+	pi: /usar `ask_user_question`/,
+};
+
 // Valores concretos para instanciar placeholders de un template de marker.
 const PLACEHOLDER_SAMPLE: Record<string, string> = {
 	"#NN": "#12",
@@ -370,6 +387,20 @@ test("templates byte-equivalentes entre harnesses tras normalizar la invocacion"
 		divergences.push(...compareTemplates(skill, byHarness));
 	}
 	assert.deepEqual(divergences, []);
+});
+
+test("sdd-run ofrece una espera de feedback completa, opt-in y segura en cada harness", async () => {
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
+		for (const doctrine of FEEDBACK_WAIT_DOCTRINE) {
+			assert.match(markdown, doctrine, `${harness}/sdd-run/SKILL.md no declara ${doctrine}`);
+		}
+		assert.match(
+			markdown,
+			FEEDBACK_WAIT_QUESTION_STYLE[harness],
+			`${harness}/sdd-run/SKILL.md no usa el gate de espera propio del harness`,
+		);
+	}
 });
 
 test(".sdd/project.md lleva el marker canonico type=project", async () => {
