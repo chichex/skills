@@ -28,6 +28,7 @@
       "./pi-extensions/grill-tools/index.ts",
       "./pi-extensions/inline-skill-autocomplete/index.ts",
       "./pi-extensions/visual-footer.ts",
+      "./pi-extensions/wait-pr/index.ts",
       "./pi-extensions/warp-status.ts",
       "./pi-extensions/workflow-orchestrator/index.ts"
     ],

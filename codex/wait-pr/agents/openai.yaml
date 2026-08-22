@@ -1,0 +1,6 @@
+interface:
+  display_name: "Wait PR"
+  short_description: "Monitoreá PRs nuevos y revisalos"
+  default_prompt: "Usá $wait-pr para esperar PRs nuevos en este repositorio y revisar cada uno con $code-review."
+policy:
+  allow_implicit_invocation: false

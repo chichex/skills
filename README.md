@@ -30,6 +30,7 @@ Las disciplinas sobre las que SDD se apoya — y que también uso sueltas, fuera
 | **`domain-modeling`** | Mantiene vivo el modelo de dominio mientras se diseña: desafía términos, afila el lenguaje difuso, y escribe el glosario (`CONTEXT.md`) y las decisiones (`docs/adr/`) cuando cristalizan. Regla de contaminación cero: nunca introduce la práctica en un repo que no la usa. |
 | **`tdd`** | Referencia de test-driven development: el loop rojo → verde, qué es un buen test, dónde van (seams), los anti-patrones. Incluye guías de `mocking` y `tests`. Disponible en los cuatro harnesses; `sdd-run` referencia su doctrina en la declaración de seams del plan y en el paso de tests primero. |
 | **`code-review`** *(Codex/Pi/opencode)* | Revisa un PR en tres ejes separados —correctness y riesgo, estándares y spec—, ejecuta verificaciones, muestra findings con evidencia y la preview exacta de los comments, y al final pregunta si querés publicarlos en GitHub como un único review COMMENT. Nunca postea sin confirmación explícita. |
+| **`wait-pr`** *(Codex/Pi/opencode)* | Monitorea el repo actual cada 60 segundos en busca de PRs nuevos y ejecuta `code-review` sobre cada uno, en orden y sin duplicados. Ignora los PRs ya abiertos salvo `--include-open`, puede terminar tras uno con `--once` y nunca hereda permiso para publicar comments. |
 | **`github-issue-selector`** *(Codex/Pi)* | Permite elegir o inspeccionar un issue cuando todavía no diste un número concreto. |
 | **`issue-triage`** *(Codex/Claude/Pi)* | Analiza uno o varios issues contra código, tests y dependencias; clasifica el próximo stage y emite un handoff estructurado tras la confirmación, pero no lo ejecuta. Para selecciones conjuntas crea un issue canónico y cierra los originales como reemplazados. |
 | **`quick-run`** *(Codex/Claude/Pi)* | Consume únicamente un handoff confirmado de `issue-triage` para implementar un cambio pequeño en un worktree aislado, con tests primero cuando corresponde, presupuesto finito y PR o commit local con evidencia exacta. |
@@ -48,7 +49,7 @@ En Pi, `grill` es el único entry point de entrevista: el usuario elige si quier
 
 #### Riel orquestado y fronteras de sesión
 
-Los entrypoints públicos son `/issues` para triage, `/grills` para retomar entrevistas, `/specs` para buscar/inspeccionar specs y `/sdd-run <ruta|#NN>` para autorizar directamente una ejecución.
+Los entrypoints públicos son `/issues` para triage, `/grills` para retomar entrevistas, `/specs` para buscar/inspeccionar specs, `/sdd-run <ruta|#NN>` para autorizar directamente una ejecución y `/wait-pr` para monitorear PRs nuevos y encadenar `code-review`.
 
 | Transición | Frontera de sesión |
 |---|---|
@@ -73,6 +74,7 @@ El repo también conserva todas las extensiones globales de Pi usadas por este w
 | **`inline-skill-autocomplete`** | Abre el autocomplete de skills al escribir `/` o `/skill:…` en cualquier punto del borrador. Al enviar, antepone la invocación para que Pi la expanda correctamente. |
 | **`github-issue-selector.ts`** + **`github-issues.ts`** | Herramienta `select_github_issue` y comando `/issues` con selección múltiple. El menú unificado permite analizar mediante `issue-triage`, cerrar en bulk o eliminar en bulk. |
 | **`github-prs`** | Comando `/prs`; su acción de review invoca `/skill:code-review`. |
+| **`wait-pr`** | Comando `/wait-pr`; materializa el skill canónico `/skill:wait-pr` sin inyectar una invocación slash y falla cerrado si falta `code-review`. |
 | **`visual-footer.ts`** | Footer visual con estado, modelo, tokens y directorio actual; se alterna con `/visual-footer`. |
 | **`warp-status.ts`** | Emite el estado de Pi para la integración de terminal de Warp. |
 
