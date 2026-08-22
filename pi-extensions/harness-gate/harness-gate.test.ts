@@ -66,21 +66,31 @@ const EXPECTED_ARTIFACT_TYPE: Record<Skill, TemplateType> = {
 	grill: "grill",
 };
 
-const FEEDBACK_WAIT_DOCTRINE = [
-	/## Fase 6 — Espera opcional de feedback del PR/,
+const FEEDBACK_REMEDIATION_DOCTRINE = [
+	/## Fase 6 — Seguimiento y resolución automática del feedback del PR/,
 	/Run completo[\s\S]*PR creado/,
 	/`--assume`[\s\S]*no (?:preguntar|ofrecer)[\s\S]*no esperar/,
 	/ID estable \+ `updatedAt`/,
+	/threads por `thread\.id` \+ `isResolved`/,
 	/conversaci[oó]n[\s\S]*reviews[\s\S]*comentarios inline/,
 	/polling[\s\S]*60 segundos[\s\S]*primer plano/,
-	/datos no confiables[\s\S]*confirmaci[oó]n expl[ií]cita/,
+	/Resolver feedback automáticamente/,
+	/autoriza[\s\S]*editar[\s\S]*commitear[\s\S]*pushear[\s\S]*responder[\s\S]*resolver threads/i,
+	/validar cada planteo[\s\S]*código[\s\S]*spec[\s\S]*contrato/i,
+	/worktree[\s\S]*headRefOid[\s\S]*branch del PR/i,
+	/test de regresión[\s\S]*fallar[\s\S]*regresión completa/i,
+	/push[\s\S]*mismo branch[\s\S]*force-push/i,
+	/resolver[\s\S]*thread[\s\S]*push[\s\S]*verde/i,
+	/refrescar[\s\S]*snapshot[\s\S]*respuestas propias[\s\S]*polling/i,
+	/ambiguo[\s\S]*fuera de alcance[\s\S]*confirmaci[oó]n expl[ií]cita/i,
+	/`Feedback resuelto` solo si[\s\S]*no hay bloqueos[\s\S]*`SEGUIMIENTO DE FEEDBACK DETENIDO`/i,
 ];
 
-const FEEDBACK_WAIT_QUESTION_STYLE: Record<Harness, RegExp> = {
-	claude: /usar `AskUserQuestion`/,
-	codex: /usar `request_user_input`[\s\S]*texto plano/,
-	opencode: /preguntar en texto plano[\s\S]*terminar el turno/,
-	pi: /usar `ask_user_question`/,
+const FEEDBACK_REMEDIATION_QUESTION_STYLE: Record<Harness, RegExp> = {
+	claude: /usar `AskUserQuestion`[\s\S]*Resolver feedback automáticamente/,
+	codex: /usar `request_user_input`[\s\S]*texto plano[\s\S]*Resolver feedback automáticamente/,
+	opencode: /preguntar en texto plano[\s\S]*terminar el turno[\s\S]*Resolver feedback automáticamente/,
+	pi: /usar `ask_user_question`[\s\S]*Resolver feedback automáticamente/,
 };
 
 // Valores concretos para instanciar placeholders de un template de marker.
@@ -389,16 +399,21 @@ test("templates byte-equivalentes entre harnesses tras normalizar la invocacion"
 	assert.deepEqual(divergences, []);
 });
 
-test("sdd-run ofrece una espera de feedback completa, opt-in y segura en cada harness", async () => {
+test("sdd-run remedia feedback del PR de forma automática, opt-in y segura en cada harness", async () => {
 	for (const harness of HARNESSES) {
 		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
-		for (const doctrine of FEEDBACK_WAIT_DOCTRINE) {
+		for (const doctrine of FEEDBACK_REMEDIATION_DOCTRINE) {
 			assert.match(markdown, doctrine, `${harness}/sdd-run/SKILL.md no declara ${doctrine}`);
 		}
 		assert.match(
 			markdown,
-			FEEDBACK_WAIT_QUESTION_STYLE[harness],
-			`${harness}/sdd-run/SKILL.md no usa el gate de espera propio del harness`,
+			FEEDBACK_REMEDIATION_QUESTION_STYLE[harness],
+			`${harness}/sdd-run/SKILL.md no usa el gate de remediación propio del harness`,
+		);
+		assert.doesNotMatch(
+			markdown,
+			/no editar código[\s\S]*turno nuevo/i,
+			`${harness}/sdd-run/SKILL.md todavía obliga a detenerse después de detectar feedback`,
 		);
 	}
 });
