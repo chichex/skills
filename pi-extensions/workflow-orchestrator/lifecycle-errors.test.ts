@@ -194,6 +194,31 @@ test("origin persistence, cwd, and staging failures remain pre-switch and preser
 	);
 	assert.equal(noFile.code, "origin-session-unpersisted");
 	assert.equal(noFile.originPreserved, true);
+	assert.equal(
+		noFile.ok ? undefined : noFile.message,
+		"La sesión actual es efímera (`--no-session`), por lo que no se puede abrir una sesión hija vinculada. Reiniciá Pi con persistencia de sesiones y volvé a intentarlo.",
+	);
+
+	const missingFile = await startFreshStage(
+		{ resolution: resolution(), skill: { name: "sdd-spec" } },
+		context() as never,
+		dependencies({
+			realpath: async (path: string) => {
+				if (path === ORIGIN_FILE) {
+					const error = new Error(`ENOENT: no such file or directory, realpath '${path}'`) as NodeJS.ErrnoException;
+					error.code = "ENOENT";
+					throw error;
+				}
+				return path;
+			},
+		}) as never,
+	);
+	assert.equal(missingFile.code, "origin-session-unpersisted");
+	assert.equal(missingFile.originPreserved, true);
+	assert.equal(
+		missingFile.ok ? undefined : missingFile.message,
+		"Pi todavía no guardó la sesión actual. Enviá cualquier mensaje, esperá la primera respuesta completa del asistente y volvé a intentarlo.",
+	);
 
 	const badCwd = await startFreshStage(
 		{ resolution: resolution(), skill: { name: "sdd-spec" } },
