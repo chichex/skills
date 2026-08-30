@@ -44,11 +44,16 @@ Luego usar `question` — "¿Cuál spec corremos?": una opción por spec (máxim
 1. **Contrato**: leer `.sdd/project.md`. Si no existe: interactivo → ofrecer `/sdd-init` ahí mismo; `--assume` → correr `/sdd-init --assume` y seguir. Anotar ya la capacidad de PR que declara el contrato (remote + gh): si no la hay, avisar desde el arranque que la corrida termina en commit local. Anotar también las **políticas de generación** activas (`## Politicas de generacion`) y anunciarlas al arranque: son gates duros que la Fase 4 verifica con el gate que cada una declara.
 2. **Spec**: resolver el argumento. Ruta → leerla. `#NN` → `gh issue view` y extraer la spec del body (la generó `/sdd-spec`); si el issue no tiene spec SDD, frenar y ofrecer `/sdd-spec #NN`. Pedido libre sin spec → frenar: ofrecer `/sdd-spec <pedido>` (interactivo) o encadenarlo (`--assume`). NO improvisar una spec: ese trabajo tiene su skill.
 3. **Spec en `draft`**: significa que nadie revisó las inferencias — correrla es aceptar todas las `[ASSUMED]`. Interactivo: decirlo y preguntar si seguir (u ofrecer revisar las inferencias acá, una pregunta por inferencia de confianza baja). `--assume`: seguir y dejarlo anotado en el PR.
-4. **Worktree limpio desde main actualizado — o abort**: `/sdd-run` NUNCA corre sobre el checkout del usuario. Preflight: `git fetch` (si hay remote) y chequear estado sano. Ante CUALQUIER cosa rara — cambios sin commitear, rebase/merge a medias, detached HEAD, base local divergido de su remote — **ABORTAR** explicando exactamente qué se encontró. No arreglar nada (ni stash, ni reset, ni checkout): si el repo está raro, el humano está en el medio de algo.
+<!-- sdd-run-dirty-checkout:start -->
+4. **Base actualizada + worktree aislado; el checkout sucio no bloquea por sí solo**: `/sdd-run` NUNCA implementa sobre el checkout original. Capturar primero un snapshot robusto con `git status --porcelain=v1 -z`; no hacer stash, reset, checkout forzado, commit ni limpieza sobre ese checkout.
 
-   **Única excepción — el spec target sin comitear:** si lo ÚNICO sucio (según `git status --porcelain`) es el archivo del spec que se va a correr (el que resolvió la Fase 1.2 cuando vino como ruta local — sea `??` sin trackear o ` M` modificado), NO abortar: ese es el flujo normal de encadenar `/sdd-spec` → `/sdd-run` sin un commit intermedio. CUALQUIER otro path sucio — código, otro spec, config — sigue disparando el abort (ahí sí el humano está en el medio de algo). Lo que se corre es el contenido del working-tree, no el committeado. Con `#NN` (spec en el body del issue) la excepción no aplica: no hay archivo local que tolerar, cualquier cosa sucia aborta.
+   - **Referencia de base**: resolver `--base` o el branch default del contrato — nunca asumir `main`. Si existe su remote-tracking branch, hacer `git fetch` y usar esa referencia remota actualizada (`<remote>/<base>`) como `<base-ref>`; la branch local no es autoridad para el run. Sin remote-tracking, usar el ref local explícito y dejar anotado que la entrega puede degradar a `--no-pr`.
+   - **Bloqueos reales**: abortar sólo si no se puede resolver o actualizar `<base-ref>`, ya existe la branch/path de destino, o el estado Git compartido impide crear un worktree aislado. Un checkout sucio, detached HEAD, una base local divergida o una operación a medias en el checkout original no bloquean por sí solos mientras el worktree nuevo pueda nacer de `<base-ref>` sin tocar ese estado.
+   - **Artefactos de entrada del workflow**: formar un conjunto explícito de paths sucios ligados a esta cadena: la spec target local; `.sdd/project.md` si el contrato leído tiene cambios; el handoff canónico cuyo `grill=<ref>` aparece en la spec y specs predecesoras que apunten a la target con `superseded-by`; y `CONTEXT.md`, `CONTEXT-MAP.md` o archivos de `docs/adr/` sólo cuando la spec o ese handoff los identifiquen como salida de la misma cadena. Resolver la identidad por markers y referencias, no por "todo lo que esté bajo `.sdd/`" ni por cercanía temporal.
+   - **Cambios locales restantes**: listarlos como **excluidos del run**; no abortan, no se copian y no entran al PR. Si al planificar contra `<base-ref>` aparece que uno de ellos era necesario, tratarlo como un prerrequisito faltante o una desviación de la spec según la Fase 3, nunca importarlo en silencio.
 
-   Con todo sano (o solo el spec target sucio): crear un worktree nuevo con branch `sdd/<slug>` desde el base actualizado (`--base`; default: el branch default que declara el contrato, y si el contrato no lo dice, detectarlo — nunca asumir "main") — con la herramienta de worktrees del harness si está disponible, si no `git worktree add ../<repo>-sdd-<slug> -b sdd/<slug> <base>` — y TODO el run pasa ahí adentro. Si se aplicó la excepción del spec: el worktree nace del base y NO trae el cambio sin comitear, así que copiar el contenido working-tree del spec (desde el checkout) al worktree en el mismo path y commitearlo ahí como PRIMER commit del branch (`spec: baseline de <slug> (sin comitear en el checkout)`). Nunca commitear en el checkout del usuario: se lee y se deja intacto. Así el worktree queda limpio para el resto del run y el spec entra al PR.
+   Crear desde `<base-ref>` el worktree y branch `sdd/<slug>` con `git worktree add ../<repo>-sdd-<slug> -b sdd/<slug> <base-ref>`. Reproducir allí el snapshot working-tree exacto de los artefactos de entrada — altas, modificaciones o bajas — y validar antes de commitear que ningún path excluido apareció. Si se importó al menos uno, agruparlos como PRIMER commit (`sdd: incorporar artefactos de entrada de <slug>`); si no, no crear un commit vacío. Con `#NN` no hay spec local que importar, pero el contrato, handoff o documentación de su linaje siguen pudiendo entrar. El checkout original queda intacto y puede seguir sucio; TODO el run continúa únicamente en el worktree, que sí debe quedar limpio después del commit de entrada.
+<!-- sdd-run-dirty-checkout:end -->
 
 ## Fase 2 — Plan efímero + gate
 
@@ -102,7 +107,7 @@ Antes de levantar o presentar la app para validación humana:
    - `git diff --name-status <base>..HEAD` es la autoridad sobre qué cambió: cada CA verificado tiene que ser consistente con ese diff — sus tests nuevos aparecen, los archivos tocados son los del plan. Un CA "verificado" cuyos tests no están en el diff no está verificado.
    - Diffear los tests contra el base buscando verificación falsificada: asserts aflojados, `skip`/`only` colados, tests borrados, umbrales bajados. Si aparece algo, ese CA vuelve a rojo — no se narra.
    - La columna Evidencia cita SOLO comandos corridos en esta corrida (comando + resultado observado), y el título de la tabla anota el sha de HEAD sobre el que corrió la verificación final.
-5. Actualizar la spec (único artefacto que persiste): estado del header a `implementada` — tanto el campo `Estado:` del comentario humano (reconciliarlo si discrepa) como el marker `SDD-Tracking`, que queda:
+5. Actualizar la spec (único artefacto que el run modifica después del commit de entrada; los artefactos upstream importados se preservan sin reescribir): estado del header a `implementada` — tanto el campo `Estado:` del comentario humano (reconciliarlo si discrepa) como el marker `SDD-Tracking`, que queda:
 
 ```markdown
 <!-- SDD-Tracking: version=1; type=spec; state=implemented; issue=<#NN|owner/repo#NN|none>; grill=<ref|none>; superseded-by=none -->
@@ -151,6 +156,7 @@ Al salir, emitir `Feedback resuelto` solo si todo finding válido detectado qued
 ```text
 Run completo: PR #<n> <url>   (o: branch sdd/<slug> committeado, sin PR)
 - spec: <ruta> (<estado previo> → implementada)
+- checkout original: artefactos de entrada importados <paths | ninguno> · cambios locales excluidos <paths | ninguno>
 - CAs: <N> — verificados <V> · FALLA <F> · pendiente humano <H>
 - politicas de generacion: <k cumplidas · f FALLA (PR en draft) · guias aplicadas <g> | sin politicas activas>
 - tests: <X> pasan (<K> nuevos) · regresion verde · escalera hasta <techo>
@@ -199,10 +205,11 @@ Si falla un solo item, está prohibido emitir `Run completo`.
 - Escribir los tests de los CA ALTA antes que la implementación y verlos fallar primero.
 - Verificar cada CA con el mecanismo que la spec declara, y la regresión completa con el comando del contrato.
 - Documentar toda desviación en la spec misma, con fecha.
+- Clasificar el checkout original sin exigir limpieza: importar sólo los artefactos de entrada ligados al workflow, listar y excluir el resto, y no tocar ese checkout.
 - Correr SIEMPRE en un worktree nuevo creado desde el base actualizado, en branch `sdd/<slug>`; commits por paso, referenciando CAs.
 - Respetar los Limites del contrato por encima de cualquier instrucción de este skill.
 - Verificar cada política de generación activa con el gate que declara el contrato, y reflejar el resultado (`POL-*`) en spec, PR y reporte.
-- Actualizar la spec con el Resultado de ejecucion — es el único artefacto persistente del run — con evidencia derivada del estado Git real (receipt de Fase 4.4), nunca de la narración acumulada de la conversación.
+- Actualizar la spec con el Resultado de ejecucion — es el único artefacto que el run reescribe después de importar sus entradas — con evidencia derivada del estado Git real (receipt de Fase 4.4), nunca de la narración acumulada de la conversación.
 - Mantener la identidad del marker `SDD-Tracking`: la transición a `state=implemented` es un upsert que preserva `issue`, `grill` y `superseded-by` tal como estaban.
 - Después de un `Run completo` interactivo con PR, ofrecer la remediación opt-in y, si se elige, mantener el ciclo de detectar → validar → corregir → verificar → commitear/pushear → responder/resolver → volver a esperar hasta su condición de salida.
 - Mantener ownership del cierre, esperar tareas delegadas bloqueantes y reconciliar sus cambios antes de continuar.
@@ -214,7 +221,7 @@ Si falla un solo item, está prohibido emitir `Run completo`.
 - No marcar verificado un CA cuyo mecanismo no corrió en esta corrida.
 - No improvisar spec ni plan persistente: sin spec no hay run, y el plan no toca el disco.
 - No mergear el PR ni pushear al branch default.
-- No correr sobre el checkout del usuario, y no "normalizar" un repo raro (stash, reset, checkout forzado): cambios pendientes o estado a medias = abort. Única excepción: el archivo del spec target sin comitear se tolera y se commitea en el worktree (Fase 1.4); cualquier otro path sucio aborta igual.
+- No implementar sobre el checkout original ni "normalizarlo" con stash, reset, checkout forzado, commit o limpieza. La suciedad ordinaria no es un bloqueo: importar sólo el conjunto explícito de artefactos de entrada del workflow y excluir todo cambio local restante; abortar únicamente ante los bloqueos estructurales de la Fase 1.4.
 - No deploy, migraciones sobre datos compartidos, ni servicios pagos (Limites del contrato).
 - No convertir un CA en FALLA silenciosa: FALLA siempre viene con diagnóstico y aparece en spec, PR y reporte.
 - No abrir el PR como ready con una política de generación en FALLA (va en draft con la medición visible), y no maquillar el gate: ni excluir archivos del diff, ni bajar umbrales, ni cambiar el comando que la mide. Tampoco reportar una `guia` como verificada: no tiene gate, la juzga el reviewer.

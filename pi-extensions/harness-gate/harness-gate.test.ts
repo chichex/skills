@@ -66,6 +66,20 @@ const EXPECTED_ARTIFACT_TYPE: Record<Skill, TemplateType> = {
 	grill: "grill",
 };
 
+const SDD_RUN_DIRTY_CHECKOUT_DOCTRINE = [
+	/checkout sucio no bloquea por sí solo/i,
+	/referencia remota actualizada/i,
+	/artefactos de entrada del workflow/i,
+	/spec target local/i,
+	/`\.sdd\/project\.md`/,
+	/handoff canónico/i,
+	/`CONTEXT\.md`[\s\S]*`docs\/adr\/`/,
+	/cambios locales restantes[\s\S]*excluidos[\s\S]*no abortan/i,
+	/PRIMER commit/i,
+	/checkout original queda intacto/i,
+	/prerrequisito faltante o una desviación/i,
+];
+
 const FEEDBACK_REMEDIATION_DOCTRINE = [
 	/## Fase 6 — Seguimiento y resolución automática del feedback del PR/,
 	/Run completo[\s\S]*PR creado/,
@@ -264,6 +278,12 @@ export function validateTemplateLine(line: string, expectedType: TemplateType): 
 	return { ok: problems.length === 0, problems };
 }
 
+function delimitedDoctrine(markdown: string, name: string): string {
+	const block = markdown.match(new RegExp(`<!-- ${name}:start -->\\n([\\s\\S]*?)\\n<!-- ${name}:end -->`));
+	assert.ok(block, `bloque delimitado ${name} presente`);
+	return block[1] ?? "";
+}
+
 function firstDifference(a: string, b: string): string {
 	const aLines = a.split("\n");
 	const bLines = b.split("\n");
@@ -397,6 +417,25 @@ test("templates byte-equivalentes entre harnesses tras normalizar la invocacion"
 		divergences.push(...compareTemplates(skill, byHarness));
 	}
 	assert.deepEqual(divergences, []);
+});
+
+test("sdd-run tolera el checkout sucio, importa artefactos del workflow y aísla el resto en cada harness", async () => {
+	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
+	const byHarness = new Map<Harness, string[]>();
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
+		const doctrine = delimitedDoctrine(markdown, "sdd-run-dirty-checkout");
+		for (const expected of SDD_RUN_DIRTY_CHECKOUT_DOCTRINE) {
+			assert.match(doctrine, expected, `${harness}/sdd-run/SKILL.md no declara ${expected}`);
+		}
+		assert.doesNotMatch(
+			markdown,
+			/Única excepción — el spec target sin comitear|CUALQUIER otro path sucio[\s\S]{0,160}abort|cambios pendientes o estado a medias = abort/i,
+			`${harness}/sdd-run/SKILL.md todavía bloquea el workflow por suciedad ordinaria`,
+		);
+		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
+	}
+	assert.deepEqual(compareTemplates("sdd-run dirty checkout", byHarness), []);
 });
 
 test("sdd-run remedia feedback del PR de forma automática, opt-in y segura en cada harness", async () => {
