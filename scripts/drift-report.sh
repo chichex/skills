@@ -57,6 +57,6 @@ printf '%s\n' "$names" | while IFS= read -r name; do
 done
 
 echo
-echo "> **Nota:** la divergencia esperada entre copias es la capa de interacción de cada harness — tools y forma de invocación (AskUserQuestion / request_user_input / ask_user_question / gates en texto plano; \`/nombre\`, \`\$nombre\`, \`/skill:nombre\`). Una divergencia grande en la doctrina del skill (el qué y el flujo) amerita revisión manual."
+echo "> **Nota:** la divergencia esperada entre copias es la capa de interacción de cada harness — tools y forma de invocación (AskUserQuestion / request_user_input / ask_user_question + ask_user_questions / gates en texto plano; \`/nombre\`, \`\$nombre\`, \`/skill:nombre\`). Una divergencia grande en la doctrina del skill (el qué y el flujo) amerita revisión manual."
 
 exit 0

@@ -4,6 +4,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 
 const TITLE = "warp://cli-agent";
 const MAX_TEXT_LENGTH = 200;
+const QUESTION_TOOLS = new Set(["ask_user_question", "ask_user_questions"]);
 
 function truncate(text: string): string {
 	const normalized = text.replace(/\s+/g, " ").trim();
@@ -31,9 +32,18 @@ function messageText(content: unknown): string {
 function questionText(args: unknown): string {
 	if (typeof args !== "object" || args === null) return "Waiting for your answer";
 	const question = (args as { question?: unknown }).question;
-	return typeof question === "string" && question.trim()
-		? truncate(question)
-		: "Waiting for your answer";
+	if (typeof question === "string" && question.trim()) return truncate(question);
+
+	const questions = (args as { questions?: unknown }).questions;
+	if (Array.isArray(questions)) {
+		const prompts = questions
+			.map((entry) => typeof entry === "object" && entry !== null
+				? (entry as { question?: unknown }).question
+				: undefined)
+			.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+		if (prompts.length > 0) return truncate(`Round of ${prompts.length}: ${prompts.join(" · ")}`);
+	}
+	return "Waiting for your answer";
 }
 
 function emitWarpEvent(
@@ -87,7 +97,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_execution_start", (event, ctx) => {
-		if (event.toolName !== "ask_user_question") return;
+		if (!QUESTION_TOOLS.has(event.toolName)) return;
 		emitWarpEvent(ctx, "question_asked", {
 			summary: questionText(event.args),
 			tool_name: event.toolName,
@@ -95,7 +105,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_execution_end", (event, ctx) => {
-		if (event.toolName !== "ask_user_question") return;
+		if (!QUESTION_TOOLS.has(event.toolName)) return;
 		emitWarpEvent(ctx, "tool_complete", { tool_name: event.toolName });
 	});
 
