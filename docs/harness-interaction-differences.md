@@ -21,6 +21,8 @@ renombrar `Campo` ni las columnas sin actualizar el gate.
 | extras | — | `agents/openai.yaml` | — | `compatibility` |
 <!-- interaction-differences:end -->
 
+En Pi, la misma extensión agrega además `ask_user_questions` como variante batch para rondas de 2 a 4 decisiones independientes. La fila machine-readable conserva `ask_user_question` como token canónico porque los gates que normalizan doctrina de a una decisión lo reemplazan literalmente.
+
 ## Qué normaliza el gate
 
 Sobre los templates de artefactos (bloques de código con marker

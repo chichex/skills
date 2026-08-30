@@ -29,7 +29,7 @@ Todo el resto del cuerpo es byte a byte idéntico.
 |---|---|---|---|---|
 | Carpeta | `claude/` | `codex/` | `opencode/` | `pi/` |
 | Invocación | `/nombre` | `$nombre` | `/nombre` | `/skill:nombre` |
-| Tool de preguntas | `AskUserQuestion` | `request_user_input`, con fallback a texto plano | ninguna: gate en texto plano terminando el turno | `ask_user_question` |
+| Tool de preguntas | `AskUserQuestion` | `request_user_input`, con fallback a texto plano | ninguna: gate en texto plano terminando el turno | `ask_user_question`; `ask_user_questions` para rondas |
 | Extras | — | sidecar `agents/openai.yaml` | — | campo `compatibility` en el frontmatter cuando hay requisitos |
 | Destino de instalación | `~/.claude/skills` | `${CODEX_HOME:-~/.codex}/skills` | `~/.config/opencode/skills` | `~/.agents/skills` |
 
@@ -38,7 +38,7 @@ Todo el resto del cuerpo es byte a byte idéntico.
 - **Claude Code — `AskUserQuestion`**: hasta 4 preguntas por llamada, 2 a 4 opciones cada una, la recomendada primera y marcada `(Recomendado)`, `multiSelect` opcional para selección múltiple, opción "Other" automática para respuesta libre. Regla del texto visible: lo que el usuario tiene que leer para decidir (tablas, resúmenes, previews) se imprime como texto en el MISMO mensaje que hace el tool call — el diálogo tapa la pantalla y no arrastra contexto.
 - **Codex — `request_user_input`**: usarla solo cuando esté disponible. Si no está, formular el mismo gate en texto plano, terminar el turno y esperar la respuesta. Un gate que protege un side effect externo (publicar, pushear) nunca se resuelve en el mismo turno en que se mostró la preview por primera vez.
 - **opencode — sin tool**: el gate se formula en texto plano, con opciones numeradas y la recomendada primera marcada `(Recomendado)`, y se termina el turno esperando la respuesta. No hay selección múltiple nativa: de a una pregunta por turno. Si la fuente usa un rótulo genérico tipo `question` para el gate, en opencode eso se rinde como gate de texto plano — no existe una tool con ese nombre.
-- **Pi — `ask_user_question`**: la provee la extensión `ask-user-question` de este repo; soporta selección simple/múltiple, recomendaciones y respuesta libre. Si el skill depende de ella (o de cualquier otra tool o CLI), declararlo en `compatibility`.
+- **Pi — `ask_user_question` / `ask_user_questions`**: las provee la extensión `ask-user-question` de este repo. La primera resuelve una decisión; la segunda agrupa de 2 a 4 decisiones independientes en una ronda sin devolver control al agente entre respuestas. Ambas soportan selección simple/múltiple, recomendaciones y respuesta libre. Si el skill depende de ellas (o de cualquier otra tool o CLI), declararlo en `compatibility`.
 
 ### Invocación y referencias cruzadas
 

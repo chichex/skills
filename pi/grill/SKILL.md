@@ -1,6 +1,7 @@
 ---
 name: grill
 description: Entrevista implacable para desambiguar un tema, plan o diseño y producir un contrato de handoff antes de escribir un spec. Permite mantener opcionalmente CONTEXT.md y ADRs durante el grill. Usar cuando el usuario quiere stress-testear, aclarar o alinear una idea, pide "grill", "grillame", "entrevistame sobre esto", o quiere retomar una sesión de grilling. No implementa ni escribe el spec definitivo.
+compatibility: Requiere las tools ask_user_question, ask_user_questions, grill_session y select_grill_session de las extensiones Pi de este repo.
 ---
 
 # Grill
@@ -9,7 +10,7 @@ Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. 
 
 `grill` es el único entry point para entrevistas. El usuario puede elegir si el mismo workflow también mantiene el modelo de dominio mediante `CONTEXT.md` y ADRs; ninguna extensión debe decidir esa modalidad por él.
 
-Usá `ask_user_question` para toda interacción de elección, `grill_session` para persistir el progreso y `select_grill_session` para listar, inspeccionar o retomar entrevistas anteriores.
+Usá `ask_user_question` para una sola decisión, `ask_user_questions` para rondas de 2 a 4 decisiones independientes, `grill_session` para persistir el progreso y `select_grill_session` para listar, inspeccionar o retomar entrevistas anteriores.
 
 ## Argumentos Pi
 
@@ -22,9 +23,10 @@ Usá `ask_user_question` para toda interacción de elección, `grill_session` pa
 
 ## Principios
 
-- Después del mapa previo, dejá que el usuario elija primero el **modo de documentación** y después entre **Grillado rápido** y **Grillado pregunta a pregunta**.
+- Después del mapa previo, dejá que el usuario elija primero el **modo de documentación** y después entre **Grillado rápido**, **Por rondas** y **Grillado pregunta a pregunta**.
 - Recomendá la modalidad según un diagnóstico explícito de cuánto análisis adaptativo exige el tema, no según conveniencia, velocidad ni cantidad de preguntas por sí sola.
 - En **Grillado pregunta a pregunta**, hacé exactamente una pregunta por vez y dejá que cada respuesta moldee la siguiente. No prepares un cuestionario rígido completo.
+- En **Por rondas**, presentá juntas hasta 4 preguntas sobre decisiones de la frontera de dependencias que ya estén desbloqueadas y sean realmente independientes. Recalculá la frontera recién cuando vuelva la ronda completa.
 - En **Grillado rápido**, presentá juntas todas las preguntas aplicables del alcance actual, con la opción recomendada marcada como propuesta. El usuario aprueba las recomendaciones que no le hacen ruido y señala cuáles quiere revisar.
 - Recorré las dependencias entre decisiones en orden; resolvé primero aquello de lo que dependen otras ramas.
 - Para cada pregunta ofrecé una respuesta recomendada y una justificación breve.
@@ -63,7 +65,7 @@ Cuando el usuario quiera ver, inspeccionar o retomar sesiones de grilling:
 4. Si el modo es `domain-modeling`, cargá el skill de domain modeling y contrastá el snapshot con los archivos actuales. Si difieren, mostrá la contradicción y resolvela antes de avanzar.
 5. Si existe un cuestionario exportado con respuestas completadas (ver **Exportar cuestionario**), leelo e incorporá cada respuesta como decisión resuelta con su checkpoint; repreguntá solo lo ambiguo.
 6. Mostrá brevemente el tema, las decisiones resueltas, lo pendiente y el próximo bloque recomendado.
-7. Reevaluá sobre las ramas pendientes si hace falta análisis adaptativo usando los criterios de la Fase 0. Pedí que elija **Grillado rápido** o **Grillado pregunta a pregunta** mediante `ask_user_question`, marcando la recomendación resultante y explicando sus señales concretas; cancelar pausa la sesión.
+7. Reevaluá las ramas pendientes usando los criterios de la Fase 0. Pedí que elija **Grillado rápido**, **Por rondas** o **Grillado pregunta a pregunta** mediante `ask_user_question`, marcando la recomendación resultante y explicando sus señales concretas; cancelar pausa la sesión.
 8. Continuá en la modalidad elegida desde la siguiente decisión pendiente; no repitas preguntas ya resueltas salvo que el usuario quiera revisarlas.
 
 Una sesión finalizada es inmutable. Para cambiarla, duplicala como nueva revisión mediante `select_grill_session`. Para convertirla en spec sin cambiarla, elegí la acción de crear spec SDD del selector; el handoff congelado se usa como fuente.
@@ -78,11 +80,15 @@ Antes de entrevistar:
 4. Construí un árbol de decisiones provisional con secciones y dependencias.
 5. Estimá preguntas mínimas, probables y máximas. La cifra operativa es la estimación probable.
 6. Agrupá las preguntas por secciones coherentes y asigná una estimación a cada sección.
-7. Diagnosticá si hace falta un grillado exhaustivo y adaptativo. Evaluá al menos: ambigüedad o contradicciones del pedido; impacto y costo de revertir decisiones; acoplamiento y dependencias entre ramas; probabilidad de que una respuesta abra preguntas nuevas; novedad frente a patrones existentes; y riesgos de datos, seguridad, compliance, migraciones o integraciones externas.
-8. A partir de ese diagnóstico, recomendá **Grillado pregunta a pregunta** si hay al menos una rama material que necesite repreguntas adaptativas, consecuencias difíciles de revertir, contradicciones o riesgos altos. Recomendá **Grillado rápido** si el árbol es estable y poco profundo, las decisiones son mayormente independientes, existen defaults respaldados por evidencia y equivocarse es barato y reversible. Ante evidencia mixta, priorizá pregunta a pregunta cuando la incertidumbre afecte una decisión crítica; no uses la cantidad de preguntas como criterio decisivo.
+7. Diagnosticá qué modalidad necesita el árbol. Evaluá al menos: ambigüedad o contradicciones del pedido; impacto y costo de revertir decisiones; acoplamiento y dependencias entre ramas; tamaño y estabilidad de la frontera de dependencias; probabilidad de que una respuesta abra preguntas nuevas; novedad frente a patrones existentes; y riesgos de datos, seguridad, compliance, migraciones o integraciones externas.
+8. A partir de ese diagnóstico:
+   - recomendá **Grillado pregunta a pregunta** si hay al menos una rama material que necesite repreguntas adaptativas, consecuencias difíciles de revertir, contradicciones, riesgos altos o dependencias tan densas que una respuesta reformule la siguiente;
+   - recomendá **Por rondas** si existen varias decisiones simultáneamente desbloqueadas e independientes que requieren respuesta explícita, y alcanza con recalcular el árbol entre rondas;
+   - recomendá **Grillado rápido** solo si el árbol es estable y poco profundo, las decisiones son mayormente independientes, existen defaults respaldados por evidencia y aprobar propuestas colectivamente es barato y reversible.
+   Ante evidencia mixta, priorizá pregunta a pregunta cuando la incertidumbre afecte una decisión crítica; en el resto, preferí rondas antes que aprobación colectiva. No uses la cantidad de preguntas como criterio decisivo.
 9. Si domain modeling podría aportar valor, identificá ambigüedades reales de lenguaje, ownership, identidad, cardinalidad, estados y límites de contexto. No conviertas cada término en una pregunta.
 10. Si el tema proviene de un issue de GitHub, conservá su número como referencia estructurada y resolvé `owner/repo` con `gh repo view --json nameWithOwner` cuando esté disponible. Esta referencia es metadata local del workflow: no agregues labels ni comments al issue sólo para marcarlo.
-11. No cuentes como preguntas de entrevista la elección del modo de documentación, la elección de modalidad, la elección de bloque, la revisión colectiva del Grillado rápido ni la confirmación final.
+11. No cuentes como preguntas de entrevista la elección del modo de documentación, la elección de modalidad, la elección de bloque, la revisión colectiva del Grillado rápido ni la confirmación final. Cada decisión incluida en una ronda sí cuenta por separado.
 
 El total puede cambiar porque una respuesta abre o cierra ramas. Presentalo como estimación, no como promesa exacta.
 
@@ -110,7 +116,7 @@ Antes de la primera pregunta, escribí en el chat un mapa visible con:
 - estimación mínima, probable y máxima;
 - alcance de esta sesión;
 - orden recomendado y motivo;
-- diagnóstico de profundidad necesaria, con las señales concretas a favor o en contra de un grillado exhaustivo, y modalidad recomendada.
+- diagnóstico de modalidad, con señales concretas para aprobación colectiva, adaptación entre rondas o adaptación después de cada respuesta, y modalidad recomendada.
 
 ### Paso 1: elegir documentación
 
@@ -129,12 +135,13 @@ Creá el registro persistente con `grill_session` usando `action: "create"` y el
 
 ### Paso 3: elegir modalidad de entrevista
 
-Invocá `ask_user_question` una sola vez con estas dos opciones:
+Invocá `ask_user_question` una sola vez con estas tres opciones:
 
 - **Grillado rápido**: muestra todas las preguntas aplicables con las recomendaciones ya propuestas; el usuario señala solamente cuáles le hacen ruido.
-- **Grillado pregunta a pregunta**: entrevista adaptativa donde cada respuesta modifica las preguntas siguientes.
+- **Por rondas**: presenta hasta 4 decisiones independientes de la frontera actual; el árbol se recalcula entre rondas.
+- **Grillado pregunta a pregunta**: entrevista adaptativa donde cada respuesta modifica la pregunta siguiente.
 
-Marcá como `recommended: true` exactamente la modalidad que resulte del diagnóstico de profundidad y explicá las señales concretas en `recommendationReason`. La recomendación debe responder a si hace falta explorar adaptativamente el tema: no recomiendes **Grillado rápido** sólo por ahorrar tiempo ni **Grillado pregunta a pregunta** sólo porque hay muchas preguntas. La elección de modalidad implica autorización para comenzar. Usá `allowOther: true`. Si el usuario cancela, pausá el registro y no empieces.
+Marcá como `recommended: true` exactamente la modalidad que resulte del diagnóstico y explicá las señales concretas en `recommendationReason`. No recomiendes **Grillado rápido** sólo por ahorrar tiempo, **Por rondas** sólo porque hay muchas preguntas ni **Grillado pregunta a pregunta** sólo porque el tema parece importante: distinguí aprobación colectiva, adaptación entre rondas y adaptación después de cada respuesta. La elección de modalidad implica autorización para comenzar. Usá `allowOther: true`. Si el usuario cancela, pausá el registro y no empieces.
 
 ## Fase 2: entrevista
 
@@ -161,7 +168,28 @@ Para cada decisión:
 6. Si el modo es `domain-modeling` y quedó resuelto un término de dominio, actualizá inmediatamente el `CONTEXT.md` correcto antes de formular la siguiente pregunta.
 7. Recién después formulá la siguiente pregunta.
 
-### Modalidad B: Grillado rápido
+### Modalidad B: Por rondas
+
+Cada ronda presenta la **frontera de dependencias**: solo decisiones cuyas dependencias ya están resueltas.
+
+1. Calculá la frontera actual y priorizá las decisiones que desbloquean más ramas.
+2. Si la respuesta de una decisión cambiaría cómo se formula otra o sus opciones, no las pongas en la misma ronda: dejá la dependiente para la ronda siguiente.
+3. Elegí hasta 4 decisiones independientes de la frontera:
+   - con 2 a 4, invocá `ask_user_questions` una sola vez y enviá una entrada por decisión, cada una con `id` único, pregunta autocontenida, `section`, progreso, opciones, recomendación con motivo, `selectionMode` y `allowOther: true`;
+   - si la frontera tiene una sola decisión, invocá `ask_user_question`; una ronda de una pregunta es válida cuando las dependencias no permiten agrupar.
+4. Esperá la ronda completa. La tool no devuelve control al agente entre preguntas: no incluyas dos decisiones acopladas esperando corregir la segunda sobre la marcha.
+5. Por cada respuesta recibida, en orden:
+   - actualizá el árbol;
+   - persistí un `checkpoint` separado con interacción y decisión normalizada;
+   - reemplazá `pendingBranches` y actualizá secciones o estimación;
+   - en modo `domain-modeling`, actualizá inmediatamente el glosario si esa decisión resolvió un término.
+6. Recalculá la frontera recién después de procesar toda la ronda y abrí la siguiente.
+7. Si una respuesta contradice una decisión previa o invalida otra rama, mostrá la contradicción y resolvé solo lo afectado antes de continuar. No repitas respuestas válidas.
+8. Si el usuario cancela con respuestas parciales, checkpointá primero las respuestas efectivamente devueltas y después seguí el procedimiento de pausa. Las preguntas no respondidas siguen pendientes.
+
+Cada pregunta incluida en la ronda cuenta individualmente contra el límite de 20.
+
+### Modalidad C: Grillado rápido
 
 1. Recorré el árbol por orden de dependencias simulando las opciones recomendadas y armá una propuesta para todas las preguntas aplicables del alcance actual, hasta el límite de 20.
 2. Renderizá la propuesta completa en el chat. Para cada decisión incluí:
@@ -209,7 +237,7 @@ Solo cuando `workflowMode` es `domain-modeling`:
 
 ### Cancelación o pausa
 
-Si `ask_user_question` indica cancelación:
+Si `ask_user_question` o `ask_user_questions` indica cancelación:
 
 1. No hagas otra pregunta.
 2. Escribí un resumen visible de lo resuelto y pendiente.
