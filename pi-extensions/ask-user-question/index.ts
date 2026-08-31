@@ -20,6 +20,21 @@ interface AskOption {
 	recommendationReason?: string;
 }
 
+type GrillInterviewMode = "unselected" | "fast" | "rounds" | "adaptive";
+type GrillQuestionPhase = "configuration" | "interview" | "closure";
+
+interface GrillQuestionContext {
+	sessionId: string;
+	phase: GrillQuestionPhase;
+	frontierSize?: number;
+}
+
+interface GrillInterviewState {
+	id: string;
+	status: "active" | "paused" | "finalized";
+	interviewMode: GrillInterviewMode;
+}
+
 interface AskQuestionInput {
 	id?: string;
 	question: string;
@@ -30,6 +45,7 @@ interface AskQuestionInput {
 	section?: string;
 	questionNumber?: number;
 	estimatedTotal?: number;
+	grill?: GrillQuestionContext;
 }
 
 interface ResolvedQuestion extends AskQuestionInput {
@@ -53,11 +69,13 @@ interface AskQuestionDetails {
 	section?: string;
 	questionNumber?: number;
 	estimatedTotal?: number;
+	grill?: GrillQuestionContext;
 }
 
 interface AskQuestionsDetails {
 	questions: AskQuestionDetails[];
 	cancelled: boolean;
+	grill?: GrillQuestionContext;
 }
 
 interface AskDialogResult {
@@ -95,7 +113,24 @@ const AskQuestionFields = {
 	estimatedTotal: Type.Optional(Type.Integer({ minimum: 1, description: "Current estimated total" })),
 };
 
-const AskQuestionParams = Type.Object(AskQuestionFields);
+const GrillQuestionContextSchema = Type.Object({
+	sessionId: Type.String({ minLength: 1, description: "Persistent grill session id" }),
+	phase: StringEnum(["configuration", "interview", "closure"] as const, {
+		description: "Which grill phase owns this question",
+	}),
+	frontierSize: Type.Optional(
+		Type.Integer({
+			minimum: 1,
+			maximum: 20,
+			description: "Number of decisions represented by this interview prompt (rounds remain limited to 4)",
+		}),
+	),
+});
+
+const AskQuestionParams = Type.Object({
+	...AskQuestionFields,
+	grill: Type.Optional(GrillQuestionContextSchema),
+});
 
 const AskRoundQuestionSchema = Type.Object({
 	id: Type.String({ minLength: 1, description: "Unique stable identifier for this decision" }),
@@ -108,6 +143,7 @@ const AskQuestionsParams = Type.Object({
 		maxItems: 4,
 		description: "Two to four independent, already-unblocked questions in this round",
 	}),
+	grill: Type.Optional(GrillQuestionContextSchema),
 });
 
 function resolveQuestion(question: AskQuestionInput): ResolvedQuestion {
@@ -141,6 +177,7 @@ function questionDetails(
 		section: question.section,
 		questionNumber: question.questionNumber,
 		estimatedTotal: question.estimatedTotal,
+		grill: question.grill,
 	};
 }
 
@@ -172,6 +209,97 @@ function answerSummary(answers: AskAnswer[]): string {
 	return answers
 		.map((answer) => answer.wasCustom ? `wrote: ${answer.label}` : `selected: ${answer.label}`)
 		.join("; ");
+}
+
+function isGrillInterviewState(value: unknown): value is GrillInterviewState {
+	if (!value || typeof value !== "object") return false;
+	const candidate = value as Partial<GrillInterviewState>;
+	return (
+		typeof candidate.id === "string" &&
+		(candidate.status === "active" || candidate.status === "paused" || candidate.status === "finalized") &&
+		(
+			candidate.interviewMode === "unselected" ||
+			candidate.interviewMode === "fast" ||
+			candidate.interviewMode === "rounds" ||
+			candidate.interviewMode === "adaptive"
+		)
+	);
+}
+
+function grillStateFromBranch(ctx: ExtensionContext): GrillInterviewState | undefined {
+	const sessionManager = (ctx as ExtensionContext & {
+		sessionManager?: { getBranch?: () => unknown[] };
+	}).sessionManager;
+	const branch = sessionManager?.getBranch?.();
+	if (!Array.isArray(branch)) return undefined;
+
+	for (let index = branch.length - 1; index >= 0; index--) {
+		const entry = branch[index] as {
+			type?: string;
+			message?: { role?: string; toolName?: string; details?: { snapshot?: unknown } };
+		};
+		if (
+			entry.type !== "message" ||
+			entry.message?.role !== "toolResult" ||
+			entry.message.toolName !== "grill_session"
+		) continue;
+		const snapshot = entry.message.details?.snapshot;
+		return isGrillInterviewState(snapshot) ? snapshot : undefined;
+	}
+	return undefined;
+}
+
+function enforceGrillQuestionTool(
+	state: GrillInterviewState | undefined,
+	tool: "single" | "round",
+	context: GrillQuestionContext | undefined,
+	questionCount: number,
+): void {
+	if (!state || state.status !== "active") return;
+	if (context?.sessionId && context.sessionId !== state.id) {
+		throw new Error(
+			`Active grill session is ${state.id}, but the question declared ${context.sessionId}. Use the active session id.`,
+		);
+	}
+
+	if (context?.phase === "configuration" || context?.phase === "closure") {
+		if (tool === "round") {
+			throw new Error(`ask_user_question is required for grill ${context.phase}; do not open a question round.`);
+		}
+		return;
+	}
+
+	if (state.interviewMode === "unselected") {
+		throw new Error(
+			"Configure grill_session interviewMode before asking an interview question. The selected mode is persisted and enforced.",
+		);
+	}
+
+	if (state.interviewMode === "rounds") {
+		if (tool === "single") {
+			if (context?.phase === "interview" && context.frontierSize === 1) return;
+			const size = context?.frontierSize;
+			throw new Error(
+				`ask_user_questions is required for an active rounds grill${size ? ` with a frontier of ${size}` : ""}. ` +
+				"ask_user_question is allowed only when grill.phase is interview and grill.frontierSize is exactly 1, or for configuration/closure.",
+			);
+		}
+		if (context?.phase !== "interview") {
+			throw new Error("A rounds grill must declare grill.phase=interview when calling ask_user_questions.");
+		}
+		if (context.frontierSize !== questionCount) {
+			throw new Error(
+				`The rounds grill declared frontierSize=${context.frontierSize ?? "missing"}, but supplied ${questionCount} questions.`,
+			);
+		}
+		return;
+	}
+
+	if (tool === "round") {
+		throw new Error(
+			`ask_user_question is required while grill interviewMode=${state.interviewMode}; ask_user_questions is only valid in rounds mode.`,
+		);
+	}
 }
 
 async function askQuestionsInTui(
@@ -600,24 +728,41 @@ async function askQuestionsInTui(
 }
 
 export default function askUserQuestion(pi: ExtensionAPI) {
+	let publishedGrillState: GrillInterviewState | undefined;
+	pi.events.on("grill:interview-state", (state: unknown) => {
+		publishedGrillState = isGrillInterviewState(state) ? state : undefined;
+	});
+	pi.on("session_start", () => {
+		publishedGrillState = undefined;
+	});
+	pi.on("session_tree", () => {
+		publishedGrillState = undefined;
+	});
+
+	function currentGrillState(ctx: ExtensionContext): GrillInterviewState | undefined {
+		return grillStateFromBranch(ctx) ?? publishedGrillState;
+	}
+
 	pi.registerTool({
 		name: "ask_user_question",
 		label: "Ask user question",
 		description:
-			"Ask exactly one interactive question. Supports single choice, multiple choice, recommended options with reasons, and optional free-text input. The user's answer is returned as tool context for the next model turn.",
+			"Ask exactly one interactive question. Supports single choice, multiple choice, recommended options with reasons, and optional free-text input. Active grill interview modes are enforced: a rounds grill may use this tool only for an explicitly declared one-question frontier or configuration/closure.",
 		promptSnippet: "Ask one interactive single-choice, multiple-choice, or free-text question",
 		promptGuidelines: [
 			"Use ask_user_question when one user decision is required before proceeding; ask only one question per call.",
+			"During an active grill, include grill session/phase/frontier metadata; in rounds mode ask_user_question is valid only when the dependency frontier has exactly one decision.",
 		],
 		parameters: AskQuestionParams,
 		executionMode: "sequential",
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const question = resolveQuestion(params as AskQuestionInput);
+			enforceGrillQuestionTool(currentGrillState(ctx), "single", question.grill, 1);
 			if (ctx.mode !== "tui") {
 				return errorAskResult(params.question, "Error: ask_user_question requires interactive TUI mode");
 			}
 
-			const question = resolveQuestion(params as AskQuestionInput);
 			const problem = invalidQuestion(question);
 			if (problem) return errorAskResult(question.question, `Error: ${problem}`);
 
@@ -661,16 +806,21 @@ export default function askUserQuestion(pi: ExtensionAPI) {
 		name: "ask_user_questions",
 		label: "Ask user questions",
 		description:
-			"Ask one round of two to four independent, already-unblocked interactive questions. The user answers the whole round before control returns to the model. Never include a question whose wording or options depend on another answer in the same round.",
+			"Ask one round of two to four independent, already-unblocked interactive questions. The user answers the whole round before control returns to the model. Active grill interview modes are enforced: this tool is accepted only for interviewMode=rounds with a matching declared frontier size.",
 		promptSnippet: "Ask a round of 2-4 independent single-choice, multiple-choice, or free-text questions",
 		promptGuidelines: [
 			"Use ask_user_questions only for a round of 2-4 independent decisions whose dependencies are already resolved; use ask_user_question when answers must adapt the next question.",
+			"During an active rounds grill, include grill session/phase/frontier metadata and make frontierSize match the number of supplied questions.",
 		],
 		parameters: AskQuestionsParams,
 		executionMode: "sequential",
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const questions = (params.questions as AskQuestionInput[]).map(resolveQuestion);
+			const grill = (params as { grill?: GrillQuestionContext }).grill;
+			const questions = (params.questions as AskQuestionInput[]).map((question) =>
+				resolveQuestion({ ...question, grill })
+			);
+			enforceGrillQuestionTool(currentGrillState(ctx), "round", grill, questions.length);
 			if (ctx.mode !== "tui") {
 				return errorQuestionsResult(questions, "Error: ask_user_questions requires interactive TUI mode");
 			}
@@ -692,6 +842,7 @@ export default function askUserQuestion(pi: ExtensionAPI) {
 					return questionDetails(question, answers, result.cancelled && !result.answered[index]);
 				}),
 				cancelled: result.cancelled,
+				grill,
 			};
 			const answered = details.questions.filter((question) => !question.cancelled);
 			const summaries = answered.map((question) => `${question.id}: user ${answerSummary(question.answers)}`);

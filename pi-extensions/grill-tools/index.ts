@@ -7,7 +7,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { getMarkdownTheme, truncateHead, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Markdown, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { menuItems, selectMenu, type MenuItem } from "../lib/menu";
+import { menuItems, selectMenu, type MenuItem } from "../lib/menu.ts";
 import { requestSddRun } from "../workflow-orchestrator/controller.ts";
 import {
 	continueWithMaterializedSkill,
@@ -30,10 +30,11 @@ import {
 const AGENT_DIR = join(homedir(), ".pi", "agent");
 const STORE_DIR = join(AGENT_DIR, "grill-sessions");
 const SESSIONS_DIR = join(AGENT_DIR, "sessions");
-const FORMAT_VERSION = 3;
+const FORMAT_VERSION = 4;
 const DEFAULT_QUESTION_LIMIT = 20;
 
 type GrillWorkflowMode = "standard" | "domain-modeling";
+type GrillInterviewMode = "unselected" | "fast" | "rounds" | "adaptive";
 
 interface GrillEstimate {
 	min: number;
@@ -88,6 +89,7 @@ interface GrillSnapshot {
 	projectName: string;
 	status: GrillStatus;
 	workflowMode: GrillWorkflowMode;
+	interviewMode: GrillInterviewMode;
 	sourceIssue?: GrillIssueReference;
 	createdAt: string;
 	updatedAt: string;
@@ -170,6 +172,11 @@ const GrillSessionParams = Type.Object({
 	workflowMode: Type.Optional(
 		StringEnum(["standard", "domain-modeling"] as const, {
 			description: "Whether the grill only produces a handoff or also maintains domain documentation",
+		}),
+	),
+	interviewMode: Type.Optional(
+		StringEnum(["unselected", "fast", "rounds", "adaptive"] as const, {
+			description: "Persisted answer-collection mode. Configure it immediately after the user chooses a grill modality.",
 		}),
 	),
 	sourceIssue: Type.Optional(IssueReferenceSchema),
@@ -299,6 +306,13 @@ function normalizeSnapshot(snapshot: GrillSnapshot): GrillSnapshot {
 		const explicitlyDisabled = /\b(no|false|standard|disabled|desactivad[oa]|sin documentaci[oó]n)\b/.test(agreement);
 		snapshot.workflowMode = domainDecision && !explicitlyDisabled ? "domain-modeling" : "standard";
 	}
+	if (
+		snapshot.interviewMode !== "fast" &&
+		snapshot.interviewMode !== "rounds" &&
+		snapshot.interviewMode !== "adaptive"
+	) {
+		snapshot.interviewMode = "unselected";
+	}
 	snapshot.version = FORMAT_VERSION;
 	return snapshot;
 }
@@ -357,6 +371,7 @@ function compactSnapshot(snapshot: GrillSnapshot): object {
 		projectPath: snapshot.projectPath,
 		status: snapshot.status,
 		workflowMode: snapshot.workflowMode,
+		interviewMode: snapshot.interviewMode,
 		sourceIssue: snapshot.sourceIssue,
 		progress: `${snapshot.interactions.length} of ~${snapshot.estimate.likely} (limit ${snapshot.questionLimit})`,
 		estimate: snapshot.estimate,
@@ -395,7 +410,7 @@ function snapshotMenuItem(snapshot: GrillSnapshot): MenuItem<string> {
 	return {
 		value: snapshot.id,
 		label: `${statusIcon(snapshot.status)} ${snapshot.topic}`,
-		description: `${snapshot.status} · ${snapshot.workflowMode} · ${basename(snapshot.projectPath)} · ${snapshot.interactions.length}/~${snapshot.estimate.likely} · ${formatDate(snapshot.updatedAt)} · ${snapshot.id.slice(-8)}`,
+		description: `${snapshot.status} · ${snapshot.workflowMode}/${snapshot.interviewMode} · ${basename(snapshot.projectPath)} · ${snapshot.interactions.length}/~${snapshot.estimate.likely} · ${formatDate(snapshot.updatedAt)} · ${snapshot.id.slice(-8)}`,
 	};
 }
 
@@ -404,7 +419,8 @@ function inspectionMarkdown(snapshot: GrillSnapshot): string {
 		`# ${snapshot.topic}`,
 		"",
 		`- **Estado:** ${snapshot.status}`,
-		`- **Modo:** ${snapshot.workflowMode}`,
+		`- **Modo de documentación:** ${snapshot.workflowMode}`,
+		`- **Modalidad de entrevista:** ${snapshot.interviewMode}`,
 		...(snapshot.sourceIssue
 			? [`- **Issue de origen:** ${snapshot.sourceIssue.repository ? `${snapshot.sourceIssue.repository}#` : "#"}${snapshot.sourceIssue.number}`]
 			: []),
@@ -580,6 +596,14 @@ function upsertDecision(snapshot: GrillSnapshot, decision: Omit<GrillDecision, "
 	const next: GrillDecision = { ...decision, updatedAt: now() };
 	if (existing >= 0) snapshot.decisions[existing] = next;
 	else snapshot.decisions.push(next);
+}
+
+function publishInterviewState(pi: ExtensionAPI, snapshot: GrillSnapshot): void {
+	pi.events.emit("grill:interview-state", {
+		id: snapshot.id,
+		status: snapshot.status,
+		interviewMode: snapshot.interviewMode,
+	});
 }
 
 export default function grillTools(pi: ExtensionAPI) {
@@ -764,13 +788,14 @@ export default function grillTools(pi: ExtensionAPI) {
 							...selected,
 							id: `${slugify(selected.topic)}-${timestamp.slice(0, 10).replace(/-/g, "")}-${randomUUID().slice(0, 8)}`,
 							status: "active" as const,
+							interviewMode: "unselected" as const,
 							createdAt: timestamp,
 							updatedAt: timestamp,
 							handoffMarkdown: undefined,
 							parentId: selected.id,
 							revision: selected.revision + 1,
 						}
-						: { ...selected, status: "active" as const };
+						: { ...selected, status: "active" as const, interviewMode: "unselected" as const };
 					const prepared = await prepareMaterializedSkill(pi, "grill", `--resume ${session.id}`);
 					if (!prepared.ok) {
 						ctx.ui.notify(`No se pudo retomar grill: ${prepared.message}`, "error");
@@ -791,7 +816,7 @@ export default function grillTools(pi: ExtensionAPI) {
 		name: "grill_session",
 		label: "Grill session",
 		description:
-			"Create, configure, checkpoint, pause, finalize, or retrieve a persistent grill interview. Grill sessions are stored globally and survive Pi sessions. Use only as directed by the grill skill.",
+			"Create, configure, checkpoint, pause, finalize, or retrieve a persistent grill interview. Persists both documentation workflowMode and answer-collection interviewMode; checkpoints are rejected until interviewMode is selected. Grill sessions survive Pi sessions. Use only as directed by the grill skill.",
 		parameters: GrillSessionParams,
 		executionMode: "sequential",
 
@@ -815,6 +840,7 @@ export default function grillTools(pi: ExtensionAPI) {
 					projectName: basename(root),
 					status: "active",
 					workflowMode: params.workflowMode ?? "standard",
+					interviewMode: params.interviewMode ?? "unselected",
 					sourceIssue: params.sourceIssue
 						? {
 							number: params.sourceIssue.number,
@@ -833,6 +859,7 @@ export default function grillTools(pi: ExtensionAPI) {
 					revision: 1,
 				};
 				await saveSnapshot(snapshot);
+				publishInterviewState(pi, snapshot);
 				return {
 					content: [{ type: "text", text: snapshotText("Created grill session.", snapshot) }],
 					details: { action: "create", snapshot, jsonPath: jsonPath(snapshot.id) },
@@ -843,6 +870,7 @@ export default function grillTools(pi: ExtensionAPI) {
 			const snapshot = await loadSnapshot(params.sessionId);
 
 			if (params.action === "get") {
+				publishInterviewState(pi, snapshot);
 				return {
 					content: [{ type: "text", text: snapshotText("Loaded grill session.", snapshot) }],
 					details: { action: "get", snapshot, jsonPath: jsonPath(snapshot.id) },
@@ -854,9 +882,14 @@ export default function grillTools(pi: ExtensionAPI) {
 			}
 
 			if (params.action === "configure") {
-				if (!params.workflowMode) throw new Error("workflowMode is required for configure");
-				snapshot.workflowMode = params.workflowMode;
+				if (!params.workflowMode && !params.interviewMode) {
+					throw new Error("configure requires workflowMode and/or interviewMode");
+				}
+				if (params.workflowMode) snapshot.workflowMode = params.workflowMode;
+				if (params.interviewMode) snapshot.interviewMode = params.interviewMode;
+				snapshot.status = "active";
 				await saveSnapshot(snapshot);
+				publishInterviewState(pi, snapshot);
 				return {
 					content: [{ type: "text", text: snapshotText("Grill session configured.", snapshot) }],
 					details: { action: "configure", snapshot, jsonPath: jsonPath(snapshot.id) },
@@ -864,6 +897,9 @@ export default function grillTools(pi: ExtensionAPI) {
 			}
 
 			if (params.action === "checkpoint") {
+				if (snapshot.interviewMode === "unselected") {
+					throw new Error("Configure grill_session interviewMode before saving interview checkpoints");
+				}
 				if (!params.interaction) throw new Error("interaction is required for checkpoint");
 				if (snapshot.interactions.some((item) => item.id === params.interaction!.id)) {
 					throw new Error(`Interaction id already exists: ${params.interaction.id}`);
@@ -881,6 +917,7 @@ export default function grillTools(pi: ExtensionAPI) {
 				if (params.summary !== undefined) snapshot.summary = params.summary;
 				snapshot.status = "active";
 				await saveSnapshot(snapshot);
+				publishInterviewState(pi, snapshot);
 				return {
 					content: [{ type: "text", text: snapshotText("Checkpoint saved.", snapshot) }],
 					details: { action: "checkpoint", snapshot, jsonPath: jsonPath(snapshot.id) },
@@ -894,6 +931,7 @@ export default function grillTools(pi: ExtensionAPI) {
 				if (params.summary !== undefined) snapshot.summary = params.summary;
 				snapshot.status = "paused";
 				await saveSnapshot(snapshot);
+				publishInterviewState(pi, snapshot);
 				const pausedHandoff = await writeRepoHandoff(snapshot);
 				return {
 					content: [{
@@ -921,6 +959,7 @@ export default function grillTools(pi: ExtensionAPI) {
 				snapshot.handoffMarkdown = params.handoffMarkdown.trim();
 				await writeAtomic(markdownPath(snapshot.id), `${snapshot.handoffMarkdown}\n`);
 				await saveSnapshot(snapshot);
+				publishInterviewState(pi, snapshot);
 				const finalizedHandoff = await writeRepoHandoff(snapshot);
 				const continuation = params.continueWithSpec
 					? await continueWithMaterializedSkill(
@@ -969,7 +1008,7 @@ export default function grillTools(pi: ExtensionAPI) {
 			const snapshot = details.snapshot;
 			const suffix = details.markdownPath ? `\n${theme.fg("dim", details.markdownPath)}` : "";
 			return new Text(
-				`${theme.fg("success", "✓ ")}${snapshot.topic} · ${snapshot.status} · ${snapshot.workflowMode} · ${snapshot.interactions.length}/~${snapshot.estimate.likely}${suffix}`,
+				`${theme.fg("success", "✓ ")}${snapshot.topic} · ${snapshot.status} · ${snapshot.workflowMode}/${snapshot.interviewMode} · ${snapshot.interactions.length}/~${snapshot.estimate.likely}${suffix}`,
 				0,
 				0,
 			);
