@@ -67,6 +67,8 @@ before(async () => {
 		registerTool(tool: RegisteredTool) {
 			tools.set(tool.name, tool);
 		},
+		events: { on() {} },
+		on() {},
 	} as never);
 });
 
@@ -98,6 +100,34 @@ function tuiContext(
 					const component = factory(tui, theme, {}, resolveDone);
 					drive(component);
 				});
+			},
+		},
+	};
+}
+
+function activeGrillContext(
+	interviewMode: "unselected" | "fast" | "rounds" | "adaptive",
+	drive: (component: { render(width: number): string[]; handleInput(data: string): void }) => void,
+) {
+	return {
+		...tuiContext(drive),
+		sessionManager: {
+			getBranch() {
+				return [{
+					type: "message",
+					message: {
+						role: "toolResult",
+						toolName: "grill_session",
+						details: {
+							action: "configure",
+							snapshot: {
+								id: "grill-rounds-test",
+								status: "active",
+								interviewMode,
+							},
+						},
+					},
+				}];
 			},
 		},
 	};
@@ -185,6 +215,90 @@ test("ask_user_questions collects a round of independent decisions in one UI", {
 	);
 });
 
+test("round mode blocks the singular tool when several decisions are unblocked", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const tool = tools.get("ask_user_question");
+	assert.ok(tool);
+	let customCalls = 0;
+
+	await assert.rejects(
+		tool.execute(
+			"call-invalid-single-round",
+			{
+				question: "¿Qué política confirmamos para estas cuatro decisiones?",
+				options: [{ value: "default", label: "Usar defaults" }],
+				allowOther: true,
+				grill: {
+					sessionId: "grill-rounds-test",
+					phase: "interview",
+					frontierSize: 4,
+				},
+			},
+			undefined,
+			undefined,
+			activeGrillContext("rounds", (component) => {
+				customCalls++;
+				component.handleInput("\r");
+			}),
+		),
+		/ask_user_questions.*required/i,
+	);
+	assert.equal(customCalls, 0, "the invalid singular prompt must be blocked before opening the TUI");
+});
+
+test("round mode permits a singular one-question frontier when declared explicitly", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const tool = tools.get("ask_user_question");
+	assert.ok(tool);
+
+	const result = await tool.execute(
+		"call-valid-single-round",
+		{
+			question: "¿Qué alcance confirmamos?",
+			options: [{ value: "narrow", label: "Acotado" }],
+			grill: {
+				sessionId: "grill-rounds-test",
+				phase: "interview",
+				frontierSize: 1,
+			},
+		},
+		undefined,
+		undefined,
+		activeGrillContext("rounds", (component) => component.handleInput("\r")),
+	);
+
+	assert.equal(result.details.cancelled, false);
+	assert.equal(result.details.answers[0].value, "narrow");
+});
+
+test("adaptive mode blocks the plural round tool", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const tool = tools.get("ask_user_questions");
+	assert.ok(tool);
+
+	await assert.rejects(
+		tool.execute(
+			"call-invalid-adaptive-round",
+			{
+				questions: [
+					{ id: "one", question: "¿Primera?", options: [{ value: "a", label: "A" }] },
+					{ id: "two", question: "¿Segunda?", options: [{ value: "b", label: "B" }] },
+				],
+				grill: {
+					sessionId: "grill-rounds-test",
+					phase: "interview",
+					frontierSize: 2,
+				},
+			},
+			undefined,
+			undefined,
+			activeGrillContext("adaptive", (component) => {
+				component.handleInput("\r");
+				component.handleInput("\r");
+				component.handleInput("\r");
+			}),
+		),
+		/ask_user_question.*required/i,
+	);
+});
+
 test("ask_user_questions preserves an intentional empty answer when a later decision cancels", { skip: !PI_PACKAGE_ROOT }, async () => {
 	const tool = tools.get("ask_user_questions");
 	assert.ok(tool);
@@ -231,4 +345,7 @@ test("Pi grill exposes quick, rounds, and one-by-one as distinct modes", async (
 	assert.match(skill, /`ask_user_questions`/);
 	assert.match(skill, /frontera de dependencias/i);
 	assert.match(skill, /hasta 4 preguntas/i);
+	assert.match(skill, /interviewMode/);
+	assert.match(skill, /`grill_session`[^\n]*action: "configure"[^\n]*antes de la primera pregunta/i);
+	assert.match(skill, /frontierSize/);
 });

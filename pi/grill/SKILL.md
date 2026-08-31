@@ -10,7 +10,7 @@ Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. 
 
 `grill` es el único entry point para entrevistas. El usuario puede elegir si el mismo workflow también mantiene el modelo de dominio mediante `CONTEXT.md` y ADRs; ninguna extensión debe decidir esa modalidad por él.
 
-Usá `ask_user_question` para una sola decisión, `ask_user_questions` para rondas de 2 a 4 decisiones independientes, `grill_session` para persistir el progreso y `select_grill_session` para listar, inspeccionar o retomar entrevistas anteriores.
+Usá `ask_user_question` para una sola decisión, `ask_user_questions` para rondas de 2 a 4 decisiones independientes, `grill_session` para persistir el progreso y `select_grill_session` para listar, inspeccionar o retomar entrevistas anteriores. La modalidad elegida se persiste como `interviewMode` y las tools de preguntas la validan en runtime.
 
 ## Argumentos Pi
 
@@ -28,6 +28,7 @@ Usá `ask_user_question` para una sola decisión, `ask_user_questions` para rond
 - En **Grillado pregunta a pregunta**, hacé exactamente una pregunta por vez y dejá que cada respuesta moldee la siguiente. No prepares un cuestionario rígido completo.
 - En **Por rondas**, presentá juntas hasta 4 preguntas sobre decisiones de la frontera de dependencias que ya estén desbloqueadas y sean realmente independientes. Recalculá la frontera recién cuando vuelva la ronda completa.
 - En **Grillado rápido**, presentá juntas todas las preguntas aplicables del alcance actual, con la opción recomendada marcada como propuesta. El usuario aprueba las recomendaciones que no le hacen ruido y señala cuáles quiere revisar.
+- Persistí la elección antes de entrevistar: `fast` para Grillado rápido, `rounds` para Por rondas y `adaptive` para pregunta a pregunta. Nunca confíes solamente en recordar la respuesta del historial.
 - Recorré las dependencias entre decisiones en orden; resolvé primero aquello de lo que dependen otras ramas.
 - Para cada pregunta ofrecé una respuesta recomendada y una justificación breve.
 - Fuera de la propuesta visible del Grillado rápido, no preselecciones recomendaciones ni las registres como decisiones antes de la aprobación del usuario.
@@ -65,8 +66,8 @@ Cuando el usuario quiera ver, inspeccionar o retomar sesiones de grilling:
 4. Si el modo es `domain-modeling`, cargá el skill de domain modeling y contrastá el snapshot con los archivos actuales. Si difieren, mostrá la contradicción y resolvela antes de avanzar.
 5. Si existe un cuestionario exportado con respuestas completadas (ver **Exportar cuestionario**), leelo e incorporá cada respuesta como decisión resuelta con su checkpoint; repreguntá solo lo ambiguo.
 6. Mostrá brevemente el tema, las decisiones resueltas, lo pendiente y el próximo bloque recomendado.
-7. Reevaluá las ramas pendientes usando los criterios de la Fase 0. Pedí que elija **Grillado rápido**, **Por rondas** o **Grillado pregunta a pregunta** mediante `ask_user_question`, marcando la recomendación resultante y explicando sus señales concretas; cancelar pausa la sesión.
-8. Continuá en la modalidad elegida desde la siguiente decisión pendiente; no repitas preguntas ya resueltas salvo que el usuario quiera revisarlas.
+7. Reevaluá las ramas pendientes usando los criterios de la Fase 0. Pedí que elija **Grillado rápido**, **Por rondas** o **Grillado pregunta a pregunta** mediante `ask_user_question`, con `grill: { sessionId, phase: "configuration" }`, marcando la recomendación resultante y explicando sus señales concretas; cancelar pausa la sesión.
+8. Persistí inmediatamente la respuesta con `grill_session` (`action: "configure"`, `interviewMode: "fast" | "rounds" | "adaptive"`) antes de la primera pregunta. Recién entonces continuá desde la siguiente decisión pendiente; no repitas preguntas ya resueltas salvo que el usuario quiera revisarlas.
 
 Una sesión finalizada es inmutable. Para cambiarla, duplicala como nueva revisión mediante `select_grill_session`. Para convertirla en spec sin cambiarla, elegí la acción de crear spec SDD del selector; el handoff congelado se usa como fuente.
 
@@ -131,7 +132,7 @@ Si elige documentación de dominio, cargá ahora `domain-modeling` y completá e
 
 ### Paso 2: crear la sesión
 
-Creá el registro persistente con `grill_session` usando `action: "create"` y el `workflowMode` elegido. Si el origen es un issue, incluí `sourceIssue: { number: NN, repository: "owner/repo" }` (omití sólo `repository` si no puede resolverse). Guardá el `sessionId` devuelto y usalo durante toda la entrevista.
+Creá el registro persistente con `grill_session` usando `action: "create"` y el `workflowMode` elegido. La tool inicializa `interviewMode: "unselected"`: ningún checkpoint de entrevista será aceptado hasta configurarlo. Si el origen es un issue, incluí `sourceIssue: { number: NN, repository: "owner/repo" }` (omití sólo `repository` si no puede resolverse). Guardá el `sessionId` devuelto y usalo durante toda la entrevista.
 
 ### Paso 3: elegir modalidad de entrevista
 
@@ -141,7 +142,25 @@ Invocá `ask_user_question` una sola vez con estas tres opciones:
 - **Por rondas**: presenta hasta 4 decisiones independientes de la frontera actual; el árbol se recalcula entre rondas.
 - **Grillado pregunta a pregunta**: entrevista adaptativa donde cada respuesta modifica la pregunta siguiente.
 
-Marcá como `recommended: true` exactamente la modalidad que resulte del diagnóstico y explicá las señales concretas en `recommendationReason`. No recomiendes **Grillado rápido** sólo por ahorrar tiempo, **Por rondas** sólo porque hay muchas preguntas ni **Grillado pregunta a pregunta** sólo porque el tema parece importante: distinguí aprobación colectiva, adaptación entre rondas y adaptación después de cada respuesta. La elección de modalidad implica autorización para comenzar. Usá `allowOther: true`. Si el usuario cancela, pausá el registro y no empieces.
+Marcá como `recommended: true` exactamente la modalidad que resulte del diagnóstico y explicá las señales concretas en `recommendationReason`. No recomiendes **Grillado rápido** sólo por ahorrar tiempo, **Por rondas** sólo porque hay muchas preguntas ni **Grillado pregunta a pregunta** sólo porque el tema parece importante: distinguí aprobación colectiva, adaptación entre rondas y adaptación después de cada respuesta. La elección de modalidad implica autorización para comenzar. Usá `allowOther: true` y `grill: { sessionId, phase: "configuration" }`. Si el usuario cancela, pausá el registro y no empieces.
+
+Mapeá la respuesta y ejecutá `grill_session` con `action: "configure"` e `interviewMode` (`fast`, `rounds` o `adaptive`) **antes de la primera pregunta de entrevista**. Este checkpoint de configuración es obligatorio: las tools rechazan combinaciones incompatibles y `grill_session` rechaza checkpoints mientras el modo siga `unselected`.
+
+### Contexto obligatorio de las preguntas
+
+Mientras la sesión esté activa, toda llamada de entrevista o cierre incluye un objeto `grill`:
+
+- `sessionId`: id persistente devuelto por `grill_session`;
+- `phase`: `"interview"` para decisiones o `"closure"` para la confirmación final;
+- `frontierSize`: cantidad real de decisiones representadas por la llamada; es obligatorio en fase `interview`. Vale 1 en modo adaptativo, de 1 a 4 en rondas y hasta 20 en la revisión colectiva del modo rápido.
+
+El gate de runtime aplica estas reglas:
+
+- con `interviewMode: "rounds"`, una frontera de 2 a 4 exige `ask_user_questions`; `ask_user_question` sólo se admite con `frontierSize: 1`;
+- con `interviewMode: "adaptive"` o `"fast"`, `ask_user_questions` se rechaza;
+- configuración y cierre usan siempre `ask_user_question`.
+
+No eludas el gate declarando `frontierSize: 1` cuando existen varias decisiones independientes. Si una tool rechaza la llamada, corregí la modalidad o el tamaño de frontera; no improvises un cuestionario numerado dentro de una única pregunta.
 
 ## Fase 2: entrevista
 
@@ -151,6 +170,7 @@ Para cada decisión:
 
 1. Elegí la siguiente rama según dependencias y respuestas anteriores.
 2. Invocá `ask_user_question` una sola vez con:
+   - `grill: { sessionId, phase: "interview", frontierSize: 1 }`;
    - una pregunta autocontenida;
    - `selectionMode: "single"` o `"multiple"` según corresponda;
    - opciones claras y mutuamente comprensibles;
@@ -175,8 +195,8 @@ Cada ronda presenta la **frontera de dependencias**: solo decisiones cuyas depen
 1. Calculá la frontera actual y priorizá las decisiones que desbloquean más ramas.
 2. Si la respuesta de una decisión cambiaría cómo se formula otra o sus opciones, no las pongas en la misma ronda: dejá la dependiente para la ronda siguiente.
 3. Elegí hasta 4 decisiones independientes de la frontera:
-   - con 2 a 4, invocá `ask_user_questions` una sola vez y enviá una entrada por decisión, cada una con `id` único, pregunta autocontenida, `section`, progreso, opciones, recomendación con motivo, `selectionMode` y `allowOther: true`;
-   - si la frontera tiene una sola decisión, invocá `ask_user_question`; una ronda de una pregunta es válida cuando las dependencias no permiten agrupar.
+   - con 2 a 4, invocá `ask_user_questions` una sola vez con `grill: { sessionId, phase: "interview", frontierSize: N }` y enviá una entrada por decisión, cada una con `id` único, pregunta autocontenida, `section`, progreso, opciones, recomendación con motivo, `selectionMode` y `allowOther: true`;
+   - si la frontera tiene una sola decisión, invocá `ask_user_question` con `grill: { sessionId, phase: "interview", frontierSize: 1 }`; una ronda de una pregunta es válida cuando las dependencias no permiten agrupar.
 4. Esperá la ronda completa. La tool no devuelve control al agente entre preguntas: no incluyas dos decisiones acopladas esperando corregir la segunda sobre la marcha.
 5. Por cada respuesta recibida, en orden:
    - actualizá el árbol;
@@ -200,7 +220,7 @@ Cada pregunta incluida en la ronda cuenta individualmente contra el límite de 2
    - justificación breve;
    - dependencia o condición, si existe.
 3. Aclará que las propuestas todavía no son decisiones confirmadas. Las ramas que solo aparecerían con una respuesta no recomendada deben figurar como condicionales; no inventes sus preguntas antes de que se abra esa rama.
-4. Invocá una sola vez `ask_user_question` en modo `multiple` con una opción por id de decisión y esta consigna: **“Seleccioná las decisiones que te hacen ruido; si no seleccionás ninguna, aprobás todas las propuestas.”** Usá `allowEmptySelection: true` y `allowOther: true`.
+4. Invocá una sola vez `ask_user_question` en modo `multiple`, con `grill: { sessionId, phase: "interview", frontierSize: N }`, una opción por id de decisión y esta consigna: **“Seleccioná las decisiones que te hacen ruido; si no seleccionás ninguna, aprobás todas las propuestas.”** Usá `allowEmptySelection: true` y `allowOther: true`.
 5. Si no selecciona ninguna:
    - considerá aprobadas todas las recomendaciones visibles;
    - persistí cada pregunta y su respuesta aprobada con un `checkpoint` separado y un id de interacción único;
@@ -310,7 +330,7 @@ Este texto es el contrato de handoff. Tiene que estar renderizado en el chat; no
 
 ### Paso 2: confirmación autocontenida
 
-Recién después del contrato visible, invocá `ask_user_question` con una pregunta autocontenida y estas acciones provisionales:
+Recién después del contrato visible, invocá `ask_user_question` con `grill: { sessionId, phase: "closure" }`, una pregunta autocontenida y estas acciones provisionales:
 
 - **Confirmar entendimiento**: finaliza y congela el handoff.
 - **Confirmar y crear spec SDD**: si `sdd-spec` está disponible, primero finaliza y congela el handoff; recién después inicia el workflow de spec.
