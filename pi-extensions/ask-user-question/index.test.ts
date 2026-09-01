@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { after, before, test } from "node:test";
+import { after, before, beforeEach, test } from "node:test";
 
 interface RegisteredTool {
 	name: string;
@@ -36,6 +36,7 @@ const PI_PACKAGE_ROOT = findPiPackageRoot();
 let sandbox = "";
 let tools = new Map<string, RegisteredTool>();
 let visibleWidth: (text: string) => number;
+let emittedEvents: Array<{ name: string; payload: unknown }> = [];
 
 before(async () => {
 	if (!PI_PACKAGE_ROOT) return;
@@ -67,9 +68,18 @@ before(async () => {
 		registerTool(tool: RegisteredTool) {
 			tools.set(tool.name, tool);
 		},
-		events: { on() {} },
+		events: {
+			on() {},
+			emit(name: string, payload: unknown) {
+				emittedEvents.push({ name, payload });
+			},
+		},
 		on() {},
 	} as never);
+});
+
+beforeEach(() => {
+	emittedEvents = [];
 });
 
 after(() => {
@@ -132,6 +142,56 @@ function activeGrillContext(
 		},
 	};
 }
+
+test("ask_user_question reports a Herdr blocker until the prompt closes", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const tool = tools.get("ask_user_question");
+	assert.ok(tool);
+	const activeEvent = {
+		name: "herdr:blocked",
+		payload: { active: true, label: "Waiting for user response" },
+	};
+	const clearedEvent = { name: "herdr:blocked", payload: { active: false } };
+
+	const cancelled = await tool.execute(
+		"call-cancelled",
+		{
+			question: "¿Continuamos?",
+			options: [{ value: "yes", label: "Sí" }],
+		},
+		undefined,
+		undefined,
+		tuiContext((component) => {
+			assert.deepEqual(emittedEvents, [activeEvent], "Herdr must be blocked before the dialog opens");
+			component.handleInput("\x1b");
+		}),
+	);
+
+	assert.equal(cancelled.details.cancelled, true);
+	assert.deepEqual(emittedEvents, [activeEvent, clearedEvent]);
+
+	await assert.rejects(
+		tool.execute(
+			"call-rejected",
+			{
+				question: "¿Continuamos?",
+				options: [{ value: "yes", label: "Sí" }],
+			},
+			undefined,
+			undefined,
+			{
+				mode: "tui",
+				ui: {
+					async custom() {
+						assert.deepEqual(emittedEvents, [activeEvent, clearedEvent, activeEvent]);
+						throw new Error("UI failed");
+					},
+				},
+			},
+		),
+		/UI failed/,
+	);
+	assert.deepEqual(emittedEvents, [activeEvent, clearedEvent, activeEvent, clearedEvent]);
+});
 
 test("ask_user_question reflows long recommendations when the available width shrinks", { skip: !PI_PACKAGE_ROOT }, async () => {
 	const tool = tools.get("ask_user_question");

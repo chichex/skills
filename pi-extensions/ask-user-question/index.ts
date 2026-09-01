@@ -211,6 +211,17 @@ function answerSummary(answers: AskAnswer[]): string {
 		.join("; ");
 }
 
+async function withHerdrBlocked<T>(pi: ExtensionAPI, prompt: () => Promise<T>): Promise<T> {
+	// Herdr's current Pi integration consumes this compatibility event while a
+	// tool keeps the agent turn active but is actually waiting on the user.
+	pi.events.emit("herdr:blocked", { active: true, label: "Waiting for user response" });
+	try {
+		return await prompt();
+	} finally {
+		pi.events.emit("herdr:blocked", { active: false });
+	}
+}
+
 function isGrillInterviewState(value: unknown): value is GrillInterviewState {
 	if (!value || typeof value !== "object") return false;
 	const candidate = value as Partial<GrillInterviewState>;
@@ -766,7 +777,7 @@ export default function askUserQuestion(pi: ExtensionAPI) {
 			const problem = invalidQuestion(question);
 			if (problem) return errorAskResult(question.question, `Error: ${problem}`);
 
-			const result = await askQuestionsInTui(ctx, [question]);
+			const result = await withHerdrBlocked(pi, () => askQuestionsInTui(ctx, [question]));
 			const answers = result.answers[0] ?? [];
 			const details = questionDetails(question, answers, result.cancelled);
 			if (result.cancelled) {
@@ -835,7 +846,7 @@ export default function askUserQuestion(pi: ExtensionAPI) {
 				}
 			}
 
-			const result = await askQuestionsInTui(ctx, questions);
+			const result = await withHerdrBlocked(pi, () => askQuestionsInTui(ctx, questions));
 			const details: AskQuestionsDetails = {
 				questions: questions.map((question, index) => {
 					const answers = result.answers[index] ?? [];
