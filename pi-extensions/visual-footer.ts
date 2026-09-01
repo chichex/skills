@@ -60,6 +60,7 @@ function readMacRamUsage(): Promise<number | undefined> {
 
 export default function visualFooter(pi: ExtensionAPI) {
 	let working = false;
+	let waitingForUser = false;
 	let enabled = true;
 	let worktreeName: string | undefined;
 	let requestRender: () => void = () => {};
@@ -158,14 +159,16 @@ export default function visualFooter(pi: ExtensionAPI) {
 					const cwd = shortCwd(ctx.cwd);
 					const project = basename(ctx.cwd) || cwd;
 					const parent = cwd.endsWith(project) ? cwd.slice(0, -project.length) : "";
-					const stateDot = theme.fg(working ? "warning" : "dim", working ? "●" : "○");
+					const active = working || waitingForUser;
+					const stateDot = theme.fg(active ? "warning" : "dim", active ? "●" : "○");
 					const projectText = theme.bold(theme.fg("accent", project));
 					const pathText = `${stateDot}  ${theme.fg("muted", parent)}${projectText}`;
 
 					const branch = footerData.getGitBranch();
 					const sessionName = ctx.sessionManager.getSessionName();
 					const locationParts: string[] = [];
-					if (working) locationParts.push(theme.bold(theme.fg("warning", "WORKING")));
+					if (waitingForUser) locationParts.push(theme.bold(theme.fg("warning", "WAITING")));
+					else if (working) locationParts.push(theme.bold(theme.fg("warning", "WORKING")));
 					if (worktreeName) {
 						locationParts.push(
 							`${theme.fg("muted", "wt:")}${theme.bold(theme.fg("warning", worktreeName))}`,
@@ -267,6 +270,7 @@ export default function visualFooter(pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		working = false;
+		waitingForUser = false;
 		systemUsage = {};
 		previousCpuTimes = readCpuTimes();
 		staticUsageSampledAt = 0;
@@ -288,6 +292,16 @@ export default function visualFooter(pi: ExtensionAPI) {
 
 	pi.on("agent_settled", () => {
 		working = false;
+		requestRender();
+	});
+
+	pi.on("ui_prompt_start", () => {
+		waitingForUser = true;
+		requestRender();
+	});
+
+	pi.on("ui_prompt_end", () => {
+		waitingForUser = false;
 		requestRender();
 	});
 
