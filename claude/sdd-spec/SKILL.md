@@ -156,7 +156,7 @@ El marker `SDD-Tracking` es la identidad machine-readable de la spec (contrato S
 Destino (saltear pregunta si vino `--out`):
 
 - **El pedido vino de un issue** — usar `AskUserQuestion`: 1. `Actualizar el issue (Recomendado)` — reescribir el body con la spec, archivando el body original al final dentro de un `<details><summary>Body original</summary>`; 2. `Local` — `.sdd/specs/issue-NN-<slug>.md`; 3. `Ambos`.
-- **Pedido libre o grill sin issue de origen** — usar `AskUserQuestion`: 1. `Local (Recomendado)` — `.sdd/specs/<slug>.md`; 2. `Crear issue` — `gh issue create` con la spec como body. Si se crea un issue nuevo, reemplazar inmediatamente `issue=none` por el número devuelto antes de dar la spec por lista.
+- **Pedido libre o grill sin issue de origen** — usar `AskUserQuestion`: 1. `Local (Recomendado)` — `.sdd/specs/<slug>.md`; 2. `Crear issue` — crear primero el issue con un body de staging no-SDD; con el número devuelto, reemplazar `issue=none` y recién entonces actualizar el body con la spec canónica.
 - Con `--assume` y sin `--out`: local.
 
 ### Reemplazar una spec (`superseded`)
@@ -181,6 +181,21 @@ Por fase (todo lo no mencionado queda igual):
 - **Cierre (Fase 6)** — antes de escribir la spec, un completeness critic (loop-until-dry) audita: ¿quedó alguna inferencia sin listar? ¿algún CA no es observable (paso/no paso sin interpretación)? ¿el veredicto es honesto contra el contrato? ¿el protocolo humano de los CA NULA es ejecutable? Lo que marque se resuelve o se anota como `[NEEDS-INPUT]`/riesgo — no se cierra con hallazgos abiertos.
 
 Con `--assume`, ultracode corre igual pero sin los `AskUserQuestion`: los paneles emiten veredictos con evidencia y las inferencias quedan `[ASSUMED]`; la spec queda `draft` como siempre.
+
+<!-- sdd-spec-publication-gate:start -->
+### Gate canónico de publicación (precondición obligatoria)
+
+La spec no está lista por haber generado Markdown ni por haber ejecutado un write. Antes de cualquier éxito observable:
+
+1. Validar el candidato con `parseSddArtifact` (directamente o mediante el boundary disponible), sin implementar un parser regex paralelo. Debe resultar exactamente `kind=metadata`, `format=canonical`, `type=spec`, cero diagnósticos; en modo interactivo `state=approved`, con `--assume` `state=draft`; `superseded-by=none`; identidad semántica del issue resuelto (la forma relativa o calificada del mismo repo es equivalente) y grill decodificado exacto, incluido `none`.
+2. Construir el conjunto completo de escrituras y ejecutar su precheck antes de cualquier mutación. Si hay predecesoras, deben conservar `issue`/`grill`, quedar `state=superseded` y llevar `superseded-by` a la sucesora. Una falla bloquea todas las escrituras aún no iniciadas.
+3. Persistir y releer cada destino; aplicar a los bytes releídos la misma postcondición. Un write exitoso sin postcheck no cuenta como cierre.
+4. Para `Ambos`, además exigir equivalencia normativa entre copia local y remota. Sólo se normalizan transporte conocido (issue relativo/calificado, EOL final y el `<details><summary>Body original</summary>` remoto); cualquier otra diferencia bloquea.
+5. Para una issue nueva, crear primero un staging no-SDD, resolver su número, incorporarlo al marker, revalidar y recién entonces publicar la spec. Nunca publicar transitoriamente una spec con `issue=none` en la issue nueva.
+6. Emitir un receipt exitoso sólo cuando todas las mutaciones y relecturas verificaron. Sin ese receipt está prohibido mostrar `Spec lista`, aunque una parte haya quedado escrita; preservar y diagnosticar los éxitos parciales y reintentar de forma idempotente sin duplicar archivos ni markers.
+
+La ausencia de un runtime dedicado en este harness no relaja ninguna de estas postcondiciones.
+<!-- sdd-spec-publication-gate:end -->
 
 ## Reporte
 

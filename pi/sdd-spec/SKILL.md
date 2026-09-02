@@ -158,8 +158,8 @@ El marker `SDD-Tracking` es la identidad machine-readable de la spec (contrato S
 
 Destino (saltear pregunta si vino `--out`):
 
-- **El pedido vino de un issue** — usar `ask_user_question`: 1. `Actualizar el issue (Recomendado)` — reescribir el body con la spec, archivando el body original al final dentro de un `<details><summary>Body original</summary>`; aclarar en la descripción de esta opción que **no crea un archivo en `.sdd/specs/`**. 2. `Local` — `.sdd/specs/issue-NN-<slug>.md`; 3. `Ambos`.
-- **Pedido libre o grill sin issue de origen** — usar `ask_user_question`: 1. `Local (Recomendado)` — `.sdd/specs/<slug>.md`; 2. `Crear issue` — `gh issue create` con la spec como body. Si se crea un issue nuevo, reemplazar inmediatamente `issue=none` por el número devuelto antes de dar la spec por lista.
+- **El pedido vino de un issue** — usar `ask_user_question`: 1. `Actualizar el issue (Recomendado)` — enviar a `persist_sdd_spec` la spec normativa sin `<details>`; la tool archiva idempotentemente el body original sólo en el transporte remoto. Aclarar en la descripción de esta opción que **no crea un archivo en `.sdd/specs/`**. 2. `Local` — `.sdd/specs/issue-NN-<slug>.md`; 3. `Ambos`.
+- **Pedido libre o grill sin issue de origen** — usar `ask_user_question`: 1. `Local (Recomendado)` — `.sdd/specs/<slug>.md`; 2. `Crear issue` — solicitar a `persist_sdd_spec` el destino `new-issue`; la tool crea un staging no-SDD, resuelve el número y publica recién después de enlazar y revalidar la spec.
 - Con `--assume` y sin `--out`: local.
 
 ### Reemplazar una spec (`superseded`)
@@ -171,6 +171,21 @@ Cuando la corrida re-especifica un pedido hacia un archivo nuevo o una revisión
 ```
 
 `superseded-by` apunta a la sucesora (ruta del archivo nuevo o referencia del issue); `issue` y `grill` conservan los valores que la spec reemplazada ya tenía, y su campo `Estado:` humano se reconcilia a `reemplazada por <ref>`. El invariante no se negocia: en todo estado distinto de `superseded`, `superseded-by` es `none`.
+
+<!-- sdd-spec-publication-gate:start -->
+### Gate canónico de publicación (precondición obligatoria)
+
+La spec no está lista por haber generado Markdown ni por haber ejecutado un write. Antes de cualquier éxito observable:
+
+1. Validar el candidato con `parseSddArtifact` (directamente o mediante el boundary disponible), sin implementar un parser regex paralelo. Debe resultar exactamente `kind=metadata`, `format=canonical`, `type=spec`, cero diagnósticos; en modo interactivo `state=approved`, con `--assume` `state=draft`; `superseded-by=none`; identidad semántica del issue resuelto (la forma relativa o calificada del mismo repo es equivalente) y grill decodificado exacto, incluido `none`.
+2. Construir el conjunto completo de escrituras y ejecutar su precheck antes de cualquier mutación. Si hay predecesoras, deben conservar `issue`/`grill`, quedar `state=superseded` y llevar `superseded-by` a la sucesora. Una falla bloquea todas las escrituras aún no iniciadas.
+3. Persistir y releer cada destino; aplicar a los bytes releídos la misma postcondición. Un write exitoso sin postcheck no cuenta como cierre.
+4. Para `Ambos`, además exigir equivalencia normativa entre copia local y remota. Sólo se normalizan transporte conocido (issue relativo/calificado, EOL final y el `<details><summary>Body original</summary>` remoto); cualquier otra diferencia bloquea.
+5. Para una issue nueva, crear primero un staging no-SDD, resolver su número, incorporarlo al marker, revalidar y recién entonces publicar la spec. Nunca publicar transitoriamente una spec con `issue=none` en la issue nueva.
+6. Emitir un receipt exitoso sólo cuando todas las mutaciones y relecturas verificaron. Sin ese receipt está prohibido mostrar `Spec lista`, aunque una parte haya quedado escrita; preservar y diagnosticar los éxitos parciales y reintentar de forma idempotente sin duplicar archivos ni markers.
+
+En Pi, invocar `persist_sdd_spec` una sola vez con la sucesora y todas las predecesoras. Considerar éxito únicamente si devuelve `details.ok=true` y `details.receipt`; un resultado sin `details.receipt` es un bloqueo diagnosticado y no se reemplaza con escrituras manuales. Si devuelve `createdIssues`, reintentar cada una como destino `issue` existente con esa identidad — nunca repetir `new-issue`. Los demás harnesses aplican la misma doctrina sin requerir este runtime exclusivo de Pi.
+<!-- sdd-spec-publication-gate:end -->
 
 ## Reporte
 

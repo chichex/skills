@@ -100,6 +100,19 @@ const FEEDBACK_REMEDIATION_DOCTRINE = [
 	/`Feedback resuelto` solo si[\s\S]*no hay bloqueos[\s\S]*`SEGUIMIENTO DE FEEDBACK DETENIDO`/i,
 ];
 
+const SDD_SPEC_PUBLICATION_DOCTRINE = [
+	/`parseSddArtifact`/,
+	/`kind=metadata`[\s\S]*`format=canonical`[\s\S]*`type=spec`/,
+	/interactivo[\s\S]*`state=approved`[\s\S]*`--assume`[\s\S]*`state=draft`/i,
+	/identidad semántica[\s\S]*issue[\s\S]*grill decodificado exacto/i,
+	/precheck[\s\S]*antes de cualquier mutación/i,
+	/releer[\s\S]*cada destino[\s\S]*misma postcondición/i,
+	/`Ambos`[\s\S]*equivalencia normativa/i,
+	/staging no-SDD[\s\S]*issue nueva/i,
+	/predecesoras[\s\S]*`state=superseded`[\s\S]*`superseded-by`/i,
+	/receipt exitoso[\s\S]*`Spec lista`/i,
+];
+
 const FEEDBACK_REMEDIATION_QUESTION_STYLE: Record<Harness, RegExp> = {
 	claude: /usar `AskUserQuestion`[\s\S]*Resolver feedback automáticamente/,
 	codex: /usar `request_user_input`[\s\S]*texto plano[\s\S]*Resolver feedback automáticamente/,
@@ -455,6 +468,36 @@ test("sdd-run remedia feedback del PR de forma automática, opt-in y segura en c
 			`${harness}/sdd-run/SKILL.md todavía obliga a detenerse después de detectar feedback`,
 		);
 	}
+});
+
+test("sdd-spec exige la postcondición canónica antes de cualquier éxito observable en cada harness", async () => {
+	const commonDoctrine = new Map<Harness, string[]>();
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
+		const doctrine = delimitedDoctrine(markdown, "sdd-spec-publication-gate");
+		for (const expected of SDD_SPEC_PUBLICATION_DOCTRINE) {
+			assert.match(doctrine, expected, `${harness}/sdd-spec/SKILL.md no declara ${expected}`);
+		}
+		const doctrineStart = markdown.indexOf("<!-- sdd-spec-publication-gate:start -->");
+		const reportStart = markdown.indexOf("## Reporte");
+		assert.ok(doctrineStart >= 0 && reportStart >= 0 && doctrineStart < reportStart,
+			`${harness}/sdd-spec/SKILL.md declara el gate después del reporte de éxito`);
+		if (harness === "pi") {
+			assert.match(doctrine, /`persist_sdd_spec`[\s\S]*`details\.receipt`/,
+				"Pi debe ejecutar el boundary y comprobar su receipt estructurado");
+		} else {
+			assert.doesNotMatch(markdown, /`persist_sdd_spec`/,
+				`${harness}/sdd-spec/SKILL.md no debe depender del runtime exclusivo de Pi`);
+		}
+		const normalizedDoctrine = harness === "pi"
+			? doctrine.replace(
+				/\n\nEn Pi,[\s\S]*$/,
+				"\n\nLa ausencia de un runtime dedicado en este harness no relaja ninguna de estas postcondiciones.",
+			)
+			: doctrine;
+		commonDoctrine.set(harness, [normalizedDoctrine]);
+	}
+	assert.deepEqual(compareTemplates("sdd-spec publication doctrine", commonDoctrine), []);
 });
 
 test(".sdd/project.md lleva el marker canonico type=project", async () => {

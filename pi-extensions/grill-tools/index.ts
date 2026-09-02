@@ -1,13 +1,24 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { StringEnum } from "@earendil-works/pi-ai";
-import { getMarkdownTheme, truncateHead, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+	getMarkdownTheme,
+	truncateHead,
+	withFileMutationQueue,
+	type ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
 import { Markdown, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { menuItems, selectMenu, type MenuItem } from "../lib/menu.ts";
+import {
+	persistSpecPublication,
+	SDD_SPEC_ISSUE_STAGING_BODY,
+	type SpecPublicationDestination,
+	type SpecPublicationPorts,
+} from "../sdd-artifacts/spec-publication.ts";
 import { requestSddRun } from "../workflow-orchestrator/controller.ts";
 import {
 	continueWithMaterializedSkill,
@@ -16,9 +27,11 @@ import {
 } from "../workflow-orchestrator/same-session.ts";
 import {
 	inspectMarkdownArtifact,
+	normalizeNormativeSpecContent,
 	type ArtifactFormat,
 	type ArtifactProvenance,
 	type IssueRef,
+	type ResolutionDiagnostic,
 } from "../workflow-resolution/index.ts";
 import {
 	allowsFinalizeSpecContinuation,
@@ -26,6 +39,12 @@ import {
 	planGrillHandoff,
 	slugify,
 } from "./logic.ts";
+import {
+	compareSpecListEntries,
+	isInvalidSpecListEntry,
+	specInspectionDiagnostics,
+	specMenuPresentation,
+} from "./spec-list.ts";
 
 const AGENT_DIR = join(homedir(), ".pi", "agent");
 const STORE_DIR = join(AGENT_DIR, "grill-sessions");
@@ -113,7 +132,7 @@ interface SpecDocument {
 	format: ArtifactFormat;
 	provenance: ArtifactProvenance;
 	issue: IssueRef | null;
-	diagnostics: string[];
+	diagnostics: ResolutionDiagnostic[];
 	updatedAt: string;
 	markdown: string;
 }
@@ -191,6 +210,30 @@ const GrillSessionParams = Type.Object({
 	summary: Type.Optional(Type.String()),
 	handoffMarkdown: Type.Optional(Type.String({ description: "Required for finalize" })),
 	continueWithSpec: Type.Optional(Type.Boolean({ description: "After finalize, materialize sdd-spec --from-grill in this session" })),
+});
+
+const SpecPublicationDestinationParams = Type.Object({
+	kind: StringEnum(["local", "issue", "new-issue"] as const),
+	path: Type.Optional(Type.String({ description: "Relative .sdd/specs/*.md path for a local destination" })),
+	issueNumber: Type.Optional(Type.Integer({ minimum: 1, description: "Existing issue destination" })),
+	title: Type.Optional(Type.String({ description: "Title used only while creating a new issue" })),
+});
+
+const SpecPublicationDocumentParams = Type.Object({
+	id: Type.String({ minLength: 1 }),
+	role: StringEnum(["successor", "predecessor"] as const),
+	markdown: Type.String({ minLength: 1 }),
+	issueNumber: Type.Optional(Type.Integer({ minimum: 1, description: "Expected semantic source issue" })),
+	grill: Type.Optional(Type.String({ minLength: 1, description: "Expected decoded grill session id" })),
+	supersededBy: Type.Optional(Type.String({ minLength: 1, description: "Required decoded successor ref for predecessors" })),
+	destinations: Type.Array(SpecPublicationDestinationParams, { minItems: 1 }),
+});
+
+const PersistSddSpecParams = Type.Object({
+	mode: StringEnum(["interactive", "assume"] as const),
+	repository: Type.String({ minLength: 1, description: "Resolved owner/repo identity, or local/<project>" }),
+	projectPath: Type.Optional(Type.String({ description: "Defaults to the current git root or cwd" })),
+	documents: Type.Array(SpecPublicationDocumentParams, { minItems: 1 }),
 });
 
 const SelectGrillSessionParams = Type.Object({
@@ -364,6 +407,107 @@ async function projectRepository(pi: ExtensionAPI, projectPath: string): Promise
 		: `local/${basename(projectPath)}`;
 }
 
+function isInside(parent: string, candidate: string): boolean {
+	const fromParent = relative(parent, candidate);
+	return fromParent === "" || (!fromParent.startsWith("..") && !isAbsolute(fromParent));
+}
+
+function confinedSpecPath(projectPath: string, requestedPath: string): string {
+	const cleaned = requestedPath.trim().replace(/^@/, "");
+	if (!cleaned) throw new Error("Local destination path is required");
+	const directory = resolve(projectPath, ".sdd", "specs");
+	const candidate = isAbsolute(cleaned) ? resolve(cleaned) : resolve(projectPath, cleaned);
+	if (!isInside(directory, candidate) || dirname(candidate) !== directory || !candidate.endsWith(".md")) {
+		throw new Error(`Local spec destination must be one Markdown file directly under ${directory}`);
+	}
+	return candidate;
+}
+
+interface IssueArchiveParts {
+	normative: string;
+	original: string;
+}
+
+function issueArchiveParts(markdown: string): IssueArchiveParts | null {
+	const normalized = markdown.replace(/\r\n?/g, "\n");
+	const match = /\n[ \t\n]*<details><summary>Body original<\/summary>\n\n([\s\S]*)\n\n<\/details>[ \t\n]*$/.exec(normalized);
+	if (!match || match.index === undefined) return null;
+	return {
+		normative: `${normalized.slice(0, match.index).replace(/\n*$/, "")}\n`,
+		original: match[1] ?? "",
+	};
+}
+
+function stripIssueTransportArchive(markdown: string): string {
+	return issueArchiveParts(markdown)?.normative ?? markdown;
+}
+
+function issueBodyForPublication(markdown: string, currentBody: string, repository: string): string {
+	if (currentBody === SDD_SPEC_ISSUE_STAGING_BODY) return markdown;
+	if (normalizeNormativeSpecContent(currentBody, repository, "issue")
+		=== normalizeNormativeSpecContent(markdown, repository, "local")) {
+		return currentBody;
+	}
+	const original = issueArchiveParts(currentBody)?.original
+		?? currentBody.replace(/\r\n?/g, "\n").replace(/\n*$/, "");
+	if (!original) return markdown;
+	return `${markdown.replace(/\r\n?/g, "\n").replace(/\n*$/, "")}\n\n<details><summary>Body original</summary>\n\n${original}\n\n</details>\n`;
+}
+
+async function ensureSafeSpecDestination(projectPath: string, path: string): Promise<void> {
+	const projectCanonical = await realpath(projectPath);
+	const directory = resolve(projectPath, ".sdd", "specs");
+	await mkdir(directory, { recursive: true });
+	const directoryCanonical = await realpath(directory);
+	if (!isInside(projectCanonical, directoryCanonical)) {
+		throw new Error("Refusing a .sdd/specs directory that resolves outside the project");
+	}
+	try {
+		const destinationCanonical = await realpath(path);
+		if (!isInside(directoryCanonical, destinationCanonical)) {
+			throw new Error("Refusing a local spec symlink that resolves outside .sdd/specs");
+		}
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code !== "ENOENT") throw error;
+	}
+}
+
+async function withTemporaryBody<T>(body: string, operation: (path: string) => Promise<T>): Promise<T> {
+	const directory = await mkdtemp(join(tmpdir(), "sdd-spec-publication-"));
+	const path = join(directory, "body.md");
+	try {
+		await writeFile(path, body, "utf8");
+		return await operation(path);
+	} finally {
+		await rm(directory, { recursive: true, force: true });
+	}
+}
+
+async function runGh(
+	pi: ExtensionAPI,
+	args: string[],
+	cwd: string,
+	signal: AbortSignal | undefined,
+): Promise<string> {
+	const result = await pi.exec("gh", args, { cwd, timeout: 30_000, signal });
+	if (result.code !== 0) {
+		throw new Error(result.stderr.trim() || result.stdout.trim() || `gh exited with code ${result.code}`);
+	}
+	return result.stdout;
+}
+
+async function withLocalMutationQueues<T>(paths: string[], operation: () => Promise<T>): Promise<T> {
+	const uniquePaths = [...new Set(paths)].sort();
+	async function run(index: number): Promise<T> {
+		const path = uniquePaths[index];
+		return path === undefined
+			? operation()
+			: withFileMutationQueue(path, () => run(index + 1));
+	}
+	return run(0);
+}
+
 function compactSnapshot(snapshot: GrillSnapshot): object {
 	return {
 		id: snapshot.id,
@@ -474,39 +618,23 @@ function inspectSpecDocument(
 		format: artifact.format,
 		provenance: artifact.provenance,
 		issue: artifact.issue,
-		diagnostics: artifact.diagnostics.map(({ code }) => code),
+		diagnostics: artifact.diagnostics,
 	};
 }
 
-function specStatusRank(state: string): number {
-	if (state === "approved") return 0;
-	if (state === "draft") return 1;
-	if (state === "implemented") return 2;
-	if (state === "superseded") return 3;
-	return 4;
-}
-
-function specStatusIcon(state: string): string {
-	const rank = specStatusRank(state);
-	if (rank === 0) return "●";
-	if (rank === 1) return "◌";
-	if (rank === 2) return "✓";
-	return "•";
-}
-
 function specMenuItem(spec: SpecDocument): MenuItem<string> {
-	const diagnostics = spec.diagnostics.length > 0 ? ` · ⚠ ${spec.diagnostics.join(" + ")}` : "";
+	const presentation = specMenuPresentation(spec);
 	return {
 		value: spec.path,
-		label: `${specStatusIcon(spec.state)} ${spec.title}`,
-		description: `${spec.state} · ${spec.format}/${spec.provenance}${diagnostics} · ${basename(spec.projectPath)} · ${formatDate(spec.updatedAt)} · ${basename(spec.path)}`,
+		label: presentation.label,
+		description: `${presentation.description} · ${spec.provenance} · ${basename(spec.projectPath)} · ${formatDate(spec.updatedAt)} · ${basename(spec.path)}`,
 	};
 }
 
 function specInspectionMarkdown(spec: SpecDocument): string {
 	const identity = spec.issue ? `${spec.issue.repository}#${spec.issue.number}` : "none";
-	const diagnostics = spec.diagnostics.length > 0 ? spec.diagnostics.join(", ") : "none";
-	return `${spec.markdown.trim()}\n\n---\n\n**Ruta:** \`${spec.path}\`  \n**Normalizado:** ${spec.state} · ${spec.format}/${spec.provenance} · issue ${identity}  \n**Diagnósticos:** ${diagnostics}`;
+	const diagnostics = specInspectionDiagnostics(spec);
+	return `${spec.markdown.trim()}\n\n---\n\n**Ruta:** \`${spec.path}\`  \n**Normalizado:** ${spec.state} · ${spec.format}/${spec.provenance} · issue ${identity}  \n**Diagnósticos:**\n${diagnostics}`;
 }
 
 async function listSpecs(projects: SpecProject[]): Promise<SpecDocument[]> {
@@ -536,15 +664,7 @@ async function listSpecs(projects: SpecProject[]): Promise<SpecDocument[]> {
 		}));
 	}))).flat();
 
-	return specs.sort((a, b) => {
-		const statusDifference = specStatusRank(a.state) - specStatusRank(b.state);
-		if (statusDifference !== 0) return statusDifference;
-
-		const dateDifference = b.updatedAt.localeCompare(a.updatedAt);
-		if (dateDifference !== 0) return dateDifference;
-
-		return a.title.localeCompare(b.title);
-	});
+	return specs.sort(compareSpecListEntries);
 }
 
 async function listSessionCwds(): Promise<string[]> {
@@ -677,10 +797,13 @@ export default function grillTools(pi: ExtensionAPI) {
 
 					const inspectChoice = "Inspeccionar";
 					const runChoice = "Ejecutar";
+					const actionChoices = isInvalidSpecListEntry(selected)
+						? [backChoice, inspectChoice]
+						: [backChoice, inspectChoice, runChoice];
 					const action = await selectMenu(
 						ctx,
 						`${selected.title} · ${selected.state}`,
-						menuItems([backChoice, inspectChoice, runChoice]),
+						menuItems(actionChoices),
 					);
 					if (action === null || action === backChoice) continue;
 
@@ -809,6 +932,139 @@ export default function grillTools(pi: ExtensionAPI) {
 				const message = error instanceof Error ? error.message : String(error);
 				ctx.ui.notify(`Grills: ${message}`, "error");
 			}
+		},
+	});
+
+	pi.registerTool({
+		name: "persist_sdd_spec",
+		label: "Persist SDD spec",
+		description:
+			"Validate, persist, reread, and compare canonical sdd-spec lifecycle mutations. Returns a receipt only after every requested destination passes the parser-backed postcondition. Use only as directed by sdd-spec.",
+		parameters: PersistSddSpecParams,
+		executionMode: "sequential",
+
+		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+			const requestedRoot = params.projectPath?.trim()
+				? resolve(ctx.cwd, params.projectPath.trim())
+				: await projectRoot(pi, ctx.cwd);
+			const root = await projectRoot(pi, requestedRoot);
+			const repository = params.repository.trim();
+			const actualRepository = await projectRepository(pi, root);
+			if (repository.toLowerCase() !== actualRepository.toLowerCase()) {
+				throw new Error(`Repository identity mismatch: expected ${actualRepository}, got ${repository}`);
+			}
+
+			const localPaths: string[] = [];
+			const documents = params.documents.map((document) => {
+				if (document.role === "successor" && document.supersededBy !== undefined) {
+					throw new Error(`Successor ${document.id} cannot declare supersededBy`);
+				}
+				const destinations: SpecPublicationDestination[] = document.destinations.map((destination) => {
+					if (destination.kind === "local") {
+						if (!destination.path) throw new Error(`Local destination path is required for ${document.id}`);
+						const path = confinedSpecPath(root, destination.path);
+						localPaths.push(path);
+						return { kind: "local", path };
+					}
+					if (destination.kind === "issue") {
+						if (!destination.issueNumber) throw new Error(`issueNumber is required for ${document.id}`);
+						return { kind: "issue", issue: { repository, number: destination.issueNumber } };
+					}
+					if (!destination.title?.trim()) throw new Error(`New issue title is required for ${document.id}`);
+					return { kind: "new-issue", repository, title: destination.title.trim() };
+				});
+				return {
+					id: document.id,
+					role: document.role,
+					markdown: stripIssueTransportArchive(document.markdown),
+					expectation: {
+						mode: params.mode,
+						repository,
+						issue: document.issueNumber === undefined
+							? null
+							: { repository, number: document.issueNumber },
+						grill: document.grill?.trim() || null,
+						...(document.role === "predecessor" ? { state: "superseded" as const } : {}),
+						supersededBy: document.role === "predecessor"
+							? document.supersededBy?.trim() || null
+							: null,
+					},
+					destinations,
+				};
+			});
+			const allowedPaths = new Set(localPaths);
+			function assertAllowedPath(path: string): void {
+				if (!allowedPaths.has(path)) throw new Error(`Unexpected local publication path: ${path}`);
+			}
+			function assertRepository(issue: IssueRef): void {
+				if (issue.repository.toLowerCase() !== repository.toLowerCase()) {
+					throw new Error(`Unexpected issue repository: ${issue.repository}`);
+				}
+			}
+			async function readGithubIssue(issue: IssueRef): Promise<string> {
+				assertRepository(issue);
+				const output = await runGh(
+					pi,
+					["issue", "view", String(issue.number), "--repo", issue.repository, "--json", "body"],
+					root,
+					signal,
+				);
+				const parsed: unknown = JSON.parse(output);
+				if (!parsed || typeof parsed !== "object" || typeof (parsed as { body?: unknown }).body !== "string") {
+					throw new Error(`gh returned an invalid body for ${issue.repository}#${issue.number}`);
+				}
+				return (parsed as { body: string }).body;
+			}
+
+			const ports: SpecPublicationPorts = {
+				async writeLocal(path, markdown) {
+					assertAllowedPath(path);
+					await ensureSafeSpecDestination(root, path);
+					await writeFileAtomic(path, markdown);
+				},
+				async readLocal(path) {
+					assertAllowedPath(path);
+					return readFile(path, "utf8");
+				},
+				async writeIssue(issue, markdown) {
+					const currentBody = await readGithubIssue(issue);
+					const publicationBody = issueBodyForPublication(markdown, currentBody, repository);
+					await withTemporaryBody(publicationBody, async (bodyPath) => {
+						await runGh(pi, [
+							"issue", "edit", String(issue.number), "--repo", issue.repository, "--body-file", bodyPath,
+						], root, signal);
+					});
+				},
+				async readIssue(issue) {
+					return readGithubIssue(issue);
+				},
+				async createIssue(issueRepository, title, stagingBody) {
+					if (issueRepository.toLowerCase() !== repository.toLowerCase()) {
+						throw new Error(`Unexpected issue repository: ${issueRepository}`);
+					}
+					const output = await withTemporaryBody(stagingBody, (bodyPath) => runGh(
+						pi,
+						["issue", "create", "--repo", issueRepository, "--title", title, "--body-file", bodyPath],
+						root,
+						signal,
+					));
+					const number = Number(/\/issues\/(\d+)/.exec(output)?.[1]);
+					if (!Number.isSafeInteger(number) || number < 1) {
+						throw new Error(`Could not resolve the created issue identity from gh output: ${output.trim()}`);
+					}
+					return { repository: issueRepository, number };
+				},
+			};
+
+			const result = await withLocalMutationQueues(localPaths, () => persistSpecPublication({ documents }, ports));
+			const text = result.ok
+				? `Canonical spec publication verified. Receipt:\n${JSON.stringify(result.receipt, null, 2)}`
+				: `Canonical spec publication blocked; no receipt was issued.\n${result.diagnostics
+					.map(({ documentId, stage, code, message }) => `- ${documentId} · ${stage} · ${code}: ${message}`)
+					.join("\n")}${result.createdIssues.length > 0
+					? `\nRetained staging issues: ${result.createdIssues.map(({ repository, number }) => `${repository}#${number}`).join(", ")}. Retry them as existing issue destinations; do not create them again.`
+					: ""}`;
+			return { content: [{ type: "text", text }], details: result };
 		},
 	});
 

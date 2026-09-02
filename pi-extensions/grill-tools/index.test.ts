@@ -39,6 +39,7 @@ let sandbox = "";
 let previousHome: string | undefined;
 let tools = new Map<string, RegisteredTool>();
 let grillEvents: any[] = [];
+let execHandler = async (..._args: any[]) => ({ code: 0, stdout: "", stderr: "" });
 
 before(async () => {
 	if (!PI_PACKAGE_ROOT) return;
@@ -79,7 +80,7 @@ before(async () => {
 				if (name === "grill:interview-state") grillEvents.push(payload);
 			},
 		},
-		exec: async () => ({ code: 0, stdout: "", stderr: "" }),
+		exec: (...args: any[]) => execHandler(...args),
 	} as never);
 });
 
@@ -159,4 +160,179 @@ test("grill_session persists interviewMode and refuses checkpoints before it is 
 	);
 	assert.equal(loadedLegacy.details.snapshot.interviewMode, "unselected");
 	assert.equal(loadedLegacy.details.snapshot.version, 4);
+});
+
+test("persist_sdd_spec exposes the parser-backed boundary and returns a receipt after a local reread", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const tool = tools.get("persist_sdd_spec");
+	assert.ok(tool, "the executable Pi boundary is registered");
+	const projectPath = join(sandbox, "publication-project");
+	const relativePath = ".sdd/specs/canonical.md";
+	const absolutePath = join(projectPath, relativePath);
+	mkdirSync(projectPath, { recursive: true });
+	const markdown = [
+		"# Spec — Canonical publication",
+		"<!-- Generada por /skill:sdd-spec. Estado: aprobada -->",
+		"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; grill=none; superseded-by=none -->",
+		"",
+		"## Contexto",
+		"Body.",
+		"",
+	].join("\n");
+
+	const result = await tool.execute(
+		"persist-local-spec",
+		{
+			mode: "interactive",
+			repository: "local/publication-project",
+			projectPath,
+			documents: [{
+				id: "successor",
+				role: "successor",
+				markdown,
+				destinations: [{ kind: "local", path: relativePath }],
+			}],
+		},
+		undefined,
+		undefined,
+		{ cwd: projectPath },
+	);
+
+	assert.equal(result.details.ok, true);
+	assert.equal(result.details.receipt.kind, "sdd-spec-publication");
+	assert.equal(readFileSync(absolutePath, "utf8"), markdown);
+});
+
+test("persist_sdd_spec keeps local content normative while archiving an existing issue body idempotently in Ambos", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const tool = tools.get("persist_sdd_spec");
+	assert.ok(tool);
+	const projectPath = join(sandbox, "ambos-publication-project");
+	const localPath = join(projectPath, ".sdd", "specs", "issue-33-canonical.md");
+	mkdirSync(projectPath, { recursive: true });
+	let remoteBody = "Original request.\n";
+	execHandler = async (command: string, args: string[]) => {
+		if (command === "git" && args[0] === "rev-parse") {
+			return { code: 0, stdout: `${projectPath}\n`, stderr: "" };
+		}
+		if (command === "git" && args[0] === "config") {
+			return { code: 0, stdout: "git@github.com:chichex/skills.git\n", stderr: "" };
+		}
+		if (command === "gh" && args[0] === "issue" && args[1] === "view") {
+			return { code: 0, stdout: JSON.stringify({ body: remoteBody }), stderr: "" };
+		}
+		if (command === "gh" && args[0] === "issue" && args[1] === "edit") {
+			const bodyPath = args[args.indexOf("--body-file") + 1];
+			remoteBody = readFileSync(bodyPath, "utf8");
+			return { code: 0, stdout: "", stderr: "" };
+		}
+		throw new Error(`unexpected command: ${command} ${args.join(" ")}`);
+	};
+	try {
+		const markdown = [
+			"# Spec — Ambos publication",
+			"<!-- Generada por /skill:sdd-spec. Estado: aprobada -->",
+			"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=#33; grill=none; superseded-by=none -->",
+			"",
+			"## Contexto",
+			"Body.",
+			"",
+		].join("\n");
+		const input = {
+			mode: "interactive",
+			repository: "chichex/skills",
+			projectPath,
+			documents: [{
+				id: "successor",
+				role: "successor",
+				markdown,
+				issueNumber: 33,
+				destinations: [
+					{ kind: "local", path: ".sdd/specs/issue-33-canonical.md" },
+					{ kind: "issue", issueNumber: 33 },
+				],
+			}],
+		};
+
+		const first = await tool.execute("persist-ambos", input, undefined, undefined, { cwd: projectPath });
+		assert.equal(first.details.ok, true);
+		assert.equal(readFileSync(localPath, "utf8"), markdown);
+		assert.match(remoteBody, /<details><summary>Body original<\/summary>/);
+		assert.match(remoteBody, /Original request\./);
+		assert.equal(remoteBody.match(/<details><summary>Body original<\/summary>/g)?.length, 1);
+
+		const retry = await tool.execute("retry-ambos", input, undefined, undefined, { cwd: projectPath });
+		assert.equal(retry.details.ok, true);
+		assert.equal(remoteBody.match(/<details><summary>Body original<\/summary>/g)?.length, 1);
+		assert.match(remoteBody, /Original request\./);
+	} finally {
+		execHandler = async (..._args: any[]) => ({ code: 0, stdout: "", stderr: "" });
+	}
+});
+
+test("persist_sdd_spec creates a staging issue and publishes only after binding its identity", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const tool = tools.get("persist_sdd_spec");
+	assert.ok(tool);
+	const projectPath = join(sandbox, "github-publication-project");
+	mkdirSync(projectPath, { recursive: true });
+	let stagingBody = "";
+	let publishedBody = "";
+	execHandler = async (command: string, args: string[], options: { cwd?: string }) => {
+		if (command === "git" && args[0] === "rev-parse") {
+			return { code: 0, stdout: `${projectPath}\n`, stderr: "" };
+		}
+		if (command === "git" && args[0] === "config") {
+			return { code: 0, stdout: "https://github.com/chichex/skills.git\n", stderr: "" };
+		}
+		if (command === "gh" && args[0] === "issue" && args[1] === "create") {
+			const bodyPath = args[args.indexOf("--body-file") + 1];
+			stagingBody = readFileSync(bodyPath, "utf8");
+			publishedBody = stagingBody;
+			return { code: 0, stdout: "https://github.com/chichex/skills/issues/77\n", stderr: "" };
+		}
+		if (command === "gh" && args[0] === "issue" && args[1] === "edit") {
+			const bodyPath = args[args.indexOf("--body-file") + 1];
+			publishedBody = readFileSync(bodyPath, "utf8");
+			return { code: 0, stdout: "", stderr: "" };
+		}
+		if (command === "gh" && args[0] === "issue" && args[1] === "view") {
+			return { code: 0, stdout: JSON.stringify({ body: publishedBody }), stderr: "" };
+		}
+		throw new Error(`unexpected command in ${options.cwd}: ${command} ${args.join(" ")}`);
+	};
+	try {
+		const markdown = [
+			"# Spec — New issue publication",
+			"<!-- Generada por /skill:sdd-spec. Estado: aprobada -->",
+			"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; grill=none; superseded-by=none -->",
+			"",
+			"## Contexto",
+			"Body.",
+			"",
+		].join("\n");
+		const result = await tool.execute(
+			"persist-new-issue-spec",
+			{
+				mode: "interactive",
+				repository: "chichex/skills",
+				projectPath,
+				documents: [{
+					id: "successor",
+					role: "successor",
+					markdown,
+					destinations: [{ kind: "new-issue", title: "New issue publication" }],
+				}],
+			},
+			undefined,
+			undefined,
+			{ cwd: projectPath },
+		);
+
+		assert.equal(result.details.ok, true);
+		assert.doesNotMatch(stagingBody, /SDD-Tracking/, "the creation body is not a transient spec");
+		assert.match(publishedBody, /issue=#77/);
+		assert.doesNotMatch(publishedBody, /issue=none/);
+		assert.doesNotMatch(publishedBody, /<details>/, "staging is not archived into the final issue body");
+		assert.deepEqual(result.details.receipt.documents[0].destinations, ["issue:chichex/skills#77"]);
+	} finally {
+		execHandler = async (..._args: any[]) => ({ code: 0, stdout: "", stderr: "" });
+	}
 });

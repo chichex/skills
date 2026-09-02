@@ -652,9 +652,13 @@ function normalizeIssueMarkers(markdown: string, repository: string): string {
 		.join("\n");
 }
 
-function normativeSpecContent(candidate: MarkdownArtifactCandidate, repository: string): string {
-	let normalized = candidate.markdown.replace(/\r\n?/g, "\n");
-	if (candidate.location === "issue") {
+export function normalizeNormativeSpecContent(
+	markdown: string,
+	repository: string,
+	location: "local" | "issue",
+): string {
+	let normalized = markdown.replace(/\r\n?/g, "\n");
+	if (location === "issue") {
 		normalized = normalized.replace(
 			/\n[ \t\n]*<details><summary>Body original<\/summary>\n[\s\S]*?\n<\/details>[ \t\n]*$/,
 			"\n",
@@ -662,6 +666,14 @@ function normativeSpecContent(candidate: MarkdownArtifactCandidate, repository: 
 	}
 	normalized = normalizeIssueMarkers(normalized, repository);
 	return `${normalized.replace(/\n*$/, "")}\n`;
+}
+
+function normativeSpecContent(candidate: MarkdownArtifactCandidate, repository: string): string {
+	return normalizeNormativeSpecContent(
+		candidate.markdown,
+		repository,
+		candidate.location === "issue" ? "issue" : "local",
+	);
 }
 
 function routeSingleSpec(spec: ArtifactRef): WorkflowRoute {
