@@ -183,15 +183,70 @@ test("beginIssueTriage materializes canonical issue-triage and activates the ter
 	assert.doesNotMatch(sent[0]!.content, /\/skill:issue-triage/);
 	assert.equal(commands.has("__sdd-dispatch"), true);
 	assert.equal(eventHandlers.has("agent_settled"), true);
+	await eventHandlers.get("before_agent_start")!({}, originContext);
+	now += 60_001;
 	await eventHandlers.get("agent_settled")!({}, originContext);
 	assert.deepEqual(
 		activeTools,
 		["read", "foreign_tool", "submit_workflow_resolution"],
-		"a settled user turn does not destroy a multi-turn triage attempt",
+		"settling a long agent run starts the idle TTL instead of expiring its triage attempt",
 	);
 	now += 60_001;
 	await eventHandlers.get("before_agent_start")!({}, originContext);
 	assert.deepEqual(activeTools, ["read", "foreign_tool"], "an abandoned attempt expires before a later turn");
+});
+
+test("terminal submission survives a human confirmation that outlives the triage TTL", async () => {
+	const tools = new Map<string, { execute: (...args: unknown[]) => Promise<unknown> }>();
+	const eventHandlers = new Map<string, (event: unknown, context: unknown) => unknown>();
+	let activeTools = ["read"];
+	const sent: Array<{ content: string; options?: unknown }> = [];
+	let now = 1_000;
+	const pi = {
+		events: createEventBus(),
+		registerTool(tool: { name: string; execute: (...args: unknown[]) => Promise<unknown> }) {
+			tools.set(tool.name, tool);
+		},
+		registerCommand() {},
+		on(name: string, handler: (event: unknown, context: unknown) => unknown) {
+			eventHandlers.set(name, handler);
+		},
+		getCommands: () => [{
+			name: "skill:issue-triage",
+			source: "skill",
+			sourceInfo: { path: "/skills/triage/SKILL.md" },
+		}],
+		getActiveTools: () => [...activeTools],
+		setActiveTools(names: string[]) { activeTools = [...names]; },
+		sendUserMessage(content: string, options?: unknown) { sent.push({ content, options }); },
+	};
+	const controller = orchestrator.createWorkflowController(pi as never, {
+		readSkillFile: async () => "---\nname: issue-triage\ndescription: Triage\n---\n# Triage\n",
+		stripSkillFrontmatter: fakeStripFrontmatter,
+		createReceipt: () => "delayed-confirmation-receipt",
+		now: () => now,
+		triageAttemptTtlMs: 60_000,
+	});
+	const context = { cwd: "/workspace/skills", sessionManager: { getSessionId: () => "origin" } };
+	await controller.beginIssueTriage({ issueNumbers: [14] }, context as never);
+	await eventHandlers.get("before_agent_start")!({}, context);
+
+	// Blocking question tools keep the same agent run open while the human is away.
+	now += 29 * 60 * 60_000;
+	const result = await tools.get("submit_workflow_resolution")!.execute(
+		"after-human-confirmation",
+		workflowResolution(),
+		undefined,
+		undefined,
+		context,
+	) as { terminate?: boolean };
+
+	assert.equal(result.terminate, true);
+	assert.deepEqual(activeTools, ["read"]);
+	assert.deepEqual(sent[1], {
+		content: "/__sdd-dispatch delayed-confirmation-receipt",
+		options: { deliverAs: "followUp", expandPromptTemplates: true },
+	});
 });
 
 test("terminal resolution is one-shot and hands an opaque same-session receipt to the internal command", async () => {
