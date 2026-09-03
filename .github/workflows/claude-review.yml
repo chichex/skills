@@ -1,0 +1,154 @@
+# Review de Claude sobre un PR, A PEDIDO. Corre en runners de GitHub (ubuntu-latest).
+#
+# NO se dispara solo en cada PR: cada push de cada PR consumiría minutos de
+# Actions y los rate limits de la suscripción sin que nadie hubiera pedido un
+# review. Lo pedís vos, cuando el PR está listo para mirarse:
+#
+#   gh workflow run claude-review.yml --repo chichex/<repo> -f pr=271
+#
+# …o desde la UI: Actions → Claude Review → Run workflow.
+#
+# Requiere el secret CLAUDE_CODE_OAUTH_TOKEN (Settings → Secrets → Actions).
+# Se genera con `claude setup-token` desde la suscripción Pro/Max; consume sus
+# rate limits. Para facturar por token en vez de la cuota, usá un secret
+# ANTHROPIC_API_KEY y cambiá la línea de auth por:
+#     anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+name: Claude Review
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Número del PR a revisar (ej: 271)"
+        required: true
+        type: string
+
+# Dos disparos sobre el mismo PR: gana el último. No deshace los comentarios que
+# el review cancelado ya alcanzó a publicar.
+concurrency:
+  group: claude-review-${{ inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Review
+    # Ya no hace falta filtrar por autor ni por draft, como cuando el trigger era
+    # `pull_request`: workflow_dispatch exige permiso de escritura sobre el repo,
+    # así que solo lo dispara alguien que podría gastar la cuota igual.
+    #
+    # Runner hosteado por GitHub: los repos personales no ven el runner
+    # self-hosted de la org pramaestudio (está registrado a nivel org). Gratis
+    # en repos públicos; en privados consume minutos del plan.
+    runs-on: ubuntu-latest
+    # Un review colgado no puede quemar minutos para siempre; los reviews
+    # reales tardan ~5-6 min.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Validar el número de PR
+        env:
+          PR: ${{ inputs.pr }}
+        run: |
+          [[ "$PR" =~ ^[0-9]+$ ]] || { echo "::error::'pr' tiene que ser un número; llegó: $PR"; exit 1; }
+
+      # refs/pull/N/head es la cabeza de la rama del PR. Con el dispatch manual
+      # el checkout por defecto traería la rama default, y el prompt de abajo
+      # asume que el código del PR está en el working directory.
+      #
+      # Sin `fetch-depth: 0`: el review saca el diff por API (`gh pr diff`) y no
+      # tiene git en el allowlist, así que la historia completa era overhead puro
+      # (12s de checkout en dale-que-sale). El ejemplo oficial del action también
+      # usa profundidad 1.
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ inputs.pr }}/head
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Sin esto el action pide un token OIDC para cambiarlo por uno de la
+          # GitHub App de Claude, que no está instalada en la cuenta, y falla con
+          # "Could not fetch an OIDC token". Pasándole el GITHUB_TOKEN del job
+          # usa ese y saltea el OIDC. Los comentarios los firma github-actions[bot].
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+          # --allowedTools es lo que le da a Claude con qué publicar. Sin la tool
+          # de inline comments, analiza el PR entero y termina en verde sin dejar
+          # nada: el review se pierde y pagaste los tokens igual.
+          # `gh api repos/...` (acotado a este endpoint, no `gh api:*`) está
+          # para leer los comentarios inline previos del PR: el action NO se
+          # los pasa como contexto (anthropics/claude-code-action#731). El
+          # match es por prefijo LITERAL sobre el string del comando: comillas
+          # (dobles, simples o sin), barra inicial y posición de --paginate
+          # generan cada una un comando distinto para el matcher. Las entradas
+          # listadas cubren la grafía canónica del prompt más las variantes
+          # que un modelo escribe seguido (verificadas en los runs de
+          # pramaestudio/dale-que-sale#296); cualquier otra queda denegada, y
+          # no vale la pena enumerarlas: el guard de fondo es el prompt, que
+          # dicta la grafía canónica y obliga a declarar en el resumen si una
+          # lectura queda denegada. OJO: esa grafía está replicada en prosa en
+          # el prompt de abajo — si tocás estas entradas, actualizá el prompt
+          # Y este comentario (el desfasaje ya ocurrió dos veces:
+          # pramaestudio/dale-que-sale#295 y pramaestudio/dale-que-sale#296).
+          #
+          # --append-system-prompt lleva los hechos del proyecto que el review no
+          # puede inferir de un diff. Sin esto reporta una y otra vez cosas ya
+          # evaluadas y descartadas (forks, GH_TOKEN), porque cada run arranca en
+          # blanco. Los invariantes de dominio NO van acá: esos salen del CLAUDE.md
+          # del repo, que el action carga solo.
+          claude_args: |
+            --model claude-opus-5
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos/${{ github.repository }}/pulls/${{ inputs.pr }}/comments*),Bash(gh api /repos/${{ github.repository }}/pulls/${{ inputs.pr }}/comments*),Bash(gh api \"repos/${{ github.repository }}/pulls/${{ inputs.pr }}/comments*),Bash(gh api \"/repos/${{ github.repository }}/pulls/${{ inputs.pr }}/comments*),Bash(gh api --paginate repos/${{ github.repository }}/pulls/${{ inputs.pr }}/comments*),Bash(gh api --paginate \"repos/${{ github.repository }}/pulls/${{ inputs.pr }}/comments*)"
+            --append-system-prompt "Hechos ya establecidos de este proyecto. No los reportes como hallazgos: (1) El review se dispara a mano con workflow_dispatch desde el repo base, así que corre con los secrets del repo aunque el PR venga de un fork; ignorá cualquier limitación de secrets o tokens en PRs de fork. (2) El CI corre en runners efímeros hosteados por GitHub (ubuntu-latest): máquina limpia por job. (3) claude-code-action propaga GITHUB_TOKEN al entorno de los comandos gh: está verificado en producción, no lo reportes como riesgo ni como dependencia frágil. (4) Cada review re-analiza el diff completo; la acumulación de comentarios entre disparos es una limitación conocida y asumida del diseño."
+
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ inputs.pr }}
+
+            Antes de reportar nada, leé lo que ya se dijo en este PR:
+            - `gh pr view ${{ inputs.pr }} --repo ${{ github.repository }} --json comments,reviews`
+              para los resúmenes y bodies de reviews anteriores (son campos
+              distintos: un descarte escrito en el body de un review no aparece
+              en comments). Usá --json tal cual, NO --comments: la vista
+              completa pide statusCheckRollup y el token del job no tiene
+              checks:read, así que sale con exit 1. Ojo: este comando no pagina
+              y corta en ~100 por campo sin avisar — la única señal es un array
+              de exactamente 100 elementos. Si la ves, declaralo en el resumen
+              igual que una lectura denegada: estás viendo solo lo reciente.
+            - `gh api repos/${{ github.repository }}/pulls/${{ inputs.pr }}/comments?per_page=100 --paginate`
+              para los comentarios inline anteriores. Copiá el comando tal
+              cual: el allowlist matchea por prefijo literal y tolera solo
+              algunas grafías — cambiar el tipo de comillas, sumar una barra
+              inicial o reordenar los args puede dejarlo denegado. El
+              --paginate no es decorativo: sin él la API corta en 30 y los que
+              no ves son los que terminás repitiendo.
+
+            Si alguno de estos comandos falla o queda denegado, no sigas
+            como si nada: aclaralo en una línea al principio del comentario de
+            resumen, porque significa que estás revisando sin ver lo ya dicho.
+
+            No repitas un hallazgo ya reportado, ni uno que alguien haya
+            respondido descartando o marcado como no aplicable: eso ya se
+            evaluó y volver a traerlo es ruido. Si un hallazgo previo sigue
+            vigente y sin responder, tampoco lo dupliques.
+
+            Después revisá el diff. Reportá TODO lo NUEVO que encuentres —bugs,
+            problemas de correctitud y oportunidades de simplificación—,
+            incluyendo hallazgos de baja severidad o sobre los que no estés
+            seguro. No filtres por importancia en esta etapa. Para cada hallazgo
+            indicá severidad estimada y tu nivel de confianza.
+
+            La branch del PR ya está checkouteada en el working directory.
+
+            Publicá los hallazgos, no los devuelvas como mensaje:
+            - `mcp__github_inline_comment__create_inline_comment` (con
+              `confirmed: true`) para cada hallazgo puntual, anclado a su línea.
+            - `gh pr comment` para el resumen general. Si no hay nada nuevo que
+              reportar, decilo en una línea en vez de repetir el review anterior.
+
+            Solo publicá comentarios de GitHub — no entregues el review como
+            texto de respuesta, porque se pierde.
