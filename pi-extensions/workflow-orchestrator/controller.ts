@@ -148,7 +148,7 @@ export function requestSddRun(
 interface ActiveTriageAttempt {
 	sessionId: string;
 	status: "open" | "validating" | "claimed";
-	expiresAt: number;
+	idleExpiresAt: number;
 }
 
 type DispatchReceipt =
@@ -227,7 +227,12 @@ export function createWorkflowController(
 	}
 
 	function expireTriageAttempt(at = now()): void {
-		if (activeAttempt && activeAttempt.expiresAt <= at) endAttempt(activeAttempt);
+		if (activeAttempt && activeAttempt.idleExpiresAt <= at) endAttempt(activeAttempt);
+	}
+
+	function refreshTriageAttempt(expected = activeAttempt, at = now()): void {
+		if (!expected || activeAttempt !== expected) return;
+		expected.idleExpiresAt = at + triageAttemptTtlMs;
 	}
 
 	function pruneReceipts(at = now()): void {
@@ -325,10 +330,18 @@ export function createWorkflowController(
 		pi.registerTool({
 			...terminal,
 			async execute(toolCallId, params, signal, onUpdate, context) {
-				expireTriageAttempt();
+				// Reaching the terminal tool proves that the originating agent run is
+				// still alive. A blocking UI question may keep that run open for longer
+				// than the idle TTL, so expiration is checked only between settled runs.
 				const attempt = activeAttempt;
-				if (!attempt || attempt.status !== "open") {
-					throw new Error("submit_workflow_resolution is not active, is validating, or was already consumed");
+				if (!attempt) {
+					throw new Error("submit_workflow_resolution has no active triage attempt or was already consumed");
+				}
+				if (attempt.status === "validating") {
+					throw new Error("submit_workflow_resolution is already validating another submission");
+				}
+				if (attempt.status === "claimed") {
+					throw new Error("submit_workflow_resolution was already consumed");
 				}
 				attempt.status = "validating";
 				try {
@@ -418,9 +431,12 @@ export function createWorkflowController(
 		if (!activeAttempt || contextSessionId(context) === activeAttempt.sessionId) expireTriageAttempt();
 	});
 	pi.on("agent_settled", (_event, context) => {
-		// A triage can span multiple user turns (or resume after ESC). Keep its
-		// terminal tool until a terminal submission, session shutdown, or TTL.
-		if (!activeAttempt || contextSessionId(context) === activeAttempt.sessionId) expireTriageAttempt();
+		const attempt = activeAttempt;
+		if (!attempt || contextSessionId(context) !== attempt.sessionId) return;
+		// The TTL measures abandonment while idle, not wall-clock duration. Tool
+		// execution and blocking human prompts can legitimately keep one agent run
+		// alive for hours; start a fresh idle window only after that run settles.
+		refreshTriageAttempt(attempt);
 	});
 	pi.on("session_shutdown", () => {
 		endAttempt();
@@ -453,7 +469,7 @@ export function createWorkflowController(
 			const attempt: ActiveTriageAttempt = {
 				sessionId,
 				status: "open",
-				expiresAt: now() + triageAttemptTtlMs,
+				idleExpiresAt: now() + triageAttemptTtlMs,
 			};
 			activeAttempt = attempt;
 			const materialized = await materializeSkill(
@@ -472,6 +488,7 @@ export function createWorkflowController(
 			if (activeAttempt !== attempt) {
 				return { ok: false, code: "triage-attempt-expired", message: "Issue triage ended before materialization completed" };
 			}
+			refreshTriageAttempt(attempt);
 
 			registerTerminal();
 			const activeTools = pi.getActiveTools();

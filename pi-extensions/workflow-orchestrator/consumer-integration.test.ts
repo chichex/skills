@@ -91,6 +91,8 @@ test("Pi issue-triage shows its result before one terminal submission and keeps 
 	const terminalStep = phase.match(/3\.([\s\S]*?)\n4\./)?.[1] ?? "";
 	assert.match(terminalStep, /submit_workflow_resolution/);
 	assert.match(terminalStep, /mostr[aá].*(?:resultado|s[ií]ntesis).*antes/is);
+	assert.match(terminalStep, /si .*invocaci[oó]n falla.*orquestador/is);
+	assert.match(terminalStep, /no.*modo manual/is);
 	assert.match(phase, /activa|disponible/i);
 	assert.match(phase, /manual|no est[aá] activa|fallback/i);
 	assert.match(phase, /serializad/i);
