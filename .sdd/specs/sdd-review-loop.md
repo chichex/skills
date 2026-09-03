@@ -1,6 +1,6 @@
 # Spec — sdd-review-loop: rondas autónomas de review y corrección sobre un PR
-<!-- Generada por /sdd-spec el 2026-09-03. Fuente: grill 2026-09-03-sdd-review-loop. Estado: aprobada -->
-<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; grill=2026-09-03-sdd-review-loop; superseded-by=none -->
+<!-- Generada por /sdd-spec el 2026-09-03. Fuente: grill 2026-09-03-sdd-review-loop. Estado: implementada -->
+<!-- SDD-Tracking: version=1; type=spec; state=implemented; issue=none; grill=2026-09-03-sdd-review-loop; superseded-by=none -->
 
 ## Contexto
 
@@ -160,3 +160,19 @@ Precondiciones: un repo sandbox con remote en GitHub, `gh` autenticado, `.sdd/pr
 - **Gap del contrato:** sin e2e para conducta emergente de agentes siguiendo skills; CA-10 queda como deuda humana permanente de este skill, igual que para el resto del repo.
 - **Descripciones JSON:** `plugin.json` y `marketplace.json` duplican la `description`; cambiar una sin la otra es drift. CA-8 exige ambas.
 - **Sin `[ASSUMED]` ni `[NEEDS-INPUT]`:** todas las inferencias fueron confirmadas por el usuario y el handoff del grill está `finalized`.
+
+## Resultado de ejecucion (2026-09-03 · HEAD 42c82b3)
+| CA | Estado | Evidencia |
+|---|---|---|
+| CA-1 | verificado | `node --test pi-extensions/sdd-review-loop/sdd-review-loop.test.ts`: 9/9 (primera corrida 8/9 en rojo por ENOENT del SKILL.md) · `bash scripts/lint-frontmatter.sh`: Frontmatter OK, 52 skills revisados |
+| CA-2 | verificado | mismo gate 9/9; pasó a verde en la tercera redacción del SKILL.md (cláusulas `--review-model`/`--fix-model` y `SOLO … pelado` corregidas en la doctrina, no en el test) |
+| CA-3 | verificado | mismo gate 9/9 (sección Fase 1) |
+| CA-4 | verificado | mismo gate 9/9 (sección Fase 2) |
+| CA-5 | verificado | mismo gate 9/9 (sección Fase 3) |
+| CA-6 | verificado | mismo gate 9/9 (sección Fase 4) |
+| CA-7 | verificado | mismo gate 9/9 (MUST DO / MUST NOT DO) |
+| CA-8 | verificado | mismo gate 9/9 (primera corrida en rojo por filas README y descripciones JSON ausentes); ambas descripciones del plugin iguales |
+| CA-9 | verificado | `node --test pi-extensions/*/*.test.ts`: 249/249 (240 de la base + 9 nuevos) · `node --test pi-extensions/pi-package/pi-package.test.ts`: 17/17 · `git diff --check`: sin errores · `git diff --stat origin/main..HEAD -- '*.test.ts'`: solo el archivo nuevo, ningún test existente tocado |
+| CA-10 | pendiente humano | protocolo de 8 pasos en esta spec; checklist en el body del PR |
+
+Sin políticas de generación activas. Sin desviaciones de la spec. Base del run: `origin/main` en `9fb757a`.
