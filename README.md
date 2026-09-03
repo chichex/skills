@@ -37,7 +37,6 @@ Las disciplinas sobre las que SDD se apoya — y que también uso sueltas, fuera
 | **`repo-clean`** *(Codex/Pi)* | Deja el branch actual sin cambios pendientes y sincronizado con `origin/<branch>`. Si hay trabajo sin commit, muestra el impacto y pregunta si conservarlo o descartarlo; nunca cambia de branch ni hace force-push. |
 | **`find-skills`** *(Codex/Pi)* | Busca skills instalables en el ecosistema abierto mediante `npx skills`. Vendorizado desde `vercel-labs/skills`. |
 | **`yt-summary`** *(Codex/Claude)* | Descarga con `yt-dlp` un único track de subtítulos de YouTube y guía un resumen con TL;DR, puntos clave y timestamps. |
-| **`herdr-detach`** | Despacha un pedido a otro agente en otro pane o workspace de **Herdr** (multiplexor de terminales para agentes), en vez de resolverlo en la sesión actual: compila un briefing autosuficiente con el contexto de la conversación, lo muestra verbatim para confirmar antes de despachar, aísla en un worktree Git cuando el encargo escribe código, y vuelve enseguida con el handle sin bloquear la sesión. Invocado pelado lista los detaches vivos con su estado. Requiere correr dentro de Herdr (`HERDR_ENV=1`). |
 
 SDD no reemplaza a estos skills: los orquesta. El diseño previo a una spec se afila con `grill` y `domain-modeling`, y `sdd-run` implementa siguiendo la disciplina de `tdd`.
 

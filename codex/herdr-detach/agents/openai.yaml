@@ -1,4 +1,0 @@
-interface:
-  display_name: "Herdr Detach"
-  short_description: "Despachá el trabajo a otro pane de Herdr"
-  default_prompt: "Usá $herdr-detach para mandar esta tarea a otro agente en otro pane de Herdr."
