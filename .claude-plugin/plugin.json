@@ -1,6 +1,6 @@
 {
   "name": "chichex-skills",
-  "description": "Skills de chichex para Claude Code: familia SDD (contrato de autonomía → spec verificable → ejecución), grill y mini-grill para desambiguar planes y pedidos, issue-triage para enrutar issues con evidencia, TDD, domain modeling y yt-summary.",
+  "description": "Skills de chichex para Claude Code: familia SDD (contrato de autonomía → spec verificable → ejecución → rondas de review y corrección con sdd-review-loop), grill y mini-grill para desambiguar planes y pedidos, issue-triage para enrutar issues con evidencia, TDD, domain modeling y yt-summary.",
   "author": {
     "name": "chichex"
   },
