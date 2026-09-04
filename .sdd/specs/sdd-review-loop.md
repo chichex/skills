@@ -176,3 +176,31 @@ Precondiciones: un repo sandbox con remote en GitHub, `gh` autenticado, `.sdd/pr
 | CA-10 | pendiente humano | protocolo de 8 pasos en esta spec; checklist en el body del PR |
 
 Sin políticas de generación activas. Sin desviaciones de la spec. Base del run: `origin/main` en `9fb757a`.
+
+### Desviaciones documentadas (2026-09-03 · remediación del feedback del PR #36 · commit febf1c9)
+
+Todas preservan el alcance: corrigen lógica o consistencia de decisiones ya tomadas, no agregan ni quitan comportamiento. Re-verificación tras la remediación sobre HEAD `febf1c9`: gate 9/9, suite 249/249, lint 52 skills OK, `git diff --check` limpio.
+
+- **[DEVIATION] Inferencia 3 y CA-5 (worktree):** el corrector trabaja SIEMPRE detached sobre `origin/<headRef>` (`git worktree add --detach`) y reutiliza el worktree entre rondas; la limpieza final es del orquestador. Motivo: `git fetch origin <headRef>` no actualiza `refs/heads/<headRef>`, así que montar el branch local podía basar el fix en una rama atrasada; y el path fijo por PR hacía fallar la ronda 2 con `already exists`.
+- **[DEVIATION] Inferencia 8 y CA-4 (no convergencia):** el criterio pasa de "claves(r) contenido en claves(r-1)" a "ninguna clave accionable de la ronda r-1 desapareció" (`claves(r) ⊇ claves(r-1)`), y el índice se corrige a `r-1` porque `N` es `--rounds`. Motivo: el subconjunto estricto incluía casos con progreso real y cortaba el loop justo cuando había avance. El plan de verificación de CA-4 reemplaza la regex `/contenido en[^\n]*N-1/` por `/`r-1`/` y `/ninguna clave[^\n]*desapareci/`, y aserta la ausencia de `N-1`.
+- **[DEVIATION] CA-3 (orden del preflight):** la Fase 1 tiene dos bloques. Contrato, repo y credenciales, comando nativo y permisos corren antes del wizard; la validación del PR (estado y fork) corre apenas hay un `<PR>` resuelto, venga de los args o del wizard, sin volver a preguntar. El chequeo de fork usa `isCrossRepository` y `headRepository` porque `baseRepository` no es un campo de `gh pr view --json` (verificado: `Unknown JSON field: "baseRepository"`). El listado del wizard filtra forks con `isCrossRepository`.
+- **[DEVIATION] CA-4 (retención):** el orquestador retiene, además de conteos y claves, la línea y el veredicto de cada hallazgo, que necesitan la publicación de respaldo, la entrada del corrector y el match con threads.
+- **[DEVIATION] Inferencia 10 y CA-2 (`--fix-scope`):** `correctness` es lista cerrada (`correctness`, `security`, `data-loss`) y cualquier otro slug, conocido o no, cuenta como cleanup; `all` acepta cualquier categoría sin lista. Motivo: las categorías de `/code-review` son slugs libres y el conteo de accionables tiene que ser determinista.
+- **CA-4 (reintento, sin cambio de alcance):** un revisor no concluyente se reintenta una sola vez sin `--comment`, y el orquestador publica por el camino de respaldo con deduplicación contra los comments propios del mismo `commit_id`, para no duplicar comments.
+- **CA-1 (gate, sin cambio de alcance):** se quitaron tres aserciones que fijaban la ausencia de ports en codex, opencode y pi; la spec no las pide y el port es bloque futuro declarado.
+
+### Receipt de remediación (PR #36 · lote 2026-09-03T23:57Z · head previo `1c64b4e`)
+| Thread | Ubicación | Planteo | Disposición | Commit |
+|---|---|---|---|---|
+| PRRT_kwDOTXanYc6fHmlu | SKILL.md:43 | `baseRepository` inválido en `gh pr view --json` | válido, corregido | febf1c9 |
+| PRRT_kwDOTXanYc6fHmuz | SKILL.md:63 | no convergencia con `N-1` y subconjunto | válido, corregido | febf1c9 |
+| PRRT_kwDOTXanYc6fHmx- | SKILL.md:29 | preflight del PR antes de elegirlo | válido, corregido | febf1c9 |
+| PRRT_kwDOTXanYc6fHnBA | SKILL.md:61 | retención sin línea | válido, corregido | febf1c9 |
+| PRRT_kwDOTXanYc6fHnFX | SKILL.md:71 | path fijo del worktree falla en ronda 2 | válido, corregido | febf1c9 |
+| PRRT_kwDOTXanYc6fHnMD | SKILL.md:71 | worktree sobre rama local atrasada | válido, corregido | febf1c9 |
+| PRRT_kwDOTXanYc6fHnPf | SKILL.md:23 | `--fix-scope` no determinista | válido, corregido | febf1c9 |
+| PRRT_kwDOTXanYc6fHnVW | SKILL.md:67 | reintento duplica comments | válido, corregido | febf1c9 |
+| PRRT_kwDOTXanYc6fHnYy | SKILL.md:62 | motivo de corte duplicado | válido, corregido | febf1c9 |
+| PRRT_kwDOTXanYc6fHneQ | test.ts:78 | aserciones de ausencia de ports | válido, corregido | febf1c9 |
+
+Verificación del lote: `node --test pi-extensions/sdd-review-loop/sdd-review-loop.test.ts` 9/9 (4/9 en rojo antes de la doctrina) · `node --test pi-extensions/*/*.test.ts` 249/249 · `bash scripts/lint-frontmatter.sh` OK · `git diff --check` limpio.
