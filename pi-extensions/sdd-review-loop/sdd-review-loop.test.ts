@@ -71,11 +71,10 @@ test("CA-1: el skill existe solo para Claude Code con frontmatter valido", async
 		[/rondas/i, /code-review/, /\bPR\b/, /subagente|Sonnet/i, /\.sdd\/project\.md|contrato/i],
 		"description",
 	);
+	// Extras que pertenecen a otros harnesses. El port a codex/opencode/pi es un
+	// bloque futuro declarado en la spec y no se fija aca ni en un sentido ni en otro.
 	assert.equal(metadata.compatibility, undefined, "compatibility es un extra de Pi");
 	await assert.rejects(access(repoFile("claude/sdd-review-loop/agents/openai.yaml")), "sidecar de Codex ausente");
-	for (const harness of ["codex", "opencode", "pi"]) {
-		await assert.rejects(access(repoFile(`${harness}/sdd-review-loop/SKILL.md`)), `${harness}: sin port en esta entrega`);
-	}
 });
 
 test("CA-2: argumentos, defaults, tope duro y wizard de Fase 0", async () => {
@@ -94,6 +93,10 @@ test("CA-2: argumentos, defaults, tope duro y wizard de Fase 0", async () => {
 			/`--fix-scope`[^\n]*default[^\n]*`correctness`/,
 			/`security`/,
 			/`simplification`[^\n]*`efficiency`/,
+			// Slugs desconocidos tienen una regla unica y `all` no es una lista cerrada:
+			// el conteo de accionables (y el corte del loop) tiene que ser determinista.
+			/cualquier otro slug[^\n]*cleanup/i,
+			/`all`[^\n]*cualquier categor[ií]a/,
 			/`--model M`[^\n]*ambos/,
 			/`--review-model`[^\n]*`--fix-model`[^\n]*sobreescriben/,
 			/`sonnet`[^\n]*ambos|ambos[^\n]*`sonnet`/,
@@ -108,6 +111,8 @@ test("CA-2: argumentos, defaults, tope duro y wizard de Fase 0", async () => {
 			/Lanzador/,
 			/SOLO[^\n]*pelado/,
 			/gh pr list --state open --limit 20/,
+			// El listado no ofrece candidatos que el preflight vaya a rechazar.
+			/isCrossRepository/,
 			/m[aá]s reciente primero/,
 			/m[aá]ximo 4/,
 			/AskUserQuestion/,
@@ -120,7 +125,7 @@ test("CA-2: argumentos, defaults, tope duro y wizard de Fase 0", async () => {
 	);
 });
 
-test("CA-3: preflight bloqueante antes del wizard", async () => {
+test("CA-3: preflight bloqueante, en dos bloques, sin volver a preguntar", async () => {
 	const doctrine = body(await readRepoFile(SKILL));
 	const preflight = section(doctrine, /Fase 1/);
 	expectAll(
@@ -132,9 +137,13 @@ test("CA-3: preflight bloqueante antes del wizard", async () => {
 			"gh repo view --json nameWithOwner",
 			/`\/code-review` nativo/,
 			/no improvisa/,
+			// El bloque del PR corre apenas hay un <PR> resuelto (args o wizard) y
+			// frena sin reabrir el dialogo.
+			/sin volver a preguntar/,
 			/draft[^\n]*acepta/i,
 			/cerrado[^\n]*mergeado[^\n]*frena/i,
 			/head repo[^\n]*base repo/i,
+			/isCrossRepository/,
 			/fork[^\n]*frena/i,
 			/permisos[^\n]*hereda|hereda[^\n]*permisos/i,
 			/no modifica settings|no modifica[^\n]*settings/i,
@@ -142,6 +151,9 @@ test("CA-3: preflight bloqueante antes del wizard", async () => {
 		],
 		"## Fase 1",
 	);
+	// `baseRepository` no es un campo de `gh pr view --json`: el comando saldria con
+	// exit 1 y el preflight frenaria siempre.
+	assert.doesNotMatch(preflight, /baseRepository/, "campo inexistente en gh pr view --json");
 });
 
 test("CA-4: orquestacion por ronda con subagentes, JSON y parada temprana", async () => {
@@ -161,19 +173,29 @@ test("CA-4: orquestacion por ronda con subagentes, JSON y parada temprana", asyn
 			'"findings"',
 			'"counts"',
 			/`published`[^\n]*`false`[^\n]*gh api|gh api[^\n]*`published`/i,
+			// La publicacion de respaldo no duplica comments propios ya publicados.
+			/deduplic/,
 			/conteos[^\n]*clave/i,
+			// La linea viaja con la clave: la necesitan el respaldo, el corrector y el match.
+			/clave[^\n]*l[ií]nea/,
 			/nunca pega[^\n]*diff/i,
 			/`--fix-scope`/,
 			/parada temprana/i,
 			/no convergencia/,
 			/archivo[^\n]*categor[ií]a[^\n]*resumen normalizado/i,
-			/contenido en[^\n]*N-1/,
+			// No convergencia = ninguna clave de la ronda anterior (r-1) desaparecio.
+			// Un subconjunto estricto es progreso, no estancamiento.
+			/`r-1`/,
+			/ninguna clave[^\n]*desapareci/,
 			/bloqueados[^\n]*no cuentan/i,
 			"`sin cambios`",
 			/head nuevo|head actual/i,
+			// El reintento de un revisor no concluyente no vuelve a publicar.
+			/sin `--comment`/,
 		],
 		"## Fase 2",
 	);
+	assert.doesNotMatch(loop, /N-1/, "la ronda anterior es r-1; N es --rounds");
 });
 
 test("CA-5: el corrector trabaja en worktree con la doctrina de la Fase 6 de sdd-run", async () => {
@@ -184,8 +206,12 @@ test("CA-5: el corrector trabaja en worktree con la doctrina de la Fase 6 de sdd
 		[
 			"../<repo>-review-loop-<PR>",
 			"git fetch origin <headRef>",
+			// Siempre detached sobre el remoto: una rama local <headRef> puede estar atrasada.
+			/--detach/,
 			/detached[^\n]*origin\/<headRef>/,
 			"HEAD:refs/heads/<headRef>",
+			// El path es fijo por PR: la ronda 2 reutiliza el worktree en vez de fallar.
+			/reutiliza/,
 			/checkout original/,
 			/Fase 6[^\n]*sdd-run|sdd-run[^\n]*Fase 6/,
 			/sin modificar[^\n]*sdd-run|no modifica[^\n]*sdd-run/,
@@ -210,6 +236,8 @@ test("CA-5: el corrector trabaja en worktree con la doctrina de la Fase 6 de sdd
 			"```json",
 			'"pushed"',
 			'"blocked"',
+			// La limpieza final tiene dueño: el orquestador, que es quien sabe cuando termina el loop.
+			/orquestador remueve/,
 			/remueve el worktree[^\n]*limpio/i,
 		],
 		"## Fase 3",
