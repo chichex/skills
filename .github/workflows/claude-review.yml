@@ -6,7 +6,11 @@
 #
 #   gh workflow run claude-review.yml --repo chichex/<repo> -f pr=271
 #
-# …o desde la UI: Actions → Claude Review → Run workflow.
+# …o desde la UI: Actions → Claude Review → Run workflow. Opcionalmente
+# elegís modelo y effort (por defecto claude-opus-5 y xhigh, lo mismo que
+# corría hasta ahora):
+#
+#   gh workflow run claude-review.yml --repo chichex/<repo> -f pr=271 -f model=claude-sonnet-5 -f effort=high
 #
 # Requiere el secret CLAUDE_CODE_OAUTH_TOKEN (Settings → Secrets → Actions).
 # Se genera con `claude setup-token` desde la suscripción Pro/Max; consume sus
@@ -23,6 +27,27 @@ on:
         description: "Número del PR a revisar (ej: 271)"
         required: true
         type: string
+      model:
+        description: "Modelo con el que revisa"
+        required: false
+        type: choice
+        default: claude-opus-5
+        options:
+          - claude-opus-5
+          - claude-fable-5-1
+          - claude-sonnet-5
+          - claude-haiku-4-5
+      effort:
+        description: "Effort: profundidad de razonamiento y gasto de tokens"
+        required: false
+        type: choice
+        default: xhigh
+        options:
+          - low
+          - medium
+          - high
+          - xhigh
+          - max
 
 # Dos disparos sobre el mismo PR: gana el último. No deshace los comentarios que
 # el review cancelado ya alcanzó a publicar.
@@ -101,7 +126,8 @@ jobs:
           # blanco. Los invariantes de dominio NO van acá: esos salen del CLAUDE.md
           # del repo, que el action carga solo.
           claude_args: |
-            --model claude-opus-5
+            --model ${{ inputs.model }}
+            --effort ${{ inputs.effort }}
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos/${{ github.repository }}/pulls/${{ inputs.pr }}/comments*),Bash(gh api /repos/${{ github.repository }}/pulls/${{ inputs.pr }}/comments*),Bash(gh api \"repos/${{ github.repository }}/pulls/${{ inputs.pr }}/comments*),Bash(gh api \"/repos/${{ github.repository }}/pulls/${{ inputs.pr }}/comments*),Bash(gh api --paginate repos/${{ github.repository }}/pulls/${{ inputs.pr }}/comments*),Bash(gh api --paginate \"repos/${{ github.repository }}/pulls/${{ inputs.pr }}/comments*)"
             --append-system-prompt "Hechos ya establecidos de este proyecto. No los reportes como hallazgos: (1) El review se dispara a mano con workflow_dispatch desde el repo base, así que corre con los secrets del repo aunque el PR venga de un fork; ignorá cualquier limitación de secrets o tokens en PRs de fork. (2) El CI corre en runners efímeros hosteados por GitHub (ubuntu-latest): máquina limpia por job. (3) claude-code-action propaga GITHUB_TOKEN al entorno de los comandos gh: está verificado en producción, no lo reportes como riesgo ni como dependencia frágil. (4) Cada review re-analiza el diff completo; la acumulación de comentarios entre disparos es una limitación conocida y asumida del diseño."
 
