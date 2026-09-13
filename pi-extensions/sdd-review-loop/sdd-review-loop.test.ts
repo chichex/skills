@@ -71,6 +71,9 @@ test("CA-1: el skill existe solo para Claude Code con frontmatter valido", async
 		[/rondas/i, /code-review/, /\bPR\b/, /subagente|Sonnet/i, /\.sdd\/project\.md|contrato/i],
 		"description",
 	);
+	// La description es lo unico que lee el modelo antes de invocar con la tool Skill:
+	// ahi tiene que saber que no rellena args con un PR deducido del contexto.
+	expectAll(description, [/wizard/, /deducido del contexto/], "description (invocacion)");
 	// Extras que pertenecen a otros harnesses. El port a codex/opencode/pi es un
 	// bloque futuro declarado en la spec y no se fija aca ni en un sentido ni en otro.
 	assert.equal(metadata.compatibility, undefined, "compatibility es un extra de Pi");
@@ -100,16 +103,35 @@ test("CA-2: argumentos, defaults, tope duro y wizard de Fase 0", async () => {
 			/`--model M`[^\n]*ambos/,
 			/`--review-model`[^\n]*`--fix-model`[^\n]*sobreescriben/,
 			/`sonnet`[^\n]*ambos|ambos[^\n]*`sonnet`/,
+			// Solo valen los args que el usuario escribio: invocado por el modelo con la
+			// tool Skill, un PR deducido del contexto no cuenta y no saltea el wizard.
+			/literalmente/,
+			/tool `Skill`/,
+			/deducido del contexto/,
 		],
 		"## Argumentos",
 	);
+	// Regla vieja: un <PR> solo salteaba todo el wizard.
+	assert.doesNotMatch(args, /Con `<PR>`, cualquier flag o ambos, no hay wizard/, "solo <PR> no saltea la configuracion");
 
 	const wizard = section(doctrine, /Fase 0/);
 	expectAll(
 		wizard,
 		[
 			/Lanzador/,
-			/SOLO[^\n]*pelado/,
+			// El wizard es el default y saltearlo sin excepcion es un error, aunque haya defaults.
+			/camino por defecto/,
+			/defaults razonables/,
+			/preselecciones, no permiso para asumir/,
+			// Tabla de activacion: nada literal, solo <PR>, flags y delegacion explicita.
+			/Nada literal[^\n]*Wizard completo/,
+			/deducido del contexto[^\n]*\(Recomendado\)/,
+			/Solo `<PR>`[^\n]*sin el paso 1/,
+			/flag[^\n]*no pregunta nada/,
+			/Delegaci[oó]n expl[ií]cita[^\n]*inequ[ií]voco/,
+			/pedir el loop no es delegar/i,
+			// Sin AskUserQuestion no se cae en defaults en silencio.
+			/`AskUserQuestion` no est[aá] disponible[^\n]*frenar/,
 			/gh pr list --state open --limit 20/,
 			// El listado no ofrece candidatos que el preflight vaya a rechazar.
 			/isCrossRepository/,
@@ -285,6 +307,7 @@ test("CA-7: MUST DO y MUST NOT DO explicitos", async () => {
 			/instrucciones/,
 			/checkout original/,
 			/preguntas despu[eé]s del wizard/i,
+			/saltear el wizard[^\n]*deducido/,
 			/5 rondas|tope/,
 		],
 		"## MUST NOT DO",
@@ -306,7 +329,16 @@ test("CA-8: READMEs y descripcion del plugin documentan el skill", async () => {
 		assert.ok(row, `${path}: fila de sdd-review-loop dentro de la tabla del workflow SDD`);
 		expectAll(
 			row,
-			[/code-review/, /rondas|rounds/i, /Sonnet|subagent/i, /\.sdd\/project\.md|contrato|contract/i, /\/sdd-review-loop/],
+			[
+				/code-review/,
+				/rondas|rounds/i,
+				/Sonnet|subagent/i,
+				/\.sdd\/project\.md|contrato|contract/i,
+				/\/sdd-review-loop/,
+				// Con solo el PR igual se pregunta la configuracion; los flags saltean el wizard.
+				/(solo|only) `<PR>`/,
+				/(cualquier flag|any flag)/,
+			],
 			`${path} fila`,
 		);
 	}
