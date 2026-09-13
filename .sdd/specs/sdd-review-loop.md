@@ -25,7 +25,7 @@ La doctrina declara, en un bloque `## Argumentos`:
 - `--level`: default `high`; siempre se pasa explícito a `/code-review`. `ultra` se rechaza con diagnóstico (es cloud y lo dispara el usuario).
 - `--fix-scope`: default `correctness`. `correctness` = slug `correctness` más slugs de riesgo (`security`, `data-loss` u otro que `/code-review` emita como riesgo); `all` agrega `simplification`, `efficiency`, `style`, `test-coverage`.
 - `--model M`: fija el modelo de ambos subagentes; `--review-model` y `--fix-model` lo sobreescriben por rol. Default `sonnet` para ambos.
-- Fase 0 — Lanzador: dispara SOLO con `/sdd-review-loop` pelado. Con `<PR>`, cualquier flag o ambos, no pregunta nada y usa defaults para lo no indicado. El wizard usa `AskUserQuestion`: (a) PR desde `gh pr list --state open --limit 20` (más reciente primero, máximo 4 opciones, resto vía Other); (b) rondas, nivel, umbral (`fix-scope`) y modelos con los defaults preseleccionados y marcados `(Recomendado)`; (c) cierre con un resumen visible que confirma los side effects: publicación de comments inline y push al branch del PR. Después del wizard, cero preguntas hasta el reporte final.
+- Fase 0 — Lanzador (enmendado 2026-09-13, ver `### Enmienda`): el wizard es el camino por defecto. Solo cuentan `<PR>` y flags escritos literalmente por el usuario; un PR deducido del contexto no saltea el wizard, va primero y `(Recomendado)`. Con solo `<PR>` se saltea la elección del PR pero se pregunta la configuración y la autorización. Con al menos un flag, o ante delegación explícita con PR inequívoco, no pregunta nada y usa defaults para lo no indicado. El wizard usa `AskUserQuestion`: (a) PR desde `gh pr list --state open --limit 20` (más reciente primero, máximo 4 opciones, resto vía Other); (b) rondas, nivel, umbral (`fix-scope`) y modelos con los defaults preseleccionados y marcados `(Recomendado)`; (c) cierre con un resumen visible que confirma los side effects: publicación de comments inline y push al branch del PR. Después del wizard, cero preguntas hasta el reporte final.
 
 ### CA-3 — Preflight bloqueante (ALTA)
 La doctrina declara, antes del wizard y en este orden lógico:
@@ -147,6 +147,7 @@ Precondiciones: un repo sandbox con remote en GitHub, `gh` autenticado, `.sdd/pr
 4. Al terminar la ronda 1: el branch del PR tiene al menos un commit `review: resolver ...`, el thread del bug está respondido y resuelto, y el test que falló volvió a pasar.
 5. La ronda 2 debe cortar por `sin hallazgos accionables` (o `no convergencia`) sin lanzar corrector. El chat muestra el bloque `SDD-REVIEW-LOOP TERMINADO` con la tabla por ronda. El PR tiene un comment resumen cuya primera línea es `<!-- sdd-review-loop:summary -->`.
 6. En el checkout local: `git status` sin cambios nuevos, `git worktree list` sin `review-loop`.
+7a. En otra sesión, escribir `tirale un /sdd-review-loop` y, aparte, `/sdd-review-loop <PR>` sin flags. Verificar: el primero abre el wizard completo con tu PR primero y `(Recomendado)`; el segundo pregunta rondas, nivel, umbral y modelos y el resumen. Cancelar ambos.
 7. Re-invocar `/sdd-review-loop <PR> --rounds 1`. Verificar: no hubo wizard; el comment resumen se editó (mismo comment, contenido actualizado) y no hay un segundo comment con el marker.
 8. Casos negativos rápidos: `/sdd-review-loop <PR> --rounds 6` frena con diagnóstico sin tocar GitHub; `/sdd-review-loop <PR> --level ultra` frena; en un repo sin `.sdd/project.md`, frena sugiriendo `/sdd-init`.
 
@@ -204,3 +205,9 @@ Todas preservan el alcance: corrigen lógica o consistencia de decisiones ya tom
 | PRRT_kwDOTXanYc6fHneQ | test.ts:78 | aserciones de ausencia de ports | válido, corregido | febf1c9 |
 
 Verificación del lote: `node --test pi-extensions/sdd-review-loop/sdd-review-loop.test.ts` 9/9 (4/9 en rojo antes de la doctrina) · `node --test pi-extensions/*/*.test.ts` 249/249 · `bash scripts/lint-frontmatter.sh` OK · `git diff --check` limpio.
+
+### Enmienda (2026-09-13 · enforcement del wizard)
+
+- **Motivo:** en transcripts reales el wizard no apareció cuando el usuario nombró el skill dentro de una frase (`tirale un /sdd-review-loop`, `armate un PR y luego /sdd-loop-review`). Claude Code no lo trata como slash command: el modelo invoca la tool `Skill` y rellena `args` con un PR deducido del contexto (`#314`, o texto descriptivo del PR), con lo que la regla "con `<PR>` no hay wizard" lo salteaba. Además, con solo el link del PR el usuario quiere elegir la configuración.
+- **Decisión del usuario:** wizard salvo flags literales o delegación explícita; con PR deducido, wizard con ese PR preseleccionado; con solo `<PR>`, se pregunta la configuración igual.
+- **Cambio:** tabla de activación en la Fase 0, regla de args literales en `## Argumentos`, freno si `AskUserQuestion` no está disponible, cláusulas en MUST DO/MUST NOT DO, aviso en la `description` (lo que lee el modelo antes de invocar) y fila de ambos READMEs. El gate CA-1/CA-2/CA-7/CA-8 asierta las cláusulas nuevas; la conducta real sigue siendo CA-10 (paso 7a del protocolo).
