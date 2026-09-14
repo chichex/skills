@@ -1,6 +1,6 @@
 ---
 name: coding-policies
-description: Genera en el proyecto un archivo Markdown autocontenido con tus buenas prácticas por stack (v1 con contenido para Go) y lo engancha en CLAUDE.md, AGENTS.md o .sdd/project.md para que toda sesión las siga. Usar cuando el usuario pida "coding policies", "buenas prácticas", "políticas de código", "mis prácticas de Go", que el agente siga sus prácticas en este repo, o que genere o regenere .sdd/coding-policies.md. También cuando sdd-init lo encadene al terminar el contrato.
+description: Genera en el proyecto un archivo Markdown autocontenido con tus buenas prácticas por stack (contenido para Go y TypeScript) y lo engancha en CLAUDE.md, AGENTS.md o .sdd/project.md para que toda sesión las siga. Usar cuando el usuario pida "coding policies", "buenas prácticas", "políticas de código", "mis prácticas de Go", "mis prácticas de TypeScript", que el agente siga sus prácticas en este repo, o que genere o regenere .sdd/coding-policies.md. También cuando sdd-init lo encadene al terminar el contrato.
 ---
 
 Genera en el proyecto un archivo Markdown **autocontenido** con las buenas prácticas del usuario por stack — reglas cortas MUST/SHOULD con su porqué y su gate — copiadas desde las referencias de este skill (`references/<id>.md`), y lo engancha en los archivos de contexto existentes para que toda sesión lo cargue. Las prácticas viven una sola vez en el skill; cada proyecto recibe un snapshot versionado que puede afinar en una sección propia que la regeneración preserva. Los argumentos pueden traer stacks explícitos, el destino y flags, o ir vacíos.
@@ -15,10 +15,10 @@ Tres ideas fuerza:
 ## Argumentos
 
 ```text
-/coding-policies [go|node|react|react-native|kotlin-android ...] [--out <ruta>] [--no-link]
+/coding-policies [go|typescript|node|react|react-native|kotlin-android ...] [--out <ruta>] [--no-link]
 ```
 
-- Stacks posicionales (`go`, `node`, `react`, `react-native`, `kotlin-android`) — saltean la confirmación de stacks de la Fase 0: se usan tal cual, aunque el marcador no se detecte (el usuario sabe más que el marcador). Un id desconocido frena con la lista de ids válidos.
+- Stacks posicionales (`go`, `typescript`, `node`, `react`, `react-native`, `kotlin-android`) — saltean la confirmación de stacks de la Fase 0: se usan tal cual, aunque el marcador no se detecte (el usuario sabe más que el marcador). Un id desconocido frena con la lista de ids válidos.
 - `--out <ruta>` — destino del archivo; saltea la pregunta de destino. Default: `.sdd/coding-policies.md`.
 - `--no-link` — saltea el enganche de la Fase 4: genera el archivo y no toca ningún archivo de contexto.
 
@@ -35,6 +35,7 @@ seccion "Ajustes de este proyecto" se regenera desde el skill; esa seccion es tu
 
 Stacks detectados:
   • go             — go.mod (raiz)              · con referencia (go@<version>)
+  • typescript     — tsconfig.json (raiz)       · con referencia (typescript@<version>)
   • node           — package.json (tools/cli)   · sin practicas definidas todavia
 
 Destino default: .sdd/coding-policies.md
@@ -52,12 +53,13 @@ Buscar marcadores en la raíz y hasta profundidad 2, excluyendo `node_modules`, 
 | Stack | id | Marcador |
 |---|---|---|
 | Go | `go` | `go.mod` |
+| TypeScript | `typescript` | `tsconfig*.json` |
 | React web | `react` | `package.json` con `react-dom` |
 | React Native | `react-native` | `package.json` con la clave exacta `react-native` o `expo` en sus dependencias (`react-native-web` no cuenta) |
 | Node | `node` | `package.json` sin ninguno de los anteriores |
 | Kotlin Android | `kotlin-android` | `build.gradle`, `build.gradle.kts` o `gradle/libs.versions.toml` que declare `com.android.application` o `com.android.library` |
 
-Un mismo `package.json` clasifica en un solo stack: `react-native` gana sobre `react`, y `react` sobre `node`. Distintos manifests pueden aportar distintos stacks (un monorepo con API en Go y web en React detecta ambos).
+TypeScript se detecta de forma independiente y puede coexistir con Node, React o React Native en el mismo proyecto. Entre esos tres stacks, un mismo `package.json` clasifica en uno solo: `react-native` gana sobre `react`, y `react` sobre `node`. Distintos manifests pueden aportar distintos stacks (un monorepo con API en Go y web en React detecta ambos).
 
 ## Fase 2 — Cobertura
 
@@ -141,5 +143,6 @@ Coding policies listas: <ruta> (<generado|regenerado>)
 ## Referencias
 
 - `references/go.md` — Go. Fuentes: prácticas del usuario observadas en sus repos, Uber Go Style Guide, Effective Go, Go Code Review Comments y Package Oriented Design.
+- `references/typescript.md` — TypeScript general y transversal al runtime o framework. Fuentes: criterios provistos por el usuario, documentación de TypeScript, typescript-eslint, Node.js, Zod y la guía de rendimiento del compilador.
 
 Para agregar un stack: crear `references/<id>.md` con frontmatter `stack: <id>`, `name: <Nombre>`, `version: <YYYY-MM-DD>`; el cuerpo en temas `###` con reglas `- **MUST|SHOULD** <regla>. Porqué: <texto>. Gate: <herramienta y regla | —>` y un tema final `### Lectura ampliada` con los links. Subir `version` en cada cambio de reglas y propagar el archivo idéntico a las cuatro copias del skill.

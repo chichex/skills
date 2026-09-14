@@ -3,8 +3,8 @@
 // Verifica los artefactos del skill en los cuatro harnesses
 // ({claude,codex,opencode,pi}/coding-policies): frontmatter y extras por
 // harness (CA-1), doctrina equivalente tras normalizar la capa de interaccion
-// (CA-2, CA-6), template del archivo generado identico (CA-8), referencia Go
-// estructuralmente valida e identica byte a byte (CA-4), integracion con
+// (CA-2, CA-6), template del archivo generado identico (CA-8), referencias
+// Go y TypeScript estructuralmente validas e identicas byte a byte, integracion con
 // sdd-init (CA-9) y documentacion (CA-10). No observa la conducta del agente
 // al ejecutar el skill: eso es protocolo humano (CA-5, CA-7).
 
@@ -83,7 +83,7 @@ const QUESTION_STYLE: Record<Harness, { required: RegExp[]; forbidden: RegExp }>
 // doctrina ya normalizado (CA-6).
 const PROCEDURE_DOCTRINE: RegExp[] = [
 	/^## Argumentos$/m,
-	/«skill:coding-policies» \[go\|node\|react\|react-native\|kotlin-android \.\.\.\] \[--out <ruta>\] \[--no-link\]/,
+	/«skill:coding-policies» \[go\|typescript\|node\|react\|react-native\|kotlin-android \.\.\.\] \[--out <ruta>\] \[--no-link\]/,
 	/[Ss]tacks posicionales[^\n]*saltean la confirmación de stacks/,
 	/`--out <ruta>`[^\n]*saltea la pregunta de destino/,
 	/`--no-link`[^\n]*saltea el enganche/,
@@ -96,10 +96,12 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/`dependencies` y `devDependencies`/,
 	/registra dónde se vio/,
 	/^\| Go \| `go` \| `go\.mod` \|$/m,
+	/^\| TypeScript \| `typescript` \| `tsconfig\*\.json` \|$/m,
 	/^\| React web \| `react` \| `package\.json` con `react-dom` \|$/m,
 	/^\| React Native \| `react-native` \| `package\.json` con la clave exacta `react-native` o `expo` en sus dependencias \(`react-native-web` no cuenta\) \|$/m,
 	/^\| Node \| `node` \| `package\.json` sin ninguno de los anteriores \|$/m,
 	/^\| Kotlin Android \| `kotlin-android` \| `build\.gradle`, `build\.gradle\.kts` o `gradle\/libs\.versions\.toml` que declare `com\.android\.application` o `com\.android\.library` \|$/m,
+	/TypeScript se detecta de forma independiente y puede coexistir con Node, React o React Native/,
 	/cubierto si existe `references\/<id>\.md`/,
 	/"sin prácticas definidas todavía" y no generan sección/,
 	/[Ss]i ningún stack confirmado está cubierto, no se genera archivo y se informa; el skill termina ahí, sin enganche/,
@@ -176,6 +178,31 @@ const GO_LINKS = [
 	"https://go.dev/doc/effective_go",
 	"https://go.dev/wiki/CodeReviewComments",
 	"https://www.ardanlabs.com/blog/2017/02/package-oriented-design.html",
+];
+const TYPESCRIPT_SECTIONS = [
+	"Alcance y configuración",
+	"Tipos e inferencia",
+	"Modelado y narrowing",
+	"Genéricos y APIs",
+	"Límites y validación",
+	"Promesas y concurrencia",
+	"Módulos y runtime",
+	"Linting y supresiones",
+	"Testing y verificación",
+	"Rendimiento del tipado",
+	"Lectura ampliada",
+];
+const TYPESCRIPT_LINKS = [
+	"https://www.typescriptlang.org/tsconfig/strict.html",
+	"https://www.typescriptlang.org/docs/handbook/2/everyday-types.html",
+	"https://www.typescriptlang.org/docs/handbook/2/narrowing.html",
+	"https://www.typescriptlang.org/docs/handbook/2/functions.html",
+	"https://typescript-eslint.io/getting-started/typed-linting/",
+	"https://typescript-eslint.io/blog/avoiding-anys/",
+	"https://www.typescriptlang.org/docs/handbook/modules/guides/choosing-compiler-options.html",
+	"https://nodejs.org/api/typescript.html",
+	"https://zod.dev/basics",
+	"https://github.com/microsoft/TypeScript/wiki/Performance",
 ];
 const RULES_MIN = 25;
 const RULES_MAX = 45;
@@ -385,6 +412,8 @@ for (const harness of HARNESSES) {
 			/coding policies[\s\S]*buenas prácticas[\s\S]*políticas de código/i,
 			"la description dispara con los pedidos esperados",
 		);
+		assert.match(split.fields.description ?? "", /"mis prácticas de TypeScript"/, "la description dispara para TypeScript");
+		assert.match(markdown, /`references\/typescript\.md` — TypeScript/, "la lista de referencias incluye TypeScript");
 		const hasSidecar = await exists(`${harness}/${SKILL}/agents/openai.yaml`);
 		if (harness === "codex") {
 			assert.ok(hasSidecar, "codex lleva agents/openai.yaml");
@@ -441,6 +470,7 @@ test(`${SKILL}: los artefactos del skill estan trackeados en git (el Pi Package 
 	const artifacts = HARNESSES.flatMap((harness) => [
 		`${harness}/${SKILL}/SKILL.md`,
 		`${harness}/${SKILL}/references/go.md`,
+		`${harness}/${SKILL}/references/typescript.md`,
 	]).concat([`codex/${SKILL}/agents/openai.yaml`]);
 	assert.deepEqual(artifacts.filter((path) => !isTracked(path)), [], "artefactos sin trackear");
 });
@@ -490,6 +520,23 @@ test(`${SKILL}: references/go.md valida e identica byte a byte en los cuatro har
 	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"), "alguna regla nombra un gate concreto");
 });
 
+// --- Referencia TypeScript ---------------------------------------------------
+
+test(`${SKILL}: references/typescript.md valida e identica byte a byte en los cuatro harnesses`, async () => {
+	const byHarness = new Map<Harness, string>();
+	for (const harness of HARNESSES) {
+		byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/typescript.md`));
+	}
+	assert.deepEqual(compareAcrossHarnesses("references/typescript.md", byHarness), []);
+	const verdict = validateReference(byHarness.get("claude") ?? "", TYPESCRIPT_SECTIONS, TYPESCRIPT_LINKS);
+	assert.deepEqual(verdict.problems, []);
+	assert.equal(verdict.fields.stack, "typescript");
+	assert.equal(verdict.fields.name, "TypeScript");
+	assert.ok(verdict.rules.some((rule) => rule.level === "MUST"), "hay reglas MUST");
+	assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"), "hay reglas SHOULD");
+	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"), "alguna regla nombra un gate concreto");
+});
+
 // --- CA-9: integracion con sdd-init ------------------------------------------
 
 test("sdd-init integra coding-policies en los cuatro harnesses sin tocar el template del contrato", async () => {
@@ -517,7 +564,9 @@ test("READMEs y manifests del plugin documentan coding-policies", async () => {
 		const row = text.match(/^\| \*\*`coding-policies`\*\* \|[^\n]*\|$/m)?.[0] ?? "";
 		assert.notEqual(row, "", `${readme} tiene la fila coding-policies en la tabla de skills`);
 		assert.match(row, /\.sdd\/coding-policies\.md/, `${readme}: la fila dice dónde genera`);
-		assert.match(row, /Go/, `${readme}: la fila dice que la v1 cubre Go`);
+		assert.match(row, /Go/, `${readme}: la fila anuncia cobertura para Go`);
+		assert.match(row, /TypeScript/, `${readme}: la fila anuncia cobertura para TypeScript`);
+		assert.match(row, /(?:contenido|content)[^|]*Go[^|]*TypeScript/i, `${readme}: la fila dice que ambos tienen contenido`);
 		assert.match(row, /[Aa]justes|[Aa]djustments/, `${readme}: la fila menciona la preservación de ajustes`);
 	}
 	for (const manifest of [".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"]) {
