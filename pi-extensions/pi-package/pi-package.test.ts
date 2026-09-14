@@ -70,6 +70,7 @@ const EXPECTED_PEERS = {
 
 const EXPECTED_SKILLS = [
 	"./pi/code-review/SKILL.md",
+	"./pi/coding-policies/SKILL.md",
 	"./pi/domain-modeling/SKILL.md",
 	"./pi/find-skills/SKILL.md",
 	"./pi/github-issue-selector/SKILL.md",
