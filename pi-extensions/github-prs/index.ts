@@ -66,8 +66,8 @@ const ACTION_ITEMS: SelectItem[] = [
 	},
 	{
 		value: "review",
-		label: "Revisar con code-review",
-		description: "Usa /skill:code-review y al final permite publicar los comments",
+		label: "Revisar y publicar con code-review",
+		description: "Publica los findings en el PR como un único review COMMENT",
 	},
 	{
 		value: "merge",

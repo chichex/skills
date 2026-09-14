@@ -17,8 +17,8 @@ El par `codex/code-review/SKILL.md` ↔ `pi/code-review/SKILL.md` es el modelo a
 
 1. Pi agrega `compatibility` al frontmatter (declara `gh`, repo git y la tool de preguntas).
 2. `$code-review` → `/skill:code-review` en el bloque `## Argumentos`.
-3. `request_user_input` → `ask_user_question` en cada mención (gates, `## MUST DO`).
-4. Codex tiene un párrafo propio de fallback ("usar `request_user_input` solo cuando esté disponible; si no, mostrar el mismo gate en texto plano…") que la versión Pi omite: en Pi el requisito de la tool vive en `compatibility`.
+3. `request_user_input` → `ask_user_question` al resolver un PR ambiguo en `## Argumentos`.
+4. Codex tiene un párrafo propio de fallback para elegir el PR en texto plano cuando `request_user_input` no está disponible; Pi lo omite porque su tool vive en `compatibility`.
 5. Codex lleva el sidecar `agents/openai.yaml`; Pi no.
 
 Todo el resto del cuerpo es byte a byte idéntico.
@@ -53,8 +53,8 @@ Cada skill de `codex/` lleva `agents/openai.yaml` con el bloque `interface`:
 ```yaml
 interface:
   display_name: "Code Review"
-  short_description: "Revisá PRs con evidencia y gates seguros"
-  default_prompt: "Usá $code-review para revisar este PR sin publicar comentarios todavía."
+  short_description: "Revisá PRs y publicá findings con evidencia"
+  default_prompt: "Usá $code-review para revisar este PR y publicar los findings como comments."
 ```
 
 - `display_name`: nombre corto de presentación.
@@ -68,7 +68,7 @@ La invocación implícita en Codex la habilita la `description` del frontmatter:
 Campo del frontmatter, presente SOLO cuando el skill tiene requisitos: CLIs (`gh`, `yt-dlp`), tools específicas (`ask_user_question`, `select_github_issue`), otros skills instalados o permisos. Ejemplo real:
 
 ```yaml
-compatibility: Requiere un repositorio git, GitHub CLI (gh) autenticado y acceso de lectura al PR. Publicar comments requiere permiso de escritura en el repositorio.
+compatibility: Requiere un repositorio git, GitHub CLI (gh) autenticado y acceso de lectura al PR. La publicación por default requiere permiso de escritura en el repositorio.
 ```
 
 Un skill sin requisitos no lleva el campo.

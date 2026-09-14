@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Revisa un Pull Request de GitHub contra el código real en tres ejes separados — Correctness & Risk, Standards y Spec — con evidencia por archivo/línea, severidad, confianza y verificaciones ejecutadas. Al terminar muestra exactamente qué comments publicaría y pregunta si el usuario quiere postearlos; nunca publica, aprueba ni pide cambios sin confirmación explícita. Usar SIEMPRE que el usuario pida revisar, auditar o comentar un PR de GitHub.
+description: Revisa un Pull Request de GitHub contra el código real en tres ejes separados — Correctness & Risk, Standards y Spec — con evidencia por archivo/línea, severidad, confianza y verificaciones ejecutadas. Al terminar muestra la preview exacta y, salvo `--no-publish`, publica automáticamente los comments en el PR como un único review COMMENT; nunca aprueba ni pide cambios. Usar SIEMPRE que el usuario pida revisar, auditar o comentar un PR de GitHub.
 ---
 
 Revisa un PR de GitHub sin modificar código ni cambiar el checkout del usuario. La review responde tres preguntas por separado:
@@ -9,18 +9,21 @@ Revisa un PR de GitHub sin modificar código ni cambiar el checkout del usuario.
 2. **Standards** — ¿respeta las instrucciones y convenciones documentadas por el repo?
 3. **Spec** — ¿implementa lo pedido, completo y sin scope creep?
 
-La review termina primero en pantalla. Después muestra una preview exacta y usa `request_user_input` para decidir si publicar los comments en GitHub. La opción segura por default es no publicar.
+El reporte y la preview exacta se muestran antes de cualquier escritura. Salvo que aplique `--no-publish`, el skill publica automáticamente en GitHub un único review de tipo `COMMENT`; invocarlo autoriza únicamente ese side effect acotado.
 
-En Codex, usar `request_user_input` solo cuando esté disponible. Si no, mostrar el mismo gate en texto plano, terminar el turno y esperar la respuesta. Nunca publicar en el mismo turno en que se mostró la preview por primera vez.
+En Codex, usar `request_user_input` solo cuando esté disponible para resolver qué PR revisar. Si no está disponible y no hay un PR inequívoco, listar los candidatos, pedir el número o la URL en texto plano y terminar el turno esperando la respuesta.
 
 ## Argumentos
 
 ```text
-$code-review [<numero de PR | URL de PR>]
+$code-review [<numero de PR | URL de PR>] [--no-publish]
 ```
 
 - Con número o URL: revisar ese PR.
-- Sin argumento: intentar resolver el PR abierto de la branch actual con `gh pr view`. Si no hay uno inequívoco, pedir número o URL con `request_user_input`.
+- Sin número ni URL: intentar resolver el PR abierto de la branch actual con `gh pr view`. Si no hay uno inequívoco, pedir número o URL con `request_user_input`.
+- `--no-publish` — mostrar el reporte y la preview, pero no escribir nada en GitHub.
+- Un pedido explícito del usuario de no publicar equivale a `--no-publish`, aunque no haya usado el flag.
+- Cualquier otro argumento o flag frena antes de consultar o escribir en GitHub.
 - Solo revisar PRs del repositorio GitHub correspondiente al cwd. Si la URL apunta a otro repo, frenar y pedir ejecutar el skill dentro de ese checkout.
 
 ## Fase 1 — Preflight y change set
@@ -142,7 +145,7 @@ Cuando no haya findings, decirlo explícitamente; no inventar uno para justifica
 
 ## Reporte previo a publicar
 
-Mostrar siempre, antes de preguntar:
+Mostrar siempre, antes de publicar o de terminar sin publicación:
 
 ```markdown
 # Review de PR #<n> — <titulo>
@@ -172,19 +175,17 @@ Mostrar siempre, antes de preguntar:
 
 Después mostrar `## Preview de publicacion` con el body del review y cada comment exactamente como se enviaría. Un finding sobre una línea agregada/modificada del diff va inline (`RIGHT`); uno sobre una línea eliminada va inline (`LEFT`). Si la ubicación no pertenece al diff, incluirlo en el body general y no inventar una coordenada.
 
-## Gate obligatorio de publicación
+## Política de publicación
 
-Luego de mostrar reporte y preview, usar `request_user_input` exactamente una vez:
+Después de mostrar el reporte y la preview:
 
-- Pregunta: `Review terminada para el PR #<n>. ¿Queres publicar estos comments en GitHub?`
-- `No publicar (Recomendado)` — termina dejando todo solo en la conversación.
-- `Publicar comments` — crea un único review de tipo `COMMENT` con el resumen y los comments inline.
-
-`No publicar` es la opción recomendada porque escribir en GitHub es un side effect externo. Nunca interpretar silencio, un pedido previo de "revisar" ni una autorización genérica como permiso para publicar.
+- Sin `--no-publish`, publicar automáticamente un único review de tipo `COMMENT` con el resumen y los comments inline.
+- Con `--no-publish` —o ante un pedido explícito de no publicar—, terminar dejando todo solo en la conversación y no escribir nada en GitHub.
+- No abrir un gate ni pedir confirmación adicional: la invocación sin opt-out ya autoriza exclusivamente esa publicación acotada.
 
 ## Publicación
 
-Solo si el usuario elige `Publicar comments`:
+Cuando corresponda publicar:
 
 1. Volver a consultar `headRefOid` inmediatamente antes del POST. Si cambió respecto del SHA revisado, NO publicar: la review quedó stale y hay que correrla de nuevo.
 2. Construir un JSON temporal para `POST /repos/{owner}/{repo}/pulls/{number}/reviews` con:
@@ -196,7 +197,7 @@ Solo si el usuario elige `Publicar comments`:
 4. Si el POST da resultado ambiguo o timeout, inspeccionar reviews/comments existentes antes de reintentar. Nunca duplicar una review automáticamente.
 5. Reportar URL/ID del review publicado y cantidad de comments inline. Borrar payloads y worktrees temporales.
 
-La publicación siempre usa `COMMENT`: este skill nunca `APPROVE`, nunca `REQUEST_CHANGES`, nunca mergea y nunca modifica código.
+La publicación siempre usa `COMMENT`: este skill nunca `APPROVE`, nunca `REQUEST_CHANGES`, nunca mergea y nunca modifica código. La autorización por default no se extiende a ningún otro side effect.
 
 ## MUST DO
 
@@ -204,8 +205,8 @@ La publicación siempre usa `COMMENT`: este skill nunca `APPROVE`, nunca `REQUES
 - Leer contexto completo y reglas del repo, no solo el patch.
 - Mantener Correctness & Risk, Standards y Spec separados.
 - Citar evidencia, severidad, confianza, impacto y ubicación por finding.
-- Mostrar reporte y preview antes del gate final.
-- Pedir confirmación explícita con `request_user_input` antes de cualquier escritura en GitHub.
+- Mostrar reporte y preview antes de cualquier publicación.
+- Publicar automáticamente un único review `COMMENT` salvo que aplique `--no-publish`.
 - Revalidar el head SHA antes de publicar y usar un único review `COMMENT`.
 - Limpiar worktrees y archivos temporales.
 
@@ -216,4 +217,5 @@ La publicación siempre usa `COMMENT`: este skill nunca `APPROVE`, nunca `REQUES
 - No inventar spec, reglas, evidencia, resultados de checks ni coordenadas inline.
 - No confundir smells con reglas duras ni pedir abstracciones sin impacto concreto.
 - No publicar findings de confianza baja como acusaciones.
-- No postear, aprobar, pedir cambios, pushear, mergear ni cerrar el PR sin permiso explícito; incluso con permiso, este skill solo puede postear un review `COMMENT`.
+- No publicar si aplica `--no-publish` o si cambió el head SHA revisado.
+- No aprobar, pedir cambios, pushear, mergear ni cerrar el PR: la autorización por default cubre únicamente un review `COMMENT`.

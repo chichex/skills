@@ -1,4 +1,4 @@
 interface:
   display_name: "Code Review"
-  short_description: "Revisá PRs con evidencia y gates seguros"
-  default_prompt: "Usá $code-review para revisar este PR sin publicar comentarios todavía."
+  short_description: "Revisá PRs y publicá findings con evidencia"
+  default_prompt: "Usá $code-review para revisar este PR y publicar los findings como comments."
