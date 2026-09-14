@@ -63,11 +63,11 @@ version: 2026-09-14
 
 ### Expo
 
-- **MUST** Si una dependencia o configuración requiere código nativo propio, usar una development build compatible en vez de asumir que Expo Go la incluye. Porqué: Expo Go trae un conjunto fijo de capacidades nativas. Gate: `expo-doctor` y development build del proyecto
-- **MUST** Reconstruir la development build después de cambios nativos; reservar la recarga para cambios JavaScript o TypeScript compatibles con el binario actual. Porqué: Metro no puede agregar librerías ni permisos al ejecutable ya instalado. Gate: `build nativo y ejecución del flujo afectado`
-- **MUST** Actualizar Expo SDK solo como migración explícita, siguiendo el salto incremental, alineando dependencias y revisando `expo-doctor`. Porqué: el SDK define un conjunto coordinado de React Native y módulos Expo. Gate: `expo install --check`, `expo-doctor` y suite del repo
-- **MUST** Determinar si `android/` e `ios/` se mantienen a mano o se regeneran con CNG; no ejecutar `prebuild --clean` hasta demostrar que toda personalización está representada. Porqué: ese comando elimina y recrea ambos proyectos nativos. Gate: revisión de config plugins y `git diff -- android ios` después de una prueba descartable
-- **MUST** Mantener cada actualización remota compatible con el código nativo y `runtimeVersion` del binario receptor. Porqué: una OTA no instala capacidades nativas ausentes y compartir una runtime version incorrecta no crea compatibilidad. Gate: prueba de la actualización contra una build con el mismo `runtimeVersion`
+- **MUST** Si el proyecto usa Expo, usar una development build compatible cuando una dependencia o configuración requiera código nativo propio, en vez de asumir que Expo Go la incluye. Porqué: Expo Go trae un conjunto fijo de capacidades nativas. Gate: `expo-doctor` y development build del proyecto
+- **MUST** Si el proyecto usa Expo, reconstruir la development build después de cambios nativos y reservar la recarga para cambios JavaScript o TypeScript compatibles con el binario actual. Porqué: Metro no puede agregar librerías ni permisos al ejecutable ya instalado. Gate: `build nativo y ejecución del flujo afectado`
+- **MUST** Si el proyecto usa Expo, actualizar Expo SDK solo como migración explícita, siguiendo el salto incremental, alineando dependencias y revisando `expo-doctor`. Porqué: el SDK define un conjunto coordinado de React Native y módulos Expo. Gate: `expo install --check`, `expo-doctor` y suite del repo
+- **MUST** Si el proyecto usa Expo, determinar si `android/` e `ios/` se mantienen a mano o se regeneran con CNG; no ejecutar `prebuild --clean` hasta demostrar que toda personalización está representada. Porqué: ese comando elimina y recrea ambos proyectos nativos. Gate: revisión de config plugins y `git diff -- android ios` después de una prueba descartable
+- **MUST** Si el proyecto usa Expo, mantener cada actualización remota compatible con el código nativo y `runtimeVersion` del binario receptor. Porqué: una OTA no instala capacidades nativas ausentes y compartir una runtime version incorrecta no crea compatibilidad. Gate: prueba de la actualización contra una build con el mismo `runtimeVersion`
 
 ### Verificación
 

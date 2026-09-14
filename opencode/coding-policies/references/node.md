@@ -69,14 +69,14 @@ version: 2026-09-14
 ### Lectura ampliada
 
 - [Node.js Releases](https://nodejs.org/en/about/previous-releases) — calendario de soporte y ramas LTS.
-- [npm: `npm ci`](https://docs.npmjs.com/cli/v11/commands/npm-ci/) — instalación reproducible desde lockfile.
+- [npm: `npm ci`](https://docs.npmjs.com/cli/commands/npm-ci/) — instalación reproducible desde lockfile.
 - [Node.js: Don't Block the Event Loop](https://nodejs.org/learn/asynchronous-work/dont-block-the-event-loop) — trabajo acotado, CPU y entradas adversas.
-- [Node.js: Worker threads](https://nodejs.org/docs/latest-v24.x/api/worker_threads.html) — paralelismo CPU y pools.
-- [Node.js: AbortController and AbortSignal](https://nodejs.org/docs/latest-v24.x/api/globals.html#class-abortcontroller) — cancelación y composición de señales.
-- [Node.js: Streams](https://nodejs.org/docs/latest-v24.x/api/stream.html) — backpressure, pipeline y abort.
-- [Node.js: Errors](https://nodejs.org/docs/latest-v24.x/api/errors.html) — códigos, propagación y `cause`.
-- [Node.js: Process](https://nodejs.org/docs/latest-v24.x/api/process.html) — señales, excepciones fatales y terminación.
-- [Node.js: HTTP server close](https://nodejs.org/docs/latest-v24.x/api/http.html#serverclosecallback) — cierre de conexiones.
+- [Node.js: Worker threads](https://nodejs.org/api/worker_threads.html) — paralelismo CPU y pools.
+- [Node.js: AbortController and AbortSignal](https://nodejs.org/api/globals.html#class-abortcontroller) — cancelación y composición de señales.
+- [Node.js: Streams](https://nodejs.org/api/stream.html) — backpressure, pipeline y abort.
+- [Node.js: Errors](https://nodejs.org/api/errors.html) — códigos, propagación y `cause`.
+- [Node.js: Process](https://nodejs.org/api/process.html) — señales, excepciones fatales y terminación.
+- [Node.js: HTTP server close](https://nodejs.org/api/http.html#serverclosecallback) — cierre de conexiones.
 - [Node.js Security Best Practices](https://nodejs.org/learn/getting-started/security-best-practices) — límites, dependencias y entradas no confiables.
-- [Node.js: AsyncLocalStorage](https://nodejs.org/docs/latest-v24.x/api/async_context.html) — contexto por operación asíncrona.
-- [Node.js: Test runner](https://nodejs.org/docs/latest-v24.x/api/test.html) — subtests, mocks y cleanup.
+- [Node.js: AsyncLocalStorage](https://nodejs.org/api/async_context.html) — contexto por operación asíncrona.
+- [Node.js: Test runner](https://nodejs.org/api/test.html) — subtests, mocks y cleanup.

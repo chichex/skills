@@ -1,5 +1,7 @@
-// Gate determinista del skill coding-policies (spec .sdd/specs/coding-policies.md).
+// Gate determinista del skill coding-policies.
 //
+// Conserva los criterios históricos del contrato base y agrega invariantes
+// de expansión por stack sin presentar la spec inicial como alcance vigente.
 // Verifica los artefactos del skill en los cuatro harnesses
 // ({claude,codex,opencode,pi}/coding-policies): frontmatter y extras por
 // harness (CA-1), doctrina equivalente tras normalizar la capa de interaccion
@@ -84,8 +86,9 @@ const QUESTION_STYLE: Record<Harness, { required: RegExp[]; forbidden: RegExp }>
 // doctrina ya normalizado (CA-6).
 const PROCEDURE_DOCTRINE: RegExp[] = [
 	/^## Argumentos$/m,
-	/«skill:coding-policies» \[go\|typescript\|node\|react\|next\|react-native\|kotlin-multiplatform\|kotlin-android \.\.\.\] \[--out <ruta>\] \[--no-link\]/,
+	/«skill:coding-policies» \[go\|typescript\|node\|react\|next\|react-native\|kotlin-multiplatform\|kmp\|kmm\|kotlin-android \.\.\.\] \[--out <ruta>\] \[--no-link\]/,
 	/Los aliases `kmp` y `kmm` se normalizan a `kotlin-multiplatform`/,
+	/`next` incorpora `react` antes de comprobar cobertura, generar y reportar/,
 	/[Ss]tacks posicionales[^\n]*saltean la confirmación de stacks/,
 	/`--out <ruta>`[^\n]*saltea la pregunta de destino/,
 	/`--no-link`[^\n]*saltea el enganche/,
@@ -102,11 +105,13 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/^\| React web \| `react` \| `package\.json` con `react-dom` \|$/m,
 	/^\| Next\.js \| `next` \| `package\.json` con la clave exacta `next` en sus dependencias \|$/m,
 	/^\| React Native \| `react-native` \| `package\.json` con la clave exacta `react-native` o `expo` en sus dependencias \(`react-native-web` no cuenta\) \|$/m,
-	/^\| Node \| `node` \| `package\.json` sin `react-native`, `expo` ni `react-dom`; la presencia de `next` no cambia esta clasificación \|$/m,
+	/^\| Node \| `node` \| `package\.json` sin `react-native`, `expo`, `react-dom` ni `next` \|$/m,
 	/^\| Kotlin Multiplatform \| `kotlin-multiplatform` \| `build\.gradle`, `build\.gradle\.kts` o `gradle\/libs\.versions\.toml` que declare `org\.jetbrains\.kotlin\.multiplatform` o `kotlin\("multiplatform"\)` \|$/m,
 	/^\| Kotlin Android \| `kotlin-android` \| `build\.gradle`, `build\.gradle\.kts` o `gradle\/libs\.versions\.toml` que declare `com\.android\.application` o `com\.android\.library` \|$/m,
 	/TypeScript se detecta de forma independiente y puede coexistir con Node, React, Next\.js o React Native/,
-	/Next\.js se detecta de forma independiente y puede coexistir con React y TypeScript/,
+	/Next\.js se detecta de forma independiente[^\n]*`next` incorpora `react`/,
+	/`next` no incorpora `node`[^\n]*capa servidor del framework/,
+	/`react-native` gana sobre `react`, y `react` sobre `node`/,
 	/En un mismo marcador Gradle, `kotlin-multiplatform` prevalece sobre `kotlin-android`/,
 	/cubierto si existe `references\/<id>\.md`/,
 	/"sin prácticas definidas todavía" y no generan sección/,
@@ -224,15 +229,17 @@ const NODE_SECTIONS = [
 ];
 const NODE_LINKS = [
 	"https://nodejs.org/en/about/previous-releases",
-	"https://docs.npmjs.com/cli/v11/commands/npm-ci/",
+	"https://docs.npmjs.com/cli/commands/npm-ci/",
 	"https://nodejs.org/learn/asynchronous-work/dont-block-the-event-loop",
-	"https://nodejs.org/docs/latest-v24.x/api/worker_threads.html",
-	"https://nodejs.org/docs/latest-v24.x/api/globals.html#class-abortcontroller",
-	"https://nodejs.org/docs/latest-v24.x/api/stream.html",
-	"https://nodejs.org/docs/latest-v24.x/api/errors.html",
-	"https://nodejs.org/docs/latest-v24.x/api/process.html",
+	"https://nodejs.org/api/worker_threads.html",
+	"https://nodejs.org/api/globals.html#class-abortcontroller",
+	"https://nodejs.org/api/stream.html",
+	"https://nodejs.org/api/errors.html",
+	"https://nodejs.org/api/process.html",
+	"https://nodejs.org/api/http.html#serverclosecallback",
 	"https://nodejs.org/learn/getting-started/security-best-practices",
-	"https://nodejs.org/docs/latest-v24.x/api/async_context.html",
+	"https://nodejs.org/api/async_context.html",
+	"https://nodejs.org/api/test.html",
 ];
 const REACT_SECTIONS = [
 	"Pureza y Hooks",
@@ -333,6 +340,88 @@ const KOTLIN_MULTIPLATFORM_LINKS = [
 ];
 const RULES_MIN = 25;
 const RULES_MAX = 45;
+const CONTENT_COVERAGE_PATTERN =
+	/(?:Trae contenido para|It ships content for)[^|]*Go[^|]*TypeScript[^|]*Node[^|]*React[^|]*Next\.js[^|]*React Native[^|]*Kotlin Multiplatform/i;
+
+interface ReferenceCase {
+	id: string;
+	name: string;
+	sections: readonly string[];
+	links: readonly string[];
+}
+
+const REFERENCES: readonly ReferenceCase[] = [
+	{ id: "go", name: "Go", sections: GO_SECTIONS, links: GO_LINKS },
+	{ id: "typescript", name: "TypeScript", sections: TYPESCRIPT_SECTIONS, links: TYPESCRIPT_LINKS },
+	{ id: "node", name: "Node.js", sections: NODE_SECTIONS, links: NODE_LINKS },
+	{ id: "react", name: "React", sections: REACT_SECTIONS, links: REACT_LINKS },
+	{ id: "next", name: "Next.js", sections: NEXT_SECTIONS, links: NEXT_LINKS },
+	{
+		id: "react-native",
+		name: "React Native",
+		sections: REACT_NATIVE_SECTIONS,
+		links: REACT_NATIVE_LINKS,
+	},
+	{
+		id: "kotlin-multiplatform",
+		name: "Kotlin Multiplatform",
+		sections: KOTLIN_MULTIPLATFORM_SECTIONS,
+		links: KOTLIN_MULTIPLATFORM_LINKS,
+	},
+];
+
+const STACK_ORDER = [
+	"go",
+	"typescript",
+	"react",
+	"next",
+	"react-native",
+	"node",
+	"kotlin-multiplatform",
+	"kotlin-android",
+] as const;
+
+type StackId = (typeof STACK_ORDER)[number];
+type DependencyMap = Record<string, string>;
+
+interface DetectionFile {
+	path: string;
+	content?: string;
+	packageJson?: { dependencies?: DependencyMap; devDependencies?: DependencyMap };
+}
+
+export function normalizeRequestedStacks(requested: string[]): StackId[] {
+	const normalized = new Set<string>(requested.map((id) => (id === "kmp" || id === "kmm" ? "kotlin-multiplatform" : id)));
+	if (normalized.has("next")) normalized.add("react");
+	return STACK_ORDER.filter((id) => normalized.has(id));
+}
+
+export function detectFixtureStacks(files: DetectionFile[]): StackId[] {
+	const detected = new Set<StackId>();
+	for (const file of files) {
+		const basename = file.path.split("/").at(-1) ?? file.path;
+		if (basename === "go.mod") detected.add("go");
+		if (/^tsconfig.*\.json$/.test(basename)) detected.add("typescript");
+		if (basename === "package.json" && file.packageJson) {
+			const dependencies = { ...file.packageJson.dependencies, ...file.packageJson.devDependencies };
+			const hasReactNative = Object.hasOwn(dependencies, "react-native") || Object.hasOwn(dependencies, "expo");
+			const hasNext = Object.hasOwn(dependencies, "next");
+			if (hasReactNative) detected.add("react-native");
+			else if (Object.hasOwn(dependencies, "react-dom") || hasNext) detected.add("react");
+			else detected.add("node");
+			if (hasNext) detected.add("next");
+		}
+		if (["build.gradle", "build.gradle.kts", "libs.versions.toml"].includes(basename)) {
+			const content = file.content ?? "";
+			if (/org\.jetbrains\.kotlin\.multiplatform|kotlin\(["']multiplatform["']\)/.test(content)) {
+				detected.add("kotlin-multiplatform");
+			} else if (/com\.android\.(?:application|library)/.test(content)) {
+				detected.add("kotlin-android");
+			}
+		}
+	}
+	return STACK_ORDER.filter((id) => detected.has(id));
+}
 
 // Integracion con sdd-init (CA-9), sobre el SKILL.md con invocaciones normalizadas.
 const SDD_INIT_DOCTRINE: RegExp[] = [
@@ -370,6 +459,35 @@ export function isTracked(path: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+export function trackedReferenceIds(harness: Harness): string[] {
+	const directory = `${harness}/${SKILL}/references/`;
+	const output = execFileSync("git", ["ls-files", "--", `${directory}*.md`], {
+		cwd: REPO_ROOT,
+		encoding: "utf8",
+	});
+	return output
+		.split("\n")
+		.filter(Boolean)
+		.map((path) => path.slice(directory.length, -".md".length))
+		.sort();
+}
+
+export function announcedReferenceIds(markdown: string): string[] {
+	const section = markdown.split(/^## Referencias$/m)[1] ?? "";
+	return [...section.matchAll(/^- `references\/([a-z][a-z0-9-]*)\.md` —/gm)]
+		.map((match) => match[1] ?? "")
+		.filter(Boolean)
+		.sort();
+}
+
+export function ruleLinesInSection(markdown: string, section: string): string[] {
+	const lines = markdown.split("\n");
+	const start = lines.findIndex((line) => line === `### ${section}`);
+	if (start < 0) return [];
+	const end = lines.findIndex((line, index) => index > start && line.startsWith("### "));
+	return lines.slice(start + 1, end < 0 ? undefined : end).filter((line) => /^- \*\*(MUST|SHOULD)\*\*/.test(line));
 }
 
 export function normalizeQuestions(text: string, harness: Harness): string {
@@ -452,7 +570,11 @@ interface ReferenceVerdict {
 	fields: Record<string, string>;
 }
 
-export function validateReference(markdown: string, expectedSections: string[], links: string[]): ReferenceVerdict {
+export function validateReference(
+	markdown: string,
+	expectedSections: readonly string[],
+	links: readonly string[],
+): ReferenceVerdict {
 	const problems: string[] = [];
 	const rules: Rule[] = [];
 	const sections: string[] = [];
@@ -544,6 +666,8 @@ for (const harness of HARNESSES) {
 		assert.match(split.fields.description ?? "", /"mis prácticas de React"/, "la description dispara para React");
 		assert.match(split.fields.description ?? "", /"mis prácticas de Next\.js"/, "la description dispara para Next.js");
 		assert.match(split.fields.description ?? "", /"mis prácticas de React Native"/, "la description dispara para React Native");
+		assert.match(split.fields.description ?? "", /"mis prácticas de Kotlin Multiplatform"/, "la description dispara para Kotlin Multiplatform");
+		assert.match(split.fields.description ?? "", /"mis prácticas de KMP"/, "la description dispara para KMP");
 		assert.match(split.fields.description ?? "", /"mis prácticas de KMM"/, "la description dispara para KMM");
 		assert.match(markdown, /`references\/typescript\.md` — TypeScript/, "la lista de referencias incluye TypeScript");
 		assert.match(markdown, /`references\/node\.md` — Node\.js/, "la lista de referencias incluye Node.js");
@@ -607,18 +731,78 @@ test(`${SKILL}: doctrina byte-equivalente entre harnesses tras normalizar la cap
 	assert.deepEqual(compareAcrossHarnesses(`${SKILL} bloque AGENTS.md`, blocks), []);
 });
 
-test(`${SKILL}: los artefactos del skill estan trackeados en git (el Pi Package solo shippea lo trackeado)`, () => {
-	const artifacts = HARNESSES.flatMap((harness) => [
-		`${harness}/${SKILL}/SKILL.md`,
-		`${harness}/${SKILL}/references/go.md`,
-		`${harness}/${SKILL}/references/typescript.md`,
-		`${harness}/${SKILL}/references/node.md`,
-		`${harness}/${SKILL}/references/react.md`,
-		`${harness}/${SKILL}/references/next.md`,
-		`${harness}/${SKILL}/references/react-native.md`,
-		`${harness}/${SKILL}/references/kotlin-multiplatform.md`,
-	]).concat([`codex/${SKILL}/agents/openai.yaml`]);
-	assert.deepEqual(artifacts.filter((path) => !isTracked(path)), [], "artefactos sin trackear");
+test(`${SKILL}: censo Git anti-drift de referencias y artefactos`, async () => {
+	const expected = REFERENCES.map((reference) => reference.id).sort();
+	const censuses = new Map<Harness, string>();
+	for (const harness of HARNESSES) {
+		const tracked = trackedReferenceIds(harness);
+		censuses.set(harness, tracked.join("\n"));
+		assert.deepEqual(tracked, expected, `${harness}: el censo trackeado difiere de la tabla de casos`);
+		assert.deepEqual(
+			announcedReferenceIds(await skillMarkdown(harness)),
+			expected,
+			`${harness}: SKILL.md no anuncia exactamente las referencias trackeadas`,
+		);
+	}
+	assert.deepEqual(compareAcrossHarnesses("censo de references/*.md", censuses), []);
+	const fixedArtifacts = [...HARNESSES.map((harness) => `${harness}/${SKILL}/SKILL.md`), `codex/${SKILL}/agents/openai.yaml`];
+	assert.deepEqual(fixedArtifacts.filter((path) => !isTracked(path)), [], "artefactos fijos sin trackear");
+});
+
+test(`${SKILL}: fixtures de package.json fijan coexistencia y precedencia`, () => {
+	assert.deepEqual(
+		detectFixtureStacks([
+			{
+				path: "package.json",
+				packageJson: { dependencies: { "react-native": "1", "react-dom": "1", express: "1" } },
+			},
+		]),
+		["react-native"],
+		"react-native prevalece sobre react y node dentro del mismo manifest",
+	);
+	assert.deepEqual(
+		detectFixtureStacks([{ path: "package.json", packageJson: { dependencies: { "react-dom": "1", express: "1" } } }]),
+		["react"],
+		"react prevalece sobre node dentro del mismo manifest",
+	);
+	assert.deepEqual(
+		detectFixtureStacks([{ path: "package.json", packageJson: { dependencies: { "react-native-web": "1" } } }]),
+		["node"],
+		"react-native-web no cuenta como React Native",
+	);
+	assert.deepEqual(
+		detectFixtureStacks([
+			{ path: "tsconfig.app.json" },
+			{ path: "package.json", packageJson: { devDependencies: { next: "1" } } },
+		]),
+		["typescript", "react", "next"],
+		"next implica react, excluye la referencia node y coexiste con TypeScript",
+	);
+});
+
+test(`${SKILL}: fixtures Gradle fijan precedencia por marcador y coexistencia entre módulos`, () => {
+	assert.deepEqual(
+		detectFixtureStacks([
+			{
+				path: "build.gradle.kts",
+				content: 'plugins { kotlin("multiplatform"); id("com.android.library") }',
+			},
+		]),
+		["kotlin-multiplatform"],
+		"KMP prevalece en un mismo marcador",
+	);
+	assert.deepEqual(
+		detectFixtureStacks([
+			{ path: "shared/build.gradle.kts", content: 'plugins { kotlin("multiplatform") }' },
+			{ path: "androidApp/build.gradle.kts", content: 'plugins { id("com.android.application") }' },
+		]),
+		["kotlin-multiplatform", "kotlin-android"],
+		"módulos separados pueden aportar ambos stacks",
+	);
+});
+
+test(`${SKILL}: normalización explícita aplica aliases y dependencia next → react`, () => {
+	assert.deepEqual(normalizeRequestedStacks(["kmp", "kmm", "next"]), ["react", "next", "kotlin-multiplatform"]);
 });
 
 // --- CA-6: procedimiento completo --------------------------------------------
@@ -649,121 +833,46 @@ test(`${SKILL}: template del archivo generado identico entre harnesses y con sus
 	assert.deepEqual(compareAcrossHarnesses(`${SKILL} template`, byHarness), []);
 });
 
-// --- CA-4: referencia Go -----------------------------------------------------
+// --- Referencias -------------------------------------------------------------
 
-test(`${SKILL}: references/go.md valida e identica byte a byte en los cuatro harnesses`, async () => {
-	const byHarness = new Map<Harness, string>();
-	for (const harness of HARNESSES) {
-		byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/go.md`));
+for (const reference of REFERENCES) {
+	test(`${SKILL}: references/${reference.id}.md valida e identica byte a byte en los cuatro harnesses`, async () => {
+		const byHarness = new Map<Harness, string>();
+		for (const harness of HARNESSES) {
+			byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/${reference.id}.md`));
+		}
+		assert.deepEqual(compareAcrossHarnesses(`references/${reference.id}.md`, byHarness), []);
+		const markdown = byHarness.get("claude") ?? "";
+		const verdict = validateReference(markdown, reference.sections, reference.links);
+		assert.deepEqual(verdict.problems, [], `${reference.id}: estructura inválida`);
+		assert.equal(verdict.fields.stack, reference.id, `${reference.id}: frontmatter stack`);
+		assert.equal(verdict.fields.name, reference.name, `${reference.id}: frontmatter name`);
+		assert.ok(verdict.rules.some((rule) => rule.level === "MUST"), `${reference.id}: hay reglas MUST`);
+		assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"), `${reference.id}: hay reglas SHOULD`);
+		assert.ok(verdict.rules.some((rule) => rule.gate !== "—"), `${reference.id}: algún gate concreto`);
+		if (reference.id === "node") {
+			assert.doesNotMatch(markdown, /nodejs\.org\/docs\/latest-v\d+|docs\.npmjs\.com\/cli\/v\d+\//, "node: links sin rama mayor pinneada");
+		}
+	});
+}
+
+test(`${SKILL}: las secciones condicionales guardan cada regla`, async () => {
+	const reactNative = await readRepoFile(`claude/${SKILL}/references/react-native.md`);
+	const expoRules = ruleLinesInSection(reactNative, "Expo");
+	assert.ok(expoRules.length > 0, "React Native declara reglas Expo");
+	for (const rule of expoRules) {
+		assert.match(rule, /^- \*\*(MUST|SHOULD)\*\* Si el proyecto usa Expo,/, `regla Expo sin guarda: ${rule}`);
 	}
-	assert.deepEqual(compareAcrossHarnesses("references/go.md", byHarness), []);
-	const verdict = validateReference(byHarness.get("claude") ?? "", GO_SECTIONS, GO_LINKS);
-	assert.deepEqual(verdict.problems, []);
-	assert.equal(verdict.fields.stack, "go");
-	assert.equal(verdict.fields.name, "Go");
-	assert.ok(verdict.rules.some((rule) => rule.level === "MUST"), "hay reglas MUST");
-	assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"), "hay reglas SHOULD");
-	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"), "alguna regla nombra un gate concreto");
-});
-
-// --- Referencia TypeScript ---------------------------------------------------
-
-test(`${SKILL}: references/typescript.md valida e identica byte a byte en los cuatro harnesses`, async () => {
-	const byHarness = new Map<Harness, string>();
-	for (const harness of HARNESSES) {
-		byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/typescript.md`));
+	const kotlin = await readRepoFile(`claude/${SKILL}/references/kotlin-multiplatform.md`);
+	const composeRules = ruleLinesInSection(kotlin, "Compose Multiplatform");
+	assert.ok(composeRules.length > 0, "KMP declara reglas Compose Multiplatform");
+	for (const rule of composeRules) {
+		assert.match(
+			rule,
+			/^- \*\*(MUST|SHOULD)\*\* Si el proyecto usa Compose Multiplatform,/,
+			`regla Compose sin guarda: ${rule}`,
+		);
 	}
-	assert.deepEqual(compareAcrossHarnesses("references/typescript.md", byHarness), []);
-	const verdict = validateReference(byHarness.get("claude") ?? "", TYPESCRIPT_SECTIONS, TYPESCRIPT_LINKS);
-	assert.deepEqual(verdict.problems, []);
-	assert.equal(verdict.fields.stack, "typescript");
-	assert.equal(verdict.fields.name, "TypeScript");
-	assert.ok(verdict.rules.some((rule) => rule.level === "MUST"), "hay reglas MUST");
-	assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"), "hay reglas SHOULD");
-	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"), "alguna regla nombra un gate concreto");
-});
-
-// --- Referencia Node.js ------------------------------------------------------
-
-test(`${SKILL}: references/node.md valida e identica byte a byte en los cuatro harnesses`, async () => {
-	const byHarness = new Map<Harness, string>();
-	for (const harness of HARNESSES) byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/node.md`));
-	assert.deepEqual(compareAcrossHarnesses("references/node.md", byHarness), []);
-	const verdict = validateReference(byHarness.get("claude") ?? "", NODE_SECTIONS, NODE_LINKS);
-	assert.deepEqual(verdict.problems, []);
-	assert.equal(verdict.fields.stack, "node");
-	assert.equal(verdict.fields.name, "Node.js");
-	assert.ok(verdict.rules.some((rule) => rule.level === "MUST"));
-	assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"));
-	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"));
-});
-
-// --- Referencia React --------------------------------------------------------
-
-test(`${SKILL}: references/react.md valida e identica byte a byte en los cuatro harnesses`, async () => {
-	const byHarness = new Map<Harness, string>();
-	for (const harness of HARNESSES) byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/react.md`));
-	assert.deepEqual(compareAcrossHarnesses("references/react.md", byHarness), []);
-	const verdict = validateReference(byHarness.get("claude") ?? "", REACT_SECTIONS, REACT_LINKS);
-	assert.deepEqual(verdict.problems, []);
-	assert.equal(verdict.fields.stack, "react");
-	assert.equal(verdict.fields.name, "React");
-	assert.ok(verdict.rules.some((rule) => rule.level === "MUST"));
-	assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"));
-	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"));
-});
-
-// --- Referencia Next.js ------------------------------------------------------
-
-test(`${SKILL}: references/next.md valida e identica byte a byte en los cuatro harnesses`, async () => {
-	const byHarness = new Map<Harness, string>();
-	for (const harness of HARNESSES) byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/next.md`));
-	assert.deepEqual(compareAcrossHarnesses("references/next.md", byHarness), []);
-	const verdict = validateReference(byHarness.get("claude") ?? "", NEXT_SECTIONS, NEXT_LINKS);
-	assert.deepEqual(verdict.problems, []);
-	assert.equal(verdict.fields.stack, "next");
-	assert.equal(verdict.fields.name, "Next.js");
-	assert.ok(verdict.rules.some((rule) => rule.level === "MUST"));
-	assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"));
-	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"));
-});
-
-// --- Referencia React Native -------------------------------------------------
-
-test(`${SKILL}: references/react-native.md valida e identica byte a byte en los cuatro harnesses`, async () => {
-	const byHarness = new Map<Harness, string>();
-	for (const harness of HARNESSES) {
-		byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/react-native.md`));
-	}
-	assert.deepEqual(compareAcrossHarnesses("references/react-native.md", byHarness), []);
-	const verdict = validateReference(byHarness.get("claude") ?? "", REACT_NATIVE_SECTIONS, REACT_NATIVE_LINKS);
-	assert.deepEqual(verdict.problems, []);
-	assert.equal(verdict.fields.stack, "react-native");
-	assert.equal(verdict.fields.name, "React Native");
-	assert.ok(verdict.rules.some((rule) => rule.level === "MUST"), "hay reglas MUST");
-	assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"), "hay reglas SHOULD");
-	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"), "alguna regla nombra un gate concreto");
-});
-
-// --- Referencia Kotlin Multiplatform -----------------------------------------
-
-test(`${SKILL}: references/kotlin-multiplatform.md valida e identica byte a byte en los cuatro harnesses`, async () => {
-	const byHarness = new Map<Harness, string>();
-	for (const harness of HARNESSES) {
-		byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/kotlin-multiplatform.md`));
-	}
-	assert.deepEqual(compareAcrossHarnesses("references/kotlin-multiplatform.md", byHarness), []);
-	const verdict = validateReference(
-		byHarness.get("claude") ?? "",
-		KOTLIN_MULTIPLATFORM_SECTIONS,
-		KOTLIN_MULTIPLATFORM_LINKS,
-	);
-	assert.deepEqual(verdict.problems, []);
-	assert.equal(verdict.fields.stack, "kotlin-multiplatform");
-	assert.equal(verdict.fields.name, "Kotlin Multiplatform");
-	assert.ok(verdict.rules.some((rule) => rule.level === "MUST"), "hay reglas MUST");
-	assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"), "hay reglas SHOULD");
-	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"), "alguna regla nombra un gate concreto");
 });
 
 // --- CA-9: integracion con sdd-init ------------------------------------------
@@ -797,8 +906,8 @@ test("READMEs y manifests del plugin documentan coding-policies", async () => {
 		assert.match(row, /TypeScript/, `${readme}: la fila anuncia cobertura para TypeScript`);
 		assert.match(
 			row,
-			/(?:contenido|content)[^|]*Go[^|]*TypeScript[^|]*Node[^|]*React[^|]*Next\.js[^|]*React Native[^|]*Kotlin Multiplatform/i,
-			`${readme}: la fila dice qué siete stacks tienen contenido`,
+			CONTENT_COVERAGE_PATTERN,
+			`${readme}: la frase de contenido enumera los siete stacks cubiertos`,
 		);
 		assert.match(row, /[Aa]justes|[Aa]djustments/, `${readme}: la fila menciona la preservación de ajustes`);
 	}
@@ -811,7 +920,14 @@ test("READMEs y manifests del plugin documentan coding-policies", async () => {
 		const entries = manifest.endsWith("marketplace.json") ? parsed.plugins ?? [] : [parsed];
 		assert.ok(entries.length > 0, `${manifest} declara al menos una entrada`);
 		for (const entry of entries) {
-			assert.match(entry.description ?? "", /coding-policies/, `${manifest}: description menciona coding-policies`);
+			const description = entry.description ?? "";
+			assert.match(description, /coding-policies/, `${manifest}: description menciona coding-policies`);
+			assert.match(
+				description,
+				/Go[\s\S]*TypeScript[\s\S]*Node\.js[\s\S]*React[\s\S]*Next\.js[\s\S]*React Native[\s\S]*Kotlin Multiplatform/,
+				`${manifest}: description enumera los stacks con contenido`,
+			);
+			assert.doesNotMatch(description, /v1:\s*Go/i, `${manifest}: description no conserva el alcance v1 obsoleto`);
 			assert.ok((entry.keywords ?? []).includes("coding-policies"), `${manifest}: keywords incluye coding-policies`);
 		}
 	}
@@ -849,6 +965,17 @@ test("autotest: una referencia sintetica valida pasa sin diagnosticos", () => {
 	const verdict = validateReference(syntheticReference(), GO_SECTIONS, GO_LINKS);
 	assert.deepEqual(verdict.problems, []);
 	assert.equal(verdict.rules.length, 30);
+});
+
+test("autotest: la cobertura del README exige la frase de contenido, no autocontenido", () => {
+	assert.doesNotMatch(
+		"un archivo autocontenido (Go, TypeScript, Node, React, Next.js, React Native, Kotlin Multiplatform)",
+		CONTENT_COVERAGE_PATTERN,
+	);
+	assert.match(
+		"Trae contenido para Go, TypeScript, Node, React, Next.js, React Native y Kotlin Multiplatform",
+		CONTENT_COVERAGE_PATTERN,
+	);
 });
 
 test("autotest: una regla sin Gate se reporta con su linea", () => {

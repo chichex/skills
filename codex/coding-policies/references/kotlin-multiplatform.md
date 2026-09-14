@@ -64,9 +64,9 @@ version: 2026-09-14
 ### Compose Multiplatform
 
 - **MUST** Si el proyecto usa Compose Multiplatform, verificar compatibilidad entre Compose, Kotlin, Jetpack Compose, JDK y los targets del producto. Porqué: esos componentes tienen ciclos y mínimos distintos; compatibilidad Android no garantiza iOS, desktop o web. Gate: `matriz oficial más build de cada target Compose`
-- **MUST** Mantener el plugin de Compose Compiler en la versión requerida por el plugin Kotlin, sin igualar por intuición todas las librerías Compose. Porqué: el compilador sigue a Kotlin mientras otros artefactos pueden versionarse con otra cadencia. Gate: `configuración de plugins y compilación Compose`
-- **MUST** Definir dueño y alcance de cada ViewModel y sus coroutines; en código común usar inicializador o factory, no reflexión JVM. Porqué: lifecycle y construcción deben funcionar en targets donde las capacidades JVM no existen. Gate: `tests de lifecycle y compilación de targets no JVM`
-- **MUST** Integrar explícitamente lifecycle y `Dispatchers.Main` por plataforma, incluida SwiftUI si corresponde, sin agregar otro framework DI solo por compartir ViewModels. Porqué: conservar el tipo no transfiere automáticamente ownership ni disponibilidad del dispatcher. Gate: `prueba de creación, cancelación y liberación en cada UI soportada`
+- **MUST** Si el proyecto usa Compose Multiplatform, mantener el plugin de Compose Compiler en la versión requerida por el plugin Kotlin, sin igualar por intuición todas las librerías Compose. Porqué: el compilador sigue a Kotlin mientras otros artefactos pueden versionarse con otra cadencia. Gate: `configuración de plugins y compilación Compose`
+- **MUST** Si el proyecto usa Compose Multiplatform, definir dueño y alcance de cada ViewModel y sus coroutines; en código común usar inicializador o factory, no reflexión JVM. Porqué: lifecycle y construcción deben funcionar en targets donde las capacidades JVM no existen. Gate: `tests de lifecycle y compilación de targets no JVM`
+- **MUST** Si el proyecto usa Compose Multiplatform, integrar explícitamente lifecycle y `Dispatchers.Main` por plataforma, incluida SwiftUI si corresponde, sin agregar otro framework DI solo por compartir ViewModels. Porqué: conservar el tipo no transfiere automáticamente ownership ni disponibilidad del dispatcher. Gate: `prueba de creación, cancelación y liberación en cada UI soportada`
 
 ### Verificación
 
