@@ -1,0 +1,4 @@
+interface:
+  display_name: "Coding Policies"
+  short_description: "Generá tus buenas prácticas por stack en el proyecto"
+  default_prompt: "Usá $coding-policies para generar las coding policies de este repo y engancharlas en AGENTS.md."
