@@ -4,7 +4,8 @@
 // ({claude,codex,opencode,pi}/coding-policies): frontmatter y extras por
 // harness (CA-1), doctrina equivalente tras normalizar la capa de interaccion
 // (CA-2, CA-6), template del archivo generado identico (CA-8), referencias
-// Go y TypeScript estructuralmente validas e identicas byte a byte, integracion con
+// Go, TypeScript, Node, React, Next.js, React Native y Kotlin Multiplatform
+// estructuralmente validas e identicas byte a byte, integracion con
 // sdd-init (CA-9) y documentacion (CA-10). No observa la conducta del agente
 // al ejecutar el skill: eso es protocolo humano (CA-5, CA-7).
 
@@ -83,7 +84,8 @@ const QUESTION_STYLE: Record<Harness, { required: RegExp[]; forbidden: RegExp }>
 // doctrina ya normalizado (CA-6).
 const PROCEDURE_DOCTRINE: RegExp[] = [
 	/^## Argumentos$/m,
-	/«skill:coding-policies» \[go\|typescript\|node\|react\|react-native\|kotlin-android \.\.\.\] \[--out <ruta>\] \[--no-link\]/,
+	/«skill:coding-policies» \[go\|typescript\|node\|react\|next\|react-native\|kotlin-multiplatform\|kotlin-android \.\.\.\] \[--out <ruta>\] \[--no-link\]/,
+	/Los aliases `kmp` y `kmm` se normalizan a `kotlin-multiplatform`/,
 	/[Ss]tacks posicionales[^\n]*saltean la confirmación de stacks/,
 	/`--out <ruta>`[^\n]*saltea la pregunta de destino/,
 	/`--no-link`[^\n]*saltea el enganche/,
@@ -98,10 +100,14 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/^\| Go \| `go` \| `go\.mod` \|$/m,
 	/^\| TypeScript \| `typescript` \| `tsconfig\*\.json` \|$/m,
 	/^\| React web \| `react` \| `package\.json` con `react-dom` \|$/m,
+	/^\| Next\.js \| `next` \| `package\.json` con la clave exacta `next` en sus dependencias \|$/m,
 	/^\| React Native \| `react-native` \| `package\.json` con la clave exacta `react-native` o `expo` en sus dependencias \(`react-native-web` no cuenta\) \|$/m,
-	/^\| Node \| `node` \| `package\.json` sin ninguno de los anteriores \|$/m,
+	/^\| Node \| `node` \| `package\.json` sin `react-native`, `expo` ni `react-dom`; la presencia de `next` no cambia esta clasificación \|$/m,
+	/^\| Kotlin Multiplatform \| `kotlin-multiplatform` \| `build\.gradle`, `build\.gradle\.kts` o `gradle\/libs\.versions\.toml` que declare `org\.jetbrains\.kotlin\.multiplatform` o `kotlin\("multiplatform"\)` \|$/m,
 	/^\| Kotlin Android \| `kotlin-android` \| `build\.gradle`, `build\.gradle\.kts` o `gradle\/libs\.versions\.toml` que declare `com\.android\.application` o `com\.android\.library` \|$/m,
-	/TypeScript se detecta de forma independiente y puede coexistir con Node, React o React Native/,
+	/TypeScript se detecta de forma independiente y puede coexistir con Node, React, Next\.js o React Native/,
+	/Next\.js se detecta de forma independiente y puede coexistir con React y TypeScript/,
+	/En un mismo marcador Gradle, `kotlin-multiplatform` prevalece sobre `kotlin-android`/,
 	/cubierto si existe `references\/<id>\.md`/,
 	/"sin prácticas definidas todavía" y no generan sección/,
 	/[Ss]i ningún stack confirmado está cubierto, no se genera archivo y se informa; el skill termina ahí, sin enganche/,
@@ -203,6 +209,127 @@ const TYPESCRIPT_LINKS = [
 	"https://nodejs.org/api/typescript.html",
 	"https://zod.dev/basics",
 	"https://github.com/microsoft/TypeScript/wiki/Performance",
+];
+const NODE_SECTIONS = [
+	"Alcance y versiones",
+	"Event loop y CPU",
+	"Timeouts y cancelación",
+	"Streams y backpressure",
+	"Errores",
+	"Lifecycle",
+	"Seguridad",
+	"Contexto y testing",
+	"Verificación",
+	"Lectura ampliada",
+];
+const NODE_LINKS = [
+	"https://nodejs.org/en/about/previous-releases",
+	"https://docs.npmjs.com/cli/v11/commands/npm-ci/",
+	"https://nodejs.org/learn/asynchronous-work/dont-block-the-event-loop",
+	"https://nodejs.org/docs/latest-v24.x/api/worker_threads.html",
+	"https://nodejs.org/docs/latest-v24.x/api/globals.html#class-abortcontroller",
+	"https://nodejs.org/docs/latest-v24.x/api/stream.html",
+	"https://nodejs.org/docs/latest-v24.x/api/errors.html",
+	"https://nodejs.org/docs/latest-v24.x/api/process.html",
+	"https://nodejs.org/learn/getting-started/security-best-practices",
+	"https://nodejs.org/docs/latest-v24.x/api/async_context.html",
+];
+const REACT_SECTIONS = [
+	"Pureza y Hooks",
+	"Estado y reducers",
+	"Effects",
+	"Identidad y componentes",
+	"Memoización",
+	"Testing y accesibilidad",
+	"Verificación",
+	"Lectura ampliada",
+];
+const REACT_LINKS = [
+	"https://react.dev/reference/rules",
+	"https://react.dev/reference/eslint-plugin-react-hooks",
+	"https://react.dev/learn/choosing-the-state-structure",
+	"https://react.dev/learn/extracting-state-logic-into-a-reducer",
+	"https://react.dev/learn/you-might-not-need-an-effect",
+	"https://react.dev/learn/removing-effect-dependencies",
+	"https://react.dev/learn/preserving-and-resetting-state",
+	"https://react.dev/learn/react-compiler/introduction",
+	"https://react.dev/reference/react/useEffectEvent",
+];
+const NEXT_SECTIONS = [
+	"Alcance y versión",
+	"Servidor y cliente",
+	"Datos y concurrencia",
+	"Caché y revalidación",
+	"Autenticación y límites",
+	"Entrega de interfaz",
+	"Testing y producción",
+	"Verificación",
+	"Lectura ampliada",
+];
+const NEXT_LINKS = [
+	"https://nextjs.org/docs/app/guides/ai-agents",
+	"https://nextjs.org/docs/app/getting-started/server-and-client-components",
+	"https://nextjs.org/docs/app/getting-started/fetching-data",
+	"https://nextjs.org/docs/app/guides/backend-for-frontend",
+	"https://nextjs.org/docs/app/getting-started/caching",
+	"https://nextjs.org/docs/app/getting-started/revalidating",
+	"https://nextjs.org/docs/app/guides/authentication",
+	"https://nextjs.org/docs/app/getting-started/metadata-and-og-images",
+	"https://nextjs.org/docs/app/guides/production-checklist",
+	"https://nextjs.org/docs/app/guides/testing/playwright",
+];
+const REACT_NATIVE_SECTIONS = [
+	"Alcance y versiones",
+	"React: pureza, estado y efectos",
+	"Plataformas y layout",
+	"Accesibilidad",
+	"Rendimiento y listas",
+	"Testing",
+	"Seguridad y almacenamiento",
+	"Módulos nativos",
+	"Expo",
+	"Verificación",
+	"Lectura ampliada",
+];
+const REACT_NATIVE_LINKS = [
+	"https://react.dev/reference/rules",
+	"https://react.dev/learn/you-might-not-need-an-effect",
+	"https://reactnative.dev/docs/environment-setup",
+	"https://reactnative.dev/docs/platform-specific-code",
+	"https://reactnative.dev/docs/accessibility",
+	"https://reactnative.dev/docs/performance",
+	"https://reactnative.dev/docs/testing-overview",
+	"https://reactnative.dev/docs/security",
+	"https://reactnative.dev/docs/turbo-native-modules-introduction",
+	"https://docs.expo.dev/develop/development-builds/introduction/",
+	"https://docs.expo.dev/workflow/continuous-native-generation/",
+	"https://docs.expo.dev/eas-update/runtime-versions/",
+];
+const KOTLIN_MULTIPLATFORM_SECTIONS = [
+	"Alcance y estructura",
+	"Build, versiones y targets",
+	"Source sets y dependencias",
+	"Límites de plataforma",
+	"Coroutines y cancelación",
+	"Swift y Objective-C",
+	"Testing multiplataforma",
+	"Kotlin idiomático",
+	"Compose Multiplatform",
+	"Verificación",
+	"Lectura ampliada",
+];
+const KOTLIN_MULTIPLATFORM_LINKS = [
+	"https://kotlinlang.org/docs/multiplatform/multiplatform-project-recommended-structure.html",
+	"https://kotlinlang.org/docs/multiplatform/multiplatform-compatibility-guide.html",
+	"https://kotlinlang.org/docs/multiplatform/multiplatform-hierarchy.html",
+	"https://kotlinlang.org/docs/multiplatform/multiplatform-add-dependencies.html",
+	"https://kotlinlang.org/docs/multiplatform/multiplatform-connect-to-apis.html",
+	"https://kotlinlang.org/docs/multiplatform/multiplatform-expect-actual.html",
+	"https://kotlinlang.org/docs/coroutines-cancellation.html",
+	"https://kotlinlang.org/docs/native-objc-interop.html",
+	"https://kotlinlang.org/docs/multiplatform/multiplatform-run-tests.html",
+	"https://kotlinlang.org/docs/coding-conventions.html",
+	"https://kotlinlang.org/docs/multiplatform/compose-compatibility-and-versioning.html",
 ];
 const RULES_MIN = 25;
 const RULES_MAX = 45;
@@ -413,7 +540,21 @@ for (const harness of HARNESSES) {
 			"la description dispara con los pedidos esperados",
 		);
 		assert.match(split.fields.description ?? "", /"mis prácticas de TypeScript"/, "la description dispara para TypeScript");
+		assert.match(split.fields.description ?? "", /"mis prácticas de Node"/, "la description dispara para Node");
+		assert.match(split.fields.description ?? "", /"mis prácticas de React"/, "la description dispara para React");
+		assert.match(split.fields.description ?? "", /"mis prácticas de Next\.js"/, "la description dispara para Next.js");
+		assert.match(split.fields.description ?? "", /"mis prácticas de React Native"/, "la description dispara para React Native");
+		assert.match(split.fields.description ?? "", /"mis prácticas de KMM"/, "la description dispara para KMM");
 		assert.match(markdown, /`references\/typescript\.md` — TypeScript/, "la lista de referencias incluye TypeScript");
+		assert.match(markdown, /`references\/node\.md` — Node\.js/, "la lista de referencias incluye Node.js");
+		assert.match(markdown, /`references\/react\.md` — React/, "la lista de referencias incluye React");
+		assert.match(markdown, /`references\/next\.md` — Next\.js/, "la lista de referencias incluye Next.js");
+		assert.match(markdown, /`references\/react-native\.md` — React Native/, "la lista de referencias incluye React Native");
+		assert.match(
+			markdown,
+			/`references\/kotlin-multiplatform\.md` — Kotlin Multiplatform/,
+			"la lista de referencias incluye Kotlin Multiplatform",
+		);
 		const hasSidecar = await exists(`${harness}/${SKILL}/agents/openai.yaml`);
 		if (harness === "codex") {
 			assert.ok(hasSidecar, "codex lleva agents/openai.yaml");
@@ -471,6 +612,11 @@ test(`${SKILL}: los artefactos del skill estan trackeados en git (el Pi Package 
 		`${harness}/${SKILL}/SKILL.md`,
 		`${harness}/${SKILL}/references/go.md`,
 		`${harness}/${SKILL}/references/typescript.md`,
+		`${harness}/${SKILL}/references/node.md`,
+		`${harness}/${SKILL}/references/react.md`,
+		`${harness}/${SKILL}/references/next.md`,
+		`${harness}/${SKILL}/references/react-native.md`,
+		`${harness}/${SKILL}/references/kotlin-multiplatform.md`,
 	]).concat([`codex/${SKILL}/agents/openai.yaml`]);
 	assert.deepEqual(artifacts.filter((path) => !isTracked(path)), [], "artefactos sin trackear");
 });
@@ -537,6 +683,89 @@ test(`${SKILL}: references/typescript.md valida e identica byte a byte en los cu
 	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"), "alguna regla nombra un gate concreto");
 });
 
+// --- Referencia Node.js ------------------------------------------------------
+
+test(`${SKILL}: references/node.md valida e identica byte a byte en los cuatro harnesses`, async () => {
+	const byHarness = new Map<Harness, string>();
+	for (const harness of HARNESSES) byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/node.md`));
+	assert.deepEqual(compareAcrossHarnesses("references/node.md", byHarness), []);
+	const verdict = validateReference(byHarness.get("claude") ?? "", NODE_SECTIONS, NODE_LINKS);
+	assert.deepEqual(verdict.problems, []);
+	assert.equal(verdict.fields.stack, "node");
+	assert.equal(verdict.fields.name, "Node.js");
+	assert.ok(verdict.rules.some((rule) => rule.level === "MUST"));
+	assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"));
+	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"));
+});
+
+// --- Referencia React --------------------------------------------------------
+
+test(`${SKILL}: references/react.md valida e identica byte a byte en los cuatro harnesses`, async () => {
+	const byHarness = new Map<Harness, string>();
+	for (const harness of HARNESSES) byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/react.md`));
+	assert.deepEqual(compareAcrossHarnesses("references/react.md", byHarness), []);
+	const verdict = validateReference(byHarness.get("claude") ?? "", REACT_SECTIONS, REACT_LINKS);
+	assert.deepEqual(verdict.problems, []);
+	assert.equal(verdict.fields.stack, "react");
+	assert.equal(verdict.fields.name, "React");
+	assert.ok(verdict.rules.some((rule) => rule.level === "MUST"));
+	assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"));
+	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"));
+});
+
+// --- Referencia Next.js ------------------------------------------------------
+
+test(`${SKILL}: references/next.md valida e identica byte a byte en los cuatro harnesses`, async () => {
+	const byHarness = new Map<Harness, string>();
+	for (const harness of HARNESSES) byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/next.md`));
+	assert.deepEqual(compareAcrossHarnesses("references/next.md", byHarness), []);
+	const verdict = validateReference(byHarness.get("claude") ?? "", NEXT_SECTIONS, NEXT_LINKS);
+	assert.deepEqual(verdict.problems, []);
+	assert.equal(verdict.fields.stack, "next");
+	assert.equal(verdict.fields.name, "Next.js");
+	assert.ok(verdict.rules.some((rule) => rule.level === "MUST"));
+	assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"));
+	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"));
+});
+
+// --- Referencia React Native -------------------------------------------------
+
+test(`${SKILL}: references/react-native.md valida e identica byte a byte en los cuatro harnesses`, async () => {
+	const byHarness = new Map<Harness, string>();
+	for (const harness of HARNESSES) {
+		byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/react-native.md`));
+	}
+	assert.deepEqual(compareAcrossHarnesses("references/react-native.md", byHarness), []);
+	const verdict = validateReference(byHarness.get("claude") ?? "", REACT_NATIVE_SECTIONS, REACT_NATIVE_LINKS);
+	assert.deepEqual(verdict.problems, []);
+	assert.equal(verdict.fields.stack, "react-native");
+	assert.equal(verdict.fields.name, "React Native");
+	assert.ok(verdict.rules.some((rule) => rule.level === "MUST"), "hay reglas MUST");
+	assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"), "hay reglas SHOULD");
+	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"), "alguna regla nombra un gate concreto");
+});
+
+// --- Referencia Kotlin Multiplatform -----------------------------------------
+
+test(`${SKILL}: references/kotlin-multiplatform.md valida e identica byte a byte en los cuatro harnesses`, async () => {
+	const byHarness = new Map<Harness, string>();
+	for (const harness of HARNESSES) {
+		byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/kotlin-multiplatform.md`));
+	}
+	assert.deepEqual(compareAcrossHarnesses("references/kotlin-multiplatform.md", byHarness), []);
+	const verdict = validateReference(
+		byHarness.get("claude") ?? "",
+		KOTLIN_MULTIPLATFORM_SECTIONS,
+		KOTLIN_MULTIPLATFORM_LINKS,
+	);
+	assert.deepEqual(verdict.problems, []);
+	assert.equal(verdict.fields.stack, "kotlin-multiplatform");
+	assert.equal(verdict.fields.name, "Kotlin Multiplatform");
+	assert.ok(verdict.rules.some((rule) => rule.level === "MUST"), "hay reglas MUST");
+	assert.ok(verdict.rules.some((rule) => rule.level === "SHOULD"), "hay reglas SHOULD");
+	assert.ok(verdict.rules.some((rule) => rule.gate !== "—"), "alguna regla nombra un gate concreto");
+});
+
 // --- CA-9: integracion con sdd-init ------------------------------------------
 
 test("sdd-init integra coding-policies en los cuatro harnesses sin tocar el template del contrato", async () => {
@@ -566,7 +795,11 @@ test("READMEs y manifests del plugin documentan coding-policies", async () => {
 		assert.match(row, /\.sdd\/coding-policies\.md/, `${readme}: la fila dice dónde genera`);
 		assert.match(row, /Go/, `${readme}: la fila anuncia cobertura para Go`);
 		assert.match(row, /TypeScript/, `${readme}: la fila anuncia cobertura para TypeScript`);
-		assert.match(row, /(?:contenido|content)[^|]*Go[^|]*TypeScript/i, `${readme}: la fila dice que ambos tienen contenido`);
+		assert.match(
+			row,
+			/(?:contenido|content)[^|]*Go[^|]*TypeScript[^|]*Node[^|]*React[^|]*Next\.js[^|]*React Native[^|]*Kotlin Multiplatform/i,
+			`${readme}: la fila dice qué siete stacks tienen contenido`,
+		);
 		assert.match(row, /[Aa]justes|[Aa]djustments/, `${readme}: la fila menciona la preservación de ajustes`);
 	}
 	for (const manifest of [".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"]) {
