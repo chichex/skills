@@ -1,6 +1,6 @@
 # Spec — coding-policies: skill agnóstico que genera las buenas prácticas por stack en cada proyecto
-<!-- Generada por /sdd-spec el 2026-09-14. Fuente: grill 2026-09-13-coding-policies. Estado: aprobada -->
-<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; grill=2026-09-13-coding-policies; superseded-by=none -->
+<!-- Generada por /sdd-spec el 2026-09-14. Fuente: grill 2026-09-13-coding-policies. Estado: implementada -->
+<!-- SDD-Tracking: version=1; type=spec; state=implemented; issue=none; grill=2026-09-13-coding-policies; superseded-by=none -->
 
 ## Contexto
 
@@ -127,3 +127,20 @@ Protocolo de prueba humana — CA-7 (comportamiento real):
 - El probe RPC del gate del package se skipea sin `pi` en PATH; CI lo corre con Pi 0.84.2. Localmente hay Pi 0.85.1, versión no contractual.
 - Las cuatro copias de `references/go.md` deben ser byte a byte iguales; editar una sin propagar rompe el test nuevo (es deliberado).
 - El contrato fue verificado el 2026-08-15/16, a 29 días: sigue dentro del umbral, pero conviene `sdd-init --update` después de este cambio porque suma un test y un skill al inventario.
+
+## Resultado de ejecucion (2026-09-14 · HEAD 62332c6)
+| CA | Estado | Evidencia |
+|---|---|---|
+| CA-1 | verificado | `bash scripts/lint-frontmatter.sh`: Frontmatter OK, 56 skills revisados · `test -f codex/coding-policies/agents/openai.yaml`: OK · gate nuevo: 4/4 tests de frontmatter y extras por harness |
+| CA-2 | verificado | `node --test pi-extensions/coding-policies-gate/coding-policies-gate.test.ts`: 24/24 — cada copia usa la tool de preguntas de su harness sin tools ajenas, y la doctrina delimitada es byte-igual en los cuatro tras normalizar invocación, tool y mecanismo de AGENTS.md |
+| CA-3 | verificado | `node --test pi-extensions/pi-package/pi-package.test.ts`: 17/17, 0 skipped — el probe RPC con `pi` 0.85.1 local lista `skill:coding-policies` (derivado de `EXPECTED_SKILLS`) |
+| CA-4 | verificado | gate nuevo: `references/go.md` idéntico byte a byte en los cuatro harnesses; frontmatter `stack: go`, `name: Go`, `version: 2026-09-14`; 8 secciones en el orden exigido; 40 reglas (30 MUST · 10 SHOULD) con `Porqué:` y `Gate:`; los 4 links; autotests negativos 7/7 |
+| CA-5 | verificado (protocolo humano ejecutado en sesión) | el borrador de 40 reglas se presentó con evidencia por regla (repo, archivo y línea, o guía de origen) y el usuario eligió "Aprobar las 40" el 2026-09-14 antes del commit `62332c6` |
+| CA-6 | verificado | gate nuevo: 47 regex del procedimiento (argumentos, lanzador, tabla de marcadores, profundidad y exclusiones, cobertura, generación, regeneración con markers, enganche por archivo, fila `guia`, reporte, límites) sobre la doctrina normalizada de cada copia |
+| CA-7 | pendiente humano | protocolo en la spec; checklist en el PR |
+| CA-8 | verificado | gate nuevo: fence del template idéntico en los cuatro harnesses tras normalizar la invocación, con marker de cabecera, marker de stack y markers de ajustes |
+| CA-9 | verificado | gate nuevo: 5 regex en los cuatro `sdd-init/SKILL.md`, bullet byte-igual tras normalizar, fence del contrato sin `coding-policies` · `node --test pi-extensions/harness-gate/harness-gate.test.ts`: 28/28 |
+| CA-10 | verificado | gate nuevo: fila `coding-policies` en `README.md` y `README.en.md`; `description` y `keywords` con `coding-policies` en `plugin.json` y `marketplace.json` |
+| CA-11 | verificado | `node --test pi-extensions/*/*.test.ts`: 273/273 (24 nuevos) · `bash scripts/lint-frontmatter.sh`: OK · `bash -n install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh`: OK · `git diff --check`: OK · además `shellcheck`: 0 hallazgos y smoke legacy de entrypoints con `pi` 0.85.1: OK |
+
+Desviaciones de la spec: ninguna. Políticas de generación: sin políticas activas. Hallazgo preexistente fuera de alcance, no tocado: `opencode/sdd-init/SKILL.md` instruye una tool `question` que `harness-port` declara inexistente en opencode (debería ser gate en texto plano).
