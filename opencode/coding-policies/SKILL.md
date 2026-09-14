@@ -22,9 +22,9 @@ Tres ideas fuerza:
 - `--out <ruta>` — destino del archivo; saltea la pregunta de destino. Default: `.sdd/coding-policies.md`.
 - `--no-link` — saltea el enganche de la Fase 4: genera el archivo y no toca ningún archivo de contexto.
 
-## Fase 0 — Lanzador (solo con `/coding-policies` pelado)
+## Fase 0 — Lanzador (pregunta solo lo que los argumentos no fijan)
 
-Dispara SOLO cuando los argumentos vienen vacíos. Si trajo stacks, `--out` o `--no-link`, saltear lo que cada uno fija.
+Con argumentos vacíos dispara completo. Con argumentos, pregunta solo lo que no fijaron: los stacks posicionales saltean la confirmación de stacks, `--out` saltea la pregunta de destino, y `--no-link` no afecta a esta fase (saltea solo la Fase 4). Con stacks y `--out` a la vez, la fase no dispara.
 
 Correr primero la detección de la Fase 1 y mostrar el resultado como texto visible: cada stack detectado con la ruta donde se vio y si tiene referencia en el skill (con su versión) o queda "sin prácticas definidas todavía".
 
@@ -39,28 +39,29 @@ Stacks detectados:
 
 Destino default: .sdd/coding-policies.md
 
-Atajo: /coding-policies [stacks...] [--out <ruta>] [--no-link] saltea este menu.
+Atajo: /coding-policies [stacks...] [--out <ruta>] fija stacks y destino y saltea este
+menu; --no-link solo saltea el enganche.
 ```
 
 Luego preguntar en texto plano con todas las opciones y terminar el turno — "¿Qué stacks entran?": una opción por stack detectado, los cubiertos primero y marcados `(Recomendado)`, los no cubiertos con la nota "sin prácticas definidas todavía". Y una segunda pregunta — "¿Dónde lo genero?": `.sdd/coding-policies.md (Recomendado)` / `docs/coding-policies.md` / otra ruta vía custom.
 
 ## Fase 1 — Detección de stacks
 
-Buscar marcadores en la raíz y hasta profundidad 2, excluyendo `node_modules`, `vendor`, `.git`, `dist` y `build`. En `package.json` mirar `dependencies` y `devDependencies`. Cada stack detectado registra dónde se vio (ruta del marcador), para mostrarlo en la confirmación y en el reporte.
+Buscar marcadores en la raíz y hasta profundidad 2, excluyendo `node_modules`, `vendor`, `.git`, `dist` y `build`. En `package.json` mirar las claves exactas de `dependencies` y `devDependencies`, no substrings. Cada stack detectado registra dónde se vio (ruta del marcador), para mostrarlo en la confirmación y en el reporte.
 
 | Stack | id | Marcador |
 |---|---|---|
 | Go | `go` | `go.mod` |
 | React web | `react` | `package.json` con `react-dom` |
-| React Native | `react-native` | `package.json` con `react-native` o `expo` |
+| React Native | `react-native` | `package.json` con la clave exacta `react-native` o `expo` en sus dependencias (`react-native-web` no cuenta) |
 | Node | `node` | `package.json` sin ninguno de los anteriores |
-| Kotlin Android | `kotlin-android` | `build.gradle` o `build.gradle.kts` que declare `com.android.application` o `com.android.library` |
+| Kotlin Android | `kotlin-android` | `build.gradle`, `build.gradle.kts` o `gradle/libs.versions.toml` que declare `com.android.application` o `com.android.library` |
 
 Un mismo `package.json` clasifica en un solo stack: `react-native` gana sobre `react`, y `react` sobre `node`. Distintos manifests pueden aportar distintos stacks (un monorepo con API en Go y web en React detecta ambos).
 
 ## Fase 2 — Cobertura
 
-Un stack está cubierto si existe `references/<id>.md` en el directorio de este skill. Los stacks confirmados sin referencia se informan en la confirmación y en el reporte como "sin prácticas definidas todavía" y no generan sección: el skill no inventa reglas. Si ningún stack confirmado está cubierto, no se genera archivo y se informa.
+Un stack está cubierto si existe `references/<id>.md` en el directorio de este skill. Los stacks confirmados sin referencia se informan en la confirmación y en el reporte como "sin prácticas definidas todavía" y no generan sección: el skill no inventa reglas. Si ningún stack confirmado está cubierto, no se genera archivo y se informa; el skill termina ahí, sin enganche.
 
 ## Fase 3 — Generación
 
@@ -90,11 +91,11 @@ Escribir el destino con EXACTAMENTE este template (crea `.sdd/` — o el directo
 1. Leer el marker de cabecera del archivo existente y comparar `stacks=` con las referencias actuales: listar como texto visible los stacks desactualizados (`<id>: <version vieja> → <version nueva>`), los que entran y los que salen.
 2. Avisar que todo salvo `## Ajustes de este proyecto` se reescribe, y preguntar en texto plano y terminar el turno: `Regenerar (Recomendado)` / `Cancelar`.
 3. Preservar verbatim el bloque entre `<!-- coding-policies:ajustes:start -->` y `<!-- coding-policies:ajustes:end -->`, byte a byte. El skill nunca interpreta el contenido de Ajustes: no lo valida, no lo reformatea, no lo "mejora".
-4. Si el archivo existe pero no tiene los dos markers de ajustes, no lo pisa: lo dice, y sugiere otra ruta con `--out` o agregar los markers a mano antes de regenerar.
+4. Si el archivo existe pero no tiene los dos markers de ajustes, no lo pisa: lo dice, termina ahí sin enganche, y sugiere otra ruta con `--out` o agregar los markers a mano antes de regenerar.
 
 ## Fase 4 — Enganche (saltear con `--no-link`)
 
-Detectar en la raíz `CLAUDE.md`, `AGENTS.md` y `.sdd/project.md`. Solo se ofrecen los que existen: el skill nunca crea archivos de contexto; si no existe ninguno, lo informa y termina. Luego preguntar en texto plano con todas las opciones y terminar el turno — "¿Dónde agrego la referencia?": una opción por archivo existente. Editar únicamente los confirmados, de forma idempotente y verificando antes que `<ruta>` no esté ya presente (si ya está, se reporta `ya estaba` y no se toca):
+Detectar en la raíz `CLAUDE.md`, `AGENTS.md` y `.sdd/project.md`. Solo se ofrecen los que existen: el skill nunca crea archivos de contexto; si no existe ninguno, lo informa y termina. Luego preguntar en texto plano con todas las opciones y terminar el turno — "¿Dónde agrego la referencia?": una opción por archivo existente. Editar únicamente los confirmados, de forma idempotente: en `CLAUDE.md` y `AGENTS.md`, verificando antes que `<ruta>` no esté ya presente (si ya está, se reporta `ya estaba` y no se toca); en `.sdd/project.md`, comparando la fila entera (igual → `ya estaba`; distinta, por ejemplo por otros stacks → `actualizado`):
 
 1. **CLAUDE.md** — agregar al final una línea `@<ruta>` (Claude Code expande imports `@`).
 <!-- coding-policies-agents-link:start -->
@@ -108,9 +109,11 @@ Detectar en la raíz `CLAUDE.md`, `AGENTS.md` y `.sdd/project.md`. Solo se ofrec
 Coding policies listas: <ruta> (<generado|regenerado>)
 - stacks: <id>@<version> (cubierto) · <id> (sin practicas definidas todavia)
 - ajustes de este proyecto: <preservados, N lineas|vacios, primera generacion>
-- enganche: CLAUDE.md <agregado|ya estaba|omitido|no existe> · AGENTS.md <agregado|ya estaba|omitido|no existe> · .sdd/project.md <agregado|actualizado|ya estaba|omitido|sin seccion|no existe>
+- enganche: <no intentado> | CLAUDE.md <agregado|ya estaba|omitido|no existe> · AGENTS.md <agregado|ya estaba|omitido|no existe> · .sdd/project.md <agregado|actualizado|ya estaba|omitido|sin seccion|no existe>
 - desactualizados antes de regenerar: <id: <vieja> → <nueva>, ... | ninguno>
 ```
+
+`omitido` es el archivo que existía y el usuario no eligió; `no intentado` cubre `--no-link` y las corridas que terminaron antes del enganche (ningún stack cubierto, destino sin markers de ajustes).
 
 ## MUST DO
 

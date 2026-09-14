@@ -9,41 +9,32 @@
 // al ejecutar el skill: eso es protocolo humano (CA-5, CA-7).
 
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { access, readFile, rm, writeFile } from "node:fs/promises";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
-const HARNESSES = ["claude", "codex", "opencode", "pi"] as const;
-type Harness = (typeof HARNESSES)[number];
+import type { Harness } from "../harness-gate/interaction.ts";
+import {
+	HARNESSES,
+	fencedBlocks,
+	firstDifference,
+	normalizeInvocations,
+	parseInteractionTable,
+} from "../harness-gate/interaction.ts";
 
 const SKILL = "coding-policies";
+const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
-// Prefijo de invocacion por harness (docs/harness-interaction-differences.md).
-const INVOCATION_PREFIX: Record<Harness, string> = {
-	claude: "/",
-	codex: "$",
-	opencode: "/",
-	pi: "/skill:",
-};
-
-// Nombres de skill del repo que pueden aparecer invocados; los mas largos
-// primero para que la alternancia no corte antes.
-const SKILL_NAMES = [
-	"grill-with-domain-modeling",
-	"github-issue-selector",
-	"coding-policies",
-	"domain-modeling",
-	"issue-triage",
-	"mini-grill",
-	"code-review",
-	"repo-clean",
-	"find-skills",
-	"yt-summary",
-	"sdd-init",
-	"sdd-spec",
-	"sdd-run",
-	"grill",
-	"tdd",
-];
+// Prefijo de invocacion por harness, derivado de la tabla normativa de
+// docs/harness-interaction-differences.md (misma fuente que harness-gate).
+let prefixesCache: Record<Harness, string> | null = null;
+async function invocationPrefixes(): Promise<Record<Harness, string>> {
+	if (prefixesCache === null) {
+		prefixesCache = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md")).prefixes;
+	}
+	return prefixesCache;
+}
 
 // Frases literales de la capa de interaccion de cada harness, en el orden en
 // que se reemplazan (la mas larga primero). Toda otra divergencia dentro del
@@ -96,7 +87,9 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/[Ss]tacks posicionales[^\n]*saltean la confirmación de stacks/,
 	/`--out <ruta>`[^\n]*saltea la pregunta de destino/,
 	/`--no-link`[^\n]*saltea el enganche/,
-	/^## Fase 0 — Lanzador \(solo con `«skill:coding-policies»` pelado\)$/m,
+	/^## Fase 0 — Lanzador \(pregunta solo lo que los argumentos no fijan\)$/m,
+	/Con argumentos vacíos dispara completo\. Con argumentos, pregunta solo lo que no fijaron/,
+	/`--no-link` no afecta a esta fase/,
 	/«pregunta-multiple» — "¿Qué stacks entran\?"/,
 	/"¿Dónde lo genero\?": `\.sdd\/coding-policies\.md \(Recomendado\)`/,
 	/raíz y hasta profundidad 2, excluyendo `node_modules`, `vendor`, `\.git`, `dist` y `build`/,
@@ -104,12 +97,14 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/registra dónde se vio/,
 	/^\| Go \| `go` \| `go\.mod` \|$/m,
 	/^\| React web \| `react` \| `package\.json` con `react-dom` \|$/m,
-	/^\| React Native \| `react-native` \| `package\.json` con `react-native` o `expo` \|$/m,
+	/^\| React Native \| `react-native` \| `package\.json` con la clave exacta `react-native` o `expo` en sus dependencias \(`react-native-web` no cuenta\) \|$/m,
 	/^\| Node \| `node` \| `package\.json` sin ninguno de los anteriores \|$/m,
-	/^\| Kotlin Android \| `kotlin-android` \| `build\.gradle` o `build\.gradle\.kts` que declare `com\.android\.application` o `com\.android\.library` \|$/m,
+	/^\| Kotlin Android \| `kotlin-android` \| `build\.gradle`, `build\.gradle\.kts` o `gradle\/libs\.versions\.toml` que declare `com\.android\.application` o `com\.android\.library` \|$/m,
 	/cubierto si existe `references\/<id>\.md`/,
 	/"sin prácticas definidas todavía" y no generan sección/,
-	/[Ss]i ningún stack confirmado está cubierto, no se genera archivo y se informa/,
+	/[Ss]i ningún stack confirmado está cubierto, no se genera archivo y se informa; el skill termina ahí, sin enganche/,
+	/no lo pisa: lo dice, termina ahí sin enganche/,
+	/`no intentado` cubre `--no-link` y las corridas que terminaron antes del enganche/,
 	/crea `\.sdd\/`[^\n]*si no existe/,
 	/copiado verbatim/,
 	/^### Regeneración \(el destino ya existe\)$/m,
@@ -121,7 +116,7 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/^## Fase 4 — Enganche \(saltear con `--no-link`\)$/m,
 	/[Ss]olo se ofrecen los que existen: el skill nunca crea archivos de contexto/,
 	/«pregunta-multiple» — "¿Dónde agrego la referencia\?"/,
-	/idempotente y verificando antes que `<ruta>` no esté ya presente/,
+	/idempotente: en `CLAUDE\.md` y `AGENTS\.md`, verificando antes que `<ruta>` no esté ya presente[^\n]*en `\.sdd\/project\.md`, comparando la fila entera/,
 	/\*\*CLAUDE\.md\*\* — agregar al final una línea `@<ruta>`/,
 	/«agents-link»/,
 	/\| coding-policies \| <ruta> \(<stacks>\) \| guia — sin gate: «skill:sdd-run» la sigue al generar, la juzga el reviewer \|/,
@@ -183,9 +178,10 @@ const RULES_MAX = 45;
 // Integracion con sdd-init (CA-9), sobre el SKILL.md con invocaciones normalizadas.
 const SDD_INIT_DOCTRINE: RegExp[] = [
 	/^- \*\*Coding policies del proyecto\*\*: si existe `\.sdd\/coding-policies\.md`[^\n]*escribir sin preguntar la fila `guia`[^\n]*también con `--assume`/m,
-	/\| coding-policies \| \.sdd\/coding-policies\.md \(<stacks del marker>\) \| guia — sin gate: «skill:sdd-run» la sigue al generar, la juzga el reviewer \|/,
+	/o si la fila `coding-policies` ya presente en `## Politicas de generacion` apunta a un archivo existente, porque el skill acepta `--out`/,
+	/\| coding-policies \| <ruta> \(<stacks del marker>\) \| guia — sin gate: «skill:sdd-run» la sigue al generar, la juzga el reviewer \|/,
 	/[Ss]i no existe, sumar al menú la opción `Generar coding policies`[^\n]*invoca `«skill:coding-policies»`; nunca con `--assume`/,
-	/^\| Coding policies \| existe `\.sdd\/coding-policies\.md` pero `## Politicas de generacion` no tiene la fila `coding-policies` \|$/m,
+	/^\| Coding policies \| existe `\.sdd\/coding-policies\.md` pero `## Politicas de generacion` no tiene la fila `coding-policies` — no entra al menú: la Fase 3\.5 la escribe sin preguntar y el reporte la lista como `referenciado` \|$/m,
 	/^- coding-policies: <referenciado\|generado\|no existe \(ofrecido\)\|--assume: no ofrecido>$/m,
 ];
 
@@ -206,17 +202,15 @@ async function exists(path: string): Promise<boolean> {
 	}
 }
 
-function escapeRegExp(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-export function normalizeInvocations(text: string, prefix: string): string {
-	const names = SKILL_NAMES.map(escapeRegExp).join("|");
-	const pattern = new RegExp(
-		`(^|[^A-Za-z0-9.])${escapeRegExp(prefix)}(${names})(?![A-Za-z0-9-])`,
-		"gm",
-	);
-	return text.replace(pattern, (_match, before: string, name: string) => `${before}«skill:${name}»`);
+// El Pi Package shippea lo que git trackea, no el working tree: un artefacto
+// del skill sin trackear pasaria el resto del gate y no llegaria a nadie.
+export function isTracked(path: string): boolean {
+	try {
+		execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { cwd: REPO_ROOT, stdio: "ignore" });
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 export function normalizeQuestions(text: string, harness: Harness): string {
@@ -235,41 +229,12 @@ export function delimited(markdown: string, name: string): string | null {
 // Doctrina comparable entre harnesses: invocaciones y tool de preguntas
 // reducidas a tokens, y el mecanismo de AGENTS.md (legitimamente distinto en
 // opencode) reducido a un token que se valida aparte.
-export function normalizeDoctrine(doctrine: string, harness: Harness): string {
+export function normalizeDoctrine(doctrine: string, harness: Harness, prefix: string): string {
 	const withoutAgents = doctrine.replace(
 		/<!-- coding-policies-agents-link:start -->\n[\s\S]*?\n<!-- coding-policies-agents-link:end -->/,
 		"«agents-link»",
 	);
-	return normalizeQuestions(normalizeInvocations(withoutAgents, INVOCATION_PREFIX[harness]), harness);
-}
-
-interface Fence {
-	content: string;
-	line: number;
-}
-
-export function fencedBlocks(markdown: string): Fence[] {
-	const lines = markdown.split("\n");
-	const fences: Fence[] = [];
-	let open: { char: string; length: number; start: number; inner: string[] } | null = null;
-	lines.forEach((line, index) => {
-		if (open === null) {
-			const opening = line.match(/^\s*(`{3,}|~{3,})/);
-			if (opening) {
-				const delimiter = opening[1] ?? "";
-				open = { char: delimiter[0] ?? "`", length: delimiter.length, start: index + 1, inner: [] };
-			}
-			return;
-		}
-		const closing = line.match(/^\s*(`{3,}|~{3,})\s*$/);
-		if (closing && (closing[1] ?? "")[0] === open.char && (closing[1] ?? "").length >= open.length) {
-			fences.push({ content: open.inner.join("\n"), line: open.start });
-			open = null;
-			return;
-		}
-		open.inner.push(line);
-	});
-	return fences;
+	return normalizeQuestions(normalizeInvocations(withoutAgents, prefix), harness);
 }
 
 export function templateFence(markdown: string): string | null {
@@ -381,21 +346,13 @@ export function validateReference(markdown: string, expectedSections: string[], 
 	return { problems, rules, sections, fields };
 }
 
-function firstDifference(a: string, b: string): string {
-	const aLines = a.split("\n");
-	const bLines = b.split("\n");
-	const max = Math.max(aLines.length, bLines.length);
-	for (let index = 0; index < max; index++) {
-		if (aLines[index] !== bLines[index]) {
-			return `linea ${index + 1}: \`${aLines[index] ?? "<ausente>"}\` vs \`${bLines[index] ?? "<ausente>"}\``;
-		}
-	}
-	return "identicos";
-}
-
+// Compara los harnesses presentes en el mapa, el primero como referencia;
+// un harness ausente no se inventa como divergencia (permite comparar
+// subconjuntos, como el bloque de AGENTS.md que opencode no comparte).
 export function compareAcrossHarnesses(label: string, byHarness: Map<Harness, string>): string[] {
 	const divergences: string[] = [];
-	const [reference, ...rest] = HARNESSES;
+	const [reference, ...rest] = [...byHarness.keys()];
+	if (reference === undefined) return divergences;
 	const referenceText = byHarness.get(reference) ?? "";
 	for (const harness of rest) {
 		const other = byHarness.get(harness) ?? "";
@@ -460,9 +417,27 @@ test(`${SKILL}: doctrina byte-equivalente entre harnesses tras normalizar la cap
 	for (const harness of HARNESSES) {
 		const doctrine = delimited(await skillMarkdown(harness), "coding-policies-doctrine");
 		assert.ok(doctrine, `${harness}/${SKILL}/SKILL.md delimita su doctrina`);
-		byHarness.set(harness, normalizeDoctrine(doctrine, harness));
+		byHarness.set(harness, normalizeDoctrine(doctrine, harness, (await invocationPrefixes())[harness]));
 	}
 	assert.deepEqual(compareAcrossHarnesses(SKILL, byHarness), []);
+	// El bloque de AGENTS.md sale de la comparacion normalizada porque opencode
+	// usa otro mecanismo; entre los tres que escriben el bloque tiene que ser
+	// byte-igual, no solo matchear la regex laxa de AGENTS_LINK_STYLE.
+	const blocks = new Map<Harness, string>();
+	for (const harness of ["claude", "codex", "pi"] as const) {
+		const block = delimited(await skillMarkdown(harness), "coding-policies-agents-link");
+		assert.ok(block, `${harness}/${SKILL}/SKILL.md delimita el bloque de AGENTS.md`);
+		blocks.set(harness, block);
+	}
+	assert.deepEqual(compareAcrossHarnesses(`${SKILL} bloque AGENTS.md`, blocks), []);
+});
+
+test(`${SKILL}: los artefactos del skill estan trackeados en git (el Pi Package solo shippea lo trackeado)`, () => {
+	const artifacts = HARNESSES.flatMap((harness) => [
+		`${harness}/${SKILL}/SKILL.md`,
+		`${harness}/${SKILL}/references/go.md`,
+	]).concat([`codex/${SKILL}/agents/openai.yaml`]);
+	assert.deepEqual(artifacts.filter((path) => !isTracked(path)), [], "artefactos sin trackear");
 });
 
 // --- CA-6: procedimiento completo --------------------------------------------
@@ -471,7 +446,7 @@ for (const harness of HARNESSES) {
 	test(`${harness}/${SKILL}: declara el procedimiento completo`, async () => {
 		const doctrine = delimited(await skillMarkdown(harness), "coding-policies-doctrine");
 		assert.ok(doctrine);
-		const normalized = normalizeDoctrine(doctrine, harness);
+		const normalized = normalizeDoctrine(doctrine, harness, (await invocationPrefixes())[harness]);
 		for (const expected of PROCEDURE_DOCTRINE) {
 			assert.match(normalized, expected, `${harness}/${SKILL}/SKILL.md no declara ${expected}`);
 		}
@@ -488,7 +463,7 @@ test(`${SKILL}: template del archivo generado identico entre harnesses y con sus
 		for (const marker of TEMPLATE_MARKERS) {
 			assert.match(fence, marker, `${harness}: el template no declara ${marker}`);
 		}
-		byHarness.set(harness, normalizeInvocations(fence, INVOCATION_PREFIX[harness]));
+		byHarness.set(harness, normalizeInvocations(fence, (await invocationPrefixes())[harness]));
 	}
 	assert.deepEqual(compareAcrossHarnesses(`${SKILL} template`, byHarness), []);
 });
@@ -516,7 +491,7 @@ test("sdd-init integra coding-policies en los cuatro harnesses sin tocar el temp
 	const bullets = new Map<Harness, string>();
 	for (const harness of HARNESSES) {
 		const markdown = await readRepoFile(`${harness}/sdd-init/SKILL.md`);
-		const normalized = normalizeInvocations(markdown, INVOCATION_PREFIX[harness]);
+		const normalized = normalizeInvocations(markdown, (await invocationPrefixes())[harness]);
 		for (const expected of SDD_INIT_DOCTRINE) {
 			assert.match(normalized, expected, `${harness}/sdd-init/SKILL.md no declara ${expected}`);
 		}
@@ -573,7 +548,9 @@ function syntheticReference(options: { rules?: number; dropSection?: string; bre
 		lines.push("");
 	});
 	if (options.breakRule) {
-		lines.splice(lines.findIndex((line) => line.startsWith("- **MUST** Regla 1.")), 1, options.breakRule);
+		const index = lines.findIndex((line) => line.startsWith("- **MUST** Regla 1."));
+		assert.ok(index >= 0, "la referencia sintetica tiene la regla 1 que el autotest va a romper");
+		lines.splice(index, 1, options.breakRule);
 	}
 	if (sections.includes("Lectura ampliada")) {
 		lines.push("### Lectura ampliada", "", ...GO_LINKS.map((link) => `- [${link}](${link})`), "");
@@ -617,12 +594,17 @@ test("autotest: fuera del rango de reglas se reporta con el conteo", () => {
 });
 
 test("autotest: la normalizacion reduce invocacion y tool de preguntas al mismo token", () => {
-	const claude = normalizeDoctrine("usar `AskUserQuestion` con multiSelect tras /coding-policies", "claude");
+	const claude = normalizeDoctrine("usar `AskUserQuestion` con multiSelect tras /coding-policies", "claude", "/");
 	const codex = normalizeDoctrine(
 		"preguntar en texto plano con todas las opciones y terminar el turno tras $coding-policies",
 		"codex",
+		"$",
 	);
-	const pi = normalizeDoctrine('usar `ask_user_question` con `selectionMode: "multiple"` tras /skill:coding-policies', "pi");
+	const pi = normalizeDoctrine(
+		'usar `ask_user_question` con `selectionMode: "multiple"` tras /skill:coding-policies',
+		"pi",
+		"/skill:",
+	);
 	assert.equal(claude, codex);
 	assert.equal(codex, pi);
 	assert.equal(claude, "«pregunta-multiple» tras «skill:coding-policies»");
@@ -638,4 +620,26 @@ test("autotest: una divergencia de doctrina entre harnesses se reporta con la li
 	const divergences = compareAcrossHarnesses("x", byHarness);
 	assert.equal(divergences.length, 1);
 	assert.match(divergences[0] ?? "", /opencode[\s\S]*DIVERGENTE/);
+});
+
+test("autotest: la comparacion acepta un subconjunto de harnesses sin inventar ausentes", () => {
+	const three = new Map<Harness, string>([
+		["claude", "bloque"],
+		["codex", "bloque"],
+		["pi", "bloque DIVERGENTE"],
+	]);
+	const divergences = compareAcrossHarnesses("subconjunto", three);
+	assert.equal(divergences.length, 1, "solo pi diverge; opencode no se compara porque no esta en el mapa");
+	assert.match(divergences[0] ?? "", /pi[\s\S]*DIVERGENTE/);
+});
+
+test("autotest: un archivo untracked se reporta como no trackeado y uno trackeado como trackeado", async () => {
+	const scratch = `claude/${SKILL}/references/.scratch-${process.pid}.md`;
+	await writeFile(repoFile(scratch), "scratch untracked\n");
+	try {
+		assert.equal(isTracked(scratch), false);
+		assert.equal(isTracked(`claude/${SKILL}/SKILL.md`), true);
+	} finally {
+		await rm(repoFile(scratch), { force: true });
+	}
 });

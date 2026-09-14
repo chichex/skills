@@ -12,33 +12,19 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import { parseSddArtifact } from "../sdd-artifacts/index.ts";
-
-const HARNESSES = ["claude", "codex", "opencode", "pi"] as const;
-type Harness = (typeof HARNESSES)[number];
+import type { Fence, Harness } from "./interaction.ts";
+import {
+	HARNESSES,
+	fencedBlocks,
+	firstDifference,
+	normalizeInvocations,
+	parseInteractionTable,
+} from "./interaction.ts";
 
 const SKILLS = ["sdd-init", "sdd-spec", "sdd-run", "grill"] as const;
 type Skill = (typeof SKILLS)[number];
 
 type TemplateType = "spec" | "grill" | "project";
-
-// Nombres de skill del repo que pueden aparecer invocados dentro de un
-// template; los mas largos primero para que la alternancia no corte antes.
-const SKILL_NAMES = [
-	"grill-with-domain-modeling",
-	"github-issue-selector",
-	"domain-modeling",
-	"issue-triage",
-	"mini-grill",
-	"code-review",
-	"repo-clean",
-	"find-skills",
-	"yt-summary",
-	"sdd-init",
-	"sdd-spec",
-	"sdd-run",
-	"grill",
-	"tdd",
-];
 
 // Cuantos templates de marker exige cada skill, por tipo de artefacto.
 const EXPECTED_TEMPLATES: Record<Skill, Record<TemplateType, number>> = {
@@ -138,76 +124,6 @@ async function readRepoFile(path: string): Promise<string> {
 	return await readFile(repoFile(path), "utf8");
 }
 
-interface InteractionTable {
-	prefixes: Record<Harness, string>;
-}
-
-export function parseInteractionTable(doc: string): InteractionTable {
-	const block = doc.match(
-		/<!-- interaction-differences:start -->\n([\s\S]*?)\n<!-- interaction-differences:end -->/,
-	);
-	assert.ok(block, "bloque delimitado interaction-differences presente");
-	const rows = (block[1] ?? "").split("\n").filter((line) => line.startsWith("|"));
-	const cells = (line: string) => line.split("|").slice(1, -1).map((cell) => cell.trim());
-	assert.deepEqual(cells(rows[0] ?? ""), ["Campo", ...HARNESSES], "columnas en el orden canonico");
-	const byField = new Map<string, string[]>();
-	for (const row of rows.slice(2)) {
-		const parsed = cells(row);
-		byField.set(parsed[0] ?? "", parsed.slice(1));
-	}
-	const invocation = byField.get("invocacion");
-	assert.ok(invocation, "fila invocacion presente en la tabla");
-	const prefixes = {} as Record<Harness, string>;
-	HARNESSES.forEach((harness, index) => {
-		const pattern = (invocation[index] ?? "").replaceAll("`", "");
-		assert.ok(pattern.endsWith("nombre"), `celda invocacion de ${harness} termina en "nombre"`);
-		prefixes[harness] = pattern.slice(0, -"nombre".length);
-	});
-	return { prefixes };
-}
-
-function escapeRegExp(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-export function normalizeInvocations(text: string, prefix: string): string {
-	const names = SKILL_NAMES.map(escapeRegExp).join("|");
-	const pattern = new RegExp(
-		`(^|[^A-Za-z0-9.])${escapeRegExp(prefix)}(${names})(?![A-Za-z0-9-])`,
-		"gm",
-	);
-	return text.replace(pattern, (_match, before: string, name: string) => `${before}«skill:${name}»`);
-}
-
-interface Fence {
-	content: string;
-	line: number;
-}
-
-export function fencedBlocks(markdown: string): Fence[] {
-	const lines = markdown.split("\n");
-	const fences: Fence[] = [];
-	let open: { char: string; length: number; start: number; inner: string[] } | null = null;
-	lines.forEach((line, index) => {
-		if (open === null) {
-			const opening = line.match(/^\s*(`{3,}|~{3,})/);
-			if (opening) {
-				const delimiter = opening[1] ?? "";
-				open = { char: delimiter[0] ?? "`", length: delimiter.length, start: index + 1, inner: [] };
-			}
-			return;
-		}
-		const closing = line.match(/^\s*(`{3,}|~{3,})\s*$/);
-		if (closing && (closing[1] ?? "")[0] === open.char && (closing[1] ?? "").length >= open.length) {
-			fences.push({ content: open.inner.join("\n"), line: open.start });
-			open = null;
-			return;
-		}
-		open.inner.push(line);
-	});
-	return fences;
-}
-
 interface CanonicalTemplate {
 	line: string;
 	type: TemplateType | null;
@@ -295,18 +211,6 @@ function delimitedDoctrine(markdown: string, name: string): string {
 	const block = markdown.match(new RegExp(`<!-- ${name}:start -->\\n([\\s\\S]*?)\\n<!-- ${name}:end -->`));
 	assert.ok(block, `bloque delimitado ${name} presente`);
 	return block[1] ?? "";
-}
-
-function firstDifference(a: string, b: string): string {
-	const aLines = a.split("\n");
-	const bLines = b.split("\n");
-	const max = Math.max(aLines.length, bLines.length);
-	for (let index = 0; index < max; index++) {
-		if (aLines[index] !== bLines[index]) {
-			return `linea ${index + 1} del template: \`${aLines[index] ?? "<ausente>"}\` vs \`${bLines[index] ?? "<ausente>"}\``;
-		}
-	}
-	return "identicos";
 }
 
 export function compareTemplates(skill: string, byHarness: Map<Harness, string[]>): string[] {
@@ -562,4 +466,9 @@ test("autotest: la normalizacion reduce las tres sintaxis de invocacion al mismo
 	assert.equal(codex, pi);
 	assert.match(claude, /«skill:sdd-spec»/);
 	assert.equal(normalizeInvocations("archivo en .sdd/grills/x.md", "/"), "archivo en .sdd/grills/x.md");
+	assert.match(
+		normalizeInvocations("invoca `/coding-policies go`", "/"),
+		/«skill:coding-policies»/,
+		"la lista de skills normalizables incluye coding-policies",
+	);
 });
