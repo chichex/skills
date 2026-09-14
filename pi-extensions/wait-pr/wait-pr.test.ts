@@ -171,8 +171,9 @@ test("wait-pr doctrine has a race-safe, paginated, sequential review loop", asyn
 
 	const piContract = normalizeDoctrine(await readRepoFile("pi/wait-pr/SKILL.md"), "pi");
 	assert.ok(piContract.includes("../code-review/SKILL.md"));
-	assert.match(piContract, /confirmación explícita/i);
-	assert.match(piContract, /no autoriza.*publicar.*gate.*code-review/is);
+	assert.match(piContract, /--no-publish/);
+	assert.match(piContract, /no autoriza.*publicar.*--no-publish/is);
+	assert.doesNotMatch(piContract, /confirmación explícita|gate obligatorio/i);
 });
 
 test("claude/wait-pr delegates to the code-review built into Claude Code", async () => {
