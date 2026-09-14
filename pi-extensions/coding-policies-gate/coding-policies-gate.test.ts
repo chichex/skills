@@ -135,13 +135,18 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/[Nn]o pisar un destino existente que no tenga los dos markers de ajustes/,
 ];
 
-// Mecanismo de enganche en AGENTS.md por harness (CA-6.7): opencode expande
-// imports `@` en AGENTS.md como su sdd-init; Pi y Codex necesitan el bloque.
+// Mecanismo de enganche en AGENTS.md (CA-6.7, desviacion decidida por el
+// usuario en el review del PR #38): AGENTS.md es el archivo compartido por
+// Codex, opencode y Pi, y solo el bloque de instruccion funciona en los tres
+// (`@<ruta>` queda inerte fuera de opencode). Las cuatro copias escriben el
+// mismo bloque; el test de doctrina lo compara byte a byte.
+const AGENTS_LINK_BLOCK =
+	/\*\*AGENTS\.md\*\*[\s\S]*<!-- coding-policies -->\n\s*Antes de escribir o modificar código en este proyecto, leer `<ruta>`/;
 const AGENTS_LINK_STYLE: Record<Harness, RegExp> = {
-	claude: /\*\*AGENTS\.md\*\*[\s\S]*<!-- coding-policies -->\n\s*Antes de escribir o modificar código en este proyecto, leer `<ruta>`/,
-	codex: /\*\*AGENTS\.md\*\*[\s\S]*<!-- coding-policies -->\n\s*Antes de escribir o modificar código en este proyecto, leer `<ruta>`/,
-	opencode: /\*\*AGENTS\.md\*\* — agregar al final una línea `@<ruta>`/,
-	pi: /\*\*AGENTS\.md\*\*[\s\S]*<!-- coding-policies -->\n\s*Antes de escribir o modificar código en este proyecto, leer `<ruta>`/,
+	claude: AGENTS_LINK_BLOCK,
+	codex: AGENTS_LINK_BLOCK,
+	opencode: AGENTS_LINK_BLOCK,
+	pi: AGENTS_LINK_BLOCK,
 };
 
 // Template del archivo generado (CA-8).
@@ -420,11 +425,11 @@ test(`${SKILL}: doctrina byte-equivalente entre harnesses tras normalizar la cap
 		byHarness.set(harness, normalizeDoctrine(doctrine, harness, (await invocationPrefixes())[harness]));
 	}
 	assert.deepEqual(compareAcrossHarnesses(SKILL, byHarness), []);
-	// El bloque de AGENTS.md sale de la comparacion normalizada porque opencode
-	// usa otro mecanismo; entre los tres que escriben el bloque tiene que ser
-	// byte-igual, no solo matchear la regex laxa de AGENTS_LINK_STYLE.
+	// El bloque de AGENTS.md se compara crudo y por separado: tiene que ser
+	// byte-igual en las cuatro copias, no solo matchear la regex laxa de
+	// AGENTS_LINK_STYLE.
 	const blocks = new Map<Harness, string>();
-	for (const harness of ["claude", "codex", "pi"] as const) {
+	for (const harness of HARNESSES) {
 		const block = delimited(await skillMarkdown(harness), "coding-policies-agents-link");
 		assert.ok(block, `${harness}/${SKILL}/SKILL.md delimita el bloque de AGENTS.md`);
 		blocks.set(harness, block);

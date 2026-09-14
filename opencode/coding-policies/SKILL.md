@@ -99,7 +99,12 @@ Detectar en la raíz `CLAUDE.md`, `AGENTS.md` y `.sdd/project.md`. Solo se ofrec
 
 1. **CLAUDE.md** — agregar al final una línea `@<ruta>` (Claude Code expande imports `@`).
 <!-- coding-policies-agents-link:start -->
-2. **AGENTS.md** — agregar al final una línea `@<ruta>` (opencode expande imports `@` en `AGENTS.md`, como su `/sdd-init`).
+2. **AGENTS.md** — agregar al final este bloque (Pi y Codex no expanden imports `@`):
+
+   ```markdown
+   <!-- coding-policies -->
+   Antes de escribir o modificar código en este proyecto, leer `<ruta>` y respetar sus reglas y la sección "Ajustes de este proyecto".
+   ```
 <!-- coding-policies-agents-link:end -->
 3. **.sdd/project.md** — en la tabla de `## Politicas de generacion`, la fila `| coding-policies | <ruta> (<stacks>) | guia — sin gate: /sdd-run la sigue al generar, la juzga el reviewer |`, reemplazando el sentinel "Sin politicas activas" por la tabla (`| Politica | Valor | Gate |`) si está, actualizando la fila en su lugar si ya existe, y sin tocar nada si la sección no existe: lo informa y sugiere `/sdd-init --update`.
 
