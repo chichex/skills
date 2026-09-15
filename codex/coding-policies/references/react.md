@@ -1,4 +1,5 @@
 ---
+# Mantenimiento: editar solo shared/coding-policies/references/react.md y ejecutar `node scripts/sync-coding-policies-references.mjs`.
 stack: react
 name: React
 version: 2026-09-14

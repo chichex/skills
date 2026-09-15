@@ -1,4 +1,5 @@
 ---
+# Mantenimiento: editar solo shared/coding-policies/references/kotlin-multiplatform.md y ejecutar `node scripts/sync-coding-policies-references.mjs`.
 stack: kotlin-multiplatform
 name: Kotlin Multiplatform
 version: 2026-09-14

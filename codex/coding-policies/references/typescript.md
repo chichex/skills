@@ -1,4 +1,5 @@
 ---
+# Mantenimiento: editar solo shared/coding-policies/references/typescript.md y ejecutar `node scripts/sync-coding-policies-references.mjs`.
 stack: typescript
 name: TypeScript
 version: 2026-09-14

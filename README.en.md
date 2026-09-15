@@ -46,6 +46,12 @@ SDD doesn't replace these skills — it orchestrates them. The design that prece
 
 Separately, the repo has an **internal skill** at `.claude/skills/harness-port/`: it guides porting and maintaining skills across the four harnesses (identical doctrine, only the interaction layer changes — question tool, invocation syntax, extras like the `agents/openai.yaml` sidecar in Codex or the `compatibility` field in Pi), with the codex/pi `code-review` pair as the canonical example. It's a Claude Code project skill: it only loads while working inside this repo, and it isn't distributed by `install.sh` or the plugin.
 
+### Maintaining `coding-policies`
+
+> **Agents and contributors:** do not edit files under `{claude,codex,opencode,pi}/coding-policies/references/` directly. They are generated mirrors that keep every installed skill self-contained.
+
+The only editable source is `shared/coding-policies/references/`. After changing, adding, or removing a reference, run `node scripts/sync-coding-policies-references.mjs` to regenerate all four mirrors. `node scripts/sync-coding-policies-references.mjs --check` performs no writes and fails on missing, stale, or divergent files; the `coding-policies` gate runs it in CI. The four `SKILL.md` files remain separate because their interaction layer is harness-specific.
+
 ### Pi integration
 
 In Pi, `grill` is the single interview entry point: the user chooses between handoff only and maintaining domain documentation as well. The current rail uses structured signals and skills materialized from Pi's canonical provenance; entrypoints no longer merely inject slash skills as text.
@@ -96,10 +102,11 @@ skills/
 ├── pi/             # skills for Pi               (~/.agents/skills)
 ├── pi-extensions/  # Pi extensions                (~/.pi/agent/extensions)
 ├── pi-themes/      # Pi themes                    (~/.pi/agent/themes)
+├── shared/         # canonical sources for generated artifacts
 ├── .claude/        # the repo's internal project skills (harness-port)
 ├── .claude-plugin/ # Claude Code plugin marketplace + manifest
 ├── .github/        # CI (GitHub Actions)
-└── scripts/        # frontmatter lint and drift report (used by CI)
+└── scripts/        # lint, drift, and deterministic synchronizers
 ```
 
 The repo runs CI on GitHub Actions (`.github/workflows/ci.yml`): it validates shell syntax and style (`bash -n` + shellcheck), the frontmatter of every skill (`scripts/lint-frontmatter.sh`, which also runs on local macOS), and the `pi-extensions` tests on Node 26. It also publishes an informational drift report between each skill's per-harness copies (`scripts/drift-report.sh`): the expected divergence is only each harness's interaction layer; a large divergence in doctrine warrants manual review.

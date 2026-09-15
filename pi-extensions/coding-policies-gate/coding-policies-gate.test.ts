@@ -7,16 +7,20 @@
 // harness (CA-1), doctrina equivalente tras normalizar la capa de interaccion
 // (CA-2, CA-6), template del archivo generado identico (CA-8), referencias
 // Go, TypeScript, Node, React, Next.js, React Native y Kotlin Multiplatform
-// estructuralmente validas e identicas byte a byte, integracion con
+// estructuralmente validas y sincronizadas byte a byte desde una unica fuente
+// canonica, integracion con
 // sdd-init (CA-9) y documentacion (CA-10). No observa la conducta del agente
 // al ejecutar el skill: eso es protocolo humano (CA-5, CA-7).
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { access, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { inspectReferenceMirrors, syncReferenceMirrors } from "../../scripts/sync-coding-policies-references.mjs";
 import type { Harness } from "../harness-gate/interaction.ts";
 import {
 	HARNESSES,
@@ -27,6 +31,8 @@ import {
 } from "../harness-gate/interaction.ts";
 
 const SKILL = "coding-policies";
+const CANONICAL_REFERENCES = `shared/${SKILL}/references`;
+const SYNC_SCRIPT = "scripts/sync-coding-policies-references.mjs";
 const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 // Prefijo de invocacion por harness, derivado de la tabla normativa de
@@ -731,6 +737,20 @@ test(`${SKILL}: doctrina byte-equivalente entre harnesses tras normalizar la cap
 	assert.deepEqual(compareAcrossHarnesses(`${SKILL} bloque AGENTS.md`, blocks), []);
 });
 
+test(`${SKILL}: la fuente canonica y sus mirrors estan sincronizados`, async () => {
+	const expected = REFERENCES.map((reference) => `${reference.id}.md`).sort();
+	const inspection = await inspectReferenceMirrors(REPO_ROOT);
+	assert.deepEqual(inspection.canonicalNames, expected, "la fuente canonica coincide con la tabla de casos");
+	assert.deepEqual(inspection.problems, [], "los mirrors generados no tienen drift");
+	const output = execFileSync(process.execPath, [SYNC_SCRIPT, "--check"], { cwd: REPO_ROOT, encoding: "utf8" });
+	assert.match(output, /7 referencias canónicas sincronizadas en 4 harnesses/);
+	for (const harness of HARNESSES) {
+		const markdown = await skillMarkdown(harness);
+		assert.match(markdown, /la única fuente editable vive en `shared\/coding-policies\/references\/`/);
+		assert.match(markdown, /`node scripts\/sync-coding-policies-references\.mjs --check`/);
+	}
+});
+
 test(`${SKILL}: censo Git anti-drift de referencias y artefactos`, async () => {
 	const expected = REFERENCES.map((reference) => reference.id).sort();
 	const censuses = new Map<Harness, string>();
@@ -836,13 +856,16 @@ test(`${SKILL}: template del archivo generado identico entre harnesses y con sus
 // --- Referencias -------------------------------------------------------------
 
 for (const reference of REFERENCES) {
-	test(`${SKILL}: references/${reference.id}.md valida e identica byte a byte en los cuatro harnesses`, async () => {
+	test(`${SKILL}: references/${reference.id}.md valida y sus mirrors salen de la fuente canonica`, async () => {
+		const canonical = await readRepoFile(`${CANONICAL_REFERENCES}/${reference.id}.md`);
 		const byHarness = new Map<Harness, string>();
 		for (const harness of HARNESSES) {
-			byHarness.set(harness, await readRepoFile(`${harness}/${SKILL}/references/${reference.id}.md`));
+			const mirror = await readRepoFile(`${harness}/${SKILL}/references/${reference.id}.md`);
+			byHarness.set(harness, mirror);
+			assert.equal(mirror, canonical, `${harness}: el mirror difiere de la fuente canonica`);
 		}
 		assert.deepEqual(compareAcrossHarnesses(`references/${reference.id}.md`, byHarness), []);
-		const markdown = byHarness.get("claude") ?? "";
+		const markdown = canonical;
 		const verdict = validateReference(markdown, reference.sections, reference.links);
 		assert.deepEqual(verdict.problems, [], `${reference.id}: estructura inválida`);
 		assert.equal(verdict.fields.stack, reference.id, `${reference.id}: frontmatter stack`);
@@ -910,7 +933,13 @@ test("READMEs y manifests del plugin documentan coding-policies", async () => {
 			`${readme}: la frase de contenido enumera los siete stacks cubiertos`,
 		);
 		assert.match(row, /[Aa]justes|[Aa]djustments/, `${readme}: la fila menciona la preservación de ajustes`);
+		assert.match(text, /shared\/coding-policies\/references\//, `${readme}: documenta la fuente canónica`);
+		assert.match(text, /node scripts\/sync-coding-policies-references\.mjs --check/, `${readme}: documenta el check`);
+		assert.match(text, /no editen directamente|do not edit files under/i, `${readme}: advierte que los mirrors no se editan`);
 	}
+	const maintenance = await readRepoFile(`shared/${SKILL}/README.md`);
+	assert.match(maintenance, /única fuente editable/);
+	assert.match(maintenance, /sync-coding-policies-references\.mjs --check/);
 	for (const manifest of [".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"]) {
 		const parsed = JSON.parse(await readRepoFile(manifest)) as {
 			description?: string;
@@ -960,6 +989,34 @@ function syntheticReference(options: { rules?: number; dropSection?: string; bre
 	}
 	return lines.join("\n");
 }
+
+test("autotest: el sincronizador repara mirrors faltantes, divergentes y obsoletos", async () => {
+	const root = await mkdtemp(join(tmpdir(), "coding-policies-sync-"));
+	try {
+		const canonical = join(root, CANONICAL_REFERENCES);
+		await mkdir(canonical, { recursive: true });
+		await writeFile(join(canonical, "go.md"), "go canonico\n");
+		await writeFile(join(canonical, "node.md"), "node canonico\n");
+		const claudeMirror = join(root, "claude", SKILL, "references");
+		await mkdir(claudeMirror, { recursive: true });
+		await writeFile(join(claudeMirror, "go.md"), "drift\n");
+		await writeFile(join(claudeMirror, "stale.md"), "obsoleto\n");
+
+		const before = await inspectReferenceMirrors(root);
+		assert.ok(before.problems.length > 0, "el fixture empieza con drift");
+		const synced = await syncReferenceMirrors(root);
+		assert.equal(synced.references, 2);
+		assert.equal(synced.harnesses, 4);
+		assert.deepEqual((await inspectReferenceMirrors(root)).problems, []);
+		for (const harness of HARNESSES) {
+			assert.equal(await readFile(join(root, harness, SKILL, "references", "go.md"), "utf8"), "go canonico\n");
+			assert.equal(await readFile(join(root, harness, SKILL, "references", "node.md"), "utf8"), "node canonico\n");
+		}
+		await assert.rejects(access(join(claudeMirror, "stale.md")));
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
 
 test("autotest: una referencia sintetica valida pasa sin diagnosticos", () => {
 	const verdict = validateReference(syntheticReference(), GO_SECTIONS, GO_LINKS);

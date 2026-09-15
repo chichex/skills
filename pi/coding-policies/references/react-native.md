@@ -1,4 +1,5 @@
 ---
+# Mantenimiento: editar solo shared/coding-policies/references/react-native.md y ejecutar `node scripts/sync-coding-policies-references.mjs`.
 stack: react-native
 name: React Native
 version: 2026-09-14

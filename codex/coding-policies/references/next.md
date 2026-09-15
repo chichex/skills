@@ -1,4 +1,5 @@
 ---
+# Mantenimiento: editar solo shared/coding-policies/references/next.md y ejecutar `node scripts/sync-coding-policies-references.mjs`.
 stack: next
 name: Next.js
 version: 2026-09-14

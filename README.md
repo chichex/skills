@@ -44,6 +44,12 @@ SDD no reemplaza a estos skills: los orquesta. El diseño previo a una spec se a
 
 Aparte, el repo tiene un **skill interno** en `.claude/skills/harness-port/`: guía el porteo y mantenimiento de skills entre los cuatro harnesses (doctrina idéntica, solo cambia la capa de interacción — tool de preguntas, sintaxis de invocación, extras como el sidecar `agents/openai.yaml` en Codex o el campo `compatibility` en Pi), con el par codex/pi de `code-review` como ejemplo canónico. Es un project skill de Claude Code: solo se carga trabajando dentro de este repo, y no se distribuye ni por `install.sh` ni por el plugin.
 
+### Mantenimiento de `coding-policies`
+
+> **Agentes y contribuidores:** no editen directamente los archivos bajo `{claude,codex,opencode,pi}/coding-policies/references/`. Son mirrors generados para que cada skill instalado siga siendo autocontenido.
+
+La única fuente editable es `shared/coding-policies/references/`. Después de cambiar, agregar o eliminar una referencia, ejecutar `node scripts/sync-coding-policies-references.mjs` para regenerar los cuatro mirrors. `node scripts/sync-coding-policies-references.mjs --check` no escribe y falla si hay archivos faltantes, obsoletos o distintos; el gate de `coding-policies` lo corre en CI. Los cuatro `SKILL.md` siguen separados porque su capa de interacción sí depende del harness.
+
 ### Integración con Pi
 
 En Pi, `grill` es el único entry point de entrevista: el usuario elige si quiere solo handoff o también documentación de dominio. El riel actual usa señales estructuradas y skills materializados desde la procedencia canónica de Pi; los entrypoints ya no se limitan a inyectar slash skills como texto.
@@ -94,10 +100,11 @@ skills/
 ├── pi/             # skills para Pi               (~/.agents/skills)
 ├── pi-extensions/  # extensiones de Pi             (~/.pi/agent/extensions)
 ├── pi-themes/      # themes de Pi                  (~/.pi/agent/themes)
+├── shared/         # fuentes canónicas de artefactos generados
 ├── .claude/        # project skills internos del repo (harness-port)
 ├── .claude-plugin/ # marketplace + manifest del plugin de Claude Code
 ├── .github/        # CI (GitHub Actions)
-└── scripts/        # lint de frontmatter y reporte de drift (los usa el CI)
+└── scripts/        # lint, drift y sincronizadores deterministas
 ```
 
 El repo corre CI en GitHub Actions (`.github/workflows/ci.yml`): valida sintaxis y estilo de los shells (`bash -n` + shellcheck), el frontmatter de todos los skills (`scripts/lint-frontmatter.sh`, que también corre en macOS local) y los tests de `pi-extensions` con Node 26. Además publica un reporte informativo de drift entre las copias de cada skill por harness (`scripts/drift-report.sh`): la divergencia esperada es solo la capa de interacción de cada harness; una divergencia grande en doctrina amerita revisión manual.
