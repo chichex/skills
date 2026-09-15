@@ -6,8 +6,9 @@
 // ({claude,codex,opencode,pi}/coding-policies): frontmatter y extras por
 // harness (CA-1), doctrina equivalente tras normalizar la capa de interaccion
 // (CA-2, CA-6), template del archivo generado identico (CA-8), referencias
-// Go, TypeScript, Node, React, Next.js, React Native y Kotlin Multiplatform
-// estructuralmente validas y sincronizadas byte a byte desde una unica fuente
+// baseline Clean Code/SOLID y referencias Go, TypeScript, Node, React,
+// Next.js, React Native y Kotlin Multiplatform estructuralmente validas y
+// sincronizadas byte a byte desde una unica fuente
 // canonica, integracion con
 // sdd-init (CA-9) y documentacion (CA-10). No observa la conducta del agente
 // al ejecutar el skill: eso es protocolo humano (CA-5, CA-7).
@@ -120,6 +121,9 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/`react-native` gana sobre `react`, y `react` sobre `node`/,
 	/En un mismo marcador Gradle, `kotlin-multiplatform` prevalece sobre `kotlin-android`/,
 	/cubierto si existe `references\/<id>\.md`/,
+	/`references\/clean-code\.md` es la baseline transversal obligatoria/,
+	/se incluye exactamente una vez en todo archivo generado[^\n]*no se detecta ni se ofrece como stack/,
+	/[Ss]i falta o su frontmatter es inválido, frenar sin escribir/,
 	/"sin prácticas definidas todavía" y no generan sección/,
 	/[Ss]i ningún stack confirmado está cubierto, no se genera archivo y se informa; el skill termina ahí, sin enganche/,
 	/no lo pisa: lo dice, termina ahí sin enganche/,
@@ -127,7 +131,7 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/crea `\.sdd\/`[^\n]*si no existe/,
 	/copiado verbatim/,
 	/^### Regeneración \(el destino ya existe\)$/m,
-	/stacks desactualizados \(`<id>: <version vieja> → <version nueva>`\)/,
+	/baseline o stacks desactualizados \(`<id>: <version vieja\|ausente> → <version nueva>`\)/,
 	/todo salvo `## Ajustes de este proyecto` se reescribe[^\n]*«pregunta»: `Regenerar \(Recomendado\)` \/ `Cancelar`/,
 	/[Pp]reservar verbatim el bloque entre `<!-- coding-policies:ajustes:start -->` y `<!-- coding-policies:ajustes:end -->`/,
 	/nunca interpreta el contenido de Ajustes/,
@@ -144,12 +148,14 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/sin tocar nada si la sección no existe[^\n]*«skill:sdd-init» --update/,
 	/^## Fase 5 — Reporte$/m,
 	/^Coding policies listas: <ruta> \(<generado\|regenerado>\)$/m,
+	/^- baseline: clean-code@<version> \(incluida\)$/m,
 	/^- desactualizados antes de regenerar: /m,
 	/^## MUST NOT DO$/m,
 	/[Nn]o tocar configuración global de ningún harness/,
 	/[Nn]o crear archivos de contexto/,
 	/[Nn]o editar sin confirmación/,
 	/[Nn]o inventar reglas para stacks sin referencia/,
+	/[Nn]o omitir, repetir ni ofrecer como stack seleccionable la baseline `clean-code`/,
 	/[Nn]o interpretar, validar ni reformatear el contenido de "Ajustes de este proyecto"/,
 	/[Nn]o pisar un destino existente que no tenga los dos markers de ajustes/,
 ];
@@ -171,7 +177,9 @@ const AGENTS_LINK_STYLE: Record<Harness, RegExp> = {
 // Template del archivo generado (CA-8).
 const TEMPLATE_MARKERS: RegExp[] = [
 	/^# Coding policies — <proyecto>$/m,
-	/^<!-- coding-policies: generated=<YYYY-MM-DD>; stacks=<id>@<YYYY-MM-DD>\[,<id>@<YYYY-MM-DD>\.\.\.\] -->$/m,
+	/^<!-- coding-policies: generated=<YYYY-MM-DD>; baseline=clean-code@<YYYY-MM-DD>; stacks=<id>@<YYYY-MM-DD>\[,<id>@<YYYY-MM-DD>\.\.\.\] -->$/m,
+	/^## <Nombre de la baseline>$/m,
+	/^<!-- coding-policies:baseline=clean-code; version=<YYYY-MM-DD> -->$/m,
 	/^## <Nombre del stack>$/m,
 	/^<!-- coding-policies:stack=<id>; version=<YYYY-MM-DD> -->$/m,
 	/^## Ajustes de este proyecto$/m,
@@ -179,7 +187,33 @@ const TEMPLATE_MARKERS: RegExp[] = [
 	/^<!-- coding-policies:ajustes:end -->$/m,
 ];
 
-// Referencia Go (CA-4).
+// Baseline transversal y referencias por stack (CA-4).
+const CLEAN_CODE_SECTIONS = [
+	"Responsabilidad única y cohesión",
+	"Tamaño como señal, no como objetivo",
+	"Funciones y métodos",
+	"Componentes y UI",
+	"Archivos, clases y módulos",
+	"SOLID sin ceremonia",
+	"Extracción sin sobre-split",
+	"Adopción y excepciones",
+	"Lectura ampliada",
+];
+const CLEAN_CODE_LINKS = [
+	"https://google.github.io/styleguide/cppguide.html#Write_Short_Functions",
+	"https://eslint.org/docs/latest/rules/max-lines-per-function",
+	"https://eslint.org/docs/latest/rules/max-lines",
+	"https://eslint.org/docs/latest/rules/complexity",
+	"https://eslint.org/docs/latest/rules/max-depth",
+	"https://eslint.org/docs/latest/rules/max-params",
+	"https://detekt.dev/docs/rules/complexity/",
+	"https://golangci-lint.run/docs/linters/configuration/#funlen",
+	"https://react.dev/learn/thinking-in-react",
+	"https://martinfowler.com/bliki/FunctionLength.html",
+	"https://refactoring.com/catalog/extractFunction.html",
+	"https://blog.cleancoder.com/uncle-bob/2014/05/08/SingleReponsibilityPrinciple.html",
+	"https://blog.cleancoder.com/uncle-bob/2020/10/18/Solid-Relevance.html",
+];
 const GO_SECTIONS = [
 	"Layout de paquetes",
 	"Errores",
@@ -357,6 +391,7 @@ interface ReferenceCase {
 }
 
 const REFERENCES: readonly ReferenceCase[] = [
+	{ id: "clean-code", name: "Clean Code y SOLID", sections: CLEAN_CODE_SECTIONS, links: CLEAN_CODE_LINKS },
 	{ id: "go", name: "Go", sections: GO_SECTIONS, links: GO_LINKS },
 	{ id: "typescript", name: "TypeScript", sections: TYPESCRIPT_SECTIONS, links: TYPESCRIPT_LINKS },
 	{ id: "node", name: "Node.js", sections: NODE_SECTIONS, links: NODE_LINKS },
@@ -743,7 +778,7 @@ test(`${SKILL}: la fuente canonica y sus mirrors estan sincronizados`, async () 
 	assert.deepEqual(inspection.canonicalNames, expected, "la fuente canonica coincide con la tabla de casos");
 	assert.deepEqual(inspection.problems, [], "los mirrors generados no tienen drift");
 	const output = execFileSync(process.execPath, [SYNC_SCRIPT, "--check"], { cwd: REPO_ROOT, encoding: "utf8" });
-	assert.match(output, /7 referencias canónicas sincronizadas en 4 harnesses/);
+	assert.match(output, /8 referencias canónicas sincronizadas en 4 harnesses/);
 	for (const harness of HARNESSES) {
 		const markdown = await skillMarkdown(harness);
 		assert.match(markdown, /la única fuente editable vive en `shared\/coding-policies\/references\/`/);
@@ -848,6 +883,15 @@ test(`${SKILL}: template del archivo generado identico entre harnesses y con sus
 		for (const marker of TEMPLATE_MARKERS) {
 			assert.match(fence, marker, `${harness}: el template no declara ${marker}`);
 		}
+		assert.equal(
+			[...fence.matchAll(/^<!-- coding-policies:baseline=clean-code;/gm)].length,
+			1,
+			`${harness}: el template emite la baseline exactamente una vez`,
+		);
+		assert.ok(
+			fence.indexOf("coding-policies:baseline=clean-code") < fence.indexOf("coding-policies:stack=<id>"),
+			`${harness}: la baseline precede a los stacks`,
+		);
 		byHarness.set(harness, normalizeInvocations(fence, (await invocationPrefixes())[harness]));
 	}
 	assert.deepEqual(compareAcrossHarnesses(`${SKILL} template`, byHarness), []);
@@ -878,6 +922,22 @@ for (const reference of REFERENCES) {
 		}
 	});
 }
+
+test(`${SKILL}: clean-code fija umbrales como señales y prohíbe el sobre-split`, async () => {
+	const markdown = await readRepoFile(`${CANONICAL_REFERENCES}/clean-code.md`);
+	assert.match(markdown, /una sola razón principal para cambiar[^\n]*un actor/);
+	assert.match(markdown, /hasta 40 líneas lógicas/);
+	assert.match(markdown, /entre 41 y 60 líneas lógicas/);
+	assert.match(markdown, /más de 60 líneas lógicas[^\n]*evaluar/);
+	assert.match(markdown, /hasta 300 líneas lógicas/);
+	assert.match(markdown, /entre 301 y 600 líneas lógicas/);
+	assert.match(markdown, /más de 600 líneas lógicas[^\n]*decisión/);
+	assert.match(markdown, /complejidad ciclomática[^\n]*10[^\n]*15/);
+	assert.match(markdown, /anidamiento[^\n]*3[^\n]*4/);
+	assert.match(markdown, /hasta 3 parámetros[^\n]*más de 5/);
+	assert.match(markdown, /[Nn]unca extraer[^\n]*solo para reducir LOC/);
+	for (const principle of ["SRP", "OCP", "LSP", "ISP", "DIP"]) assert.match(markdown, new RegExp(`\\b${principle}\\b`));
+});
 
 test(`${SKILL}: las secciones condicionales guardan cada regla`, async () => {
 	const reactNative = await readRepoFile(`claude/${SKILL}/references/react-native.md`);
@@ -936,6 +996,7 @@ test("READMEs y manifests del plugin documentan coding-policies", async () => {
 		assert.match(text, /shared\/coding-policies\/references\//, `${readme}: documenta la fuente canónica`);
 		assert.match(text, /node scripts\/sync-coding-policies-references\.mjs --check/, `${readme}: documenta el check`);
 		assert.match(text, /no editen directamente|do not edit files under/i, `${readme}: advierte que los mirrors no se editan`);
+		assert.match(text, /Clean Code[^\n|]*SOLID/i, `${readme}: anuncia la baseline transversal`);
 	}
 	const maintenance = await readRepoFile(`shared/${SKILL}/README.md`);
 	assert.match(maintenance, /única fuente editable/);
@@ -951,6 +1012,7 @@ test("READMEs y manifests del plugin documentan coding-policies", async () => {
 		for (const entry of entries) {
 			const description = entry.description ?? "";
 			assert.match(description, /coding-policies/, `${manifest}: description menciona coding-policies`);
+			assert.match(description, /Clean Code[\s\S]*SOLID/, `${manifest}: description anuncia la baseline transversal`);
 			assert.match(
 				description,
 				/Go[\s\S]*TypeScript[\s\S]*Node\.js[\s\S]*React[\s\S]*Next\.js[\s\S]*React Native[\s\S]*Kotlin Multiplatform/,

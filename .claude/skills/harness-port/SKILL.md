@@ -11,7 +11,7 @@ Este repo mantiene una versión por harness de cada skill: una carpeta por skill
 
 Si al portear aparece una mejora de doctrina, no se aplica solo en la versión nueva: se propaga a TODAS las versiones existentes del skill, cada una con su capa de interacción.
 
-Excepción de mantenimiento para `coding-policies`: sus `references/*.md` son mirrors generados desde la única fuente editable `shared/coding-policies/references/`. Nunca editar esos mirrors por harness; cambiar la fuente canónica y ejecutar `node scripts/sync-coding-policies-references.mjs`.
+Excepción de mantenimiento para `coding-policies`: sus `references/*.md` son mirrors generados desde la única fuente editable `shared/coding-policies/references/`. Nunca editar esos mirrors por harness; cambiar la fuente canónica y ejecutar `node scripts/sync-coding-policies-references.mjs`. `clean-code.md` es una baseline obligatoria, no un stack seleccionable: el skill la emite primero y exactamente una vez.
 
 ## Ejemplo canónico
 
