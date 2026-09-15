@@ -1,4 +1,5 @@
 ---
+# Mantenimiento: editar solo shared/coding-policies/references/go.md y ejecutar `node scripts/sync-coding-policies-references.mjs`.
 stack: go
 name: Go
 version: 2026-09-14

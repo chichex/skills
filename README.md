@@ -30,7 +30,7 @@ Las disciplinas sobre las que SDD se apoya — y que también uso sueltas, fuera
 | **`grill-with-domain-modeling`** *(Codex/Claude/opencode)* | Un `grill` que además mantiene los docs del dominio (`CONTEXT.md` + ADRs) a medida que las decisiones se resuelven. En los cuatro harnesses esta modalidad también puede elegirse dentro de `grill`; en Claude Code este skill es un wrapper que fija esa elección y saltea la pregunta de configuración. |
 | **`domain-modeling`** | Mantiene vivo el modelo de dominio mientras se diseña: desafía términos, afila el lenguaje difuso, y escribe el glosario (`CONTEXT.md`) y las decisiones (`docs/adr/`) cuando cristalizan. Regla de contaminación cero: nunca introduce la práctica en un repo que no la usa. |
 | **`tdd`** | Referencia de test-driven development: el loop rojo → verde, qué es un buen test, dónde van (seams), los anti-patrones. Incluye guías de `mocking` y `tests`. Disponible en los cuatro harnesses; `sdd-run` referencia su doctrina en la declaración de seams del plan y en el paso de tests primero. |
-| **`coding-policies`** | Genera en el proyecto `.sdd/coding-policies.md` (o la ruta que le pidas): un archivo autocontenido con tus buenas prácticas por stack — reglas cortas MUST/SHOULD con porqué y gate — detectando los stacks del repo (Go, Node, React, React Native, Kotlin Android) y enganchándolo, con tu confirmación, en `CLAUDE.md`, `AGENTS.md` o `.sdd/project.md`. Regenerar reescribe todo salvo la sección "Ajustes de este proyecto", que se preserva verbatim. La v1 trae contenido solo para Go; los demás stacks se detectan pero quedan "sin prácticas definidas todavía". `sdd-init` lo referencia como `guia` si existe y ofrece generarlo si no. Disponible en los cuatro harnesses. |
+| **`coding-policies`** | Genera en el proyecto `.sdd/coding-policies.md` (o la ruta que le pidas): un archivo autocontenido con una baseline transversal siempre incluida de Clean Code y SOLID —SRP, tamaños saludables y protección contra el sobre-split— más tus buenas prácticas por stack, como reglas MUST/SHOULD con porqué y gate. Detecta los stacks del repo (Go, TypeScript, Node, React, Next.js, React Native, Kotlin Multiplatform, Kotlin Android) y lo engancha, con tu confirmación, en `CLAUDE.md`, `AGENTS.md` o `.sdd/project.md`. Regenerar reescribe todo salvo la sección "Ajustes de este proyecto", que se preserva verbatim. Trae contenido para Go, TypeScript, Node, React, Next.js, React Native y Kotlin Multiplatform; Kotlin Android se detecta pero queda "sin prácticas definidas todavía". `sdd-init` lo referencia como `guia` si existe y ofrece generarlo si no. Disponible en los cuatro harnesses. |
 | **`code-review`** *(Codex/Pi/opencode)* | Revisa un PR en tres ejes separados —correctness y riesgo, estándares y spec—, ejecuta verificaciones y muestra findings con evidencia y la preview exacta. Por default publica los comments en GitHub como un único review COMMENT; `--no-publish` lo deja solo en la conversación. Nunca aprueba ni pide cambios. |
 | **`wait-pr`** | Monitorea el repo actual cada 60 segundos en busca de PRs nuevos y ejecuta `code-review` sobre cada uno, en orden y sin duplicados. Ignora los PRs ya abiertos salvo `--include-open`, puede terminar tras uno con `--once` y nunca publica comments: en Codex, Pi y opencode pasa `--no-publish`; en Claude Code delega en el `/code-review` nativo del harness sin agregar `--comment` ni `--fix`. |
 | **`github-issue-selector`** *(Codex/Pi)* | Permite elegir o inspeccionar un issue cuando todavía no diste un número concreto. |
@@ -43,6 +43,12 @@ Las disciplinas sobre las que SDD se apoya — y que también uso sueltas, fuera
 SDD no reemplaza a estos skills: los orquesta. El diseño previo a una spec se afila con `grill` y `domain-modeling`, y `sdd-run` implementa siguiendo la disciplina de `tdd`.
 
 Aparte, el repo tiene un **skill interno** en `.claude/skills/harness-port/`: guía el porteo y mantenimiento de skills entre los cuatro harnesses (doctrina idéntica, solo cambia la capa de interacción — tool de preguntas, sintaxis de invocación, extras como el sidecar `agents/openai.yaml` en Codex o el campo `compatibility` en Pi), con el par codex/pi de `code-review` como ejemplo canónico. Es un project skill de Claude Code: solo se carga trabajando dentro de este repo, y no se distribuye ni por `install.sh` ni por el plugin.
+
+### Mantenimiento de `coding-policies`
+
+> **Agentes y contribuidores:** no editen directamente los archivos bajo `{claude,codex,opencode,pi}/coding-policies/references/`. Son mirrors generados para que cada skill instalado siga siendo autocontenido.
+
+La única fuente editable es `shared/coding-policies/references/`. `clean-code.md` es una baseline obligatoria: no es un stack seleccionable y aparece primero, una sola vez, en cada archivo generado. Después de cambiar, agregar o eliminar una referencia, ejecutar `node scripts/sync-coding-policies-references.mjs` para regenerar los cuatro mirrors. `node scripts/sync-coding-policies-references.mjs --check` no escribe y falla si hay archivos faltantes, obsoletos o distintos; el gate de `coding-policies` lo corre en CI. Los cuatro `SKILL.md` siguen separados porque su capa de interacción sí depende del harness.
 
 ### Integración con Pi
 
@@ -94,10 +100,11 @@ skills/
 ├── pi/             # skills para Pi               (~/.agents/skills)
 ├── pi-extensions/  # extensiones de Pi             (~/.pi/agent/extensions)
 ├── pi-themes/      # themes de Pi                  (~/.pi/agent/themes)
+├── shared/         # fuentes canónicas de artefactos generados
 ├── .claude/        # project skills internos del repo (harness-port)
 ├── .claude-plugin/ # marketplace + manifest del plugin de Claude Code
 ├── .github/        # CI (GitHub Actions)
-└── scripts/        # lint de frontmatter y reporte de drift (los usa el CI)
+└── scripts/        # lint, drift y sincronizadores deterministas
 ```
 
 El repo corre CI en GitHub Actions (`.github/workflows/ci.yml`): valida sintaxis y estilo de los shells (`bash -n` + shellcheck), el frontmatter de todos los skills (`scripts/lint-frontmatter.sh`, que también corre en macOS local) y los tests de `pi-extensions` con Node 26. Además publica un reporte informativo de drift entre las copias de cada skill por harness (`scripts/drift-report.sh`): la divergencia esperada es solo la capa de interacción de cada harness; una divergencia grande en doctrina amerita revisión manual.

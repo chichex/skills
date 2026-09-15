@@ -11,6 +11,8 @@ Este repo mantiene una versión por harness de cada skill: una carpeta por skill
 
 Si al portear aparece una mejora de doctrina, no se aplica solo en la versión nueva: se propaga a TODAS las versiones existentes del skill, cada una con su capa de interacción.
 
+Excepción de mantenimiento para `coding-policies`: sus `references/*.md` son mirrors generados desde la única fuente editable `shared/coding-policies/references/`. Nunca editar esos mirrors por harness; cambiar la fuente canónica y ejecutar `node scripts/sync-coding-policies-references.mjs`. `clean-code.md` es una baseline obligatoria, no un stack seleccionable: el skill la emite primero y exactamente una vez.
+
 ## Ejemplo canónico
 
 El par `codex/code-review/SKILL.md` ↔ `pi/code-review/SKILL.md` es el modelo a imitar. Ante la duda, diffearlos. Sus únicas diferencias son:
@@ -89,9 +91,9 @@ Nada extra: solo `SKILL.md` más los archivos de referencia del skill. Un `agent
 ## Procedimiento
 
 1. **Elegir la fuente**: la versión más completa y actualizada del skill, o la que originó el cambio a propagar. Si no es obvio cuál está más al día, diffear las versiones existentes primero.
-2. **Crear la carpeta destino** `<harness>/<nombre>/` y copiar `SKILL.md` junto con TODOS los archivos de referencia del skill (ej. `mocking.md` y `tests.md` en `tdd`; `CONTEXT-FORMAT.md` y `ADR-FORMAT.md` en `domain-modeling`).
+2. **Crear la carpeta destino** `<harness>/<nombre>/` y copiar `SKILL.md` junto con TODOS los archivos de referencia del skill (ej. `mocking.md` y `tests.md` en `tdd`; `CONTEXT-FORMAT.md` y `ADR-FORMAT.md` en `domain-modeling`). Para `coding-policies`, no copiar desde otro harness: ejecutar el sincronizador desde `shared/coding-policies/references/`.
 3. **Aplicar la capa de interacción del destino** según el mapeo: tool de preguntas, invocaciones, extras, menciones del harness.
-4. **Si es propagación de un cambio**, aplicar el mismo delta doctrinal a cada versión existente, adaptando solo la capa de interacción de cada una.
+4. **Si es propagación de un cambio**, aplicar el mismo delta doctrinal a cada versión existente, adaptando solo la capa de interacción de cada una. Si cambia una referencia de `coding-policies`, editar únicamente la fuente canónica, sincronizar y comprobar con `node scripts/sync-coding-policies-references.mjs --check`.
 5. **Actualizar el README** cuando cambia la disponibilidad por harness: las tablas de `README.md` y `README.en.md` anotan en qué harnesses vive cada skill (ej. *(Codex/Pi)*).
 6. `install.sh` no requiere cambios: copia por glob las carpetas de cada harness, y la deduplicación Codex/Pi del `config.toml` se deriva de los nombres de carpeta.
 
@@ -104,7 +106,7 @@ Si el pedido no fija skill de origen o harnesses destino, preguntarlo con `AskUs
 - [ ] Referencias de tools correctas para el harness destino: la tool de preguntas es la del destino y no quedó ninguna mención colgada de la tool de otro harness.
 - [ ] Todas las invocaciones de skills (`## Argumentos`, Fase 0, referencias cruzadas, description) usan la sintaxis del destino.
 - [ ] Extras del destino presentes: `agents/openai.yaml` en codex, `compatibility` en pi si hay requisitos; sin extras ajenos al destino.
-- [ ] Archivos de referencia copiados y sus links relativos funcionando.
+- [ ] Archivos de referencia copiados y sus links relativos funcionando; para `coding-policies`, fuente canónica editada y `node scripts/sync-coding-policies-references.mjs --check` en verde.
 - [ ] Diff contra la fuente muestra SOLO capa de interacción; la doctrina quedó idéntica.
 - [ ] Strings de artefactos generados intactos (headers citados, flags, formatos, paths), sin "correcciones" de tildes dentro de backticks ni bloques de código.
 - [ ] `README.md` y `README.en.md` reflejan la disponibilidad actual del skill por harness.
