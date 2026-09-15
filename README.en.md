@@ -39,6 +39,7 @@ The disciplines SDD builds on — which I also use standalone, outside the pipel
 | **`issue-triage`** *(Codex/Claude/Pi)* | Analyzes one or more issues against code, tests, and dependencies; classifies the next stage and emits a structured handoff after confirmation, but never executes it. Joint selections become one canonical issue while originals are closed as superseded. |
 | **`quick-run`** *(Codex/Claude/Pi)* | Consumes only a confirmed `issue-triage` handoff to implement a small change in an isolated worktree, with tests first when applicable, a finite attempt budget, and a PR or local commit carrying exact evidence. |
 | **`repo-clean`** *(Codex/Pi)* | Leaves the current branch with no pending changes and synchronized with `origin/<branch>`. When uncommitted work exists, it shows the impact and asks whether to preserve or discard it; it never switches branches or force-pushes. |
+| **`publish`** *(Pi; Waica-specific)* | Publishes Waica's six public packages in lockstep through a PR, tag, and npm Trusted Publishing, then verifies the editor, MCP, and a generated project against the real registry. |
 | **`find-skills`** *(Codex/Pi)* | Searches the open ecosystem for installable skills through `npx skills`. Vendored from `vercel-labs/skills`. |
 | **`yt-summary`** *(Codex/Claude)* | Downloads a single YouTube subtitle track with `yt-dlp` and guides a summary with a TL;DR, key points, and timestamps. |
 
