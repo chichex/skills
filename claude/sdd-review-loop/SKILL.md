@@ -63,7 +63,7 @@ Cualquier falla frena con diagnóstico concreto y nada de lo que sigue se ejecut
 
 ## Fase 2 — Loop de rondas
 
-El orquestador corre en el modelo de la sesión, vive en la conversación principal y no lee el diff: por ronda lanza subagentes con la tool `Agent` en background, primero un revisor y, si el criterio lo indica, un corrector, y solo consume sus reportes finales. Cada subagente recibe `model` según la Fase 0 o los flags: default `sonnet` para ambos roles. Nunca corren dos subagentes de la misma ronda en paralelo: el corrector necesita los hallazgos del revisor.
+El orquestador corre en el modelo de la sesión, vive en la conversación principal y no lee el diff: por ronda lanza subagentes con la tool `Agent` en background, primero un revisor con `subagent_type: "reviewer"` y, si el criterio lo indica, un corrector con `subagent_type: "implementer"`, y solo consume sus reportes finales. Cada subagente recibe `model` según la Fase 0 o los flags: default `sonnet` para ambos roles, siempre pasado por parámetro de invocación — gana sobre cualquier `model` de frontmatter, y ninguno de los dos agentes custom declara uno. Si `reviewer` o `implementer` no está disponible en la instalación (el plugin no expone `agents/`, o la instalación no está actualizada), la ronda sigue con el agente por defecto de la sesión y lo anuncia en el reporte de esa ronda; un tipo ausente nunca aborta el loop ni queda silencioso. Nunca corren dos subagentes de la misma ronda en paralelo: el corrector necesita los hallazgos del revisor.
 
 Por cada ronda `r` de `1` a `--rounds`:
 
@@ -114,6 +114,7 @@ Un revisor que termina sin el bloque JSON, con JSON inválido o con timeout es n
    - PR: <owner/repo#N> · branch <headRef>
    - rondas: <ejecutadas>/<N> · motivo de corte: <sin hallazgos accionables | no convergencia | N agotado | sin cambios | cancelado | error terminal>
    - modelos: revisor <M> · corrector <M> · nivel <L> · fix-scope <S>
+   - tipos de agente: revisor <reviewer|default (no disponible)> · corrector <implementer|default (no disponible)>
 
    | Ronda | Hallazgos | Accionables | Corregidos | Descartados | Bloqueados | Commits | Verificación |
    |---|---|---|---|---|---|---|---|
