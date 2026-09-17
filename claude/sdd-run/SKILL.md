@@ -60,7 +60,7 @@ Con la spec ya elegida, preguntar la intensidad con un segundo `AskUserQuestion`
 
 ## Fase 2 — Plan efímero + gate
 
-Planificar contra el código real, no contra la idea del código (explorar lo que la spec va a tocar; subagents en repos grandes):
+Planificar contra el código real, no contra la idea del código (explorar lo que la spec va a tocar: subagents `Explore` con la tool `Agent` en paralelo, inline si el repo es chico):
 
 - Pasos mapeados a CAs: cada paso dice qué CA ataca y cómo se va a verificar (heredado del Plan de verificacion de la spec). Trabajo que no mapea a ningún CA no entra al plan — es señal de scope creep o de spec incompleta.
 - Orden test-first para los CA ALTA: los tests del plan de verificación se escriben ANTES que la implementación, y tienen que fallar primero (rojo → verde es la evidencia de que el test observa algo real).
