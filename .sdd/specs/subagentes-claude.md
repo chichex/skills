@@ -1,6 +1,6 @@
 # Spec — Subagentes custom `implementer` y `reviewer` para Claude Code
-<!-- Generada por /sdd-spec el 2026-09-17. Fuente: pedido libre. Estado: aprobada -->
-<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; grill=none; superseded-by=none -->
+<!-- Generada por /sdd-spec el 2026-09-17. Fuente: pedido libre. Estado: implementada -->
+<!-- SDD-Tracking: version=1; type=spec; state=implemented; issue=none; grill=none; superseded-by=none -->
 
 ## Contexto
 
@@ -215,3 +215,30 @@ ejemplo `~/Sync/workspace/platform`.
 - **La conducta emergente no tiene e2e y probablemente no lo tenga pronto.** CA-13 y CA-14
   se re-prueban a mano cada vez que cambie la `description` o el body de un agente. Es el
   gap estructural de esta feature: la spec puede garantizar el artefacto, no la obediencia.
+
+## Resultado de ejecucion (2026-09-17 · HEAD 5ed706e)
+
+| CA | Estado | Evidencia |
+|---|---|---|
+| CA-1 | verificado | `node --test pi-extensions/agents-gate/agents-gate.test.ts`: 20/20 verdes — test "CA-1: agents/implementer.md tiene frontmatter valido, skills: [chichex-skills:tdd] y body en orden" |
+| CA-2 | verificado | mismo comando — test "CA-2: agents/reviewer.md tiene frontmatter valido, sin skills forzadas y body en orden" |
+| CA-3 | verificado | mismo comando — test "CA-3: plugin.json declara agents junto a skills, con description identica a marketplace.json"; `node --test pi-extensions/sdd-review-loop/sdd-review-loop.test.ts`: 9/9 verdes (paridad de descripciones intacta) |
+| CA-4 | verificado | mismo comando — test "CA-4, CA-5, CA-6: sdd-review-loop nombra subagent_type, degrada sin abortar y no fija model" |
+| CA-5 | verificado | mismo comando y test que CA-4 |
+| CA-6 | verificado | mismo comando y test que CA-4 |
+| CA-7 | verificado | mismo comando — test "CA-7: install.sh copia agents/\*.md a CLAUDE_AGENTS_DIR en 'claude' y en 'all', sin tocar el home real" (destinos `CLAUDE_SKILLS_DIR`/`CLAUDE_AGENTS_DIR` temporales); `shellcheck install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh`: sin hallazgos |
+| CA-8 | verificado | mismo comando — test "CA-8: install.sh claude avisa la sombra del plugin chichex-skills solo cuando esta registrado" (con y sin `CLAUDE_PLUGIN_REGISTRY_FILE` conteniendo `chichex-skills@`) |
+| CA-9 | verificado | mismo comando — test "CA-9: censo de agents/\*.md sobre archivos trackeados en git contra la lista esperada" mas 9 autotests de diagnostico (agente faltante/inesperado, name, description, cada campo prohibido, skills, subagent_type, degradacion, plugin.json) |
+| CA-10 | verificado | mismo comando — test "CA-10: ningun agents/ bajo claude/, opencode/ o pi/; los sidecars de codex no disparan falso positivo" (17 sidecars `codex/*/agents/openai.yaml` confirmados, cero bajo claude/opencode/pi) |
+| CA-11 | verificado | mismo comando — test "CA-11: READMEs, harness-port y el contrato documentan el layer de agentes"; `node --test pi-extensions/pi-package/pi-package.test.ts`: 17/17 verdes (literales de `.sdd/project.md` intactos) |
+| CA-12 | verificado | mismo comando — test "CA-12: sdd-run nombra Explore + tool Agent en la Fase 2, sin agregar un tipo custom" |
+| CA-13 | pendiente humano | protocolo de prueba humana de esta spec, checklist en el PR |
+| CA-14 | pendiente humano | protocolo de prueba humana de esta spec, checklist en el PR |
+
+Politicas de generacion: sin politicas activas (contrato), ningun `POL-*`.
+
+Regresion completa sobre este HEAD: `node --test pi-extensions/*/*.test.ts` → 313/313 verdes (incluye los 20 nuevos de `agents-gate`); `bash scripts/lint-frontmatter.sh` → 56 skills OK; `bash -n install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh` → sin errores; `shellcheck install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh` → sin hallazgos; `git diff --check` → sin errores de whitespace; `bash scripts/drift-report.sh` → exit 0 (informativo).
+
+Blast-radius real (`git diff --name-status origin/main..HEAD`): `.claude-plugin/plugin.json`, `.claude/skills/harness-port/SKILL.md`, `.sdd/project.md`, `.sdd/specs/subagentes-claude.md` (artefacto de entrada importado), `README.en.md`, `README.md`, `agents/implementer.md`, `agents/reviewer.md`, `claude/sdd-review-loop/SKILL.md`, `claude/sdd-run/SKILL.md`, `install.sh`, `pi-extensions/agents-gate/agents-gate.test.ts` — coincide con los 11 archivos estimados en `## Verificabilidad` mas la spec importada. Sin tocar `package.json`, `codex/`, `opencode/` ni `pi/`.
+
+Desviaciones: ninguna. No hizo falta ningun `[DEVIATION]`: los 12 CA ALTA se implementaron y verificaron tal como la spec los describe.
