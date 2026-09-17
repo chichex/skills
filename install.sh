@@ -17,6 +17,8 @@
 #
 # Overrides por variable de entorno (destinos):
 #   CLAUDE_SKILLS_DIR    (default: ~/.claude/skills)
+#   CLAUDE_AGENTS_DIR    (default: ~/.claude/agents)
+#   CLAUDE_PLUGIN_REGISTRY_FILE (default: ~/.claude/plugins/installed_plugins.json)
 #   OPENCODE_SKILLS_DIR  (default: ~/.config/opencode/skills)
 #   PI_SKILLS_DIR        (default: ~/.agents/skills)
 #   PI_EXTENSIONS_DIR    (default: ~/.pi/agent/extensions)
@@ -29,6 +31,8 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DEST="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
+CLAUDE_AGENTS_DEST="${CLAUDE_AGENTS_DIR:-$HOME/.claude/agents}"
+CLAUDE_PLUGIN_REGISTRY="${CLAUDE_PLUGIN_REGISTRY_FILE:-$HOME/.claude/plugins/installed_plugins.json}"
 OPENCODE_DEST="${OPENCODE_SKILLS_DIR:-$HOME/.config/opencode/skills}"
 PI_DEST="${PI_SKILLS_DIR:-$HOME/.agents/skills}"
 PI_EXTENSIONS_DEST="${PI_EXTENSIONS_DIR:-$HOME/.pi/agent/extensions}"
@@ -71,6 +75,12 @@ pi_managed_names() {
       ;;
     json)
       for entry in "$src"/*.json; do
+        [ -f "$entry" ] || continue
+        basename "$entry"
+      done
+      ;;
+    md)
+      for entry in "$src"/*.md; do
         [ -f "$entry" ] || continue
         basename "$entry"
       done
@@ -166,6 +176,50 @@ install_themes() {
     pi_record_managed "$dest" "$base"
     echo "   ✓ $base"
   done < <(pi_managed_names "$src" json)
+}
+
+# Los agentes de plugin de Claude Code (agents/*.md en la raíz) son un layer
+# aparte de los skills de claude/: se copian planos (sin subcarpeta), igual
+# que los themes de Pi.
+install_agents() {
+  local src="$1" dest="$2" base
+  if [ ! -d "$src" ]; then
+    echo "⚠  Claude agents: no existe $src en el repo — salteando"
+    return
+  fi
+  mkdir -p "$dest"
+  echo "→ Claude agents → $dest"
+  while IFS= read -r base; do
+    [ -n "$base" ] || continue
+    rm -f "$dest/$base"
+    cp "$src/$base" "$dest/$base"
+    pi_record_managed "$dest" "$base"
+    echo "   ✓ $base"
+  done < <(pi_managed_names "$src" md)
+}
+
+# Detecta si el plugin "chichex-skills" ya está registrado en el registro de
+# plugins de Claude Code. Una copia en $CLAUDE_AGENTS_DEST tiene precedencia
+# (proyecto > usuario > plugin) sobre los agentes que expone el plugin, así
+# que la taparía y quedaría vieja para siempre. Solo LEE el registro (nunca
+# lo muta) y usa una ruta overrideable por variable de entorno en vez de
+# hardcodear el home real, para poder probarse con destinos temporales — el
+# mismo patrón que pi_native_package_conflict usa para 'pi list'. Si el
+# registro no existe o no se puede leer, asumimos que NO hay conflicto.
+claude_plugin_shadow_conflict() {
+  [ -f "$CLAUDE_PLUGIN_REGISTRY" ] || return 1
+  grep -F -q '"chichex-skills@' "$CLAUDE_PLUGIN_REGISTRY" 2>/dev/null
+}
+
+install_claude() {
+  if claude_plugin_shadow_conflict; then
+    echo "⚠  El plugin chichex-skills ya está instalado (según $CLAUDE_PLUGIN_REGISTRY)." >&2
+    echo "  Una copia en $CLAUDE_AGENTS_DEST tiene precedencia sobre los agentes del plugin y los taparía." >&2
+    echo "  No hace falta instalar también agents/ desde acá: usá /plugin update chichex-skills." >&2
+    echo "  No se aborta: los skills de claude/ se instalan igual." >&2
+  fi
+  install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST"
+  install_agents "$REPO_DIR/agents" "$CLAUDE_AGENTS_DEST"
 }
 
 # Detecta si el Pi Package nativo de este repo (`pi install git:github.com/chichex/skills`,
@@ -331,12 +385,12 @@ install_codex() {
 
 case "$WHICH" in
   all)      install_codex
-            install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST"
+            install_claude
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST"
             install_pi ;;
   both)     install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST"
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
-  claude)   install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST" ;;
+  claude)   install_claude ;;
   opencode) install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
   pi)       install_pi ;;
   pi-clean) clean_pi ;;
