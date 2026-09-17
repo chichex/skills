@@ -96,6 +96,7 @@ Está partido por herramienta porque las versiones no son idénticas y cada harn
 skills/
 ├── codex/       # versiones para Codex        (~/.codex/skills)
 ├── claude/      # versiones para Claude Code  (~/.claude/skills)
+├── agents/         # agentes del plugin de Claude Code (~/.claude/agents)
 ├── opencode/       # versiones para opencode      (~/.config/opencode/skills)
 ├── pi/             # skills para Pi               (~/.agents/skills)
 ├── pi-extensions/  # extensiones de Pi             (~/.pi/agent/extensions)
@@ -120,7 +121,7 @@ Los skills de `claude/` se pueden instalar como plugin de Claude Code, sin clona
 /plugin install chichex-skills@chichex
 ```
 
-El plugin expone todos los skills de `claude/` y se actualiza solo con cada push al repo (sin versión pineada: Claude Code versiona por commit y cada push llega como update automático).
+El plugin expone todos los skills de `claude/` y los agentes de `agents/` — los subagentes custom `implementer` y `reviewer` que la doctrina SDD invoca por su `description`, no por nombre fijo — y se actualiza solo con cada push al repo (sin versión pineada: Claude Code versiona por commit y cada push llega como update automático).
 
 ### Pi: como Pi Package nativo (recomendado)
 

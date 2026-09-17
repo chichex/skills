@@ -77,7 +77,7 @@ Un skill sin requisitos no lleva el campo.
 
 ### Claude Code y opencode
 
-Nada extra: solo `SKILL.md` más los archivos de referencia del skill. Un `agents/` copiado a `claude/`, `opencode/` o `pi/` es un error de porteo.
+Nada extra: solo `SKILL.md` más los archivos de referencia del skill. Un `agents/` copiado a `claude/`, `opencode/` o `pi/` es un error de porteo: el `agents/` de la raíz del repo es el layer de agentes del plugin de Claude Code (`implementer`, `reviewer`), distinto del sidecar `agents/openai.yaml` de cada skill de Codex, y no se portea a ningún otro harness.
 
 ## Reglas de porteo
 
