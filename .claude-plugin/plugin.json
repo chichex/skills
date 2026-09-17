@@ -18,5 +18,8 @@
   ],
   "skills": [
     "./claude"
+  ],
+  "agents": [
+    "./agents"
   ]
 }
