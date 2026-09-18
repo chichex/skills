@@ -183,7 +183,7 @@ cd skills
 ./install.sh pi         # solo los de Pi
 ```
 
-Destinos por defecto: `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/` y `~/.pi/agent/themes/` (overridables con `CODEX_SKILLS_DIR`, `CLAUDE_SKILLS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR` y `PI_THEMES_DIR`).
+Destinos por defecto: `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~/.claude/agents/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/` y `~/.pi/agent/themes/` (overridables con `CODEX_SKILLS_DIR`, `CLAUDE_SKILLS_DIR`, `CLAUDE_AGENTS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR` y `PI_THEMES_DIR`). `CLAUDE_PLUGIN_REGISTRY_FILE` no es un destino: apunta al registro de plugins que `install.sh claude` lee para avisar si el plugin `chichex-skills` ya está instalado (y en ese caso saltear la instalación de `agents/`, que quedaría tapada por el plugin).
 
 Como Codex también descubre los skills de Pi en `~/.agents/skills` y no fusiona nombres repetidos, la instalación de Codex agrega un bloque administrado a `${CODEX_HOME:-~/.codex}/config.toml`: desactiva para Codex únicamente las copias Pi que tienen una versión equivalente en `codex/`. Pi sigue usando sus archivos normalmente. El resto de `config.toml` se preserva y las corridas posteriores actualizan el mismo bloque sin duplicarlo. Usá `CODEX_DEDUPLICATE_PI_SKILLS=0` para omitir este cambio o `CODEX_CONFIG_FILE` para apuntar a otro config.
 
@@ -194,6 +194,7 @@ Si preferís a mano, es un simple copy:
 ```bash
 cp -R codex/*    "${CODEX_HOME:-$HOME/.codex}/skills/"
 cp -R claude/*   ~/.claude/skills/
+cp agents/*.md   ~/.claude/agents/
 cp -R opencode/* ~/.config/opencode/skills/
 cp -R pi/*             ~/.agents/skills/
 cp -R pi-extensions/*  ~/.pi/agent/extensions/
