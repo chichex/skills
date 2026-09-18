@@ -244,16 +244,20 @@ export function checkDegradationLine(markdown: string): string[] {
 	return pattern.test(markdown) ? [] : ["línea de degradación ausente en sdd-review-loop"];
 }
 
-export function checkPluginDeclaresAgents(pluginJsonText: string): string[] {
+// Claude Code valida cada entrada de `agents` como ruta a un `.md` (un
+// directorio como "./agents" rompe la carga del plugin con
+// "agents.0: Invalid input") y, si el campo existe, deja de autodescubrir
+// agents/ en la raiz. Por eso el manifest no declara el campo: el
+// autodescubrimiento expone todo agents/*.md sin lista que mantener.
+export function checkPluginAgentsAutodiscovered(pluginJsonText: string): string[] {
 	let parsed: { agents?: unknown };
 	try {
 		parsed = JSON.parse(pluginJsonText) as { agents?: unknown };
 	} catch {
 		return ["plugin.json: JSON invalido"];
 	}
-	const agents = parsed.agents;
-	if (!Array.isArray(agents) || !agents.includes("./agents")) {
-		return ["declaración de agents ausente en plugin.json"];
+	if ("agents" in parsed) {
+		return ["plugin.json declara agents: omitir el campo para autodescubrir agents/"];
 	}
 	return [];
 }
@@ -354,13 +358,12 @@ test("CA-2: agents/reviewer.md tiene frontmatter valido, sin skills forzadas y b
 	assert.deepEqual(orderProblems, [], `agents/reviewer.md: ${orderProblems.join("; ")}`);
 });
 
-test("CA-3: plugin.json declara agents junto a skills, con description identica a marketplace.json", async () => {
+test("CA-3: plugin.json autodescubre agents/ junto a skills, con description identica a marketplace.json", async () => {
 	const pluginText = await readRepoFile(".claude-plugin/plugin.json");
-	const problems = checkPluginDeclaresAgents(pluginText);
+	const problems = checkPluginAgentsAutodiscovered(pluginText);
 	assert.deepEqual(problems, []);
-	const plugin = JSON.parse(pluginText) as { skills?: unknown; agents?: unknown; description: string };
+	const plugin = JSON.parse(pluginText) as { skills?: unknown; description: string };
 	assert.deepEqual(plugin.skills, ["./claude"], "skills existente intacto");
-	assert.deepEqual(plugin.agents, ["./agents"]);
 
 	const marketplace = JSON.parse(await readRepoFile(".claude-plugin/marketplace.json")) as {
 		plugins: Array<{ name: string; description: string }>;
@@ -705,12 +708,14 @@ test("autotest: linea de degradacion ausente falla con diagnostico", () => {
 	);
 });
 
-test("autotest: declaracion de agents ausente en plugin.json falla con diagnostico", () => {
-	assert.deepEqual(checkPluginDeclaresAgents(JSON.stringify({ skills: ["./claude"] })), [
-		"declaración de agents ausente en plugin.json",
-	]);
-	assert.deepEqual(checkPluginDeclaresAgents(JSON.stringify({ skills: ["./claude"], agents: ["./agents"] })), []);
-	assert.deepEqual(checkPluginDeclaresAgents("{ esto no es json"), ["plugin.json: JSON invalido"]);
+test("autotest: declarar agents en plugin.json falla con diagnostico", () => {
+	const diagnostic = ["plugin.json declara agents: omitir el campo para autodescubrir agents/"];
+	assert.deepEqual(checkPluginAgentsAutodiscovered(JSON.stringify({ skills: ["./claude"] })), []);
+	// El directorio que rompio la carga del plugin en Claude Code 2.1.276.
+	assert.deepEqual(checkPluginAgentsAutodiscovered(JSON.stringify({ agents: ["./agents"] })), diagnostic);
+	// Una lista de .md valida para Claude Code igual apaga el autodescubrimiento.
+	assert.deepEqual(checkPluginAgentsAutodiscovered(JSON.stringify({ agents: ["./agents/implementer.md"] })), diagnostic);
+	assert.deepEqual(checkPluginAgentsAutodiscovered("{ esto no es json"), ["plugin.json: JSON invalido"]);
 });
 
 test("autotest: un agents/ de scratch bajo claude/, opencode/ o pi/ se detecta; los sidecars de codex no", () => {

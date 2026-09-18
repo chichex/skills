@@ -212,6 +212,9 @@ ejemplo `~/Sync/workspace/platform`.
   junto a `"skills": ["./claude"]` es la lectura directa, pero no está verificado en este
   repo. Si el plugin dejara de exponer los agentes, la alternativa es omitir el campo y
   confiar en el descubrimiento automático de `agents/` en la raíz.
+  **Refutado el 2026-09-18:** Claude Code 2.1.276 exige que cada entrada de `agents` sea una
+  ruta a `.md`, así que `["./agents"]` rompió la carga del plugin (`agents.0: Invalid input`).
+  Se aplicó la alternativa: el campo se omitió y el gate ahora exige su ausencia.
 - **La conducta emergente no tiene e2e y probablemente no lo tenga pronto.** CA-13 y CA-14
   se re-prueban a mano cada vez que cambie la `description` o el body de un agente. Es el
   gap estructural de esta feature: la spec puede garantizar el artefacto, no la obediencia.
