@@ -180,7 +180,11 @@ install_themes() {
 
 # Los agentes de plugin de Claude Code (agents/*.md en la raíz) son un layer
 # aparte de los skills de claude/: se copian planos (sin subcarpeta), igual
-# que los themes de Pi.
+# que los themes de Pi. A diferencia de install_set/install_extensions/
+# install_themes, NO llama a pi_record_managed: clean_managed (ver mas abajo)
+# solo se invoca desde clean_pi para los tres destinos de Pi y no tiene rama
+# para el kind 'md', así que nada lee ese manifest para CLAUDE_AGENTS_DEST —
+# escribirlo dejaría un archivo sin lector (hallazgo #3 del review de PR #43).
 install_agents() {
   local src="$1" dest="$2" base
   if [ ! -d "$src" ]; then
@@ -193,7 +197,6 @@ install_agents() {
     [ -n "$base" ] || continue
     rm -f "$dest/$base"
     cp "$src/$base" "$dest/$base"
-    pi_record_managed "$dest" "$base"
     echo "   ✓ $base"
   done < <(pi_managed_names "$src" md)
 }
@@ -206,19 +209,31 @@ install_agents() {
 # hardcodear el home real, para poder probarse con destinos temporales — el
 # mismo patrón que pi_native_package_conflict usa para 'pi list'. Si el
 # registro no existe o no se puede leer, asumimos que NO hay conflicto.
+# El formato exacto de installed_plugins.json no está documentado ni
+# verificado contra una instalación real; por eso el patrón matchea solo el
+# nombre del plugin, sin comillas ni '@', en vez de asumir una forma puntual
+# como `"chichex-skills@<marketplace>"` (hallazgo #2 del review de PR #43).
 claude_plugin_shadow_conflict() {
   [ -f "$CLAUDE_PLUGIN_REGISTRY" ] || return 1
-  grep -F -q '"chichex-skills@' "$CLAUDE_PLUGIN_REGISTRY" 2>/dev/null
+  grep -F -q 'chichex-skills' "$CLAUDE_PLUGIN_REGISTRY" 2>/dev/null
 }
 
 install_claude() {
+  install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST"
+  # Si el plugin ya está instalado, una copia en $CLAUDE_AGENTS_DEST tendría
+  # precedencia sobre los agentes que expone el plugin y los taparía para
+  # siempre. En vez de avisarlo y copiar igual (lo que efectivamente sigue
+  # tapando el plugin cada vez que se corre este instalador), se saltea
+  # install_agents: el aviso pasa a describir lo que realmente pasa
+  # (hallazgo #1 del review de PR #43). Los skills de claude/ ya se
+  # instalaron arriba, así que este salteo no los afecta.
   if claude_plugin_shadow_conflict; then
     echo "⚠  El plugin chichex-skills ya está instalado (según $CLAUDE_PLUGIN_REGISTRY)." >&2
-    echo "  Una copia en $CLAUDE_AGENTS_DEST tiene precedencia sobre los agentes del plugin y los taparía." >&2
-    echo "  No hace falta instalar también agents/ desde acá: usá /plugin update chichex-skills." >&2
-    echo "  No se aborta: los skills de claude/ se instalan igual." >&2
+    echo "  Una copia en $CLAUDE_AGENTS_DEST tendría precedencia sobre los agentes del plugin y los taparía." >&2
+    echo "  No se instalan agents/ desde acá: usá /plugin update chichex-skills para actualizarlos." >&2
+    echo "  Los skills de claude/ se instalaron igual." >&2
+    return
   fi
-  install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST"
   install_agents "$REPO_DIR/agents" "$CLAUDE_AGENTS_DEST"
 }
 
@@ -388,7 +403,7 @@ case "$WHICH" in
             install_claude
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST"
             install_pi ;;
-  both)     install_set "Claude Code" "$REPO_DIR/claude" "$CLAUDE_DEST"
+  both)     install_claude
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
   claude)   install_claude ;;
   opencode) install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
