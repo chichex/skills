@@ -98,6 +98,7 @@ It's split by tool because the versions aren't identical and each harness expose
 skills/
 ├── codex/       # versions for Codex        (~/.codex/skills)
 ├── claude/      # versions for Claude Code  (~/.claude/skills)
+├── agents/         # Claude Code plugin agents    (~/.claude/agents)
 ├── opencode/       # versions for opencode      (~/.config/opencode/skills)
 ├── pi/             # skills for Pi               (~/.agents/skills)
 ├── pi-extensions/  # Pi extensions                (~/.pi/agent/extensions)
@@ -122,7 +123,7 @@ The `claude/` skills can be installed as a Claude Code plugin, without cloning t
 /plugin install chichex-skills@chichex
 ```
 
-The plugin exposes every skill in `claude/` and updates itself with each push to the repo (no pinned version: Claude Code versions by commit, so each push arrives as an automatic update).
+The plugin exposes every skill in `claude/` and the agents of `agents/` — the custom `implementer` and `reviewer` subagents that the SDD doctrine invokes by their `description`, not by a fixed name — and updates itself with each push to the repo (no pinned version: Claude Code versions by commit, so each push arrives as an automatic update).
 
 ### Pi: as a native Pi Package (recommended)
 
@@ -184,7 +185,7 @@ cd skills
 ./install.sh pi         # only the Pi ones
 ```
 
-Default destinations: `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/`, and `~/.pi/agent/themes/` (overridable with `CODEX_SKILLS_DIR`, `CLAUDE_SKILLS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR`, and `PI_THEMES_DIR`).
+Default destinations: `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~/.claude/agents/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/`, and `~/.pi/agent/themes/` (overridable with `CODEX_SKILLS_DIR`, `CLAUDE_SKILLS_DIR`, `CLAUDE_AGENTS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR`, and `PI_THEMES_DIR`). `CLAUDE_PLUGIN_REGISTRY_FILE` is not a destination: it points at the plugin registry that `install.sh claude` reads to warn when the `chichex-skills` plugin is already installed (and in that case skip installing `agents/`, which the plugin would otherwise shadow).
 
 Because Codex also discovers Pi skills under `~/.agents/skills` and does not merge duplicate names, installing the Codex set adds a managed block to `${CODEX_HOME:-~/.codex}/config.toml`. It disables only the Pi copies that have an equivalent under `codex/`; Pi keeps using its files normally. The rest of `config.toml` is preserved and later runs update the same block without duplicating it. Set `CODEX_DEDUPLICATE_PI_SKILLS=0` to skip this change or `CODEX_CONFIG_FILE` to target another config.
 
@@ -195,6 +196,7 @@ If you'd rather do it by hand, it's a plain copy:
 ```bash
 cp -R codex/*    "${CODEX_HOME:-$HOME/.codex}/skills/"
 cp -R claude/*   ~/.claude/skills/
+cp agents/*.md   ~/.claude/agents/
 cp -R opencode/* ~/.config/opencode/skills/
 cp -R pi/*             ~/.agents/skills/
 cp -R pi-extensions/*  ~/.pi/agent/extensions/
