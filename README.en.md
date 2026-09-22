@@ -150,7 +150,7 @@ claude plugin update chichex-skills@chichex
 **Evals:** `evals/` holds a suite for `claude plugin eval` (Claude Code ≥ 2.1.280) that measures behavior, not structure: that `sdd-init`, `sdd-spec`, `sdd-run`, `sdd-review-loop`, `grill` and `mini-grill` fire on the right prompt and not on a foreign one, and that `sdd-spec` follows its doctrine on a test project (`evals/adherence-sdd-spec/fixtures/mini-cli`). Each case runs a real `claude` on your account (`model: claude-sonnet-5`), so it is paid and non-deterministic, and it does not replace the `node --test` gates. Locally, from the repo root:
 
 ```
-claude plugin eval . --ablation none --runs 1 --max-cost-usd 5 --no-publish --allow-tools Write
+claude plugin eval . --ablation none --runs 1 --max-cost-usd 5 --no-publish --allow-tools Write --scaffold
 ```
 
 A failing case is re-run with `--case <name> --runs 3 --ablation with-without`. In CI it runs on demand only: `gh workflow run plugin-eval.yml --repo chichex/skills` (`.github/workflows/plugin-eval.yml`, same `CLAUDE_CODE_OAUTH_TOKEN` secret as the review); the report is uploaded as the `plugin-eval-results` artifact.
