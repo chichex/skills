@@ -330,6 +330,24 @@ export function abortRunningJobs(registry: JobRegistry, deps: RunnerDeps): Subag
 	return registry.running().filter((job) => killJob(job, deps));
 }
 
+// Espera a que cada job de `jobs` cierre de verdad (evento "close" del
+// proceso), sin importar si murio por el SIGTERM inicial o por el SIGKILL de
+// gracia que killJob/abortRunningJobs ya agendaron. Pi ejecuta process.exit(0)
+// apenas el handler de session_shutdown resuelve (issue #44 CA-5, PR #48
+// review comment 4076517086): sin esta espera, un hijo que ignora SIGTERM
+// sobrevive al proceso padre porque el timer de SIGKILL nunca llega a correr.
+// Un job sin proceso o que ya salio resuelve al toque.
+export function awaitJobsExit(jobs: SubagentJob[]): Promise<void> {
+	return Promise.all(
+		jobs.map((job) => {
+			if (job.exited || !job.proc) return Promise.resolve();
+			return new Promise<void>((resolve) => {
+				job.proc!.on("close", () => resolve());
+			});
+		}),
+	).then(() => undefined);
+}
+
 // --- Comando /subagents --------------------------------------------------------
 
 export function subagentsCommand(

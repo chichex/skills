@@ -4,6 +4,7 @@ import { test } from "node:test";
 
 import {
 	abortRunningJobs,
+	awaitJobsExit,
 	createJobRegistry,
 	formatAbortNotice,
 	formatDuration,
@@ -157,6 +158,53 @@ test("CA-5: killJob es idempotente por job y devuelve si mando la señal", () =>
 	child.close(143);
 	timers[0]!.callback();
 	assert.deepEqual(child.signals, ["SIGTERM"], "sin SIGKILL si el hijo ya cerro");
+});
+
+// PR #48 review (comment 4076517086, hallazgo confirmado): Pi ejecuta
+// `process.exit(0)` apenas el handler de session_shutdown resuelve (ver
+// dispose() en interactive-mode.js), asi que si el handler no espera el
+// cierre real del hijo, un hijo que ignora SIGTERM sobrevive al proceso
+// padre aunque killJob haya agendado el SIGKILL de gracia.
+test("CA-5: awaitJobsExit no resuelve mientras el hijo sigue vivo, ni bien se manda el SIGKILL de gracia: solo tras el close real", async () => {
+	const { deps, timers } = fakeDeps();
+	const registry = createJobRegistry();
+	const child = new FakeChild();
+	const job = runningJob(registry, "implementer", child, deps.now!());
+
+	const aborted = abortRunningJobs(registry, deps);
+	assert.deepEqual(child.signals, ["SIGTERM"]);
+
+	let resolved = false;
+	const waitPromise = awaitJobsExit(aborted).then(() => {
+		resolved = true;
+	});
+
+	// El hijo ignora el SIGTERM: sigue vivo, no debe resolver todavia.
+	await Promise.resolve();
+	await Promise.resolve();
+	assert.equal(resolved, false, "no debe resolver mientras el hijo sigue vivo");
+
+	// A los 5 s de gracia, killJob manda el SIGKILL, pero el hijo TODAVIA no
+	// cerro (el SO tarda un tick en reportar el close real).
+	for (const timer of timers) timer.callback();
+	assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
+	await Promise.resolve();
+	await Promise.resolve();
+	assert.equal(resolved, false, "no debe resolver solo porque se mando el SIGKILL: falta el close real");
+
+	// Recien cuando el hijo efectivamente cierra (fallback de SIGKILL), resuelve.
+	child.close(137);
+	await waitPromise;
+	assert.equal(resolved, true);
+});
+
+test("CA-5: awaitJobsExit resuelve al toque si el hijo ya cerro antes del shutdown", async () => {
+	const registry = createJobRegistry();
+	const child = new FakeChild();
+	const job = runningJob(registry, "implementer", child, 0);
+	job.exited = true;
+	job.status = "aborted";
+	await awaitJobsExit([job]);
 });
 
 test("CA-6: /subagents sin args lista una linea por job con duracion mm:ss, o avisa que no hay", () => {

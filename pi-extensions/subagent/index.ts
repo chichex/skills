@@ -16,6 +16,7 @@ import { Type } from "typebox";
 import { PACKAGE_AGENTS_DIR } from "./agents.ts";
 import {
 	abortRunningJobs,
+	awaitJobsExit,
 	createJobRegistry,
 	formatAbortNotice,
 	MAX_CONCURRENCY,
@@ -108,8 +109,12 @@ export default function (pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.on("session_shutdown", (_event, ctx) => {
+	pi.on("session_shutdown", async (_event, ctx) => {
 		const aborted = abortRunningJobs(registry, runner);
 		if (aborted.length > 0 && ctx.hasUI) ctx.ui.notify(formatAbortNotice(aborted), "warning");
+		// Pi corre process.exit(0) apenas este handler resuelve (PR #48 review
+		// comment 4076517086): sin esperar el cierre real, un hijo que ignora
+		// SIGTERM sobrevive al proceso padre.
+		await awaitJobsExit(aborted);
 	});
 }
