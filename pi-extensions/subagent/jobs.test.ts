@@ -6,12 +6,15 @@ import {
 	abortRunningJobs,
 	awaitJobsExit,
 	createJobRegistry,
+	emptyUsage,
 	formatAbortNotice,
 	formatDuration,
 	formatJobLine,
+	isFailedResult,
 	KILL_GRACE_MS,
 	killJob,
 	type RunnerDeps,
+	type SingleResult,
 	type SpawnLike,
 	subagentsCommand,
 } from "./jobs.ts";
@@ -80,6 +83,32 @@ function runningJob(registry: ReturnType<typeof createJobRegistry>, agent: strin
 	});
 	return job;
 }
+
+function baseResult(overrides: Partial<SingleResult> = {}): SingleResult {
+	return {
+		agent: "implementer",
+		agentSource: "package",
+		task: "t",
+		exitCode: 0,
+		messages: [],
+		stderr: "",
+		usage: emptyUsage(),
+		...overrides,
+	};
+}
+
+// PR #48 review (comment 4076517097, hallazgo confirmado): con --mode json,
+// Pi 0.85.1/0.87.1 sale con exit code 0 aunque el ultimo mensaje tenga
+// stopReason "length" (la respuesta se corto por el limite de tokens); Pi
+// mismo lo presenta como truncado ("Response was truncated before
+// completion."). isFailedResult tiene que tratarlo como fallo terminal.
+test("CA-4: isFailedResult trata stopReason \"length\" como fallo terminal aunque el exit code sea 0", () => {
+	const truncated = baseResult({ exitCode: 0, stopReason: "length" });
+	assert.equal(isFailedResult(truncated), true);
+
+	const ok = baseResult({ exitCode: 0, stopReason: "end" });
+	assert.equal(isFailedResult(ok), false);
+});
 
 test("CA-5: el registro asigna ids sa-1, sa-2, … por sesion y nace `running`", () => {
 	const registry = createJobRegistry();

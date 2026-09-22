@@ -255,6 +255,18 @@ function text(result: { content: Array<{ type: string; text?: string }> }): stri
 	return result.content.map((part) => part.text ?? "").join("");
 }
 
+// A diferencia de `until`, no falla el test si la condicion no se cumple:
+// sirve para detectar, sin colgar el test, si el codigo bajo prueba SIGUE
+// una rama que en el estado buggy no deberia tomar (p. ej. la cadena
+// avanzando a un paso 2 que no debe lanzarse).
+async function settles(condition: () => boolean, iterations = 100): Promise<boolean> {
+	for (let i = 0; i < iterations; i += 1) {
+		if (condition()) return true;
+		await new Promise((done) => setImmediate(done));
+	}
+	return false;
+}
+
 test("CA-3: el hijo se lanza con --mode json -p --no-session, modelo y thinking de la sesion, --tools, prompt temporal 0600 y el task literal al final", async () => {
 	const h = harness();
 	const pending = h.execute("call-1", { agent: "reviewer", task: "/skill:code-review 85 --no-publish" }, undefined, undefined, h.ctx);
@@ -405,6 +417,23 @@ test("CA-4: un hijo que falla inyecta status failed (<stopReason>) con su diagno
 	assert.equal(h.sent[1]!.message.details.jobId, "sa-1");
 });
 
+// PR #48 review (comment 4076517097, hallazgo confirmado): con --mode json,
+// Pi sale con exit code 0 aunque la respuesta se haya truncado por el limite
+// de tokens (stopReason "length"). Sin tratar "length" como fallo, este job
+// background quedaria "completed" con salida truncada.
+test("CA-4: un hijo background con exit 0 pero stopReason \"length\" queda failed (length), no completed", async () => {
+	const h = harness();
+	await h.execute("call-1", { agent: "implementer", task: "a", background: true }, undefined, undefined, h.ctx);
+	const child = h.calls[0]!.child;
+	child.assistant("resultado a medio terminar", { stopReason: "length" });
+	child.close(0);
+	await until(() => h.sent.length === 1, "resultado truncado");
+	assert.equal(h.sent[0]!.message.details.status, "failed");
+	assert.equal(h.sent[0]!.message.details.stopReason, "length");
+	assert.match(h.sent[0]!.message.content, /failed \(length\)/);
+	assert.equal(h.registry.get("sa-1")?.status, "failed");
+});
+
 test("CA-4: un job abortado (kill de CA-5) no emite subagent-result y queda aborted", async () => {
 	const h = harness();
 	await h.execute("call-1", { agent: "implementer", task: "a", background: true }, undefined, undefined, h.ctx);
@@ -522,6 +551,38 @@ test("CA-1: parallel corre las tareas concurrentes con tope de 8 y chain reempla
 	h.calls[3]!.child.assistant("resultado final");
 	h.calls[3]!.child.close(0);
 	assert.equal(text(await chain), "resultado final");
+});
+
+// PR #48 review (comment 4076517097, hallazgo confirmado): un paso de la
+// cadena que termina con exit 0 pero stopReason "length" (salida truncada
+// por el limite de tokens) no puede tratarse como exito: la cadena seguiria
+// usando esa salida truncada como {previous} del paso siguiente.
+test("CA-1: un paso de la cadena con exit 0 pero stopReason \"length\" corta la cadena en vez de seguir con salida truncada", async () => {
+	const h = harness();
+	const chain = h.execute(
+		"c",
+		{ chain: [{ agent: "implementer", task: "primero" }, { agent: "reviewer", task: "Sigue con: {previous}" }] },
+		undefined,
+		undefined,
+		h.ctx,
+	);
+	await until(() => h.calls.length === 1, "paso 1 de la cadena");
+	h.calls[0]!.child.assistant("a medio terminar", { stopReason: "length" });
+	h.calls[0]!.child.close(0);
+
+	// En el estado buggy (stopReason "length" no cuenta como fallo) la cadena
+	// sigue al paso 2 usando la salida truncada como {previous}; alimentamos
+	// ese hijo tambien para no colgar el test en ningun escenario.
+	const continuedToStep2 = await settles(() => h.calls.length === 2);
+	if (continuedToStep2) {
+		h.calls[1]!.child.assistant("siguio de largo con salida truncada");
+		h.calls[1]!.child.close(0);
+	}
+	const result = await chain;
+	assert.equal(continuedToStep2, false, "no debe usar salida truncada (stopReason length) como {previous}");
+	assert.match(text(result), /Chain stopped at step 1 \(implementer\)/);
+	assert.equal(result.isError, true);
+	assert.equal(h.calls.length, 1, "no debe lanzar el paso 2 con salida truncada como {previous}");
 });
 
 test("CA-5: crear la tool no lanza procesos ni timers; solo la tool y el comando los crean", () => {

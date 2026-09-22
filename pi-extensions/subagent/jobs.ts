@@ -240,8 +240,18 @@ export function getFinalOutput(messages: ChildMessage[]): string {
 	return "";
 }
 
+// Con --mode json, Pi sale con exit code 0 aunque el ultimo mensaje tenga
+// stopReason "length" (respuesta truncada por el limite de tokens; Pi mismo
+// lo presenta como "Response was truncated before completion."). Sin esto,
+// un job truncado quedaria completed y una chain seguiria con salida
+// incompleta (PR #48 review, comment 4076517097).
 export function isFailedResult(result: SingleResult): boolean {
-	return result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
+	return (
+		result.exitCode !== 0 ||
+		result.stopReason === "error" ||
+		result.stopReason === "aborted" ||
+		result.stopReason === "length"
+	);
 }
 
 export function getResultOutput(result: SingleResult): string {
