@@ -77,7 +77,7 @@ Un skill sin requisitos no lleva el campo.
 
 ### Claude Code y opencode
 
-Nada extra: solo `SKILL.md` más los archivos de referencia del skill. Un `agents/` copiado a `claude/`, `opencode/` o `pi/` es un error de porteo: el `agents/` de la raíz del repo es el layer de agentes del plugin de Claude Code (`implementer`, `reviewer`), distinto del sidecar `agents/openai.yaml` de cada skill de Codex, y no se portea a ningún otro harness.
+Nada extra: solo `SKILL.md` más los archivos de referencia del skill. Un `agents/` copiado a `claude/`, `opencode/` o `pi/` es un error de porteo: el `agents/` de la raíz del repo es el layer de agentes del plugin de Claude Code (`implementer`, `reviewer`), distinto del sidecar `agents/openai.yaml` de cada skill de Codex. Su único port vive en `pi-extensions/subagent/agents/` (los agentes bundleados con la tool `subagent` del Pi Package: `implementer`, `reviewer` y `scout`, con la misma doctrina y la capa de interacción de Pi: `/skill:` en vez de la tool `Skill`, sin `skills:` ni `model` en el frontmatter, `tools` solo donde el port restringe); codex y opencode no lo reciben. El gate `pi-extensions/agents-gate/agents-gate.test.ts` aplica a ese port los mismos patrones de doctrina que a `agents/`.
 
 ## Reglas de porteo
 
