@@ -284,9 +284,10 @@ test("CA-9: censo de agents/*.md sobre archivos trackeados en git contra la list
 	assert.deepEqual(divergences, [], `censo de agents/: ${divergences.join("; ")}`);
 });
 
-test("CA-1: agents/implementer.md tiene frontmatter valido, skills: [chichex-skills:tdd] y body en orden", async () => {
+test("CA-1: agents/implementer.md tiene frontmatter valido, skills: [chichex-skills:tdd, chichex-skills:sdd-run] y body en orden", async () => {
 	const markdown = await readRepoFile("agents/implementer.md");
-	const verdict = validateAgentFrontmatter("implementer", markdown, ["chichex-skills:tdd"]);
+	// Hallazgo 1 del review de PR #46: `sdd-run con subagente` necesita el skill precargado.
+	const verdict = validateAgentFrontmatter("implementer", markdown, ["chichex-skills:tdd", "chichex-skills:sdd-run"]);
 	assert.deepEqual(verdict.problems, [], `agents/implementer.md: ${verdict.problems.join("; ")}`);
 
 	const parts = splitFrontmatter(markdown);
@@ -439,9 +440,21 @@ test("CA-11: READMEs, harness-port y el contrato documentan el layer de agentes"
 
 test("CA-12: sdd-run nombra Explore + tool Agent en la Fase 2, sin agregar un tipo custom", async () => {
 	const markdown = await readRepoFile("claude/sdd-run/SKILL.md");
-	assert.doesNotMatch(markdown, /subagents en repos grandes\)/);
-	assert.match(markdown, /subagents `Explore` con la tool `Agent`/);
-	assert.doesNotMatch(markdown, /subagents `implementer`|subagents `reviewer`/);
+	// Issue #45: la Fase 6 lanza el subagente `reviewer` para el code review
+	// post-PR; la restricción aplica solo a la exploración de la Fase 2.
+	const phase2 = markdown.match(/## Fase 2 —[\s\S]*?(?=\n## Fase 3 —)/)?.[0] ?? "";
+	assert.ok(phase2, "claude/sdd-run/SKILL.md tiene Fase 2");
+	assert.doesNotMatch(phase2, /subagents en repos grandes\)/);
+	assert.match(phase2, /subagents `Explore` con la tool `Agent`/);
+	assert.doesNotMatch(phase2, /`implementer`|`reviewer`/);
+});
+
+test("issue #45: la description de implementer invita a usarlo proactivamente en cualquier implementación", async () => {
+	const markdown = await readRepoFile("agents/implementer.md");
+	const line = markdown.split("\n").find((candidate) => /^description:/.test(candidate)) ?? "";
+	assert.match(line, /^description: ".*"$/, "description entre comillas dobles");
+	assert.match(line, /PROACTIVAMENTE/);
+	assert.match(line, /cualquier tarea de implementación/i);
 });
 
 test("CA-7: install.sh copia agents/*.md a CLAUDE_AGENTS_DIR en 'claude', 'all' y 'both', sin tocar el home real ni dejar un manifest sin lector", async () => {
