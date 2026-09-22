@@ -13,6 +13,7 @@
     "pi-package"
   ],
   "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*",
@@ -27,6 +28,7 @@
       "./pi-extensions/github-prs/index.ts",
       "./pi-extensions/grill-tools/index.ts",
       "./pi-extensions/inline-skill-autocomplete/index.ts",
+      "./pi-extensions/subagent/index.ts",
       "./pi-extensions/visual-footer.ts",
       "./pi-extensions/wait-pr/index.ts",
       "./pi-extensions/warp-status.ts",
