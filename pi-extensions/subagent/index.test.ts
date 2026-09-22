@@ -492,11 +492,15 @@ test("CA-1: parallel corre las tareas concurrentes con tope de 8 y chain reempla
 
 	const parallel = h.execute("c", { tasks: [{ agent: "implementer", task: "uno" }, { agent: "reviewer", task: "dos" }] }, undefined, undefined, h.ctx);
 	await until(() => h.calls.length === 2, "dos spawns concurrentes");
-	assert.deepEqual(h.calls.map((call) => call.args.at(-1)), ["uno", "dos"]);
-	h.calls[0]!.child.assistant("salida uno");
-	h.calls[0]!.child.close(0);
-	h.calls[1]!.child.assistant("salida dos");
-	h.calls[1]!.child.close(0);
+	// Los dos workers escriben su prompt temporal en paralelo: el orden de los
+	// spawns no esta garantizado, asi que cada hijo se ubica por su task.
+	assert.deepEqual([...h.calls.map((call) => call.args.at(-1))].sort(), ["dos", "uno"], "ambas tareas lanzadas antes de que termine ninguna");
+	const uno = h.calls.find((call) => call.args.at(-1) === "uno")!;
+	const dos = h.calls.find((call) => call.args.at(-1) === "dos")!;
+	uno.child.assistant("salida uno");
+	uno.child.close(0);
+	dos.child.assistant("salida dos");
+	dos.child.close(0);
 	const parallelResult = await parallel;
 	assert.match(text(parallelResult), /Parallel: 2\/2 succeeded/);
 	assert.match(text(parallelResult), /\[implementer\] completed[\s\S]*salida uno/);
