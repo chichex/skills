@@ -284,9 +284,10 @@ test("CA-9: censo de agents/*.md sobre archivos trackeados en git contra la list
 	assert.deepEqual(divergences, [], `censo de agents/: ${divergences.join("; ")}`);
 });
 
-test("CA-1: agents/implementer.md tiene frontmatter valido, skills: [chichex-skills:tdd] y body en orden", async () => {
+test("CA-1: agents/implementer.md tiene frontmatter valido, skills: [chichex-skills:tdd, chichex-skills:sdd-run] y body en orden", async () => {
 	const markdown = await readRepoFile("agents/implementer.md");
-	const verdict = validateAgentFrontmatter("implementer", markdown, ["chichex-skills:tdd"]);
+	// Hallazgo 1 del review de PR #46: `sdd-run con subagente` necesita el skill precargado.
+	const verdict = validateAgentFrontmatter("implementer", markdown, ["chichex-skills:tdd", "chichex-skills:sdd-run"]);
 	assert.deepEqual(verdict.problems, [], `agents/implementer.md: ${verdict.problems.join("; ")}`);
 
 	const parts = splitFrontmatter(markdown);

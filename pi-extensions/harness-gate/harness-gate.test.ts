@@ -95,7 +95,8 @@ const SDD_SPEC_PUBLICATION_DOCTRINE = [
 	/identidad semántica[\s\S]*issue[\s\S]*grill decodificado exacto/i,
 	/precheck[\s\S]*antes de cualquier mutación/i,
 	/releer[\s\S]*cada destino[\s\S]*misma postcondición/i,
-	/`Ambos`[\s\S]*equivalencia normativa/i,
+	/`Llevar a issue`[\s\S]*equivalencia normativa/i,
+	/transición a `state=approved`[\s\S]*mismo gate/i,
 	/staging no-SDD[\s\S]*issue nueva/i,
 	/predecesoras[\s\S]*`state=superseded`[\s\S]*`superseded-by`/i,
 	/receipt exitoso[\s\S]*`Spec lista`/i,
@@ -116,6 +117,8 @@ const SDD_SPEC_FLOW_DOCTRINE = [
 	/`sdd-run con subagente`[\s\S]*solo[\s\S]*subagentes/i,
 	/`state=approved`[\s\S]*antes de lanzar/i,
 	/comments[\s\S]*posteriores[\s\S]*última publicación/i,
+	/--paginate/,
+	/`updated_at`/,
 	/vuelve al menú/i,
 	/`--assume`[\s\S]*sin menú/i,
 ];
@@ -126,7 +129,7 @@ const SDD_RUN_FLOW_DOCTRINE = [
 	/imprimir el plan y seguir/i,
 	/choca con la spec o con una política/i,
 	/`\[DEVIATION\]`[\s\S]*cambia el alcance[\s\S]*preguntar/i,
-	/una sola spec[\s\S]*directo/i,
+	/una sola spec candidata \(estado `draft` o `aprobada`/i,
 	/`draft`[\s\S]*aprobada al correr/i,
 	/`Code review`/,
 	/`\.github\/workflows\/claude-review\.yml`[\s\S]*`workflow_dispatch`/,
@@ -135,6 +138,19 @@ const SDD_RUN_FLOW_DOCTRINE = [
 	/sin GHA[\s\S]*no aparece/i,
 	/encadena[\s\S]*Fase 6/i,
 ];
+
+// Hallazgo 3 del review de PR #46: la rama de `Code review` diverge por
+// harness (subagente solo en Claude) y cada una tiene que quedar gateada.
+const CODE_REVIEW_BRANCH: Record<Harness, RegExp> = {
+	claude: /`Code review` en Claude Code[\s\S]*`workflow_dispatch`[\s\S]*subagent_type: "reviewer"[\s\S]*`\/code-review --comment`/,
+	codex: /`Code review` en Codex[\s\S]*sin subagentes[\s\S]*solo (?:aparece )?(?:si|por GHA)[\s\S]*`workflow_dispatch`/i,
+	opencode: /`Code review` en opencode[\s\S]*sin subagentes[\s\S]*solo (?:aparece )?(?:si|por GHA)[\s\S]*`workflow_dispatch`/i,
+	pi: /`Code review` en Pi[\s\S]*sin subagentes[\s\S]*solo (?:aparece )?(?:si|por GHA)[\s\S]*`workflow_dispatch`/i,
+};
+
+// Hallazgo 10 del review de PR #46: fuera de Claude la oferta califica
+// `Code review` inline como GHA-only.
+const CODE_REVIEW_OFFER_QUALIFIED = /`Code review` \(solo con GHA\)/;
 
 const FEEDBACK_REMEDIATION_QUESTION_STYLE: Record<Harness, RegExp> = {
 	claude: /usar `AskUserQuestion`[\s\S]*Resolver feedback automáticamente/,
@@ -462,6 +478,23 @@ test("sdd-spec avanza sin preguntar inferencias ni mecanismo y cierra con menú 
 	assert.deepEqual(compareTemplates("sdd-spec flow", byHarness), []);
 });
 
+test("sdd-spec no contradice que `Llevar a issue` conserva el .md, y Pi revierte la aprobación cancelada", async () => {
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
+		for (const line of markdown.split("\n")) {
+			if (/(?:no crea además una|sin crear una) copia en `\.sdd\/specs\/`/.test(line)) {
+				assert.match(line, /Llevar a issue/, `${harness}/sdd-spec/SKILL.md niega la copia local sin exceptuar Llevar a issue`);
+			}
+		}
+		assert.doesNotMatch(delimitedDoctrine(markdown, "sdd-spec-publication-gate"), /`Ambos`/,
+			`${harness}/sdd-spec/SKILL.md nombra una opción \`Ambos\` que ya no existe`);
+	}
+	const pi = await readRepoFile("pi/sdd-spec/SKILL.md");
+	assert.match(pi, /`mode: "assume"`[\s\S]*`draft`[\s\S]*`mode: "interactive"`[\s\S]*`approved`/,
+		"Pi declara qué mode del runtime publica draft y cuál aprueba");
+	assert.match(pi, /cancel[\s\S]{0,200}revert[\s\S]{0,200}`draft`/i, "Pi revierte a draft si se cancela Ejecutar ahora");
+});
+
 test("sdd-spec lanza el run con subagente implementer en background solo en Claude", async () => {
 	const claude = await readRepoFile("claude/sdd-spec/SKILL.md");
 	assert.match(claude, /subagent_type: "implementer"/);
@@ -489,6 +522,16 @@ test("sdd-run imprime el plan y sigue, desvía sin preguntar y ofrece code revie
 		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
 	}
 	assert.deepEqual(compareTemplates("sdd-run flow", byHarness), []);
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
+		assert.match(markdown, CODE_REVIEW_BRANCH[harness], `${harness}/sdd-run/SKILL.md no gatea su rama de Code review`);
+		if (harness !== "claude") {
+			assert.match(markdown, CODE_REVIEW_OFFER_QUALIFIED, `${harness}/sdd-run/SKILL.md ofrece Code review sin calificarlo como GHA-only`);
+			assert.doesNotMatch(markdown, /subagent_type/, `${harness}/sdd-run/SKILL.md no debe depender de subagentes de Claude`);
+		}
+		// Hallazgo 2: con `--assume` la política de dependencias `preguntar` no puede frenar.
+		assert.match(markdown, /`preguntar` → [^\n]*`--assume`/, `${harness}/sdd-run/SKILL.md frena con --assume ante deps 'preguntar'`);
+	}
 	const claude = await readRepoFile("claude/sdd-run/SKILL.md");
 	assert.match(claude, /subagent_type: "reviewer"/, "Claude lanza el review con el subagente reviewer");
 	assert.match(claude, /`\/code-review --comment`/, "Claude nombra el code review nativo");

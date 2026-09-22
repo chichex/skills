@@ -24,7 +24,7 @@ Tres ideas fuerza:
 <!-- sdd-run-flow:start -->
 ### Flujo sin fricción
 
-- **Lanzador**: si hay una sola spec candidata, usarla directo informando cuál; con varias, preguntar cuál. No se pregunta intensidad.
+- **Lanzador**: si hay una sola spec candidata (estado `draft` o `aprobada`; las `implementada` o `reemplazada` no cuentan), usarla directo informando cuál; con varias, preguntar cuál. No se pregunta intensidad.
 - **Spec en `draft`**: correrla es aceptar sus `[ASSUMED]`; no se pregunta. El run la trata como aprobada al correr y lo anota en el PR ("aprobada al correr").
 - **Plan**: imprimir el plan y seguir — pasos ↔ CAs, archivos que toca, seams y qué queda afuera — sin pedir aprobación. Frenar a preguntar solo si el plan choca con la spec o con una política de generación (no entra en el tamaño máximo de PR, o necesita una dependencia nueva con política `preguntar`).
 - **Desviaciones**: si no cambia el alcance, documentar `[DEVIATION]` en la spec con fecha y seguir; si cambia el alcance, preguntar (con `--assume`, abortar honesto con el estado committeado en el branch).
@@ -47,7 +47,7 @@ con la evidencia. Specs disponibles:
 Atajo: /sdd-run <spec|#NN> [--assume] [--no-pr] saltea este menu.
 ```
 
-Si hay una sola spec candidata, usarla directo informando cuál. Con varias, usar `AskUserQuestion` — "¿Cuál spec corremos?": una opción por spec (máximo 3, las más recientes; el resto vía custom) + `Ninguna, hay que especificar primero` → ofrecer `/sdd-spec`.
+Si hay una sola spec candidata (estado `draft` o `aprobada`), usarla directo informando cuál. Con varias, usar `AskUserQuestion` — "¿Cuál spec corremos?": una opción por spec (máximo 3, las más recientes; el resto vía custom) + `Ninguna, hay que especificar primero` → ofrecer `/sdd-spec`.
 
 ## Fase 1 — Precondiciones (bloqueante)
 
@@ -73,7 +73,7 @@ Planificar contra el código real, no contra la idea del código (explorar lo qu
 - Orden test-first para los CA ALTA: los tests del plan de verificación se escriben ANTES que la implementación, y tienen que fallar primero (rojo → verde es la evidencia de que el test observa algo real).
 - El plan declara los **seams** bajo prueba — las interfaces públicas donde se observa comportamiento (doctrina de `/tdd`). Preferir seams existentes, y el más alto posible; quedan impresos en el plan para que el usuario los vea.
 - Si el plan revela que un CA es incoherente con el código real (la spec asumió algo que no existe): NO improvisar — es una desviacion, se maneja como dice la Fase 3.
-- **Políticas de generación en el plan**: con *tamaño máximo de PR* activo, estimar el blast-radius del plan contra el límite — si la spec entera no cabe, frenar y preguntar: partirla (`/sdd-spec`) o seguir sabiendo que el PR puede terminar en draft; `--assume` → seguir y que el gate del cierre juzgue. Con *dependencias nuevas: prohibido/preguntar*, el plan declara toda dep nueva que necesite — `prohibido` → replantear sin la dep o dejarlo como FALLA honesta; `preguntar` → frenar y preguntar antes de implementar. Las políticas de la tecnología — gates y `guia` (estilo, max líneas por archivo, constructos prohibidos) — se adoptan al ESCRIBIR el código: se genera siguiendolas, no se corrige al final.
+- **Políticas de generación en el plan**: con *tamaño máximo de PR* activo, estimar el blast-radius del plan contra el límite — si la spec entera no cabe, frenar y preguntar: partirla (`/sdd-spec`) o seguir sabiendo que el PR puede terminar en draft; `--assume` → seguir y que el gate del cierre juzgue. Con *dependencias nuevas: prohibido/preguntar*, el plan declara toda dep nueva que necesite — `prohibido` → replantear sin la dep o dejarlo como FALLA honesta; `preguntar` → frenar y preguntar antes de implementar; con `--assume`, no agregar la dep: replantear sin ella o dejarla como FALLA honesta. Las políticas de la tecnología — gates y `guia` (estilo, max líneas por archivo, constructos prohibidos) — se adoptan al ESCRIBIR el código: se genera siguiendolas, no se corrige al final.
 
 **Plan impreso, sin gate**: imprimir el plan resumido (pasos ↔ CAs, archivos que toca, seams, qué queda explícitamente afuera) y seguir sin pedir aprobación. Solo se pregunta, con `AskUserQuestion`, si el plan choca con la spec o con una política (los dos casos de arriba). El plan NO se escribe a disco — vive en la conversación y muere con ella.
 
