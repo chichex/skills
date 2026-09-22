@@ -131,7 +131,7 @@ const SDD_RUN_FLOW_DOCTRINE = [
 	/`Code review`/,
 	/`\.github\/workflows\/claude-review\.yml`[\s\S]*`workflow_dispatch`/,
 	/gh workflow run claude-review\.yml -f pr=<N>/,
-	/subagente `reviewer`[\s\S]*`\/code-review --comment`/,
+	/subagente `reviewer`[\s\S]*code review nativo[\s\S]*`--comment`/,
 	/sin GHA[\s\S]*no aparece/i,
 	/encadena[\s\S]*Fase 6/i,
 ];
@@ -491,6 +491,7 @@ test("sdd-run imprime el plan y sigue, desvía sin preguntar y ofrece code revie
 	assert.deepEqual(compareTemplates("sdd-run flow", byHarness), []);
 	const claude = await readRepoFile("claude/sdd-run/SKILL.md");
 	assert.match(claude, /subagent_type: "reviewer"/, "Claude lanza el review con el subagente reviewer");
+	assert.match(claude, /`\/code-review --comment`/, "Claude nombra el code review nativo");
 });
 
 test("ultracode no aparece en ningún skill de claude/", async () => {

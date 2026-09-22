@@ -22,14 +22,13 @@ Se referencia desde el `CLAUDE.md` del proyecto (línea `@.sdd/project.md`) para
 ## Argumentos
 
 ```text
-/sdd-init [pistas libres] [--assume] [--no-verify] [--update] [--no-import] [--ultracode]
+/sdd-init [pistas libres] [--assume] [--no-verify] [--update] [--no-import]
 ```
 
 - `--assume` — cero preguntas: los gaps se resuelven con la assumption más conservadora y quedan marcados `[NEEDS-INPUT]` en el doc. Para correr desatendido.
 - `--no-verify` — no ejecutar comandos: documenta lo detectado como `no probado`. Útil en repos con builds carísimos.
 - `--update` — refresco de un `.sdd/project.md` existente: re-explora, re-verifica, pero PRESERVA la sección `## Decisiones humanas` y las respuestas previas. Además ofrece las capacidades que el skill ganó desde que el contrato se generó (ver "## Upgrade de contrato").
 - `--no-import` — no tocar `CLAUDE.md`.
-- `--ultracode` — sube el motor a orquestación multi-agente con la tool `Workflow`. NO cambia QUÉ se produce — mismo contrato, misma estructura, misma doctrina (cada comando se ejecuta antes de documentarse, nada de estado inventado, read-only hacia afuera) — cambia el CÓMO: exploración en fan-out, verificación adversarial de los comandos que el contrato afirma, y un completeness critic sobre la escalera. Ortogonal a `--assume`/`--no-verify`/`--update`/`--no-import` (componen; con `--no-verify` no hay comandos que re-verificar, así que ultracode solo ensancha la exploración). Default siempre normal; ultracode es opt-in. Ver "## Ultracode".
 
 ## Fase 0 — Lanzador (solo con `/sdd-init` pelado)
 
@@ -54,7 +53,7 @@ commits, politicas de tu tecnologia) que /sdd-run aplica como gates duros.
                             se asume conservadora y queda [NEEDS-INPUT] en el doc
                             para revisar despues.                    (--assume)
 
-Atajo: /sdd-init <pistas> [--assume] [--no-verify] [--ultracode] saltea este menu.
+Atajo: /sdd-init <pistas> [--assume] [--no-verify] saltea este menu.
 ```
 
 Luego usar `AskUserQuestion` — una pregunta, "¿Ejecuto los comandos para verificarlos, y te pregunto las dudas?":
@@ -62,8 +61,6 @@ Luego usar `AskUserQuestion` — una pregunta, "¿Ejecuto los comandos para veri
 1. `Verificar y preguntar (Recomendado)` — ejecuta test/build para probar que funcionan; pregunta solo los gaps que el código no responde.
 2. `Sin ejecutar nada` — solo explora y documenta; los comandos quedan `no probado` (`--no-verify`).
 3. `Sin preguntar nada` — corre desatendido; las dudas se asumen conservadoras y quedan `[NEEDS-INPUT]` (`--assume`).
-
-Resuelto el modo, preguntar la intensidad con un segundo `AskUserQuestion` — "¿Con qué intensidad exploro?": `Normal (Recomendado)` — la de siempre — / `Ultracode` — exploración en fan-out, verificación adversarial de cada comando que el contrato va a afirmar, y completeness critic sobre la escalera; más costo en tokens (equivale a `--ultracode`; ver "## Ultracode").
 
 ## Fase 1 — Exploración
 
@@ -211,18 +208,6 @@ En `--update`: regenerar todo salvo `## Decisiones humanas` y `## Politicas de g
 
 Cablear el contrato en `CLAUDE.md` para que TODA sesión de Claude Code lo cargue, no solo las sdd: si `CLAUDE.md` existe y no contiene `@.sdd/project.md`, agregar al final una línea `@.sdd/project.md`; si no existe, crearlo con solo esa línea; si ya está, no tocar nada.
 
-## Ultracode — orquestación adversarial
-
-Motor alternativo para las Fases 1-2 y el cierre, sobre la tool `Workflow`. Activo cuando el run corre con `--ultracode` o se eligió `Ultracode` en el lanzador. Produce el MISMO contrato con la MISMA estructura y la MISMA doctrina — cada comando se EJECUTA antes de documentarse, se distingue `verificado`/`FALLA`/`no probado`, nada de estado inventado, read-only hacia afuera, cero commits. Ultracode no afloja NADA: cambia el CÓMO — de un hilo a fan-out determinista — y agrega una capa adversarial que es la forma más fuerte de la razón de ser del skill (un contrato con comandos no probados vale poco): el `verificado` no se cree, se re-corre y se intenta refutar. Todos los MUST NOT DO siguen intactos — en particular el read-only: los verificadores adversariales tampoco mutan estado externo.
-
-Por fase (todo lo no mencionado queda igual):
-
-- **Fase 1 (exploración)** — fan-out más ancho: además de las dos ramas `Explore` de base (harness / ambientes y verificabilidad), sumar lentes por CI, servicios externos, convenciones del repo y git/PR — un `Workflow` con una rama por lente, cada una devuelve evidencia con su fuente exacta (script, lockfile, config), no adivinada por el nombre.
-- **Fase 2 (verificación empírica)** — el corazón. Los comandos finitos (test/build/lint/typecheck) se verifican en paralelo, cada uno con su timeout, y sobre cada resultado corre verificación ADVERSARIAL: un escéptico re-corre el comando desde limpio y busca que el estado documentado NO se sostenga — un `verificado` cuyo comando en realidad no corrió o dio otra cosa, una duración inventada, un `FALLA` cuyo error se resumió mal, un `no probado` que en verdad se podía probar. El estado de cada comando queda en pie SOLO con evidencia reproducible (la corrida y su salida). Los procesos largos se arrancan, se reconoce la señal de vida y se MATAN igual que en normal — el paralelismo no deja procesos colgados. Con `--no-verify` esta fase no corre, así que ultracode no aplica acá.
-- **Cierre (Fase 4)** — antes de escribir el contrato, un completeness critic (loop-until-dry) audita: ¿la escalera de verificación declara un escalón que ningún comando probado respalda? ¿quedó un ambiente o env var sin documentar? ¿algún `Limite` obvio sin listar? ¿algún comando afirmado sin evidencia de corrida? Lo que marque se resuelve o cae a `## Gaps` con su motivo — no se cierra con huecos en silencio.
-
-Con `--assume`, ultracode corre igual pero sin los `AskUserQuestion`: los gaps se asumen conservadores y quedan `[NEEDS-INPUT]` como siempre.
-
 ## Reporte
 
 ```text
@@ -247,7 +232,6 @@ tomadas ("mejoras disponibles" con --assume), una linea>
 - En corridas sobre un contrato existente, cruzarlo contra la checklist de "## Upgrade de contrato" y OFRECER los faltantes — nunca agregarlos sin preguntar, nunca callarlos.
 - Preservar `## Decisiones humanas` y `## Politicas de generacion` en `--update`.
 - Ser idempotente: re-correr sobre un repo ya inicializado actualiza, no duplica (ni el doc ni el import de CLAUDE.md).
-- Con `--ultracode`: producir el MISMO contrato con la MISMA doctrina, solo orquestado; cada comando `verificado` sobrevive a un re-corrido escéptico con evidencia reproducible, y el completeness critic corre antes de escribir.
 
 ## MUST NOT DO
 
@@ -258,4 +242,3 @@ tomadas ("mejoras disponibles" con --assume), una linea>
 - No inferir ni asumir políticas de generación: si el usuario no las eligió (o corrió `--assume`), la sección queda vacía. Y no activar una cuyo gate no se pueda medir hoy (coverage sin comando verificado va a Gaps, no al contrato). Una preferencia sin gate medible jamás se disfraza de gate: o es `guia` explícita o no entra.
 - No pisar un `.sdd/project.md` editado a mano sin preservar `## Decisiones humanas`.
 - No commitear nada.
-- Ultracode multiplica verificadores (re-corridos escépticos, completeness critic), nunca afloja criterios ni el read-only: el fan-out no autoriza documentar un `verificado` sin evidencia de corrida, inventar un estado, ni que un verificador adversarial mute estado externo. Los escépticos re-corren y refutan, no maquillan el contrato.
