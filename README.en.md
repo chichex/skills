@@ -123,7 +123,28 @@ The `claude/` skills can be installed as a Claude Code plugin, without cloning t
 /plugin install chichex-skills@chichex
 ```
 
-The plugin exposes every skill in `claude/` and the agents of `agents/` — the custom `implementer` and `reviewer` subagents that the SDD doctrine invokes by their `description`, not by a fixed name — and updates itself with each push to the repo (no pinned version: Claude Code versions by commit, so each push arrives as an automatic update).
+The plugin exposes every skill in `claude/` and the agents of `agents/` — the custom `implementer` and `reviewer` subagents that the SDD doctrine invokes by their `description`, not by a fixed name.
+
+**Updates:** Claude Code does not refresh third-party marketplaces on its own: they ship with auto-update disabled, so the plugin stays on the commit you installed until you update it by hand. To make it follow every push to `main`, enable auto-update for the `chichex` marketplace in one of two ways:
+
+- in a session: `/plugin` → Marketplaces → `chichex` → **Enable auto-update**;
+- or declare it in `~/.claude/settings.json`:
+
+  ```json
+  "extraKnownMarketplaces": {
+    "chichex": {
+      "source": { "source": "github", "repo": "chichex/skills" },
+      "autoUpdate": true
+    }
+  }
+  ```
+
+With that, Claude Code refreshes the marketplace and updates the plugin in the background shortly after each session starts (with a delay of up to ten minutes) and prompts you to run `/reload-plugins`; otherwise the new version loads on the next launch. Since `plugin.json` does not pin a `version`, Claude Code versions by commit, so every push to `main` arrives as an update. To catch up without waiting:
+
+```
+claude plugin marketplace update chichex
+claude plugin update chichex-skills@chichex
+```
 
 ### Pi: as a native Pi Package (recommended)
 
