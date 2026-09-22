@@ -5,7 +5,7 @@ tags: [adherence, sdd-spec]
 runs: 1
 context:
   add_dirs:
-    - ../fixtures/mini-cli
+    - fixtures/mini-cli
 execution:
   model: claude-sonnet-5
   max_turns: 40
