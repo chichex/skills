@@ -8,7 +8,9 @@
 // docs/harness-interaction-differences.md.
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 import { parseSddArtifact } from "../sdd-artifacts/index.ts";
@@ -89,7 +91,7 @@ const FEEDBACK_REMEDIATION_DOCTRINE = [
 const SDD_SPEC_PUBLICATION_DOCTRINE = [
 	/`parseSddArtifact`/,
 	/`kind=metadata`[\s\S]*`format=canonical`[\s\S]*`type=spec`/,
-	/interactivo[\s\S]*`state=approved`[\s\S]*`--assume`[\s\S]*`state=draft`/i,
+	/siempre[\s\S]*`state=draft`[\s\S]*`state=approved`[\s\S]*eleg[\s\S]*run/i,
 	/identidad semántica[\s\S]*issue[\s\S]*grill decodificado exacto/i,
 	/precheck[\s\S]*antes de cualquier mutación/i,
 	/releer[\s\S]*cada destino[\s\S]*misma postcondición/i,
@@ -97,6 +99,41 @@ const SDD_SPEC_PUBLICATION_DOCTRINE = [
 	/staging no-SDD[\s\S]*issue nueva/i,
 	/predecesoras[\s\S]*`state=superseded`[\s\S]*`superseded-by`/i,
 	/receipt exitoso[\s\S]*`Spec lista`/i,
+];
+
+// Issue #45: sdd-spec avanza sin preguntar y cierra con un menú; doctrina
+// idéntica entre harnesses dentro del bloque `sdd-spec-flow`.
+const SDD_SPEC_FLOW_DOCTRINE = [
+	/inferencias nuevas[\s\S]*`\[ASSUMED\]`[\s\S]*sin preguntar/i,
+	/decisiones del handoff[\s\S]*confirmadas/i,
+	/mecanismo[\s\S]*propuesto[\s\S]*alternativas[\s\S]*sin preguntar/i,
+	/`--out`[\s\S]*fuerza/i,
+	/SDD-Tracking in:body/,
+	/`\.sdd\/specs\/<slug>\.md`/,
+	/staging no-SDD/,
+	/`Llevar a issue`/,
+	/`Solicitar cambios`/,
+	/`sdd-run con subagente`[\s\S]*solo[\s\S]*subagentes/i,
+	/`state=approved`[\s\S]*antes de lanzar/i,
+	/comments[\s\S]*posteriores[\s\S]*última publicación/i,
+	/vuelve al menú/i,
+	/`--assume`[\s\S]*sin menú/i,
+];
+
+// Issue #45: sdd-run imprime el plan y sigue, desvía sin preguntar cuando no
+// cambia el alcance y ofrece code review post-PR. Bloque `sdd-run-flow`.
+const SDD_RUN_FLOW_DOCTRINE = [
+	/imprimir el plan y seguir/i,
+	/choca con la spec o con una política/i,
+	/`\[DEVIATION\]`[\s\S]*cambia el alcance[\s\S]*preguntar/i,
+	/una sola spec[\s\S]*directo/i,
+	/`draft`[\s\S]*aprobada al correr/i,
+	/`Code review`/,
+	/`\.github\/workflows\/claude-review\.yml`[\s\S]*`workflow_dispatch`/,
+	/gh workflow run claude-review\.yml -f pr=<N>/,
+	/subagente `reviewer`[\s\S]*`\/code-review --comment`/,
+	/sin GHA[\s\S]*no aparece/i,
+	/encadena[\s\S]*Fase 6/i,
 ];
 
 const FEEDBACK_REMEDIATION_QUESTION_STYLE: Record<Harness, RegExp> = {
@@ -402,6 +439,70 @@ test("sdd-spec exige la postcondición canónica antes de cualquier éxito obser
 		commonDoctrine.set(harness, [normalizedDoctrine]);
 	}
 	assert.deepEqual(compareTemplates("sdd-spec publication doctrine", commonDoctrine), []);
+});
+
+test("sdd-spec avanza sin preguntar inferencias ni mecanismo y cierra con menú en cada harness", async () => {
+	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
+	const byHarness = new Map<Harness, string[]>();
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
+		assert.doesNotMatch(markdown, /¿Alguna inferencia a revisar\?/, `${harness}/sdd-spec/SKILL.md todavía pregunta las inferencias`);
+		assert.doesNotMatch(markdown, /¿Con qué lo verificamos\?/, `${harness}/sdd-spec/SKILL.md todavía pregunta el mecanismo`);
+		assert.doesNotMatch(markdown, /¿Con qué intensidad\?/, `${harness}/sdd-spec/SKILL.md todavía pregunta la intensidad`);
+		const doctrine = delimitedDoctrine(markdown, "sdd-spec-flow");
+		for (const expected of SDD_SPEC_FLOW_DOCTRINE) {
+			assert.match(doctrine, expected, `${harness}/sdd-spec/SKILL.md no declara ${expected}`);
+		}
+		const flowStart = markdown.indexOf("<!-- sdd-spec-flow:start -->");
+		const reportStart = markdown.indexOf("## Reporte");
+		assert.ok(flowStart >= 0 && reportStart >= 0 && flowStart < reportStart,
+			`${harness}/sdd-spec/SKILL.md declara el flujo después del reporte`);
+		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
+	}
+	assert.deepEqual(compareTemplates("sdd-spec flow", byHarness), []);
+});
+
+test("sdd-spec lanza el run con subagente implementer en background solo en Claude", async () => {
+	const claude = await readRepoFile("claude/sdd-spec/SKILL.md");
+	assert.match(claude, /subagent_type: "implementer"/);
+	assert.match(claude, /run_in_background/);
+	assert.match(claude, /`general-purpose`[\s\S]*(anunci|avis)/i);
+	assert.match(claude, /--assume/);
+	for (const harness of HARNESSES.filter((candidate) => candidate !== "claude")) {
+		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
+		assert.doesNotMatch(markdown, /subagent_type/, `${harness}/sdd-spec/SKILL.md no debe depender de subagentes de Claude`);
+	}
+});
+
+test("sdd-run imprime el plan y sigue, desvía sin preguntar y ofrece code review post-PR en cada harness", async () => {
+	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
+	const byHarness = new Map<Harness, string[]>();
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
+		assert.doesNotMatch(markdown, /¿Con qué intensidad la corremos\?/, `${harness}/sdd-run/SKILL.md todavía pregunta la intensidad`);
+		assert.doesNotMatch(markdown, /Interactivo: decirlo y preguntar si seguir/, `${harness}/sdd-run/SKILL.md todavía pregunta por specs en draft`);
+		assert.doesNotMatch(markdown, /`Aprobar \(Recomendado\)` \/ `Ajustar`/, `${harness}/sdd-run/SKILL.md todavía frena en el gate del plan`);
+		const doctrine = delimitedDoctrine(markdown, "sdd-run-flow");
+		for (const expected of SDD_RUN_FLOW_DOCTRINE) {
+			assert.match(doctrine, expected, `${harness}/sdd-run/SKILL.md no declara ${expected}`);
+		}
+		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
+	}
+	assert.deepEqual(compareTemplates("sdd-run flow", byHarness), []);
+	const claude = await readRepoFile("claude/sdd-run/SKILL.md");
+	assert.match(claude, /subagent_type: "reviewer"/, "Claude lanza el review con el subagente reviewer");
+});
+
+test("ultracode no aparece en ningún skill de claude/", async () => {
+	const listing = spawnSync("git", ["ls-files", "claude/"], { cwd: fileURLToPath(repoFile("")), encoding: "utf8" });
+	assert.equal(listing.status, 0, listing.stderr);
+	const files = listing.stdout.split("\n").filter((path) => path.endsWith(".md"));
+	assert.ok(files.length > 0, "git ls-files lista skills de claude/");
+	const offenders: string[] = [];
+	for (const path of files) {
+		if (/ultracode/i.test(await readRepoFile(path))) offenders.push(path);
+	}
+	assert.deepEqual(offenders, []);
 });
 
 test(".sdd/project.md lleva el marker canonico type=project", async () => {
