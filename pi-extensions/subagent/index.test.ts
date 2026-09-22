@@ -132,6 +132,168 @@ test("CA-1: la factory registra la tool `subagent` con su schema, el comando /su
 	assert.ok(events.includes("session_shutdown"), "registra el kill de CA-5");
 });
 
+// --- PR #48 review (comment 4076517102): isError a traves del runtime real --
+
+function usage() {
+	return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+}
+
+// AgentToolResult de Pi (@earendil-works/pi-agent-core) no define `isError`;
+// `executePreparedToolCall` fija `isError: false` para cualquier execute()
+// que resuelva normalmente y solo pone `true` si la promesa rechaza. Este
+// test corre la tool REAL (registrada por la factory real) a traves del
+// Agent real de pi-agent-core con un streamFn scripteado (sin proveedores:
+// nunca llama una API), y observa `tool_execution_end.isError` tal como lo
+// veria Pi en produccion — no el `ToolResult.isError` que tool.ts devuelve
+// como dato interno.
+test("CA-3: un rechazo de la tool (nesting) llega como tool_execution_end.isError=true en el runtime real de Pi", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const sandbox = mkdtempSync(join(tmpdir(), "chichex-subagent-runtime-"));
+	cleanups.push(sandbox);
+	mkdirSync(join(sandbox, "agents"), { recursive: true });
+	for (const entry of readdirSync(EXTENSION_DIR)) {
+		if (entry.endsWith(".ts") && !entry.endsWith(".test.ts")) copyFileSync(join(EXTENSION_DIR, entry), join(sandbox, entry));
+	}
+	for (const entry of readdirSync(join(EXTENSION_DIR, "agents"))) {
+		copyFileSync(join(EXTENSION_DIR, "agents", entry), join(sandbox, "agents", entry));
+	}
+	const scopedRoot = join(sandbox, "node_modules", "@earendil-works");
+	mkdirSync(scopedRoot, { recursive: true });
+	for (const packageName of ["pi-ai", "pi-tui", "pi-agent-core"]) {
+		symlinkSync(join(PI_PACKAGE_ROOT!, "node_modules", "@earendil-works", packageName), join(scopedRoot, packageName), "dir");
+	}
+	symlinkSync(PI_PACKAGE_ROOT!, join(scopedRoot, "pi-coding-agent"), "dir");
+	symlinkSync(join(PI_PACKAGE_ROOT!, "node_modules", "typebox"), join(sandbox, "node_modules", "typebox"), "dir");
+
+	const { default: register } = await import(`${pathToFileURL(join(sandbox, "index.ts")).href}?test=${Date.now()}`);
+	const tools: Array<{ name: string; execute: (...args: any[]) => Promise<any> }> = [];
+	register({
+		registerTool(tool: { name: string; execute: (...args: any[]) => Promise<any> }) {
+			tools.push(tool);
+		},
+		registerCommand() {},
+		on() {},
+		sendMessage() {},
+		events: { on() {}, emit() {} },
+	} as never);
+	const subagentTool = tools[0]!;
+	// El AgentTool de pi-agent-core (la interfaz que consume el Agent real)
+	// llama execute(toolCallId, params, signal, onUpdate) con 4 argumentos:
+	// pi-coding-agent es quien liga el 5to (`ctx: ExtensionContext`) antes de
+	// entregar la tool a pi-agent-core. Como este test no levanta esa capa
+	// completa, ligamos un ctx minimo equivalente (mismo shape que
+	// ToolContextLike) para ejercitar el mismo camino que corre en produccion.
+	const fakeCtx = {
+		cwd: sandbox,
+		hasUI: false,
+		isProjectTrusted: () => true,
+		model: { provider: "anthropic", id: "test-model" },
+		thinkingLevel: "off",
+		ui: { confirm: async () => true },
+	};
+	const wrappedTool = {
+		...subagentTool,
+		execute: (toolCallId: string, params: unknown, signal: unknown, onUpdate: unknown) =>
+			subagentTool.execute(toolCallId, params, signal, onUpdate, fakeCtx),
+	};
+
+	// pi-agent-core resuelve `@earendil-works/pi-ai` desde su propio
+	// node_modules hoisted (sibling de pi-agent-core dentro de
+	// pi-coding-agent/node_modules): un import por path absoluto no necesita
+	// sandbox propio.
+	const agentCoreEntry = join(PI_PACKAGE_ROOT!, "node_modules", "@earendil-works", "pi-agent-core", "dist", "index.js");
+	const piAiEntry = join(PI_PACKAGE_ROOT!, "node_modules", "@earendil-works", "pi-ai", "dist", "index.js");
+	const { Agent } = await import(pathToFileURL(agentCoreEntry).href);
+	const { createAssistantMessageEventStream } = await import(pathToFileURL(piAiEntry).href);
+
+	const previousDepth = process.env.PI_SUBAGENT_DEPTH;
+	process.env.PI_SUBAGENT_DEPTH = "1"; // simula un padre ya anidado (CA-3)
+	try {
+		let call = 0;
+		function streamFn() {
+			call += 1;
+			const stream = createAssistantMessageEventStream();
+			const message =
+				call === 1
+					? {
+							role: "assistant",
+							content: [{ type: "toolCall", id: "call-1", name: "subagent", arguments: { agent: "implementer", task: "t" } }],
+							api: "anthropic-messages",
+							provider: "anthropic",
+							model: "test-model",
+							usage: usage(),
+							stopReason: "toolUse",
+							timestamp: Date.now(),
+						}
+					: {
+							role: "assistant",
+							content: [{ type: "text", text: "listo" }],
+							api: "anthropic-messages",
+							provider: "anthropic",
+							model: "test-model",
+							usage: usage(),
+							stopReason: "stop",
+							timestamp: Date.now(),
+						};
+			stream.push({ type: "done", reason: message.stopReason, message });
+			return stream;
+		}
+
+		const agent = new Agent({
+			streamFn,
+			initialState: {
+				systemPrompt: "test",
+				model: { provider: "anthropic", id: "test-model" },
+				thinkingLevel: "off",
+				tools: [wrappedTool],
+				messages: [],
+			},
+		});
+		const toolEvents: Array<{ toolName: string; isError: boolean }> = [];
+		agent.subscribe((event: { type: string; toolName?: string; isError?: boolean }) => {
+			if (event.type === "tool_execution_end") toolEvents.push(event as { toolName: string; isError: boolean });
+		});
+
+		await agent.prompt("dispara un subagente anidado");
+
+		assert.equal(toolEvents.length, 1);
+		assert.equal(toolEvents[0]!.toolName, "subagent");
+		assert.equal(toolEvents[0]!.isError, true, "el rechazo de nesting debe llegar como tool_execution_end.isError");
+	} finally {
+		if (previousDepth === undefined) delete process.env.PI_SUBAGENT_DEPTH;
+		else process.env.PI_SUBAGENT_DEPTH = previousDepth;
+	}
+});
+
+// Companero necesario del fix anterior: al hacer que index.ts lance una
+// excepcion cuando `result.isError`, Pi colapsa ese resultado a
+// `{content, details: {}}` (createErrorToolResult) para el transcript real.
+// render.ts asumia `details.results` siempre presente; sin el `?.`, un
+// resultado de error real crashearia el renderResult de la TUI.
+test("renderResult no crashea con `details: {}` (lo que produce Pi al colapsar un execute() que rechaza)", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const sandbox = mkdtempSync(join(tmpdir(), "chichex-subagent-render-"));
+	cleanups.push(sandbox);
+	for (const entry of readdirSync(EXTENSION_DIR)) {
+		if (entry.endsWith(".ts") && !entry.endsWith(".test.ts")) copyFileSync(join(EXTENSION_DIR, entry), join(sandbox, entry));
+	}
+	const scopedRoot = join(sandbox, "node_modules", "@earendil-works");
+	mkdirSync(scopedRoot, { recursive: true });
+	for (const packageName of ["pi-ai", "pi-tui", "pi-agent-core"]) {
+		symlinkSync(join(PI_PACKAGE_ROOT!, "node_modules", "@earendil-works", packageName), join(scopedRoot, packageName), "dir");
+	}
+	symlinkSync(PI_PACKAGE_ROOT!, join(scopedRoot, "pi-coding-agent"), "dir");
+	symlinkSync(join(PI_PACKAGE_ROOT!, "node_modules", "typebox"), join(sandbox, "node_modules", "typebox"), "dir");
+
+	const { renderResult } = await import(`${pathToFileURL(join(sandbox, "render.ts")).href}?test=${Date.now()}`);
+	const fakeTheme = { fg: (_color: string, t: string) => t, bold: (t: string) => t };
+
+	// Forma exacta de createErrorToolResult() en pi-agent-core al colapsar un
+	// execute() que rechazo: content con el mensaje, details vacio.
+	const collapsed = { content: [{ type: "text", text: "anidamiento de subagentes no permitido" }], details: {} };
+	assert.doesNotThrow(() => renderResult(collapsed, { expanded: false }, fakeTheme));
+	const rendered = renderResult(collapsed, { expanded: false }, fakeTheme) as { render(width: number): string[] };
+	assert.match(rendered.render(200).join("\n"), /anidamiento de subagentes no permitido/);
+});
+
 // --- CA-3 y CA-4: tool.ts con hijo simulado ----------------------------------
 
 class FakeChild extends EventEmitter {

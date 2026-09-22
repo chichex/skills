@@ -97,7 +97,18 @@ export default function (pi: ExtensionAPI): void {
 		label: "Subagent",
 		description: DESCRIPTION,
 		parameters: SubagentParams,
-		execute: (toolCallId, params, signal, onUpdate, ctx) => execute(toolCallId, params, signal, onUpdate, ctx),
+		execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+			const result = await execute(toolCallId, params, signal, onUpdate, ctx);
+			// AgentToolResult de Pi no define `isError` (PR #48 review, comment
+			// 4076517102): executePreparedToolCall solo marca isError:true si
+			// execute() rechaza, asi que un `{ isError: true }` resuelto
+			// normalmente (nesting, agente desconocido, hijo fallido) entraba al
+			// transcript como si hubiera tenido exito. Lanzar preserva el texto
+			// del resultado para el modelo; los `details` estructurados de ese
+			// resultado puntual se pierden (ver el fallback en render.ts).
+			if (result.isError) throw new Error(result.content.map((part) => part.text ?? "").join(""));
+			return result;
+		},
 		renderCall: (args, theme) => renderCall(args, theme),
 		renderResult: (result, options, theme) => renderResult(result, options, theme),
 	});

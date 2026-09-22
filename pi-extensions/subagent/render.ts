@@ -144,7 +144,10 @@ export function renderResult(
 		);
 	}
 	const details = result.details as SubagentDetails | undefined;
-	if (!details || details.results.length === 0) return new Text(fallback, 0, 0);
+	// `?.` cubre tambien `details: {}` (sin `results`): lo que produce Pi al
+	// colapsar un execute() que rechaza (PR #48 review, comment 4076517102),
+	// que index.ts ahora hace para que isError llegue al runtime real.
+	if (!details?.results?.length) return new Text(fallback, 0, 0);
 
 	const mdTheme = getMarkdownTheme();
 	const fg = theme.fg.bind(theme);
