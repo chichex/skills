@@ -12,6 +12,89 @@ const SKILL = "claude/sdd-review-loop/SKILL.md";
 const SYNTAX =
 	"/sdd-review-loop [<PR>] [--rounds N] [--level low|medium|high|xhigh|max] [--fix-scope correctness|all] [--model M] [--review-model M] [--fix-model M]";
 
+// Issue #44 CA-11: port Pi. Misma doctrina con la capa de interaccion de Pi:
+// `/skill:` como invocacion, `ask_user_question`/`ask_user_questions` como
+// tool de preguntas, la tool `subagent` del package en vez de `Agent`, sin
+// `--level` (pi/code-review no lo tiene) y modelos heredados de la sesion.
+const PI_SKILL = "pi/sdd-review-loop/SKILL.md";
+const PI_SYNTAX =
+	"/skill:sdd-review-loop [<PR>] [--rounds N] [--fix-scope correctness|all] [--model M] [--review-model M] [--fix-model M]";
+
+// Doctrina del corrector (Fase 3), identica entre Claude y Pi.
+const FIXER_DOCTRINE: Array<RegExp | string> = [
+	"../<repo>-review-loop-<PR>",
+	"git fetch origin <headRef>",
+	// Siempre detached sobre el remoto: una rama local <headRef> puede estar atrasada.
+	/--detach/,
+	/detached[^\n]*origin\/<headRef>/,
+	"HEAD:refs/heads/<headRef>",
+	// El path es fijo por PR: la ronda 2 reutiliza el worktree en vez de fallar.
+	/reutiliza/,
+	/checkout original/,
+	/Fase 6[^\n]*sdd-run|sdd-run[^\n]*Fase 6/,
+	/sin modificar[^\n]*sdd-run|no modifica[^\n]*sdd-run/,
+	"gh api graphql",
+	/paginando/,
+	/archivo y l[ií]nea/,
+	/v[aá]lido y en alcance/,
+	/ya resuelto\/incorrecto/,
+	/no accionable/,
+	/bloqueado/,
+	/test de regresi[oó]n[^\n]*primero|primero[^\n]*test de regresi[oó]n|regresi[oó]n[^\n]*antes/i,
+	/tres intentos/,
+	/revierte|revertir/i,
+	/nunca[^\n]*rojo/i,
+	"headRefOid",
+	"fast-forward",
+	"review: resolver",
+	/nunca force/i,
+	/branch default/,
+	/respond[ea][^\n]*resuelve|responder[^\n]*resolver/i,
+	/receipt[^\n]*comment resumen/i,
+	"```json",
+	'"pushed"',
+	'"blocked"',
+	// La limpieza final tiene dueño: el orquestador, que es quien sabe cuando termina el loop.
+	/orquestador remueve/,
+	/remueve el worktree[^\n]*limpio/i,
+];
+
+// Doctrina del cierre (Fase 4), identica entre Claude y Pi.
+const CLOSING_DOCTRINE: Array<RegExp | string> = [
+	/SDD-REVIEW-LOOP <TERMINADO\|DETENIDO>/,
+	/motivo de corte/i,
+	"sin hallazgos accionables",
+	"no convergencia",
+	"N agotado",
+	"sin cambios",
+	"cancelado",
+	"error terminal",
+	/hallazgos[^\n]*accionables[^\n]*corregidos[^\n]*descartados[^\n]*bloqueados[^\n]*commits[^\n]*verificaci[oó]n/i,
+	"<!-- sdd-review-loop:summary -->",
+	/primera l[ií]nea/,
+	/se edita[^\n]*en lugar de crear/i,
+	/vivos[^\n]*sin reportar|sin reportar[^\n]*vivos/i,
+];
+
+// MUST NOT DO, parametrizado por la unica diferencia de capa: pi/code-review
+// no tiene `--fix`, asi que el port Pi no lo prohibe por su nombre.
+function forbiddenDoctrine(harness: "claude" | "pi"): Array<RegExp | string> {
+	return [
+		/mergear/i,
+		/aprobar/i,
+		/force-push/,
+		/branch default/,
+		...(harness === "claude" ? [/`--fix`/] : []),
+		harness === "claude" ? /doctrina de `\/code-review`/ : /doctrina de `\/skill:code-review`|doctrina de `code-review`/,
+		/sdd-run/,
+		/instrucciones/,
+		/checkout original/,
+		/preguntas despu[eé]s del wizard/i,
+		/saltear el wizard[^\n]*deducido/,
+		/5 rondas|tope/,
+	];
+}
+
 function repoFile(path: string): URL {
 	return new URL(`../../${path}`, import.meta.url);
 }
@@ -223,95 +306,20 @@ test("CA-4: orquestacion por ronda con subagentes, JSON y parada temprana", asyn
 test("CA-5: el corrector trabaja en worktree con la doctrina de la Fase 6 de sdd-run", async () => {
 	const doctrine = body(await readRepoFile(SKILL));
 	const fixer = section(doctrine, /Fase 3/);
-	expectAll(
-		fixer,
-		[
-			"../<repo>-review-loop-<PR>",
-			"git fetch origin <headRef>",
-			// Siempre detached sobre el remoto: una rama local <headRef> puede estar atrasada.
-			/--detach/,
-			/detached[^\n]*origin\/<headRef>/,
-			"HEAD:refs/heads/<headRef>",
-			// El path es fijo por PR: la ronda 2 reutiliza el worktree en vez de fallar.
-			/reutiliza/,
-			/checkout original/,
-			/Fase 6[^\n]*sdd-run|sdd-run[^\n]*Fase 6/,
-			/sin modificar[^\n]*sdd-run|no modifica[^\n]*sdd-run/,
-			"gh api graphql",
-			/paginando/,
-			/archivo y l[ií]nea/,
-			/v[aá]lido y en alcance/,
-			/ya resuelto\/incorrecto/,
-			/no accionable/,
-			/bloqueado/,
-			/test de regresi[oó]n[^\n]*primero|primero[^\n]*test de regresi[oó]n|regresi[oó]n[^\n]*antes/i,
-			/tres intentos/,
-			/revierte|revertir/i,
-			/nunca[^\n]*rojo/i,
-			"headRefOid",
-			"fast-forward",
-			"review: resolver",
-			/nunca force/i,
-			/branch default/,
-			/respond[ea][^\n]*resuelve|responder[^\n]*resolver/i,
-			/receipt[^\n]*comment resumen/i,
-			"```json",
-			'"pushed"',
-			'"blocked"',
-			// La limpieza final tiene dueño: el orquestador, que es quien sabe cuando termina el loop.
-			/orquestador remueve/,
-			/remueve el worktree[^\n]*limpio/i,
-		],
-		"## Fase 3",
-	);
+	expectAll(fixer, FIXER_DOCTRINE, "## Fase 3");
 });
 
 test("CA-6: reporte final en chat y comment resumen idempotente", async () => {
 	const doctrine = body(await readRepoFile(SKILL));
 	const closing = section(doctrine, /Fase 4/);
-	expectAll(
-		closing,
-		[
-			/SDD-REVIEW-LOOP <TERMINADO\|DETENIDO>/,
-			/motivo de corte/i,
-			"sin hallazgos accionables",
-			"no convergencia",
-			"N agotado",
-			"sin cambios",
-			"cancelado",
-			"error terminal",
-			/hallazgos[^\n]*accionables[^\n]*corregidos[^\n]*descartados[^\n]*bloqueados[^\n]*commits[^\n]*verificaci[oó]n/i,
-			"<!-- sdd-review-loop:summary -->",
-			/primera l[ií]nea/,
-			/se edita[^\n]*en lugar de crear/i,
-			/vivos[^\n]*sin reportar|sin reportar[^\n]*vivos/i,
-		],
-		"## Fase 4",
-	);
+	expectAll(closing, CLOSING_DOCTRINE, "## Fase 4");
 });
 
 test("CA-7: MUST DO y MUST NOT DO explicitos", async () => {
 	const doctrine = body(await readRepoFile(SKILL));
 	section(doctrine, /^## MUST DO$/);
 	const forbidden = section(doctrine, /^## MUST NOT DO$/);
-	expectAll(
-		forbidden,
-		[
-			/mergear/i,
-			/aprobar/i,
-			/force-push/,
-			/branch default/,
-			/`--fix`/,
-			/doctrina de `\/code-review`/,
-			/sdd-run/,
-			/instrucciones/,
-			/checkout original/,
-			/preguntas despu[eé]s del wizard/i,
-			/saltear el wizard[^\n]*deducido/,
-			/5 rondas|tope/,
-		],
-		"## MUST NOT DO",
-	);
+	expectAll(forbidden, forbiddenDoctrine("claude"), "## MUST NOT DO");
 });
 
 test("CA-8: READMEs y descripcion del plugin documentan el skill", async () => {
@@ -338,6 +346,10 @@ test("CA-8: READMEs y descripcion del plugin documentan el skill", async () => {
 				// Con solo el PR igual se pregunta la configuracion; los flags saltean el wizard.
 				/(solo|only) `<PR>`/,
 				/(cualquier flag|any flag)/,
+				// Issue #44 CA-15: el skill existe en Claude Code y en Pi (sin --level).
+				/\bPi\b/,
+				/\/skill:sdd-review-loop/,
+				/(sin|without) `--level`/,
 			],
 			`${path} fila`,
 		);
@@ -356,4 +368,160 @@ test("CA-8: READMEs y descripcion del plugin documentan el skill", async () => {
 
 test("CA-9: el gate vive en un directorio solo de tests", async () => {
 	await assert.rejects(access(repoFile("pi-extensions/sdd-review-loop/index.ts")), "sin extension Pi");
+});
+
+// =============================================================================
+// Issue #44 CA-11: port Pi (pi/sdd-review-loop/SKILL.md)
+// =============================================================================
+
+test("issue #44 CA-11: pi/sdd-review-loop existe con frontmatter Pi (description, compatibility) y sin --level", async () => {
+	const markdown = await readRepoFile(PI_SKILL);
+	const metadata = frontmatter(markdown);
+	assert.equal(metadata.name, "sdd-review-loop", "name igual a la carpeta");
+	const description = metadata.description ?? "";
+	expectAll(
+		description,
+		[/rondas/i, /code-review/, /\bPR\b/, /subagente/i, /\.sdd\/project\.md|contrato/i, /wizard/, /deducido del contexto/],
+		"description (pi)",
+	);
+	assert.doesNotMatch(description, /Sonnet|Claude Code/, "la description Pi no nombra Sonnet ni Claude Code");
+	assert.ok(
+		(metadata.compatibility ?? "").includes(
+			"Requiere gh autenticado, la tool `subagent` del package y el skill `code-review`",
+		),
+		`compatibility Pi: ${metadata.compatibility}`,
+	);
+	assert.doesNotMatch(markdown, /--level/, "pi/code-review no tiene --level: el port no lo ofrece");
+	assert.doesNotMatch(
+		markdown,
+		/subagent_type|AskUserQuestion|tool `Agent`|tool `Skill`|run_in_background/,
+		"sin capa de Claude Code",
+	);
+	await assert.rejects(access(repoFile("pi/sdd-review-loop/agents")), "sin agents/ bajo pi/");
+});
+
+test("issue #44 CA-11: argumentos Pi con modelos heredados de la sesion y wizard con ask_user_question(s)", async () => {
+	const doctrine = body(await readRepoFile(PI_SKILL));
+	const args = section(doctrine, /Argumentos/);
+	assert.ok(args.includes(PI_SYNTAX), "linea de sintaxis literal Pi");
+	expectAll(
+		args,
+		[
+			/`--rounds N`[^\n]*default[^\n]*`3`/,
+			/`1`[^\n]*`5`[^\n]*tope duro|tope duro[^\n]*`5`/,
+			/no se clampea/,
+			/`--fix-scope`[^\n]*default[^\n]*`correctness`/,
+			/`security`/,
+			/`simplification`[^\n]*`efficiency`/,
+			/cualquier otro slug[^\n]*cleanup/i,
+			/`all`[^\n]*cualquier categor[ií]a/,
+			/`--model M`[^\n]*ambos/,
+			/`--review-model`[^\n]*`--fix-model`[^\n]*sobreescriben/,
+			/provider\/id/,
+			/hereda[^\n]*sesi[oó]n|sesi[oó]n[^\n]*hereda/i,
+			/literalmente/,
+			/deducido del contexto/,
+		],
+		"## Argumentos (pi)",
+	);
+	const wizard = section(doctrine, /Fase 0/);
+	expectAll(
+		wizard,
+		[
+			/Lanzador/,
+			/camino por defecto/,
+			/preselecciones, no permiso para asumir/,
+			/Nada literal[^\n]*Wizard completo/,
+			/deducido del contexto[^\n]*\(Recomendado\)/,
+			/Solo `<PR>`[^\n]*sin el paso 1/,
+			/flag[^\n]*no pregunta nada/,
+			/Delegaci[oó]n expl[ií]cita[^\n]*inequ[ií]voco/,
+			/pedir el loop no es delegar/i,
+			/`ask_user_question` no est[aá] disponible[^\n]*frenar/,
+			/gh pr list --state open --limit 20/,
+			/isCrossRepository/,
+			/m[aá]s reciente primero/,
+			/m[aá]ximo 4/,
+			/ask_user_questions/,
+			/`3`[^\n]*`1`[^\n]*`5`/,
+			/`correctness`[^\n]*`all`/,
+			/heredar de la sesi[oó]n[^\n]*\(Recomendado\)/i,
+			/elegir por rol/i,
+			/\(Recomendado\)/,
+			/resumen[^\n]*comments[^\n]*push/i,
+			/cero preguntas/,
+		],
+		"## Fase 0 (pi)",
+	);
+});
+
+test("issue #44 CA-11: el preflight Pi exige la tool subagent y el skill code-review del package", async () => {
+	const doctrine = body(await readRepoFile(PI_SKILL));
+	const preflight = section(doctrine, /Fase 1/);
+	expectAll(
+		preflight,
+		[
+			/\.sdd\/project\.md[^\n]*\/skill:sdd-init|\/skill:sdd-init[^\n]*\.sdd\/project\.md/,
+			"git rev-parse --show-toplevel",
+			"gh auth status",
+			"gh repo view --json nameWithOwner",
+			/tool `subagent`[^\n]*`code-review`|`code-review`[^\n]*tool `subagent`/,
+			/no improvisa/,
+			/sin volver a preguntar/,
+			/draft[^\n]*acepta/i,
+			/cerrado[^\n]*mergeado[^\n]*frena/i,
+			/head repo[^\n]*base repo/i,
+			/isCrossRepository/,
+			/fork[^\n]*frena/i,
+			/datos no confiables/,
+		],
+		"## Fase 1 (pi)",
+	);
+	assert.doesNotMatch(preflight, /baseRepository/, "campo inexistente en gh pr view --json");
+});
+
+test("issue #44 CA-11: la ronda Pi lanza subagent en foreground con reviewer e implementer, y modelo por rol solo si el usuario lo fijo", async () => {
+	const doctrine = body(await readRepoFile(PI_SKILL));
+	const loop = section(doctrine, /Fase 2/);
+	expectAll(
+		loop,
+		[
+			/tool `subagent`/,
+			/foreground/,
+			/sin `background`/,
+			/agent: "reviewer"/,
+			/agent: "implementer"/,
+			/`\/skill:code-review <PR>`/,
+			/--no-publish/,
+			"```json",
+			'"published"',
+			'"findings"',
+			'"counts"',
+			/`published`[^\n]*`false`[^\n]*gh api|gh api[^\n]*`published`/i,
+			/deduplic/,
+			/conteos[^\n]*clave/i,
+			/clave[^\n]*l[ií]nea/,
+			/nunca pega[^\n]*diff/i,
+			/`--fix-scope`/,
+			/parada temprana/i,
+			/no convergencia/,
+			/`r-1`/,
+			/ninguna clave[^\n]*desapareci/,
+			/bloqueados[^\n]*no cuentan/i,
+			"`sin cambios`",
+			/head nuevo|head actual/i,
+			/`model`[^\n]*solo (?:cuando|si) el usuario/i,
+		],
+		"## Fase 2 (pi)",
+	);
+	assert.doesNotMatch(loop, /--comment/, "pi/code-review no tiene --comment");
+	assert.doesNotMatch(loop, /N-1/, "la ronda anterior es r-1; N es --rounds");
+});
+
+test("issue #44 CA-11: corrector, cierre y MUST NOT DO del port Pi identicos a Claude salvo la capa de interaccion", async () => {
+	const doctrine = body(await readRepoFile(PI_SKILL));
+	expectAll(section(doctrine, /Fase 3/), FIXER_DOCTRINE, "## Fase 3 (pi)");
+	expectAll(section(doctrine, /Fase 4/), CLOSING_DOCTRINE, "## Fase 4 (pi)");
+	section(doctrine, /^## MUST DO$/);
+	expectAll(section(doctrine, /^## MUST NOT DO$/), forbiddenDoctrine("pi"), "## MUST NOT DO (pi)");
 });

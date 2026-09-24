@@ -57,8 +57,20 @@ function runInstaller(script: string, args: string[], env: NodeJS.ProcessEnv) {
 
 const EXPECTED_AGENTS = ["./agents/implementer.md", "./agents/reviewer.md"];
 
-function gitTrackedAgentPaths(): Set<string> | null {
-	const result = spawnSync("git", ["ls-files", "--", "agents"], {
+// Issue #44: el UNICO port de agents/ vive en pi-extensions/subagent/agents/,
+// bundleado con la tool `subagent` del Pi Package (el manifest de Pi Package no
+// tiene campo `agents`, asi que los agentes viajan dentro de la extension).
+// Codex y opencode no lo reciben. Se censa sobre archivos trackeados, igual
+// que agents/ de la raiz.
+const PI_AGENTS_DIR = "pi-extensions/subagent/agents";
+const EXPECTED_PI_AGENTS = [
+	"./pi-extensions/subagent/agents/implementer.md",
+	"./pi-extensions/subagent/agents/reviewer.md",
+	"./pi-extensions/subagent/agents/scout.md",
+];
+
+function gitTrackedAgentPaths(dir = "agents"): Set<string> | null {
+	const result = spawnSync("git", ["ls-files", "--", dir], {
 		cwd: REPO_ROOT,
 		encoding: "utf8",
 	});
@@ -225,6 +237,104 @@ export function validateAgentFrontmatter(
 	return { ok: problems.length === 0, problems };
 }
 
+// --- Doctrina ordenada de los agentes (Claude y su port Pi) -----------------
+
+// Orden exacto exigido por CA-1 para agents/implementer.md. Vive a nivel de
+// modulo porque el port Pi (issue #44 CA-7, pi-extensions/subagent/agents/
+// implementer.md) tiene que pasar EXACTAMENTE los mismos patrones.
+const IMPLEMENTER_DOCTRINE: RegExp[] = [
+	/`\.sdd\/project\.md`/,
+	/fila `guia`[\s\S]*?coding policies|coding policies[\s\S]*?fila `guia`/i,
+	/sin asumir su ruta|no asumas una ruta fija/i,
+	/`## Limites`/,
+	// Hallazgo #5 del review de PR #43: '## Limites' solo puede restringir
+	// mas, nunca autorizar menos (no puede pisar las secciones 7 y 8), y
+	// tiene que alinear con la doctrina de datos no confiables de
+	// agents/reviewer.md ante un contrato que el propio PR puede modificar.
+	/solo puede sumar restricciones/i,
+	/mismo criterio que usa `agents\/reviewer\.md`|dato no confiable/i,
+	/`## Comandos`/,
+	/tests? primero[\s\S]{0,120}rojo/i,
+	// Hallazgo #6 del review de PR #43: escape hatch para cambios sin rojo
+	// previo posible (rename, comentario, README, plugin.json), con el
+	// mismo patron que ya usa la seccion 2 (declarar en el reporte final).
+	/rojo previo[\s\S]{0,250}gate m[aá]s fuerte|gate m[aá]s fuerte[\s\S]{0,250}rojo previo/i,
+	/tres intentos honestos/i,
+	/prohibid[oa][\s\S]{0,40}debilitar|nunca aflojes un assert/i,
+	/prohibid[oa][\s\S]{0,40}ampliar el alcance/i,
+	/reporte final/i,
+];
+
+// Orden exacto exigido por CA-2 para agents/reviewer.md, parametrizado por la
+// UNICA diferencia de capa de interaccion del port Pi: en Claude Code el
+// orquestador pasa `--comment` y publicar esos comments es parte del trabajo;
+// en Pi `code-review` publica un review COMMENT por default (no existe
+// `--comment`), asi que la doctrina dice que esa publicacion por default es
+// parte del trabajo.
+export function reviewerDoctrine(harness: "claude" | "pi"): RegExp[] {
+	return [
+		/`code-review`[\s\S]{0,200}sin resumir|sin resumir[\s\S]{0,200}reinterpretar/i,
+		/t[ií]tulo[\s\S]{0,80}body[\s\S]{0,80}comments[\s\S]{0,80}autor/i,
+		/no confiable/i,
+		/no edit[aá]/i,
+		/no commite[aá]/i,
+		/no pushe[aá]/i,
+		// Hallazgo #7 del review de PR #43: publicar los comments inline que
+		// genera `/code-review --comment` es parte del trabajo (el orquestador
+		// se lo pasa como argumento), no una violacion de "no edita/commitea/
+		// pushea"; lo prohibido sigue siendo aprobar formalmente, pedir
+		// cambios formalmente, resolver threads o tocar archivos.
+		/no apruebes[\s\S]{0,120}(formalmente|request changes)/i,
+		harness === "claude"
+			? /--comment[\s\S]{0,200}parte[\s\S]{0,20}del trabajo/i
+			: /por default[\s\S]{0,200}parte[\s\S]{0,20}del trabajo/i,
+		/```json/,
+		/no concluyente/i,
+	];
+}
+
+// --- Frontmatter de los ports Pi (issue #44 CA-7) ---------------------------
+
+// name == basename y description entre comillas dobles, como en agents/. Sin
+// `model` (los agentes bundleados heredan modelo y thinking de la sesion) ni
+// `skills` (Pi ignora la clave; la precarga va en el body como /skill:...).
+// `tools` es exacto cuando el port lo restringe (reviewer, scout) y tiene que
+// estar ausente en implementer, que hereda todas las tools.
+const FORBIDDEN_PI_AGENT_FIELDS = ["model", "skills"];
+
+export function validatePiAgentFrontmatter(
+	basename: string,
+	markdown: string,
+	expectedTools: string | null,
+): AgentValidation {
+	const problems: string[] = [];
+	const parts = splitFrontmatter(markdown);
+	if (!parts) return { ok: false, problems: [`${basename}: sin frontmatter YAML valido (falta --- de apertura/cierre)`] };
+	const { frontmatter } = parts;
+
+	const name = frontmatterScalar(frontmatter, "name");
+	if (!name) problems.push(`${basename}: falta name: en el frontmatter (o esta vacio)`);
+	else if (name !== basename) problems.push(`${basename}: name: '${name}' no coincide con el basename '${basename}'`);
+
+	if (!descriptionNonEmpty(frontmatter)) problems.push(`${basename}: description: falta o esta vacia`);
+	else if (!descriptionIsQuoted(frontmatter))
+		problems.push(`${basename}: description: debe ir entre comillas dobles (mismo criterio que agents/)`);
+
+	const keys = topLevelKeys(frontmatter);
+	for (const forbidden of FORBIDDEN_PI_AGENT_FIELDS) {
+		if (keys.includes(forbidden)) problems.push(`${basename}: campo prohibido presente en el port Pi: ${forbidden}`);
+	}
+
+	const tools = frontmatterScalar(frontmatter, "tools");
+	if (expectedTools === null) {
+		if (tools !== null) problems.push(`${basename}: tools: no debe declararse (el implementer hereda todas las tools)`);
+	} else if (tools !== expectedTools) {
+		problems.push(`${basename}: tools: esperado '${expectedTools}', encontrado '${tools ?? "(ausente)"}'`);
+	}
+
+	return { ok: problems.length === 0, problems };
+}
+
 // --- Doctrina de sdd-review-loop y plugin.json ------------------------------
 
 export function checkSubagentTypesDeclared(markdown: string): string[] {
@@ -294,30 +404,9 @@ test("CA-1: agents/implementer.md tiene frontmatter valido, skills: [chichex-ski
 	assert.ok(parts, "agents/implementer.md: frontmatter parseable");
 	const body = parts?.body ?? "";
 
-	// Orden exacto exigido por CA-1: cada patron tiene que aparecer despues del anterior.
-	const orderedDoctrine: RegExp[] = [
-		/`\.sdd\/project\.md`/,
-		/fila `guia`[\s\S]*?coding policies|coding policies[\s\S]*?fila `guia`/i,
-		/sin asumir su ruta|no asumas una ruta fija/i,
-		/`## Limites`/,
-		// Hallazgo #5 del review de PR #43: '## Limites' solo puede restringir
-		// mas, nunca autorizar menos (no puede pisar las secciones 7 y 8), y
-		// tiene que alinear con la doctrina de datos no confiables de
-		// agents/reviewer.md ante un contrato que el propio PR puede modificar.
-		/solo puede sumar restricciones/i,
-		/mismo criterio que usa `agents\/reviewer\.md`|dato no confiable/i,
-		/`## Comandos`/,
-		/tests? primero[\s\S]{0,120}rojo/i,
-		// Hallazgo #6 del review de PR #43: escape hatch para cambios sin rojo
-		// previo posible (rename, comentario, README, plugin.json), con el
-		// mismo patron que ya usa la seccion 2 (declarar en el reporte final).
-		/rojo previo[\s\S]{0,250}gate m[aá]s fuerte|gate m[aá]s fuerte[\s\S]{0,250}rojo previo/i,
-		/tres intentos honestos/i,
-		/prohibid[oa][\s\S]{0,40}debilitar|nunca aflojes un assert/i,
-		/prohibid[oa][\s\S]{0,40}ampliar el alcance/i,
-		/reporte final/i,
-	];
-	const orderProblems = checkOrderedPatterns(body, orderedDoctrine);
+	// Orden exacto exigido por CA-1: cada patron tiene que aparecer despues del
+	// anterior (lista compartida con el port Pi, ver IMPLEMENTER_DOCTRINE).
+	const orderProblems = checkOrderedPatterns(body, IMPLEMENTER_DOCTRINE);
 	assert.deepEqual(orderProblems, [], `agents/implementer.md: ${orderProblems.join("; ")}`);
 
 	// El reporte final nombra las cuatro cosas que exige CA-1.
@@ -338,24 +427,7 @@ test("CA-2: agents/reviewer.md tiene frontmatter valido, sin skills forzadas y b
 	assert.ok(parts, "agents/reviewer.md: frontmatter parseable");
 	const body = parts?.body ?? "";
 
-	const orderedDoctrine: RegExp[] = [
-		/`code-review`[\s\S]{0,200}sin resumir|sin resumir[\s\S]{0,200}reinterpretar/i,
-		/t[ií]tulo[\s\S]{0,80}body[\s\S]{0,80}comments[\s\S]{0,80}autor/i,
-		/no confiable/i,
-		/no edit[aá]/i,
-		/no commite[aá]/i,
-		/no pushe[aá]/i,
-		// Hallazgo #7 del review de PR #43: publicar los comments inline que
-		// genera `/code-review --comment` es parte del trabajo (el orquestador
-		// se lo pasa como argumento), no una violacion de "no edita/commitea/
-		// pushea"; lo prohibido sigue siendo aprobar formalmente, pedir
-		// cambios formalmente, resolver threads o tocar archivos.
-		/no apruebes[\s\S]{0,120}(formalmente|request changes)/i,
-		/--comment[\s\S]{0,200}parte[\s\S]{0,20}del trabajo/i,
-		/```json/,
-		/no concluyente/i,
-	];
-	const orderProblems = checkOrderedPatterns(body, orderedDoctrine);
+	const orderProblems = checkOrderedPatterns(body, reviewerDoctrine("claude"));
 	assert.deepEqual(orderProblems, [], `agents/reviewer.md: ${orderProblems.join("; ")}`);
 });
 
@@ -428,7 +500,11 @@ test("CA-11: READMEs, harness-port y el contrato documentan el layer de agentes"
 
 	const harnessPort = await readRepoFile(".claude/skills/harness-port/SKILL.md");
 	assert.match(harnessPort, /agents\/[\s\S]{0,200}(plugin|Codex)/i);
-	assert.match(harnessPort, /no se portea|no viaja/i);
+	// Issue #44 CA-13: agents/ es el layer de agentes del plugin de Claude Code
+	// y su UNICO port vive en pi-extensions/subagent/agents/; codex y opencode
+	// no lo reciben.
+	assert.match(harnessPort, /[uú]nico port[\s\S]{0,160}`pi-extensions\/subagent\/agents\/`/i);
+	assert.match(harnessPort, /codex[\s\S]{0,80}opencode[\s\S]{0,80}(no lo reciben|no se portea|no viaja)/i);
 
 	const contract = await readRepoFile(".sdd/project.md");
 	assert.match(contract, /agents-gate\/agents-gate\.test\.ts/);
@@ -743,6 +819,8 @@ test("autotest: un agents/ de scratch bajo claude/, opencode/ o pi/ se detecta; 
 		"claude/agents/x.md",
 		"codex/tdd/agents/openai.yaml",
 		"agents/implementer.md",
+		// Issue #44 CA-13: el port Pi vive bajo pi-extensions/, no bajo pi/.
+		"pi-extensions/subagent/agents/implementer.md",
 	];
 	assert.deepEqual(forbiddenAgentDirs(paths).sort(), [
 		"claude/agents/x.md",
@@ -772,4 +850,164 @@ test("autotest: checkOrderedPatterns acepta patrones que realmente aparecen desp
 	const body = "AAAA XXXX AAAA YYYY";
 	const patterns = [/AAAA[\s\S]*AAAA/, /YYYY/];
 	assert.deepEqual(checkOrderedPatterns(body, patterns), []);
+});
+
+// =============================================================================
+// Issue #44: port Pi de los agentes (pi-extensions/subagent/agents/)
+// =============================================================================
+
+test("issue #44 CA-7: censo de pi-extensions/subagent/agents/*.md sobre archivos trackeados contra la lista esperada", () => {
+	const tracked = gitTrackedAgentPaths(PI_AGENTS_DIR);
+	assert.ok(tracked, `git ls-files -- ${PI_AGENTS_DIR} debe correr sin error`);
+	const actual = [...(tracked ?? new Set<string>())].sort();
+	const divergences = diffAgentCensus(actual, EXPECTED_PI_AGENTS);
+	assert.deepEqual(divergences, [], `censo de ${PI_AGENTS_DIR}/: ${divergences.join("; ")}`);
+});
+
+test("issue #44 CA-7: el port Pi de implementer conserva la doctrina ordenada de CA-1 y precarga skills por /skill:", async () => {
+	const markdown = await readRepoFile(`${PI_AGENTS_DIR}/implementer.md`);
+	const verdict = validatePiAgentFrontmatter("implementer", markdown, null);
+	assert.deepEqual(verdict.problems, [], `${PI_AGENTS_DIR}/implementer.md: ${verdict.problems.join("; ")}`);
+
+	const body = splitFrontmatter(markdown)?.body ?? "";
+	const orderProblems = checkOrderedPatterns(body, IMPLEMENTER_DOCTRINE);
+	assert.deepEqual(orderProblems, [], `${PI_AGENTS_DIR}/implementer.md: ${orderProblems.join("; ")}`);
+
+	// Capa Pi: sin `skills:` en el frontmatter (Pi lo ignora), la precarga va
+	// por invocacion en el body: /skill:tdd antes de implementar y
+	// /skill:sdd-run cuando el task es una spec.
+	assert.match(
+		body,
+		/`\/skill:tdd`[\s\S]{0,200}antes de (implementar|tocar)|antes de (implementar|tocar)[\s\S]{0,200}`\/skill:tdd`/i,
+	);
+	assert.match(body, /`\/skill:sdd-run`[\s\S]{0,200}spec|spec[\s\S]{0,200}`\/skill:sdd-run`/i);
+	assert.doesNotMatch(markdown, /subagent_type|tool `Agent`|tool `Skill`|chichex-skills:/, "sin restos de la capa de Claude Code");
+
+	const finalReport = body.slice(body.search(/reporte final/i));
+	assert.match(finalReport, /comandos/i);
+	assert.match(finalReport, /archivos/i);
+	assert.match(finalReport, /pol[ií]ticas/i);
+	assert.match(finalReport, /no verificado|sin verificar|qued[oó] sin verificar/i);
+});
+
+test("issue #44 CA-7: el port Pi de reviewer invoca /skill:code-review con los argumentos exactos, sin --comment ni tool Skill", async () => {
+	const markdown = await readRepoFile(`${PI_AGENTS_DIR}/reviewer.md`);
+	const verdict = validatePiAgentFrontmatter("reviewer", markdown, "read, grep, find, ls, bash");
+	assert.deepEqual(verdict.problems, [], `${PI_AGENTS_DIR}/reviewer.md: ${verdict.problems.join("; ")}`);
+
+	const body = splitFrontmatter(markdown)?.body ?? "";
+	const orderProblems = checkOrderedPatterns(body, reviewerDoctrine("pi"));
+	assert.deepEqual(orderProblems, [], `${PI_AGENTS_DIR}/reviewer.md: ${orderProblems.join("; ")}`);
+	assert.match(body, /`\/skill:code-review/, "invoca el skill de Pi");
+	assert.match(body, /argumentos exactos/i);
+	assert.doesNotMatch(markdown, /--comment|tool `Skill`|subagent_type/, "sin restos de la capa de Claude Code");
+});
+
+test("issue #44 CA-7: scout esta en español y conserva las secciones del ejemplo", async () => {
+	const markdown = await readRepoFile(`${PI_AGENTS_DIR}/scout.md`);
+	const verdict = validatePiAgentFrontmatter("scout", markdown, "read, grep, find, ls, bash");
+	assert.deepEqual(verdict.problems, [], `${PI_AGENTS_DIR}/scout.md: ${verdict.problems.join("; ")}`);
+
+	const body = splitFrontmatter(markdown)?.body ?? "";
+	for (const heading of ["## Files Retrieved", "## Key Code", "## Architecture", "## Start Here"]) {
+		assert.ok(body.includes(heading), `scout.md: falta la seccion ${heading}`);
+	}
+	assert.match(body, /Sos un(a)? scout/i, "scout.md en español rioplatense");
+	assert.doesNotMatch(body, /You are a scout/, "scout.md no copia el body en ingles");
+});
+
+test("issue #44 CA-15: READMEs y contrato documentan la tool subagent, /subagents, los agentes bundleados y el kill al cerrar", async () => {
+	const rows: Record<string, RegExp[]> = {
+		"README.md": [/cerrar la sesi[oó]n|cierre de (la )?sesi[oó]n|session_shutdown/i],
+		"README.en.md": [/session (closes|ends|shutdown)|closing the session|session_shutdown/i],
+	};
+	for (const [path, extra] of Object.entries(rows)) {
+		const markdown = await readRepoFile(path);
+		const row = markdown.match(/^\| \*\*`subagent`\*\* \|.*$/m)?.[0];
+		assert.ok(row, `${path}: fila de subagent en la tabla de extensiones de Pi`);
+		for (const pattern of [
+			/single/,
+			/parallel/,
+			/chain/,
+			/agentScope/,
+			/background/,
+			/\/subagents/,
+			/`implementer`/,
+			/`reviewer`/,
+			/`scout`/,
+			...extra,
+		]) {
+			assert.match(row, pattern, `${path} fila subagent: falta ${pattern}`);
+		}
+		assert.match(markdown, /pi-extensions\/[\s\S]{0,240}subagent\//, `${path}: el arbol lista pi-extensions/subagent/`);
+	}
+
+	const contract = await readRepoFile(".sdd/project.md");
+	assert.match(contract, /node --test pi-extensions\/subagent\/\*\.test\.ts/, "contrato: fila del gate de subagent");
+	assert.match(contract, /anidamiento/i, "contrato: gap de anidamiento bloqueado");
+	assert.match(contract, /`\/new`[\s\S]{0,60}`\/reload`/, "contrato: gap de jobs perdidos en /new y /reload");
+	assert.match(contract, /`--tools`[\s\S]{0,160}extensi/i, "contrato: gap de --tools filtrando tools de extension");
+	// Literales que pi-package.test.ts assertea sobre el mismo archivo.
+	assert.match(contract, /## Politicas de generacion\nSin politicas activas\./);
+	assert.match(contract, /## Decisiones humanas\n/);
+});
+
+// --- Autotests del port Pi ---------------------------------------------------
+
+test("autotest (issue #44): el censo Pi reporta agente faltante e inesperado por nombre", () => {
+	const divergences = diffAgentCensus(
+		["./pi-extensions/subagent/agents/implementer.md", "./pi-extensions/subagent/agents/planner.md"],
+		EXPECTED_PI_AGENTS,
+	);
+	assert.deepEqual(divergences.sort(), [
+		"agente faltante: ./pi-extensions/subagent/agents/reviewer.md",
+		"agente faltante: ./pi-extensions/subagent/agents/scout.md",
+		"agente inesperado: ./pi-extensions/subagent/agents/planner.md",
+	]);
+});
+
+test("autotest (issue #44): el frontmatter Pi rechaza model, skills, tools en implementer, tools distinto y description sin comillas", () => {
+	const tools = "read, grep, find, ls, bash";
+	const withModel = `---\nname: reviewer\ndescription: "x"\ntools: ${tools}\nmodel: claude-sonnet-4-5\n---\nBody.\n`;
+	assert.match(
+		validatePiAgentFrontmatter("reviewer", withModel, tools).problems.join("\n"),
+		/campo prohibido presente en el port Pi: model/,
+	);
+	const withSkills = '---\nname: implementer\ndescription: "x"\nskills:\n	 - chichex-skills:tdd\n---\nBody.\n';
+	assert.match(
+		validatePiAgentFrontmatter("implementer", withSkills, null).problems.join("\n"),
+		/campo prohibido presente en el port Pi: skills/,
+	);
+	const implementerWithTools = '---\nname: implementer\ndescription: "x"\ntools: read\n---\nBody.\n';
+	assert.match(
+		validatePiAgentFrontmatter("implementer", implementerWithTools, null).problems.join("\n"),
+		/tools: no debe declararse/,
+	);
+	const wrongTools = '---\nname: scout\ndescription: "x"\ntools: read, bash\n---\nBody.\n';
+	assert.match(
+		validatePiAgentFrontmatter("scout", wrongTools, tools).problems.join("\n"),
+		/tools: esperado 'read, grep, find, ls, bash', encontrado 'read, bash'/,
+	);
+	const missingTools = '---\nname: scout\ndescription: "x"\n---\nBody.\n';
+	assert.match(
+		validatePiAgentFrontmatter("scout", missingTools, tools).problems.join("\n"),
+		/tools: esperado 'read, grep, find, ls, bash', encontrado '\(ausente\)'/,
+	);
+	const unquoted = `---\nname: scout\ndescription: sin comillas\ntools: ${tools}\n---\nBody.\n`;
+	assert.match(validatePiAgentFrontmatter("scout", unquoted, tools).problems.join("\n"), /description:.*comillas dobles/);
+	const ok = `---\nname: scout\ndescription: "ok"\ntools: ${tools}\n---\nBody.\n`;
+	assert.deepEqual(validatePiAgentFrontmatter("scout", ok, tools).problems, []);
+});
+
+test("autotest (issue #44): un patron de doctrina ausente en el port Pi falla con diagnostico", () => {
+	const problems = checkOrderedPatterns(
+		"Sos un reviewer. Invocá `code-review` sin resumir ni reinterpretar su doctrina.",
+		reviewerDoctrine("pi"),
+	);
+	assert.equal(problems.length, 1);
+	assert.match(problems[0] ?? "", /falta o esta fuera de orden/);
+	// El patron de publicacion difiere por harness: el texto de Claude no vale para Pi.
+	const claudeOnly = "publicar los comments que genera `--comment` es parte del trabajo";
+	assert.notDeepEqual(checkOrderedPatterns(claudeOnly, [reviewerDoctrine("pi")[7]!]), []);
+	assert.deepEqual(checkOrderedPatterns(claudeOnly, [reviewerDoctrine("claude")[7]!]), []);
 });

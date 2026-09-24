@@ -62,6 +62,7 @@ interface PiCommand {
 const REPO_ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 
 const EXPECTED_PEERS = {
+	"@earendil-works/pi-agent-core": "*",
 	"@earendil-works/pi-ai": "*",
 	"@earendil-works/pi-coding-agent": "*",
 	"@earendil-works/pi-tui": "*",
@@ -79,6 +80,7 @@ const EXPECTED_SKILLS = [
 	"./pi/quick-run/SKILL.md",
 	"./pi/repo-clean/SKILL.md",
 	"./pi/sdd-init/SKILL.md",
+	"./pi/sdd-review-loop/SKILL.md",
 	"./pi/sdd-run/SKILL.md",
 	"./pi/sdd-spec/SKILL.md",
 	"./pi/tdd/SKILL.md",
@@ -104,6 +106,7 @@ const EXPECTED_EXTENSION_COMMANDS = [
 	"prs",
 	"sdd-run",
 	"specs",
+	"subagents",
 	"visual-footer",
 	"wait-pr",
 ];
@@ -367,7 +370,7 @@ function validatePiPackage(manifest: PiPackageManifest, inventory: ProductionInv
 	if (manifest.private !== true) problems.push("metadata: private must be true");
 	if (Object.hasOwn(manifest, "scripts")) problems.push("metadata: scripts are not allowed");
 	if (!sameStringRecord(manifest.peerDependencies, EXPECTED_PEERS)) {
-		problems.push("peerDependencies: expected the four Pi core peers at range *");
+		problems.push("peerDependencies: expected the five Pi core peers at range *");
 	}
 	if (Object.hasOwn(manifest, "dependencies")) problems.push("dependencies: runtime dependencies are not allowed");
 	if (Object.hasOwn(manifest, "bundledDependencies") || Object.hasOwn(manifest, "bundleDependencies")) {
@@ -700,7 +703,7 @@ test("inventory gate diagnoses omitted resources, false modules, public metadata
 	const wrongPeers = { ...manifest, peerDependencies: { ...EXPECTED_PEERS, typebox: "^1" } };
 	assert.ok(
 		validatePiPackage(wrongPeers, inventory).includes(
-			"peerDependencies: expected the four Pi core peers at range *",
+			"peerDependencies: expected the five Pi core peers at range *",
 		),
 	);
 
@@ -1206,16 +1209,82 @@ test("Spanish and English READMEs document the safe native package lifecycle", a
 	assert.match(english, /legacy|manual/is);
 });
 
-test("autonomy contract and CI expose the verified Pi 0.84.2 package harness", async () => {
+test("autonomy contract and CI expose the verified Pi 0.85.1 package harness", async () => {
+	// Issue #44 CA-14: el pin sube a 0.85.1 (Pi local); el contrato y el workflow
+	// tienen que nombrar la misma version que corre en CI.
 	const contract = await readFile(repoFile(".sdd/project.md"), "utf8");
 	const workflow = await readFile(repoFile(".github/workflows/ci.yml"), "utf8");
 
 	assert.doesNotMatch(contract, /no hay `package\.json`/);
 	assert.match(contract, /package\.json.*Pi Package/is);
-	assert.match(contract, /Pi `0\.84\.2`/);
+	assert.match(contract, /Pi `0\.85\.1`/);
+	assert.doesNotMatch(contract, /0\.84\.2/, "el contrato no puede seguir nombrando el pin viejo");
+	assert.doesNotMatch(workflow, /0\.84\.2/, "el workflow no puede seguir nombrando el pin viejo");
 	assert.match(contract, /node --test pi-extensions\/pi-package\/pi-package\.test\.ts/);
 	assert.match(contract, /HOME.*PI_CODING_AGENT_DIR.*tempor/is);
 	assert.match(contract, /## Politicas de generacion\nSin politicas activas\./);
 	assert.match(contract, /## Decisiones humanas\n/);
-	assert.match(workflow, /@earendil-works\/pi-coding-agent@0\.84\.2/);
+	assert.match(workflow, /@earendil-works\/pi-coding-agent@0\.85\.1/);
+});
+
+test("install.sh pi copies the subagent extension directory with its bundled agents, and pi-clean removes it whole", async () => {
+	// Issue #44 CA-8: el Pi Package nativo resuelve pi-extensions/subagent/agents/
+	// relativo a la extension (import.meta.url); la via legacy (install.sh pi)
+	// tiene que copiar ese directorio ENTERO (index.ts + agents/*.md) y
+	// pi-clean --confirm borrarlo entero, para que ambas instalaciones vean
+	// los mismos agentes bundleados.
+	const bundledAgents = await readdir(repoPath("pi-extensions/subagent/agents")).catch(() => [] as string[]);
+	assert.deepEqual(
+		[...bundledAgents].sort(),
+		["implementer.md", "reviewer.md", "scout.md"],
+		"agentes bundleados esperados en pi-extensions/subagent/agents",
+	);
+	const root = await mkdtemp(join(tmpdir(), "chichex-pi-subagent-install-"));
+	const fixtureRepo = join(root, "repo");
+	const extensionsDest = join(root, "dest", "extensions");
+	try {
+		await mkdir(join(fixtureRepo, "pi", "grill"), { recursive: true });
+		await writeFile(join(fixtureRepo, "pi", "grill", "SKILL.md"), "---\nname: grill\n---\n");
+		await mkdir(join(fixtureRepo, "pi-extensions", "subagent", "agents"), { recursive: true });
+		await copyFile(
+			repoPath("pi-extensions/subagent/index.ts"),
+			join(fixtureRepo, "pi-extensions", "subagent", "index.ts"),
+		);
+		for (const name of bundledAgents) {
+			await copyFile(
+				repoPath(`pi-extensions/subagent/agents/${name}`),
+				join(fixtureRepo, "pi-extensions", "subagent", "agents", name),
+			);
+		}
+		await copyFile(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+		const env = {
+			HOME: join(root, "home"),
+			PI_SKILLS_DIR: join(root, "dest", "skills"),
+			PI_EXTENSIONS_DIR: extensionsDest,
+			PI_THEMES_DIR: join(root, "dest", "themes"),
+			// Sin `pi` en PATH: el guard de conflicto degrada a "no hay conflicto".
+			PATH: "/usr/bin:/bin",
+		};
+		const installed = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], env);
+		assert.equal(installed.status, 0, `${installed.stdout}\n${installed.stderr}`);
+		assert.equal(await absolutePathExists(join(extensionsDest, "subagent", "index.ts")), true, "index.ts copiado");
+		for (const name of bundledAgents) {
+			const copied = join(extensionsDest, "subagent", "agents", name);
+			assert.equal(await absolutePathExists(copied), true, `${name} no se copio junto con la extension`);
+			assert.equal(
+				await readFile(copied, "utf8"),
+				await readFile(repoPath(`pi-extensions/subagent/agents/${name}`), "utf8"),
+				`${name}: contenido distinto al del repo`,
+			);
+		}
+		const cleaned = runInstaller(join(fixtureRepo, "install.sh"), ["pi-clean", "--confirm"], env);
+		assert.equal(cleaned.status, 0, `${cleaned.stdout}\n${cleaned.stderr}`);
+		assert.equal(
+			await absolutePathExists(join(extensionsDest, "subagent")),
+			false,
+			"pi-clean debe borrar subagent/ entero, incluido agents/",
+		);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
