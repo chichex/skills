@@ -140,17 +140,22 @@ const SDD_RUN_FLOW_DOCTRINE = [
 ];
 
 // Hallazgo 3 del review de PR #46: la rama de `Code review` diverge por
-// harness (subagente solo en Claude) y cada una tiene que quedar gateada.
+// harness (subagente en Claude y, desde el issue #44, en Pi via la tool
+// `subagent`) y cada una tiene que quedar gateada.
 const CODE_REVIEW_BRANCH: Record<Harness, RegExp> = {
 	claude: /`Code review` en Claude Code[\s\S]*`workflow_dispatch`[\s\S]*subagent_type: "reviewer"[\s\S]*`\/code-review --comment`/,
 	codex: /`Code review` en Codex[\s\S]*sin subagentes[\s\S]*solo (?:aparece )?(?:si|por GHA)[\s\S]*`workflow_dispatch`/i,
 	opencode: /`Code review` en opencode[\s\S]*sin subagentes[\s\S]*solo (?:aparece )?(?:si|por GHA)[\s\S]*`workflow_dispatch`/i,
-	pi: /`Code review` en Pi[\s\S]*sin subagentes[\s\S]*solo (?:aparece )?(?:si|por GHA)[\s\S]*`workflow_dispatch`/i,
+	pi: /`Code review` en Pi[\s\S]*`workflow_dispatch`[\s\S]*`subagent`[\s\S]*`reviewer`[\s\S]*`\/skill:code-review`/,
 };
 
-// Hallazgo 10 del review de PR #46: fuera de Claude la oferta califica
-// `Code review` inline como GHA-only.
+// Hallazgo 10 del review de PR #46: en codex y opencode la oferta califica
+// `Code review` inline como GHA-only. Pi dejo de calificarla (issue #44).
 const CODE_REVIEW_OFFER_QUALIFIED = /`Code review` \(solo con GHA\)/;
+
+// Issue #44: la exploracion de la Fase 2 en Pi delega en subagentes `scout`
+// via la tool `subagent`, espejo de los `Explore` de Claude.
+const PI_SCOUT_EXPLORATION = /subagentes `scout` con la tool `subagent`/;
 
 const FEEDBACK_REMEDIATION_QUESTION_STYLE: Record<Harness, RegExp> = {
 	claude: /usar `AskUserQuestion`[\s\S]*Resolver feedback automáticamente/,
@@ -495,7 +500,7 @@ test("sdd-spec no contradice que `Llevar a issue` conserva el .md, y Pi revierte
 	assert.match(pi, /cancel[\s\S]{0,200}revert[\s\S]{0,200}`draft`/i, "Pi revierte a draft si se cancela Ejecutar ahora");
 });
 
-test("sdd-spec lanza el run con subagente implementer en background solo en Claude", async () => {
+test("sdd-spec lanza el run con subagente implementer en background en Claude y en Pi, nunca en codex ni opencode", async () => {
 	const claude = await readRepoFile("claude/sdd-spec/SKILL.md");
 	assert.match(claude, /subagent_type: "implementer"/);
 	assert.match(claude, /run_in_background/);
@@ -504,6 +509,18 @@ test("sdd-spec lanza el run con subagente implementer en background solo en Clau
 	for (const harness of HARNESSES.filter((candidate) => candidate !== "claude")) {
 		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
 		assert.doesNotMatch(markdown, /subagent_type/, `${harness}/sdd-spec/SKILL.md no debe depender de subagentes de Claude`);
+	}
+	// Issue #44 CA-9/CA-12: Pi lanza la tool `subagent` con el agente bundleado
+	// `implementer` en background y el task `/skill:sdd-run <target> --assume`.
+	const pi = await readRepoFile("pi/sdd-spec/SKILL.md");
+	assert.match(pi, /agent: "implementer"/, "pi/sdd-spec lanza el implementer bundleado");
+	assert.match(pi, /background: true/, "pi/sdd-spec lanza el subagente en background");
+	assert.match(pi, /`sdd-run con subagente`[\s\S]*--assume/, "pi/sdd-spec corre sdd-run desatendido en el hijo");
+	assert.doesNotMatch(pi, /Pi no tiene subagentes/, "pi/sdd-spec ya tiene subagentes");
+	assert.match(pi, PI_SCOUT_EXPLORATION, "pi/sdd-spec explora con scouts");
+	for (const harness of ["codex", "opencode"] as const) {
+		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
+		assert.doesNotMatch(markdown, /agent: "implementer"|background: true/, `${harness}/sdd-spec/SKILL.md no tiene subagentes`);
 	}
 });
 
@@ -525,8 +542,18 @@ test("sdd-run imprime el plan y sigue, desvía sin preguntar y ofrece code revie
 	for (const harness of HARNESSES) {
 		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
 		assert.match(markdown, CODE_REVIEW_BRANCH[harness], `${harness}/sdd-run/SKILL.md no gatea su rama de Code review`);
-		if (harness !== "claude") {
+		if (harness === "codex" || harness === "opencode") {
 			assert.match(markdown, CODE_REVIEW_OFFER_QUALIFIED, `${harness}/sdd-run/SKILL.md ofrece Code review sin calificarlo como GHA-only`);
+		}
+		if (harness === "pi") {
+			// Issue #44 CA-10/CA-12: Pi tiene subagentes via la tool `subagent`.
+			assert.doesNotMatch(markdown, CODE_REVIEW_OFFER_QUALIFIED, "pi/sdd-run/SKILL.md ya no califica Code review como GHA-only");
+			assert.doesNotMatch(markdown, /sin subagentes/i, "pi/sdd-run/SKILL.md ya no se declara sin subagentes");
+			assert.match(markdown, /agent: "reviewer"[\s\S]*background: true[\s\S]*`\/skill:code-review <PR>`/, "pi/sdd-run lanza el reviewer bundleado en background");
+			assert.match(markdown, /sin GHA y sin la tool[\s\S]*no aparece|tool `subagent` no est[aá] registrada[\s\S]*no aparece/i, "pi/sdd-run omite la opcion sin GHA ni tool");
+			assert.match(markdown, PI_SCOUT_EXPLORATION, "pi/sdd-run explora con scouts en la Fase 2");
+		}
+		if (harness !== "claude") {
 			assert.doesNotMatch(markdown, /subagent_type/, `${harness}/sdd-run/SKILL.md no debe depender de subagentes de Claude`);
 		}
 		// Hallazgo 2: con `--assume` la política de dependencias `preguntar` no puede frenar.
