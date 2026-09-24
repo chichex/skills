@@ -1,5 +1,8 @@
 // Resumen Markdown del JSON de `claude plugin eval --json` para el step summary
-// de plugin-eval.yml. Tolerante al shape: busca casos y costo donde estén.
+// de plugin-eval.yml. Shape real (schemaVersion 1, Claude Code 2.1.28x):
+// { costUsd, aggregates: { casesTotal, casesPassed, overallScore },
+//   cases: [{ name, aggregates: { score, passRate }, arms: { with: [run], without?: [run] } }] }
+// donde cada run trae { score, passed, turns, costUsd }.
 import { readFileSync } from "node:fs";
 
 const path = process.argv[2];
@@ -9,27 +12,27 @@ if (!path) {
 }
 const result = JSON.parse(readFileSync(path, "utf8"));
 const cases = Array.isArray(result.cases) ? result.cases : [];
+const fmt = (n) => (typeof n === "number" ? n.toFixed(2) : "?");
+const runsOf = (entry, arm) => (Array.isArray(entry.arms?.[arm]) ? entry.arms[arm] : []);
+const meanScore = (runs) => (runs.length ? runs.reduce((acc, run) => acc + (run.score ?? 0), 0) / runs.length : undefined);
+const hasBaseline = cases.some((entry) => runsOf(entry, "without").length > 0);
 
 console.log("## Plugin Eval");
 console.log("");
-console.log("| Caso | Score | Runs |");
-console.log("|---|---|---|");
+console.log(hasBaseline ? "| Caso | Score | Pasa | Runs | Sin plugin |" : "| Caso | Score | Pasa | Runs |");
+console.log(hasBaseline ? "|---|---|---|---|---|" : "|---|---|---|---|");
 for (const entry of cases) {
-  const name = entry.name ?? entry.id ?? entry.case ?? "?";
-  const score = typeof entry.score === "number" ? entry.score.toFixed(2) : (entry.score ?? "?");
-  const runs = Array.isArray(entry.runs) ? entry.runs.length : (entry.runs ?? "?");
-  console.log(`| ${name} | ${score} | ${runs} |`);
+  const withRuns = runsOf(entry, "with");
+  const score = typeof entry.aggregates?.score === "number" ? entry.aggregates.score : meanScore(withRuns);
+  const passed = withRuns.filter((run) => run.passed).length;
+  const row = [entry.name ?? "?", fmt(score), `${passed}/${withRuns.length}`, String(withRuns.length)];
+  if (hasBaseline) row.push(fmt(meanScore(runsOf(entry, "without"))));
+  console.log(`| ${row.join(" | ")} |`);
 }
 console.log("");
-const costKeys = ["totalCostUsd", "total_cost_usd", "costUsd", "cost_usd", "cost"];
-const findCost = (obj, depth = 0) => {
-  if (!obj || typeof obj !== "object" || depth > 3) return undefined;
-  for (const key of costKeys) if (typeof obj[key] === "number") return obj[key];
-  for (const value of Object.values(obj)) {
-    const found = findCost(value, depth + 1);
-    if (found !== undefined) return found;
-  }
-  return undefined;
-};
-const cost = findCost(result);
-console.log(cost === undefined ? "Costo: no reportado en el JSON." : `Costo total reportado: ${cost.toFixed(2)} USD.`);
+if (result.aggregates) {
+  const a = result.aggregates;
+  console.log(`Casos: ${a.casesPassed ?? "?"}/${a.casesTotal ?? cases.length} en verde · score global ${fmt(a.overallScore)}.`);
+}
+console.log(typeof result.costUsd === "number" ? `Costo total reportado: ${result.costUsd.toFixed(2)} USD.` : "Costo: no reportado en el JSON.");
+if (result.partial) console.log("Corrida parcial: se alcanzó el techo de --max-cost-usd.");
