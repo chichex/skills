@@ -107,6 +107,7 @@ skills/
 ├── .claude/        # project skills internos del repo (harness-port)
 ├── .claude-plugin/ # marketplace + manifest del plugin de Claude Code
 ├── .github/        # CI (GitHub Actions)
+├── evals/          # evals del plugin de Claude Code (claude plugin eval)
 └── scripts/        # lint, drift y sincronizadores deterministas
 ```
 
@@ -145,6 +146,14 @@ Con eso Claude Code refresca el marketplace y actualiza el plugin en background 
 claude plugin marketplace update chichex
 claude plugin update chichex-skills@chichex
 ```
+
+**Evals:** `evals/` trae una suite para `claude plugin eval` (Claude Code ≥ 2.1.280) que mide conducta, no estructura: que `sdd-init`, `sdd-spec`, `sdd-run`, `sdd-review-loop`, `grill` y `mini-grill` se disparen ante el prompt correcto y no ante el ajeno, y que `sdd-spec` siga su doctrina sobre un proyecto de prueba (`evals/adherence-sdd-spec/fixtures/mini-cli`). Cada caso corre un `claude` real con tu cuenta (`model: claude-sonnet-5`), así que es paga y no determinista, y no reemplaza los gates de `node --test`. Local, desde la raíz:
+
+```
+claude plugin eval . --ablation none --runs 1 --max-cost-usd 5 --no-publish --allow-tools Write --scaffold
+```
+
+Un caso que falla se repite con `--case <nombre> --runs 3 --ablation with-without`. En CI corre solo a pedido: `gh workflow run plugin-eval.yml --repo chichex/skills` (`.github/workflows/plugin-eval.yml`, mismo secret `CLAUDE_CODE_OAUTH_TOKEN` que el review); el reporte queda como artifact `plugin-eval-results`.
 
 ### Pi: como Pi Package nativo (recomendado)
 

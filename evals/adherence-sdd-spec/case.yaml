@@ -1,0 +1,51 @@
+schema_version: "1.1"
+name: adherence-sdd-spec
+description: sdd-spec lee el contrato del fixture, escribe la spec con inferencias [ASSUMED] y no frena a preguntar.
+tags: [adherence, sdd-spec]
+runs: 1
+context:
+  scaffold_script: scaffold.sh
+execution:
+  model: claude-sonnet-5
+  max_turns: 40
+  timeout_seconds: 900
+  allowed_tools: [Read, Glob, Grep, Skill, Write]
+  prompt: |
+    Estás en la raíz de un proyecto que ya tiene su contrato de autonomía en .sdd/project.md.
+    Corré /sdd-spec con --assume para este pedido: agregar un flag --json al CLI que imprima el resultado como JSON en vez de texto.
+    Guardá la spec en .sdd/specs/json-flag.md (ese nombre exacto).
+graders:
+  - name: read-contract
+    type: tool_used
+    tool: Read
+    input_match: '\.sdd/project\.md'
+    min: 1
+  - name: no-questions
+    type: tool_used
+    tool: AskUserQuestion
+    min: 0
+    max: 0
+  - name: spec-written
+    type: file_exists
+    path: "**/.sdd/specs/*.md"
+  # `target: files` es la lista de rutas creadas, no su contenido: el contenido
+  # se busca en la línea del trace que lleva la llamada Write (el texto del
+  # SKILL.md que menciona estas mismas palabras vive en otras líneas).
+  - name: inferences-section
+    type: regex
+    target: trace
+    pattern: '"name":"Write"[^\n]*## Inferencias'
+  - name: assumed-rows
+    type: regex
+    target: trace
+    pattern: '"name":"Write"[^\n]*\[ASSUMED\]'
+  - name: rubric
+    type: llm
+    focus: { source: file, path: ".sdd/specs/json-flag.md" }
+    weight: 1
+    criteria: |
+      Evaluá la spec Markdown que el agente escribió (un archivo bajo .sdd/specs/). Pasa solo si se cumplen las tres:
+      1. Tiene una sección "## Inferencias" con una tabla donde al menos una fila está marcada [ASSUMED] y esa fila trata una decisión real del pedido (el flag --json del CLI: formato de salida, errores, compatibilidad con la salida de texto, etc.), no una genérica.
+      2. Tiene criterios de aceptación numerados (CA-1, CA-2, ...) y cada uno lleva un grado de verificabilidad (ALTA, MEDIA, BAJA o NULA).
+      3. Tiene una sección "## Verificabilidad" cuyo veredicto nombra el comando de tests del contrato del proyecto (node --test) como mecanismo.
+      Ignorá el estilo y la longitud. Si falta cualquiera de las tres, falla.

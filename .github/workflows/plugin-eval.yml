@@ -1,0 +1,110 @@
+# Evals del plugin chichex-skills con `claude plugin eval`, A PEDIDO. Corre en
+# runners de GitHub (ubuntu-latest).
+#
+# NO se dispara solo en cada PR: cada corrida lanza un `claude` por caso con la
+# cuota de la suscripción. Lo pedís vos, cuando cambia un skill:
+#
+#   gh workflow run plugin-eval.yml --repo chichex/skills
+#
+# …o desde la UI: Actions → Plugin Eval → Run workflow. Opcionalmente filtrás
+# casos, subís las corridas por caso, cambiás el modelo o pedís baseline:
+#
+#   gh workflow run plugin-eval.yml --repo chichex/skills -f case='trigger-*' -f runs=3 -f ablation=with-without
+#
+# Requiere el secret CLAUDE_CODE_OAUTH_TOKEN (el mismo que claude-review.yml).
+# La suite vive en evals/ (ver README, sección "Claude Code: como plugin").
+
+name: Plugin Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      case:
+        description: "Glob de casos a correr (vacío = todos)"
+        required: false
+        type: string
+        default: ""
+      runs:
+        description: "Corridas por caso"
+        required: false
+        type: string
+        default: "1"
+      model:
+        description: "Modelo de las corridas (pisa el model: de cada caso)"
+        required: false
+        type: choice
+        default: claude-sonnet-5
+        options:
+          - claude-sonnet-5
+          - claude-opus-5-5
+          - claude-fable-5-1
+      ablation:
+        description: "Baseline sin plugin: none (solo con plugin) o with-without (reporta el delta)"
+        required: false
+        type: choice
+        default: none
+        options:
+          - none
+          - with-without
+
+# Dos disparos a la vez comparten un solo rate limit: se encolan, no se cancelan.
+concurrency:
+  group: plugin-eval
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    name: Eval
+    runs-on: ubuntu-latest
+    # 8 casos a un run tardan minutos; con runs=3 y baseline, bastante más.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - name: Validar runs
+        env:
+          RUNS: ${{ inputs.runs }}
+        run: |
+          [[ "$RUNS" =~ ^[0-9]+$ ]] || { echo "::error::'runs' tiene que ser un número; llegó: $RUNS"; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar Claude Code
+        run: |
+          npm install -g @anthropic-ai/claude-code@latest
+          claude --version
+
+      # --trust-plugin: sin TTY no hay prompt de confianza; es nuestro propio repo.
+      # --allow-tools Write: Write es un tool gateado y el caso de adherencia
+      # escribe la spec. --scaffold: el caso de adherencia copia su fixture al
+      # workspace con evals/adherence-sdd-spec/scaffold.sh. --no-publish: el
+      # reporte HTML queda en el artifact.
+      - name: Correr la suite
+        env:
+          CASE: ${{ inputs.case }}
+          RUNS: ${{ inputs.runs }}
+          MODEL: ${{ inputs.model }}
+          ABLATION: ${{ inputs.ablation }}
+        run: |
+          mkdir -p evals/results
+          args=(plugin eval . --trust-plugin --json evals/results/ci.json --no-publish --threshold 1.0 --max-cost-usd 5 --allow-tools Write --scaffold --ablation "$ABLATION" --runs "$RUNS" --model "$MODEL")
+          if [ -n "$CASE" ]; then args+=(--case "$CASE"); fi
+          claude "${args[@]}"
+
+      - name: Resumen
+        if: always()
+        run: |
+          node .github/scripts/plugin-eval-summary.mjs evals/results/ci.json >> "$GITHUB_STEP_SUMMARY" || echo "sin resultados para resumir" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plugin-eval-results
+          path: evals/results/
+          if-no-files-found: warn
