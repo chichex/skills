@@ -405,11 +405,16 @@ function harness(overrides: { env?: NodeJS.ProcessEnv; trusted?: boolean; hasUI?
 	return { deps, calls, sent, timers, registry, execute: createSubagentExecute(deps), ctx, root };
 }
 
-async function until(condition: () => boolean, label: string): Promise<void> {
-	for (let i = 0; i < 500; i += 1) {
+// Espera por reloj, no por vueltas del event loop: antes de cada spawn hay I/O
+// real (mkdtemp + writeFile del prompt temporal) que en un runner de CI lento
+// puede tardar mas que 500 setImmediate (~17 ms) y volvia flaky el test.
+async function until(condition: () => boolean, label: string, timeoutMs = 5000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
 		if (condition()) return;
-		await new Promise((done) => setImmediate(done));
+		await new Promise((done) => setTimeout(done, 1));
 	}
+	if (condition()) return;
 	assert.fail(`timeout esperando: ${label}`);
 }
 
