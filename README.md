@@ -58,6 +58,8 @@ En Pi, `grill` es el único entry point de entrevista: el usuario elige si quier
 
 Los entrypoints públicos son `/issues` para triage, `/grills` para retomar entrevistas, `/specs` para buscar/inspeccionar specs, `/sdd-run <ruta|#NN>` para autorizar directamente una ejecución y `/wait-pr` para monitorear PRs nuevos y encadenar `code-review`.
 
+`/grills` y `select_grill_session` comparten un inventario que reconcilia snapshots runtime globales con handoffs portables bajo `.sdd/grills/` en cada root conocido. Abre en el proyecto actual; «Ver todos» incorpora sólo proyectos conocidos por Pi, sin escanear el disco. Un handoff pausado sin snapshot se importa únicamente al confirmar **Retomar** y conserva el Markdown completo. Si el marker declara otra ruta histórica, se muestra como advertencia y manda la raíz física. Para un handoff finalizado sin snapshot, Grill → Spec pasa la ruta absoluta validada a `sdd-spec --from-grill "<ruta>"`; con snapshot compatible conserva el flujo por ID. Listar, inspeccionar o importar no reescribe el handoff fuente.
+
 | Transición | Frontera de sesión |
 |---|---|
 | `/issues` → Grill/Spec/Quick-run/Run confirmado | **Sesión hija** fresca, ligada mediante `parentSession`; stop, error, rechazo o cancelación conservan la sesión de triage. |

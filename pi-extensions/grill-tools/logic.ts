@@ -5,12 +5,15 @@
 // canonico SDD-Tracking v1 via sdd-artifacts. Sin I/O ni APIs de Pi: la
 // escritura a disco vive en index.ts.
 
+import { basename } from "node:path";
+
 import {
 	parseSddArtifact,
 	upsertSddMetadata,
 	type GrillMetadata,
 	type IssueReference,
 } from "../sdd-artifacts/index.ts";
+import type { ImportedHandoffSource } from "./inventory.ts";
 
 export interface HandoffSnapshot {
 	id: string;
@@ -24,6 +27,8 @@ export interface HandoffSnapshot {
 	decisions: { title: string; agreement: string }[];
 	pendingBranches: { title: string; description?: string }[];
 	handoffMarkdown?: string;
+	parentId?: string;
+	importedHandoff?: ImportedHandoffSource;
 }
 
 export interface HandoffPlan {
@@ -116,6 +121,54 @@ export function composeHandoffMarkdown(snapshot: HandoffSnapshot): string {
 	].join("\n");
 }
 
+function withoutTrackingMarkers(markdown: string): string {
+	return markdown
+		.split("\n")
+		.filter((line) => !MARKER_LINE.test(line))
+		.join("\n")
+		.trim();
+}
+
+function composeImportedHandoffMarkdown(snapshot: HandoffSnapshot): string {
+	const source = snapshot.importedHandoff!;
+	const decisions = snapshot.decisions.length
+		? snapshot.decisions.map((decision, index) => `${index + 1}. ${decision.title} — ${decision.agreement}`)
+		: ["(ninguna nueva)"];
+	const branches = snapshot.pendingBranches.length
+		? snapshot.pendingBranches.map(
+			(branch) => `- ${branch.title}${branch.description ? ` — ${branch.description}` : ""}`,
+		)
+		: ["(ninguna nueva)"];
+	const continuation = [
+		"## Continuidad runtime importada",
+		"",
+		`- **Fuente portable:** \`${source.sourcePath}\``,
+		`- **Proyecto histórico:** ${source.historicalProjectPath ?? "no declarado"}`,
+		"- **Snapshot histórico:** no existía; esta baseline fue importada desde el handoff.",
+		"",
+		"### Resumen agregado",
+		"",
+		snapshot.summary?.trim() || "(sin resumen nuevo)",
+		"",
+		"### Decisiones agregadas",
+		"",
+		...decisions,
+		"",
+		"### Ramas pendientes actuales",
+		"",
+		...branches,
+	];
+	if (snapshot.status === "finalized" && snapshot.handoffMarkdown?.trim()) {
+		continuation.push(
+			"",
+			"### Handoff de la revisión",
+			"",
+			withoutTrackingMarkers(snapshot.handoffMarkdown),
+		);
+	}
+	return `${source.markdown.trim()}\n\n${continuation.join("\n")}\n`;
+}
+
 function stripPreambleMarkers(markdown: string): string {
 	const lines = markdown.split("\n");
 	const kept: string[] = [];
@@ -156,12 +209,16 @@ export function handoffBelongsToSession(content: string, sessionId: string): boo
 
 export function planGrillHandoff(snapshot: HandoffSnapshot, existingContent: string | null): HandoffPlan {
 	const names = handoffFileNames(snapshot);
-	const fileName =
-		existingContent === null || handoffBelongsToSession(existingContent, snapshot.id)
+	const fileName = snapshot.importedHandoff
+		? snapshot.parentId
+			? names.fallback
+			: basename(snapshot.importedHandoff.sourcePath)
+		: existingContent === null || handoffBelongsToSession(existingContent, snapshot.id)
 			? names.primary
 			: names.fallback;
-	const base =
-		snapshot.status === "finalized" && snapshot.handoffMarkdown?.trim()
+	const base = snapshot.importedHandoff
+		? composeImportedHandoffMarkdown(snapshot)
+		: snapshot.status === "finalized" && snapshot.handoffMarkdown?.trim()
 			? `${snapshot.handoffMarkdown.trim()}\n`
 			: composeHandoffMarkdown(snapshot);
 	const { content, diagnostics } = applyGrillMarker(base, grillMetadataFromSnapshot(snapshot));

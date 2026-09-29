@@ -1,5 +1,6 @@
-import { isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
+import { isGrillHandoffCandidatePath } from "../grill-tools/inventory.ts";
 import type {
 	ArtifactRef,
 	WorkflowResolutionV1,
@@ -62,6 +63,48 @@ function validatedGrill(
 	if (grill.diagnostics.length > 0) return null;
 	if (allowSnapshot && grill.format === "snapshot" && grill.provenance === "snapshot") return grill;
 	return canonicalArtifact(grill) ? grill : null;
+}
+
+function directHandoffPath(cwd: string, path: string): boolean {
+	if (!isAbsolute(path) || !isGrillHandoffCandidatePath(path)) return false;
+	return dirname(resolve(path)) === resolve(cwd, ".sdd", "grills");
+}
+
+function validatedFinalizedGrillSource(
+	resolution: WorkflowResolutionV1,
+	issue: { repository: string; number: number },
+): { kind: "id" | "path"; value: string } | null {
+	const handoff = primaryArtifact(resolution, "grill");
+	if (!handoff
+		|| handoff.location !== "handoff"
+		|| handoff.state !== "finalized"
+		|| !handoff.grill
+		|| !handoff.issue
+		|| !sameIssue(handoff.issue, issue)
+		|| !canonicalArtifact(handoff)
+		|| !directHandoffPath(resolution.cwd, handoff.path)) {
+		return null;
+	}
+	const snapshots = resolution.artifacts.filter((artifact) =>
+		artifact.type === "grill"
+		&& artifact.location === "snapshot"
+		&& artifact.grill === handoff.grill
+	);
+	if (snapshots.length === 0) return { kind: "path", value: resolve(handoff.path) };
+	if (snapshots.length !== 1) return null;
+	const snapshot = snapshots[0]!;
+	if (snapshot.format !== "snapshot"
+		|| snapshot.provenance !== "snapshot"
+		|| snapshot.identityProvenance !== "snapshot"
+		|| snapshot.state !== "finalized"
+		|| !snapshot.issue
+		|| !sameIssue(snapshot.issue, issue)
+		|| !snapshot.project
+		|| resolve(snapshot.project) !== resolve(resolution.cwd)
+		|| snapshot.diagnostics.length > 0) {
+		return null;
+	}
+	return { kind: "id", value: handoff.grill };
 }
 
 function validatedSpec(
@@ -127,14 +170,18 @@ export function resolveWorkflowDispatch(input: unknown): WorkflowDispatchResult 
 		case "resume-grill": {
 			const grill = validatedGrill(resolution, issue, true);
 			return grill
-				? request(resolution, "grill", `--resume ${grill.grill}`)
+				? request(resolution, "grill", `--resume ${JSON.stringify(grill.grill)}`)
 				: failure("invalid-grill-reference", "resume-grill requires one canonical in-project grill leaf");
 		}
 		case "spec-from-grill": {
-			const grill = validatedGrill(resolution, issue, false);
-			return grill
-				? request(resolution, "sdd-spec", `--from-grill ${grill.grill}`)
-				: failure("invalid-grill-reference", "spec-from-grill requires one canonical in-project grill leaf");
+			const source = validatedFinalizedGrillSource(resolution, issue);
+			return source
+				? request(
+					resolution,
+					"sdd-spec",
+					`--from-grill ${JSON.stringify(source.value)}`,
+				)
+				: failure("invalid-grill-reference", "spec-from-grill requires one canonical finalized grill source");
 		}
 		case "update-existing-spec":
 		case "audit-existing-spec":

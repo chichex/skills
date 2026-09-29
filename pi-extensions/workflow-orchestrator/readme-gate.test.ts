@@ -18,6 +18,11 @@ const readmeCases = [
 			/encontrar una spec.*no.*ejecut/i,
 			/no.*merge/i,
 			/provider local\/falso|provider local o falso/i,
+			/`\/grills`[\s\S]*snapshots[\s\S]*handoffs[\s\S]*`\.sdd\/grills\/`/i,
+			/proyecto actual[\s\S]*proyectos conocidos[\s\S]*sin (?:recorrer|escanear).*disco/i,
+			/handoff pausado[\s\S]*importa[\s\S]*Retomar/i,
+			/ruta hist[oó]rica[\s\S]*advertencia/i,
+			/handoff finalizado[\s\S]*ruta absoluta[\s\S]*`sdd-spec --from-grill/i,
 		],
 	},
 	{
@@ -35,6 +40,11 @@ const readmeCases = [
 			/finding a spec.*does not.*run/i,
 			/never merges|does not merge/i,
 			/local\/fake provider|local or fake provider/i,
+			/`\/grills`[\s\S]*snapshots[\s\S]*handoffs[\s\S]*`\.sdd\/grills\/`/i,
+			/current project[\s\S]*known projects[\s\S]*(?:never scans|without scanning).*disk/i,
+			/paused handoff[\s\S]*imports[\s\S]*Resume/i,
+			/historical path[\s\S]*warning/i,
+			/finalized handoff[\s\S]*absolute path[\s\S]*`sdd-spec --from-grill/i,
 		],
 	},
 ] as const;
