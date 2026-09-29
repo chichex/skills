@@ -138,6 +138,91 @@ test("CA-2: el parser de frontmatter es inyectable (index.ts inyecta el de Pi) y
 	assert.deepEqual(parseAgentFrontmatter("sin frontmatter"), { frontmatter: {}, body: "sin frontmatter" });
 });
 
+// Presupuesto de tiempo por agente: `timeout` en segundos. El parser YAML de
+// Pi lo entrega como number y el default como string; ambos valen. Cualquier
+// otra cosa (0, negativo, texto) se ignora: el agente queda sin timeout.
+test("timeout: `timeout` del frontmatter se lee en segundos, como number o string; valores invalidos quedan sin timeout", async () => {
+	const fx = await fixture();
+	try {
+		await writeFile(join(fx.packageAgentsDir, "rapido.md"), agentMarkdown("rapido", "timeout: 300\n"));
+		await writeFile(join(fx.packageAgentsDir, "roto.md"), agentMarkdown("roto", "timeout: nunca\n"));
+		await writeFile(join(fx.packageAgentsDir, "cero.md"), agentMarkdown("cero", "timeout: 0\n"));
+		const byName = (agents: Array<{ name: string; timeoutSeconds?: number }>, name: string) =>
+			agents.find((agent) => agent.name === name)?.timeoutSeconds;
+		const found = discoverAgents(fx.cwd, "package", deps(fx)).agents;
+		assert.equal(byName(found, "rapido"), 300);
+		assert.equal(byName(found, "roto"), undefined);
+		assert.equal(byName(found, "cero"), undefined);
+		assert.equal(byName(found, "alpha"), undefined, "sin `timeout` no hay limite");
+
+		const yaml = discoverAgents(fx.cwd, "package", {
+			...deps(fx),
+			parseFrontmatter: <T extends Record<string, unknown>>() => ({ frontmatter: { name: "n", description: "d", timeout: 120 } as unknown as T, body: "b" }),
+		}).agents;
+		assert.equal(byName(yaml, "n"), 120, "number del parser YAML de Pi");
+	} finally {
+		await rm(fx.root, { recursive: true, force: true });
+	}
+});
+
+// Un `timeout` presente pero malformado no puede degradar en silencio a "sin
+// limite": el agente lleva un `timeoutWarning` que la tool expone.
+test("timeout: un `timeout` presente pero malformado deja timeoutWarning con el valor crudo; ausente o valido no avisa", async () => {
+	const fx = await fixture();
+	try {
+		const malformed: Record<string, string> = {
+			m1: "300s",
+			m2: "5m",
+			m3: "2.5",
+			m4: "-1",
+			m5: "0",
+			m6: "300 # comentario",
+		};
+		for (const [name, value] of Object.entries(malformed)) {
+			await writeFile(join(fx.packageAgentsDir, `${name}.md`), agentMarkdown(name, `timeout: ${value}\n`));
+		}
+		await writeFile(join(fx.packageAgentsDir, "ok.md"), agentMarkdown("ok", "timeout: 300\n"));
+		const found = discoverAgents(fx.cwd, "package", deps(fx)).agents as Array<{ name: string; timeoutSeconds?: number; timeoutWarning?: string }>;
+		for (const [name, value] of Object.entries(malformed)) {
+			const agent = found.find((candidate) => candidate.name === name)!;
+			assert.equal(agent.timeoutSeconds, undefined, `${name}: sigue sin timeout efectivo`);
+			assert.match(agent.timeoutWarning ?? "", new RegExp(`"${value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`), `${name}: el aviso cita el valor`);
+			assert.match(agent.timeoutWarning ?? "", /entero positivo/, `${name}: dice que forma vale`);
+		}
+		assert.equal(found.find((agent) => agent.name === "ok")?.timeoutWarning, undefined);
+		assert.equal(found.find((agent) => agent.name === "alpha")?.timeoutWarning, undefined, "sin `timeout` no hay aviso");
+
+		const yaml = (value: unknown) =>
+			discoverAgents(fx.cwd, "package", {
+				...deps(fx),
+				parseFrontmatter: <T extends Record<string, unknown>>() => ({ frontmatter: { name: "n", description: "d", timeout: value } as unknown as T, body: "b" }),
+			}).agents[0] as { timeoutSeconds?: number; timeoutWarning?: string };
+		assert.match(yaml(null).timeoutWarning ?? "", /null/, "`timeout:` vacio del parser YAML tambien avisa");
+		assert.match(yaml(2.5).timeoutWarning ?? "", /2\.5/);
+		assert.equal(yaml(120).timeoutWarning, undefined);
+	} finally {
+		await rm(fx.root, { recursive: true, force: true });
+	}
+});
+
+test("timeout: el prompt del scout no hardcodea minutos (el limite vive en el frontmatter)", () => {
+	const scout = discoverAgents(REPO_ROOT, "package", {}).agents.find((agent) => agent.name === "scout");
+	assert.ok(scout);
+	assert.doesNotMatch(scout.systemPrompt, /\b\d+\s*(minutos?|min|segundos?|s)\b/i, "sin numero de tiempo en el body");
+	assert.match(scout.systemPrompt, /presupuesto de tiempo/);
+	assert.match(scout.systemPrompt, /~30 lecturas/);
+	assert.match(scout.systemPrompt, /## Start Here/);
+});
+
+test("timeout: el scout bundleado declara un presupuesto de tiempo; implementer y reviewer no", () => {
+	const agents = discoverAgents(REPO_ROOT, "package", {}).agents;
+	const scout = agents.find((agent) => agent.name === "scout");
+	assert.ok(scout?.timeoutSeconds && scout.timeoutSeconds > 0 && scout.timeoutSeconds <= 600, "scout con timeout de hasta 10 min");
+	for (const name of ["implementer", "reviewer"]) {
+		assert.equal(agents.find((agent) => agent.name === name)?.timeoutSeconds, undefined, `${name}: runs largos, sin timeout`);
+	}
+});
+
 test("CA-2: un parser inyectado reemplaza al default", async () => {
 	const fx = await fixture();
 	try {

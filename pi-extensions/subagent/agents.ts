@@ -24,6 +24,10 @@ export interface AgentConfig {
 	description: string;
 	tools?: string[];
 	model?: string;
+	timeoutSeconds?: number;
+	// Presente cuando el frontmatter trae `timeout` pero no es un entero positivo:
+	// el agente corre sin limite y la tool lo avisa en su salida.
+	timeoutWarning?: string;
 	systemPrompt: string;
 	source: AgentSource;
 	filePath: string;
@@ -55,6 +59,7 @@ type AgentFrontmatter = {
 	description?: unknown;
 	tools?: unknown;
 	model?: unknown;
+	timeout?: unknown;
 };
 
 export const PACKAGE_AGENTS_DIR = join(dirname(fileURLToPath(import.meta.url)), "agents");
@@ -109,6 +114,20 @@ function parseToolList(value: unknown): string[] | undefined {
 	return tools.length > 0 ? tools : undefined;
 }
 
+// `timeout: 300` (segundos). El parser YAML de Pi entrega number y el default
+// string. Ausente = sin limite sin aviso. Presente pero que no sea un entero
+// positivo (`300s`, `5m`, `2.5`, `-1`, `0`, vacio) tambien corre sin limite,
+// pero deja un `timeoutWarning`: no falla en silencio.
+function parseTimeout(value: unknown): { seconds?: number; warning?: string } {
+	if (value === undefined) return {};
+	const parsed = typeof value === "number" ? value : typeof value === "string" && /^\d+$/.test(value.trim()) ? Number(value) : NaN;
+	if (Number.isInteger(parsed) && parsed > 0) return { seconds: parsed };
+	const raw = typeof value === "string" ? JSON.stringify(value) : String(value);
+	return {
+		warning: `timeout ${raw} invalido en el frontmatter: tiene que ser un entero positivo de segundos (ej. timeout: 300); se ignoro y el agente corre sin limite.`,
+	};
+}
+
 function loadAgentsFromDir(dir: string, source: AgentSource, parse: FrontmatterParser): AgentConfig[] {
 	const agents: AgentConfig[] = [];
 	if (!existsSync(dir)) return agents;
@@ -133,11 +152,14 @@ function loadAgentsFromDir(dir: string, source: AgentSource, parse: FrontmatterP
 		const { frontmatter, body } = parse<AgentFrontmatter>(content);
 		// Un .md sin name o description string se ignora sin descartar los demas.
 		if (typeof frontmatter.name !== "string" || typeof frontmatter.description !== "string") continue;
+		const timeout = parseTimeout(frontmatter.timeout);
 		agents.push({
 			name: frontmatter.name,
 			description: frontmatter.description,
 			tools: parseToolList(frontmatter.tools),
 			model: typeof frontmatter.model === "string" ? frontmatter.model : undefined,
+			timeoutSeconds: timeout.seconds,
+			...(timeout.warning ? { timeoutWarning: timeout.warning } : {}),
 			systemPrompt: body,
 			source,
 			filePath,

@@ -223,7 +223,7 @@ export function renderResult(
 	}
 
 	if (details.mode === "chain") {
-		const successCount = details.results.filter((r) => r.exitCode === 0).length;
+		const successCount = details.results.filter((r) => !isFailedResult(r)).length;
 		const icon = successCount === details.results.length ? theme.fg("success", "✓") : theme.fg("error", "✗");
 		const title = `${icon} ${theme.fg("toolTitle", theme.bold("chain "))}${theme.fg("accent", `${successCount}/${details.results.length} steps`)}`;
 
@@ -231,7 +231,7 @@ export function renderResult(
 			const container = new Container();
 			container.addChild(new Text(title, 0, 0));
 			for (const r of details.results) {
-				const rIcon = r.exitCode === 0 ? theme.fg("success", "✓") : theme.fg("error", "✗");
+				const rIcon = isFailedResult(r) ? theme.fg("error", "✗") : theme.fg("success", "✓");
 				const displayItems = getDisplayItems(r.messages);
 				const finalOutput = getFinalOutput(r.messages);
 				container.addChild(new Spacer(1));
@@ -255,7 +255,7 @@ export function renderResult(
 
 		let out = title;
 		for (const r of details.results) {
-			const rIcon = r.exitCode === 0 ? theme.fg("success", "✓") : theme.fg("error", "✗");
+			const rIcon = isFailedResult(r) ? theme.fg("error", "✗") : theme.fg("success", "✓");
 			const displayItems = getDisplayItems(r.messages);
 			out += `\n\n${theme.fg("muted", `─── Step ${r.step}: `)}${theme.fg("accent", r.agent)} ${rIcon}`;
 			out += displayItems.length === 0 ? `\n${theme.fg("muted", "(no output)")}` : `\n${renderDisplayItems(displayItems, 5)}`;

@@ -156,6 +156,12 @@ const CODE_REVIEW_OFFER_QUALIFIED = /`Code review` \(solo con GHA\)/;
 // Issue #44: la exploracion de la Fase 2 en Pi delega en subagentes `scout`
 // via la tool `subagent`, espejo de los `Explore` de Claude.
 const PI_SCOUT_EXPLORATION = /subagentes `scout` con la tool `subagent`/;
+// Tope de la exploracion con scouts: sin cantidad maxima ni exhaustividad
+// explicita, el agente lanzaba 4 scouts con tasks abiertos que hacian cientos
+// de lecturas y bloqueaban la sesion.
+const PI_SCOUT_BUDGET_RUN = /como máximo 2[\s\S]{0,120}`Rápida`[\s\S]{0,400}Nunca pedir "explorá el worktree"[\s\S]{0,200}`failed \(timeout\)`[\s\S]{0,80}`Agent timeout`/;
+const PI_SCOUT_BUDGET_RUN_OVERFLOW = /más de 2 áreas[\s\S]{0,120}2 de mayor blast radius[\s\S]{0,60}resto inline/;
+const PI_SCOUT_BUDGET_SPEC = /como máximo 3[\s\S]{0,200}nunca `Exhaustiva`[\s\S]{0,400}Nunca un task abierto[\s\S]{0,200}`failed \(timeout\)`[\s\S]{0,80}`Agent timeout`/;
 
 const FEEDBACK_REMEDIATION_QUESTION_STYLE: Record<Harness, RegExp> = {
 	claude: /usar `AskUserQuestion`[\s\S]*Resolver feedback automáticamente/,
@@ -518,6 +524,7 @@ test("sdd-spec lanza el run con subagente implementer en background en Claude y 
 	assert.match(pi, /`sdd-run con subagente`[\s\S]*--assume/, "pi/sdd-spec corre sdd-run desatendido en el hijo");
 	assert.doesNotMatch(pi, /Pi no tiene subagentes/, "pi/sdd-spec ya tiene subagentes");
 	assert.match(pi, PI_SCOUT_EXPLORATION, "pi/sdd-spec explora con scouts");
+	assert.match(pi, PI_SCOUT_BUDGET_SPEC, "pi/sdd-spec acota los scouts: cantidad, exhaustividad, task cerrado y timeout");
 	for (const harness of ["codex", "opencode"] as const) {
 		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
 		assert.doesNotMatch(markdown, /agent: "implementer"|background: true/, `${harness}/sdd-spec/SKILL.md no tiene subagentes`);
@@ -552,6 +559,8 @@ test("sdd-run imprime el plan y sigue, desvía sin preguntar y ofrece code revie
 			assert.match(markdown, /agent: "reviewer"[\s\S]*background: true[\s\S]*`\/skill:code-review <PR>`/, "pi/sdd-run lanza el reviewer bundleado en background");
 			assert.match(markdown, /sin GHA y sin la tool[\s\S]*no aparece|tool `subagent` no est[aá] registrada[\s\S]*no aparece/i, "pi/sdd-run omite la opcion sin GHA ni tool");
 			assert.match(markdown, PI_SCOUT_EXPLORATION, "pi/sdd-run explora con scouts en la Fase 2");
+			assert.match(markdown, PI_SCOUT_BUDGET_RUN, "pi/sdd-run verifica inline por default y acota los scouts de la Fase 2");
+			assert.match(markdown, PI_SCOUT_BUDGET_RUN_OVERFLOW, "pi/sdd-run resuelve el choque entre el tope de 2 scouts y un blast radius de mas de 2 areas");
 		}
 		if (harness !== "claude") {
 			assert.doesNotMatch(markdown, /subagent_type/, `${harness}/sdd-run/SKILL.md no debe depender de subagentes de Claude`);

@@ -15,14 +15,13 @@ import { Type } from "typebox";
 
 import { PACKAGE_AGENTS_DIR } from "./agents.ts";
 import {
-	abortRunningJobs,
-	awaitJobsExit,
 	createJobRegistry,
 	formatAbortNotice,
 	MAX_CONCURRENCY,
 	MAX_PARALLEL_TASKS,
 	type RunnerDeps,
 	type SpawnLike,
+	shutdownJobs,
 	subagentsCommand,
 } from "./jobs.ts";
 import { renderCall, renderResult } from "./render.ts";
@@ -71,11 +70,19 @@ const SubagentParams = Type.Object({
 			description: "provider/id to run the child with; overrides the agent's model and the session model (no --thinking is inherited).",
 		}),
 	),
+	timeoutSeconds: Type.Optional(
+		Type.Integer({
+			minimum: 0,
+			description:
+				"Time budget in seconds; applies to every child of the call (all tasks of parallel and every step of chain) and overrides each agent's own `timeout` (scout has one). On expiry a child is killed and reported as failed (timeout) with its partial output. 0 disables it.",
+		}),
+	),
 });
 
 const DESCRIPTION = [
 	"Delegate tasks to specialized subagents with isolated context.",
 	`Modes: single (agent + task), parallel (tasks array, max ${MAX_PARALLEL_TASKS} tasks, ${MAX_CONCURRENCY} concurrent), chain (sequential with {previous} placeholder).`,
+	"Children with a time budget (agent `timeout` or timeoutSeconds) are cut on expiry and return their partial output.",
 	"Single mode accepts background: true to get a job id (sa-N) back at once; the report arrives later as a subagent-result message and /subagents lists or aborts jobs.",
 	`Default agent scope is "package": implementer, reviewer and scout bundled in ${PACKAGE_AGENTS_DIR}.`,
 	`Set agentScope to "user", "project" or "all" to include ${getAgentDir()}/agents or ${CONFIG_DIR_NAME}/agents.`,
@@ -121,11 +128,11 @@ export default function (pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
-		const aborted = abortRunningJobs(registry, runner);
+		const { aborted, exit } = shutdownJobs(registry, runner);
 		if (aborted.length > 0 && ctx.hasUI) ctx.ui.notify(formatAbortNotice(aborted), "warning");
 		// Pi corre process.exit(0) apenas este handler resuelve (PR #48 review
 		// comment 4076517086): sin esperar el cierre real, un hijo que ignora
 		// SIGTERM sobrevive al proceso padre.
-		await awaitJobsExit(aborted);
+		await exit;
 	});
 }
