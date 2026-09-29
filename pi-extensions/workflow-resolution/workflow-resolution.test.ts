@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
 	buildFreshnessEvidence,
+	inspectGrillSnapshot,
 	inspectMarkdownArtifact,
 	resolveWorkflow,
 	selectWorkflowRoute,
@@ -516,6 +517,24 @@ test("follows one explicit spec lineage and stops on unusable or conflicting gra
 	assert.ok(parallel.artifacts.every(({ diagnostics }) =>
 		diagnostics.some(({ code }) => code === "parallel-live-specs")
 	));
+});
+
+test("CA-3/10: a handoff project is historical while snapshot project mismatch remains blocking", () => {
+	const portable = inspectMarkdownArtifact({
+		...grillHandoff("portable", "finalized"),
+		markdown: grillHandoff("portable", "finalized").markdown.replace(
+			encodeReference(PROJECT_ROOT),
+			encodeReference("/Users/old/skills"),
+		),
+	}, { repository: REPOSITORY, projectRoot: PROJECT_ROOT });
+	assert.equal(portable.project, "/Users/old/skills");
+	assert.deepEqual(portable.diagnostics, [], "portable handoff provenance is not a global resolver error");
+
+	const foreignSnapshot = inspectGrillSnapshot({
+		...grillSnapshot({ id: "foreign", state: "active" }),
+		projectPath: "/workspace/other",
+	}, { repository: REPOSITORY, projectRoot: PROJECT_ROOT });
+	assert.ok(foreignSnapshot.diagnostics.some(({ code }) => code === "project-mismatch"));
 });
 
 test("reconciles grill persistence, runtime revisions, and downstream spec precedence", () => {

@@ -81,13 +81,21 @@ test("dispatch maps every actionable route to one canonical downstream skill and
 			"spec-from-grill",
 			"spec",
 			"from-grill",
-			[artifact("grill", {
-				location: "handoff",
-				format: "canonical",
-				provenance: "canonical",
-				identityProvenance: "canonical",
-				state: "finalized",
-			})],
+			[
+				artifact("grill", {
+					location: "handoff",
+					path: "/workspace/skills/.sdd/grills/final.md",
+					format: "canonical",
+					provenance: "canonical",
+					identityProvenance: "canonical",
+					state: "finalized",
+				}),
+				artifact("grill", {
+					id: "runtime-copy",
+					state: "finalized",
+					primary: false,
+				}),
+			],
 			"sdd-spec",
 			"--from-grill grill-leaf-14",
 		],
@@ -131,5 +139,59 @@ test("dispatch maps every actionable route to one canonical downstream skill and
 		if (!result.ok) continue;
 		assert.equal(result.request.skill.name, skill, route);
 		assert.equal(result.request.skill.args, expectedArgs, route);
+	}
+});
+
+test("CA-9: spec-from-grill dispatches a handoff-only by its validated absolute path", () => {
+	const path = "/workspace/skills/.sdd/grills/final handoff.md";
+	const portable = artifact("grill", {
+		location: "handoff",
+		path,
+		state: "finalized",
+		format: "canonical",
+		provenance: "canonical",
+		identityProvenance: "canonical",
+		project: "/Users/old/skills",
+	});
+	const input = resolution({
+		code: "spec-from-grill",
+		recommendedRoute: "spec-from-grill",
+		selectedRoute: "spec-from-grill",
+		stage: "spec",
+		mode: "from-grill",
+		artifacts: [portable],
+	});
+	const result = orchestrator.resolveWorkflowDispatch(input);
+	assert.equal(result.ok, true);
+	if (result.ok) assert.equal(result.request.skill.args, `--from-grill ${JSON.stringify(path)}`);
+});
+
+test("CA-9: spec-from-grill rejects unsafe, non-finalized, and diagnosed handoff paths", () => {
+	for (const overrides of [
+		{ path: "/workspace/skills/elsewhere/final.md" },
+		{ path: "/workspace/skills/.sdd/grills/nested/final.md" },
+		{ path: "relative/.sdd/grills/final.md" },
+		{ state: "paused" },
+		{ diagnostics: [{ code: "unsafe", message: "bad metadata" }] },
+	]) {
+		const input = resolution({
+			code: "spec-from-grill",
+			recommendedRoute: "spec-from-grill",
+			selectedRoute: "spec-from-grill",
+			stage: "spec",
+			mode: "from-grill",
+			artifacts: [artifact("grill", {
+				location: "handoff",
+				path: "/workspace/skills/.sdd/grills/final.md",
+				state: "finalized",
+				format: "canonical",
+				provenance: "canonical",
+				identityProvenance: "canonical",
+				...overrides,
+			})],
+		});
+		const result = orchestrator.resolveWorkflowDispatch(input);
+		assert.equal(result.ok, false, JSON.stringify(overrides));
+		if (!result.ok) assert.equal(result.code, "invalid-grill-reference");
 	}
 });
