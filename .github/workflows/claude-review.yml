@@ -7,10 +7,9 @@
 #   gh workflow run claude-review.yml --repo chichex/<repo> -f pr=271
 #
 # …o desde la UI: Actions → Claude Review → Run workflow. Opcionalmente
-# elegís modelo y effort (por defecto claude-opus-5 y xhigh, lo mismo que
-# corría hasta ahora):
+# elegís modelo y effort (por defecto claude-opus-5-5 y xhigh):
 #
-#   gh workflow run claude-review.yml --repo chichex/<repo> -f pr=271 -f model=claude-sonnet-5 -f effort=high
+#   gh workflow run claude-review.yml --repo chichex/<repo> -f pr=271 -f model=claude-sonnet-5-5 -f effort=high
 #
 # Requiere el secret CLAUDE_CODE_OAUTH_TOKEN (Settings → Secrets → Actions).
 # Se genera con `claude setup-token` desde la suscripción Pro/Max; consume sus
@@ -31,11 +30,11 @@ on:
         description: "Modelo con el que revisa"
         required: false
         type: choice
-        default: claude-opus-5
+        default: claude-opus-5-5
         options:
-          - claude-opus-5
+          - claude-opus-5-5
+          - claude-sonnet-5-5
           - claude-fable-5-1
-          - claude-sonnet-5
           - claude-haiku-4-5
       effort:
         description: "Effort: profundidad de razonamiento y gasto de tokens"
