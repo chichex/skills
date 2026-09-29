@@ -38,11 +38,15 @@ test("github issue selector materializes grill actions without slash dispatch an
 	assert.doesNotMatch(source, /sendUserMessage\([^\n]*grill/);
 });
 
-test("grill consumers materialize resume and grill-to-spec in the same session", async () => {
+test("grill consumers share inventory and materialize ID-or-path transitions in the same session", async () => {
 	const source = await readFile(new URL("../grill-tools/index.ts", import.meta.url), "utf8");
-	assert.match(source, /continueWithMaterializedSkill/);
-	assert.match(source, /"grill",\s*`--resume \$\{session\.id\}`/s);
-	assert.match(source, /"sdd-spec",\s*`--from-grill \$\{selected\.id\}`/s);
+	assert.match(source, /loadGrillInventory/);
+	assert.ok((source.match(/await loadGrillInventory\(pi, currentProject\)/g) ?? []).length >= 2);
+	assert.match(source, /prepareMaterializedSkill\(pi, "grill", `--resume \$\{JSON\.stringify\(expectedId\)\}`\)/);
+	assert.match(source, /prepareMaterializedSkill\(pi, "grill", `--resume \$\{JSON\.stringify\(childId\)\}`\)/);
+	assert.match(source, /validatedFinalizedHandoffPath/);
+	assert.match(source, /`--from-grill \$\{JSON\.stringify\(sourceTarget\)\}`/);
+	assert.match(source, /continueWithMaterializedSkill\(\s*pi,\s*"sdd-spec",\s*argument/s);
 	assert.match(source, /continueWithSpec/);
 	assert.doesNotMatch(source, /`?\/skill:(?:grill|sdd-spec)/);
 	assert.doesNotMatch(source, /sendUserMessage\([^\n]*(?:grill|sdd-spec)/);
@@ -53,6 +57,22 @@ test("Pi grill uses structured resume and finalize continuation instead of ad-ho
 	assert.match(skill, /--resume <sessionId>/);
 	assert.match(skill, /continueWithSpec:\s*true/);
 	assert.doesNotMatch(skill, /le[eé] `~\/\.agents\/skills\/sdd-spec\/SKILL\.md`/i);
+});
+
+test("CA-11: Pi grill and sdd-spec document portable handoff-only recovery by physical path", async () => {
+	const [grill, spec] = await Promise.all([
+		readFile(new URL("../../pi/grill/SKILL.md", import.meta.url), "utf8"),
+		readFile(new URL("../../pi/sdd-spec/SKILL.md", import.meta.url), "utf8"),
+	]);
+	assert.match(grill, /snapshots[\s\S]*`\.sdd\/grills\/`[\s\S]*inventario/i);
+	assert.match(grill, /proyecto actual[\s\S]*roots? conocidos[\s\S]*no.*filesystem/is);
+	assert.match(grill, /handoff-only[\s\S]*pausado[\s\S]*Retomar[\s\S]*import/i);
+	assert.match(grill, /finalizado[\s\S]*ruta absoluta[\s\S]*sdd-spec/is);
+	assert.match(spec, /ruta absoluta[\s\S]*`\.sdd\/grills\/`[\s\S]*finalizado/is);
+	assert.match(spec, /ra[ií]z operativa[\s\S]*ubicaci[oó]n f[ií]sica/is);
+	assert.match(spec, /project.*hist[oó]ric[\s\S]*no bloque/is);
+	assert.match(spec, /sin (?:snapshot|JSON) hermano/i);
+	assert.match(spec, /grill.*marker[\s\S]*spec/is);
 });
 
 test("Pi sdd-spec consumes orchestrated spec targets from the structured handoff", async () => {
@@ -100,19 +120,21 @@ test("Pi issue-triage shows its result before one terminal submission and keeps 
 	assert.doesNotMatch(skill, /confirmaci[oó]n s[oó]lo registra `selectedRoute`; no autoriza/i);
 });
 
-test("grill resume validates materialization before persistence and domain modeling cannot auto-continue on finalize", async () => {
+test("grill resume validates materialization before any import and domain modeling cannot auto-continue on finalize", async () => {
 	const [source, skill] = await Promise.all([
 		readFile(new URL("../grill-tools/index.ts", import.meta.url), "utf8"),
 		readFile(new URL("../../pi/grill/SKILL.md", import.meta.url), "utf8"),
 	]);
 	assert.match(source, /allowsFinalizeSpecContinuation\(snapshot\.workflowMode\)/);
-	for (const marker of ["action === duplicateChoice", 'selected.status === "finalized"']) {
-		const start = source.indexOf(marker);
-		assert.ok(start >= 0, marker);
-		const region = source.slice(start, start + 2_600);
-		assert.ok(region.indexOf("prepareMaterializedSkill") >= 0, marker);
-		assert.ok(region.indexOf("prepareMaterializedSkill") < region.indexOf("saveSnapshot"), marker);
+	const actionStart = source.indexOf("async function performGrillAction");
+	assert.ok(actionStart >= 0);
+	const actionRegion = source.slice(actionStart, source.indexOf("export default function", actionStart));
+	const firstPrepare = actionRegion.indexOf("prepareMaterializedSkill");
+	assert.ok(firstPrepare >= 0);
+	for (const mutation of ["persistImportedPlan", "saveSnapshot(resumed)", "writeNewSnapshot(duplicate)"]) {
+		assert.ok(actionRegion.indexOf(mutation) > firstPrepare, mutation);
 	}
+	assert.match(actionRegion, /queueWithRollback/);
 	assert.match(skill, /domain-modeling[\s\S]*continueWithSpec:\s*false/i);
 	assert.match(skill, /ADRs[\s\S]*select_grill_session/is);
 });
