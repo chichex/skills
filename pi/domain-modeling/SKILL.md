@@ -14,7 +14,7 @@ Meramente leer `CONTEXT.md` para entender el vocabulario no activa este workflow
 
 No introduzcas esta práctica en un repo que no la usa.
 
-Si el repo no tiene `CONTEXT.md`, `CONTEXT-MAP.md` ni `docs/adr/`, solo podés crear esos artefactos cuando el usuario lo pidió explícitamente en la conversación. Invocar `/skill:domain-modeling` o elegir **Grill + documentación de dominio** dentro de `/skill:grill` cuenta como pedido explícito. Invocar un grill estándar no cuenta como consentimiento.
+Si el repo no tiene `CONTEXT.md`, `CONTEXT-MAP.md` ni `docs/adr/`, solo podés crear esos artefactos cuando el usuario lo pidió explícitamente en la conversación. Invocar `/skill:domain-modeling` o pedir explícitamente **Grill + documentación de dominio** dentro de `/skill:grill` cuenta como ese pedido. La selección automática de `domain-modeling` por un agente no cuenta por sí sola como consentimiento; invocar un grill estándar tampoco.
 
 Durante una sesión de grill, el `workflowMode` persistido es autoritativo. Si es `standard`, no modifiques artefactos de dominio aunque el repo ya los use; cualquier cambio de modo debe confirmarse mediante el workflow de `grill` y persistirse antes de escribir.
 

@@ -39,7 +39,7 @@ Usá `ask_user_question` para una sola decisión, `ask_user_questions` para rond
 - Para cada pregunta ofrecé una respuesta recomendada y una justificación breve.
 - Habilitá siempre respuesta libre con `allowOther: true`.
 - Si un hecho se puede averiguar explorando el codebase, buscándolo en documentación local o ejecutando una comprobación segura, hacelo en vez de preguntarlo.
-- Las decisiones materiales pertenecen al usuario; las elecciones operativas de bajo impacto son responsabilidad del agente. Si el usuario pide un grill exhaustivo o sin supuestos, promové los puntos abiertos a decisiones explícitas.
+- Las decisiones materiales pertenecen al usuario; las elecciones operativas de bajo impacto son responsabilidad del agente. Si el usuario pide un grill exhaustivo o sin supuestos, activá la política `explicit-only`, registrala en el `summary` y no apliques ninguna poda `[ASSUMED]`: todo punto abierto sigue como decisión explícita. Esta regla prevalece sobre cualquier instrucción posterior de asumir o podar.
 
 ## Modo de documentación
 
@@ -70,8 +70,8 @@ Cuando el usuario quiera ver, inspeccionar o retomar sesiones de grilling:
 3. Leé `workflowMode`. Para snapshots legacy sin modo, conservá `domain-modeling` solo si hay una decisión explícita que lo active; en cualquier otro caso configurá `standard` sin preguntar.
 4. Si el modo es `domain-modeling`, cargá el skill de domain modeling y contrastá el snapshot con los archivos actuales. Si difieren, mostrá la contradicción y resolvé solo lo material antes de avanzar.
 5. Si existe un cuestionario exportado con respuestas completadas (ver **Exportar cuestionario**), leelo e incorporá cada respuesta como decisión resuelta con su checkpoint; repreguntá solo lo materialmente ambiguo.
-6. Mostrá brevemente el tema, las decisiones resueltas, los supuestos `[ASSUMED]`, lo pendiente y el próximo bloque recomendado.
-7. Reevaluá las ramas pendientes usando los criterios de la Fase 0, podá los puntos que ahora puedan asumirse y elegí **Grillado rápido**, **Por rondas** o **Grillado pregunta a pregunta**. Conservá una preferencia explícita del usuario; de lo contrario informá el modo elegido en una línea, sin abrir otro gate.
+6. Mostrá brevemente el tema, la política de supuestos persistida, las decisiones resueltas, los supuestos `[ASSUMED]`, lo pendiente y el próximo bloque recomendado.
+7. Reevaluá las ramas pendientes usando los criterios de la Fase 0. Si el `summary` conserva `explicit-only`, no hagas ninguna poda; en otro caso podá los puntos que ahora puedan asumirse. Elegí **Grillado rápido**, **Por rondas** o **Grillado pregunta a pregunta**. Conservá una preferencia explícita del usuario; de lo contrario informá el modo elegido en una línea, sin abrir otro gate.
 8. Persistí inmediatamente el modo con `grill_session` (`action: "configure"`, `interviewMode: "fast" | "rounds" | "adaptive"`) antes de la primera pregunta. Continuá desde la siguiente decisión material pendiente; no repitas decisiones ni supuestos aceptados salvo que el usuario quiera revisarlos.
 
 Una sesión finalizada es inmutable. Para cambiarla, duplicala como nueva revisión mediante `select_grill_session`. Para convertirla en spec sin cambiarla, elegí la acción de crear spec SDD del selector; el handoff congelado se usa como fuente.
@@ -82,16 +82,16 @@ Antes de entrevistar:
 
 1. Explorá el codebase y resolvé todos los hechos comprobables relevantes.
 2. Buscá `CONTEXT-MAP.md`, los `CONTEXT.md` y `docs/adr/`; informá su existencia en el mapa. Leé los que sean relevantes para entender el vocabulario, sin modificarlos todavía.
-3. Separá explícitamente: hechos comprobados, instrucciones ya dadas por el usuario, supuestos `[ASSUMED]` y decisiones materiales pendientes.
-4. Podá antes de preguntar: convertí cada elección respaldada, de bajo riesgo y reversible en `[ASSUMED]`. Si corregirla durante la spec o implementación sería local y barato, no merece un gate.
-5. Construí el árbol solo con decisiones materiales pendientes y sus dependencias. No infles el árbol con detalles de implementación ni preferencias hipotéticas.
-6. Estimá preguntas mínimas, probables y máximas después de la poda. La cifra operativa es la estimación probable y puede ser cero.
-7. Agrupá las preguntas materiales por secciones coherentes y asigná una estimación a cada sección.
-8. Diagnosticá qué modalidad necesita el árbol podado. Evaluá: contradicciones reales; costo de revertir; acoplamiento entre decisiones materiales; tamaño y estabilidad de la frontera; probabilidad de que una respuesta abra ramas materiales; novedad frente a patrones existentes; y riesgos de datos, seguridad, compliance, migraciones o integraciones externas.
+3. Separá explícitamente: hechos comprobados, instrucciones ya dadas por el usuario y elecciones todavía abiertas.
+4. Resolvé la política de supuestos antes de podar. Si el usuario pidió un grill exhaustivo o sin supuestos, usá `explicit-only`: no conviertas ningún punto en `[ASSUMED]` y tratá todas las elecciones abiertas como decisiones explícitas, también para la estimación y el límite. En otro caso usá `risk-pruned`: convertí cada elección respaldada, de bajo riesgo y reversible en `[ASSUMED]`; si corregirla durante la spec o implementación sería local y barato, no merece un gate.
+5. Construí el árbol con las decisiones que sigan explícitas después de aplicar la política y sus dependencias. En `risk-pruned`, no lo infles con detalles de implementación ni preferencias hipotéticas.
+6. Estimá preguntas mínimas, probables y máximas después de aplicar la política. La cifra operativa es la estimación probable y puede ser cero.
+7. Agrupá las preguntas explícitas por secciones coherentes y asigná una estimación a cada sección.
+8. Diagnosticá qué modalidad necesita el árbol resultante. Evaluá: contradicciones reales; costo de revertir; acoplamiento entre decisiones materiales; tamaño y estabilidad de la frontera; probabilidad de que una respuesta abra ramas materiales; novedad frente a patrones existentes; y riesgos de datos, seguridad, compliance, migraciones o integraciones externas.
 9. A partir de ese diagnóstico:
    - elegí **Grillado pregunta a pregunta** solo cuando una rama material necesite repreguntas adaptativas, tenga consecuencias difíciles de revertir, contradicciones o riesgos altos, o dependencias tan densas que una respuesta reformule la siguiente;
    - elegí **Por rondas** cuando haya varias decisiones materiales desbloqueadas e independientes y alcance con recalcular el árbol entre rondas;
-   - elegí **Grillado rápido** como default cuando el árbol podado sea estable, existan recomendaciones respaldadas y corregir el rumbo sea barato.
+   - elegí **Grillado rápido** como default cuando el árbol resultante sea estable, existan recomendaciones respaldadas y corregir el rumbo sea barato.
    Ante evidencia mixta, aislá la rama crítica en vez de volver quisquillosa toda la sesión. No uses la cantidad de preguntas como criterio decisivo.
 10. Si domain modeling fue pedido, identificá ambigüedades reales de lenguaje, ownership, identidad, cardinalidad, estados y límites de contexto. No conviertas cada término en una pregunta ni escribas supuestos en el glosario.
 11. Si el tema proviene de un issue de GitHub, conservá su número como referencia estructurada y resolvé `owner/repo` con `gh repo view --json nameWithOwner` cuando esté disponible. Esta referencia es metadata local del workflow: no agregues labels ni comments al issue sólo para marcarlo.
@@ -118,9 +118,10 @@ Antes de la primera pregunta, escribí en el chat un mapa visible con:
 - tema y objetivo de desambiguación;
 - hechos ya comprobados;
 - artefactos de dominio encontrados;
-- supuestos `[ASSUMED]`, cada uno con evidencia y motivo por el que es barato corregirlo;
+- política de supuestos (`risk-pruned` o `explicit-only`) y su origen;
+- supuestos `[ASSUMED]`, cada uno con evidencia y motivo por el que es barato corregirlo; en `explicit-only`, la lista queda vacía;
 - decisiones materiales, secciones y dependencias;
-- estimación mínima, probable y máxima después de la poda;
+- estimación mínima, probable y máxima después de aplicar la política;
 - alcance de esta sesión;
 - orden recomendado y motivo;
 - diagnóstico de modalidad, con señales concretas para aprobación colectiva, adaptación entre rondas o adaptación después de cada respuesta, y modalidad elegida.
@@ -133,7 +134,7 @@ Antes de la primera pregunta, escribí en el chat un mapa visible con:
 
 ### Paso 2: crear la sesión
 
-Creá el registro persistente con `grill_session` usando `action: "create"`, el `workflowMode` elegido y un `summary` que incluya hechos y supuestos `[ASSUMED]`. La tool inicializa `interviewMode: "unselected"`: ningún checkpoint de entrevista será aceptado hasta configurarlo. Si el origen es un issue, incluí `sourceIssue: { number: NN, repository: "owner/repo" }` (omití sólo `repository` si no puede resolverse). Guardá el `sessionId` devuelto y usalo durante toda la entrevista.
+Creá el registro persistente con `grill_session` usando `action: "create"`, el `workflowMode` elegido y un `summary` que incluya hechos, política de supuestos y supuestos `[ASSUMED]`. La tool inicializa `interviewMode: "unselected"`: ningún checkpoint de entrevista será aceptado hasta configurarlo. Si el origen es un issue, incluí `sourceIssue: { number: NN, repository: "owner/repo" }` (omití sólo `repository` si no puede resolverse). Guardá el `sessionId` devuelto y usalo durante toda la entrevista.
 
 ### Paso 3: configurar la modalidad diagnosticada
 
@@ -165,7 +166,7 @@ No eludas el gate declarando `frontierSize: 1` cuando existen varias decisiones 
 
 Para cada decisión material:
 
-1. Reaplicá la poda. Si la siguiente rama ya tiene un default respaldado, de bajo riesgo y reversible, registrala como `[ASSUMED]` en el resumen y seguí sin preguntar. Si sigue siendo material, elegila según dependencias y respuestas anteriores.
+1. Si la política es `explicit-only`, no reapliques la poda y elegí la siguiente decisión según dependencias. Con `risk-pruned`, si la siguiente rama ya tiene un default respaldado, de bajo riesgo y reversible, registrala como `[ASSUMED]` en el resumen y seguí sin preguntar; si sigue siendo material, elegila según dependencias y respuestas anteriores.
 2. Invocá `ask_user_question` una sola vez con:
    - `grill: { sessionId, phase: "interview", frontierSize: 1 }`;
    - una pregunta autocontenida;
@@ -189,7 +190,7 @@ Para cada decisión material:
 
 Cada ronda presenta la **frontera de dependencias**: solo decisiones cuyas dependencias ya están resueltas.
 
-1. Calculá la frontera actual, convertí en `[ASSUMED]` los defaults de bajo riesgo que hayan quedado desbloqueados y priorizá las decisiones materiales que desbloquean más ramas.
+1. Calculá la frontera actual. Con `risk-pruned`, convertí en `[ASSUMED]` los defaults de bajo riesgo que hayan quedado desbloqueados; con `explicit-only`, no conviertas ninguno. Priorizá las decisiones materiales que desbloquean más ramas.
 2. Si la respuesta de una decisión material cambiaría cómo se formula otra o sus opciones, no las pongas en la misma ronda: dejá la dependiente para la ronda siguiente.
 3. Elegí hasta 4 decisiones independientes de la frontera:
    - con 2 a 4, invocá `ask_user_questions` una sola vez con `grill: { sessionId, phase: "interview", frontierSize: N }` y enviá una entrada por decisión, cada una con `id` único, pregunta autocontenida, `section`, progreso, opciones, recomendación con motivo, `selectionMode` y `allowOther: true`;
@@ -208,7 +209,7 @@ Cada pregunta incluida en la ronda cuenta individualmente contra el límite de 2
 
 ### Modalidad C: Grillado rápido
 
-1. Recorré el árbol por orden de dependencias. Sacá del lote toda elección que cumpla la regla `[ASSUMED]`; la propuesta contiene solo decisiones materiales aplicables, hasta el límite de 20.
+1. Recorré el árbol por orden de dependencias. Con `risk-pruned`, sacá del lote toda elección que cumpla la regla `[ASSUMED]`; con `explicit-only`, no saques ninguna elección abierta. La propuesta contiene las decisiones materiales aplicables, hasta el límite de 20.
 2. Renderizá primero los supuestos nuevos o modificados y después la propuesta de decisiones. Para cada decisión material incluí:
    - id y sección;
    - pregunta autocontenida;
@@ -238,7 +239,8 @@ No dependas solamente del historial conversacional: el snapshot persistente debe
 
 ### Persistencia de supuestos
 
-- Guardá la lista vigente en `summary` bajo un bloque `Supuestos [ASSUMED]` al crear la sesión y cada vez que un checkpoint, pausa o cierre la modifique.
+- Guardá la política vigente (`risk-pruned` o `explicit-only`) y la lista de supuestos en `summary` bajo bloques `Política de supuestos` y `Supuestos [ASSUMED]` al crear la sesión y cada vez que un checkpoint, pausa o cierre los modifique.
+- En `explicit-only`, mantené vacía la lista `[ASSUMED]` y no ejecutes ninguna instrucción de poda de las tres modalidades.
 - Como un supuesto no fue una pregunta, no fabriques una `interaction` ni consumas un checkpoint para persistirlo; el `summary` y el contrato son su fuente.
 - Si el usuario corrige un supuesto de forma inequívoca, aplicá la corrección, actualizá las ramas afectadas y no repreguntes. Si la corrección descubre una decisión material nueva, promovela al árbol.
 - La confirmación final acepta también todos los `[ASSUMED]` visibles; hasta entonces siguen siendo revisables.
