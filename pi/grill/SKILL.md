@@ -58,6 +58,10 @@ Meramente leer un `CONTEXT.md` para entender el vocabulario no activa la documen
 
 ## Retomar una entrevista
 
+`/grills` y `select_grill_session` combinan los snapshots runtime globales y los handoffs portables de cada root conocido bajo `.sdd/grills/` en un único inventario reconciliado. Abren siempre en el proyecto actual. El alcance «Todos» sólo suma roots conocidos: el root actual, los `projectPath` recuperables de snapshots y los cwd de sesiones Pi conocidas; no recorre ni escanea el filesystem. Un `project` del marker distinto de la ubicación física es una ruta histórica: se muestra como advertencia, mientras la raíz física sigue siendo la raíz operativa. Inválidos y conflictos sólo se inspeccionan.
+
+Un handoff-only pausado se importa al runtime únicamente después de confirmar **Retomar**. La importación conserva el ID lógico, el Markdown completo, el path fuente y el proyecto histórico; no inventa respuestas ni reescribe el handoff al listar o importar. Un handoff-only finalizado permite crear spec pasando su ruta absoluta validada a `sdd-spec`, o duplicarlo importando una baseline explícita y una revisión hija.
+
 Cuando el usuario quiera ver, inspeccionar o retomar sesiones de grilling:
 
 1. Si recibiste `--resume <sessionId>`, cargá ese snapshot con `grill_session` (`action: "get"`); de lo contrario invocá `select_grill_session`.
@@ -69,7 +73,7 @@ Cuando el usuario quiera ver, inspeccionar o retomar sesiones de grilling:
 7. Reevaluá las ramas pendientes usando los criterios de la Fase 0. Pedí que elija **Grillado rápido**, **Por rondas** o **Grillado pregunta a pregunta** mediante `ask_user_question`, con `grill: { sessionId, phase: "configuration" }`, marcando la recomendación resultante y explicando sus señales concretas; cancelar pausa la sesión.
 8. Persistí inmediatamente la respuesta con `grill_session` (`action: "configure"`, `interviewMode: "fast" | "rounds" | "adaptive"`) antes de la primera pregunta. Recién entonces continuá desde la siguiente decisión pendiente; no repitas preguntas ya resueltas salvo que el usuario quiera revisarlas.
 
-Una sesión finalizada es inmutable. Para cambiarla, duplicala como nueva revisión mediante `select_grill_session`. Para convertirla en spec sin cambiarla, elegí la acción de crear spec SDD del selector; el handoff congelado se usa como fuente.
+Una sesión finalizada es inmutable. Para cambiarla, duplicala como nueva revisión mediante `select_grill_session`. Para convertirla en spec sin cambiarla, elegí la acción de crear spec SDD del selector: usa el ID si existe un snapshot válido y la ruta absoluta física si es un handoff-only; el handoff congelado se usa como fuente.
 
 ## Fase 0: reconocimiento y estimación
 
