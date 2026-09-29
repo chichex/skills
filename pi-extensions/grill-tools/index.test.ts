@@ -263,7 +263,7 @@ test("grill_session persists interviewMode and refuses checkpoints before it is 
 	assert.equal(loadedLegacy.details.snapshot.version, 5);
 });
 
-test("CA-1/4/6: /grills and select_grill_session expose the same handoff and snapshot inventory", { skip: !PI_PACKAGE_ROOT }, async () => {
+test("CA-1/4/6: /grills and select_grill_session expose the same handoff and snapshot inventory", async () => {
 	const command = commands.get("grills");
 	const tool = tools.get("select_grill_session");
 	assert.ok(command);
@@ -354,7 +354,7 @@ test("CA-1/4/6: /grills and select_grill_session expose the same handoff and sna
 	assert.equal(selected.details.action, "cancel");
 });
 
-test("CA-7: inspect and failed materialization never import a handoff-only snapshot", { skip: !PI_PACKAGE_ROOT }, async () => {
+test("CA-7: inspect and failed materialization never import a handoff-only snapshot", async () => {
 	const tool = tools.get("select_grill_session");
 	assert.ok(tool);
 	const projectPath = join(sandbox, "preflight-project");
@@ -393,7 +393,7 @@ test("CA-7: inspect and failed materialization never import a handoff-only snaps
 	}
 });
 
-test("CA-7: a handoff changed after listing is revalidated before runtime import", { skip: !PI_PACKAGE_ROOT }, async () => {
+test("CA-7: a handoff changed after listing is revalidated before runtime import", async () => {
 	const tool = tools.get("select_grill_session");
 	assert.ok(tool);
 	const projectPath = join(sandbox, "revalidate-project");
@@ -436,7 +436,7 @@ test("CA-7: a handoff changed after listing is revalidated before runtime import
 	}
 });
 
-test("CA-7: a queue failure rolls back a newly imported runtime snapshot", { skip: !PI_PACKAGE_ROOT }, async () => {
+test("CA-7: a queue failure rolls back a newly imported runtime snapshot", async () => {
 	const tool = tools.get("select_grill_session");
 	assert.ok(tool);
 	const projectPath = join(sandbox, "queue-failure-project");
@@ -464,7 +464,7 @@ test("CA-7: a queue failure rolls back a newly imported runtime snapshot", { ski
 	}
 });
 
-test("CA-7/8: resume imports the exact logical identity and complete handoff before queuing grill", { skip: !PI_PACKAGE_ROOT }, async () => {
+test("CA-7/8: resume imports the exact logical identity and complete handoff before queuing grill", async () => {
 	const tool = tools.get("select_grill_session");
 	assert.ok(tool);
 	const projectPath = join(sandbox, "resume-import-project");
@@ -498,7 +498,7 @@ test("CA-7/8: resume imports the exact logical identity and complete handoff bef
 	}
 });
 
-test("CA-9: finalized handoff-only queues sdd-spec by validated absolute path without importing", { skip: !PI_PACKAGE_ROOT }, async () => {
+test("CA-9: finalized handoff-only queues sdd-spec by validated absolute path without importing", async () => {
 	const tool = tools.get("select_grill_session");
 	assert.ok(tool);
 	const projectPath = join(sandbox, "spec source with spaces");
