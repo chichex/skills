@@ -225,3 +225,49 @@ test("planGrillHandoff usa el nombre con sufijo cuando el archivo primario es de
 	const plan = planGrillHandoff(snapshot, foreign);
 	assert.equal(plan.fileName, "2026-08-08-rate-limit-por-ip-abcd1234.md");
 });
+
+test("CA-8: pause y finalize preservan el handoff importado completo junto con la continuidad nueva", () => {
+	const sourceMarkdown = [
+		"# Grill — Imported baseline",
+		"<!-- SDD-Tracking: version=1; type=grill; state=paused; issue=none; grill=portable-id; project=%2Fold%2Frepo -->",
+		"",
+		"## Hechos comprobados",
+		"Confirmed source fact.",
+		"",
+		"## Restricciones",
+		"Never discard this source constraint.",
+		"",
+	].join("\n");
+	const imported = makeSnapshot({
+		id: "portable-id",
+		topic: "Imported baseline",
+		projectPath: "/workspace/current",
+		summary: "Runtime continuation summary.",
+		decisions: [{ title: "New decision", agreement: "Keep both contexts" }],
+		pendingBranches: [{ title: "New pending branch" }],
+		importedHandoff: {
+			kind: "handoff-only",
+			sourcePath: "/workspace/current/.sdd/grills/source.md",
+			historicalProjectPath: "/old/repo",
+			markdown: sourceMarkdown,
+			importedAt: "2026-09-29T12:00:00.000Z",
+			hadRuntimeSnapshot: false,
+		},
+	});
+	const paused = planGrillHandoff(imported, sourceMarkdown);
+	assert.match(paused.content, /Confirmed source fact\./);
+	assert.match(paused.content, /Never discard this source constraint\./);
+	assert.match(paused.content, /Runtime continuation summary\./);
+	assert.match(paused.content, /New decision — Keep both contexts/);
+	assert.equal(paused.content.match(/Confirmed source fact\./g)?.length, 1);
+	assert.equal(planGrillHandoff(imported, paused.content).content, paused.content);
+
+	const finalized = planGrillHandoff({
+		...imported,
+		status: "finalized",
+		handoffMarkdown: "# Grill — Revised\n\n## Handoff\nNew final contract.\n",
+	}, paused.content);
+	assert.match(finalized.content, /Confirmed source fact\./);
+	assert.match(finalized.content, /New final contract\./);
+	assert.equal(markerCount(finalized.content), 1);
+});
