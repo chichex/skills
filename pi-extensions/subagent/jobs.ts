@@ -116,6 +116,8 @@ export interface SubagentJob {
 	exited: boolean;
 	killRequested: boolean;
 	killTimer?: unknown;
+	timedOut: boolean;
+	timeoutTimer?: unknown;
 	stopReason?: string;
 	proc: ChildProcessLike | null;
 	result?: SingleResult;
@@ -134,6 +136,10 @@ export interface LaunchOptions {
 	model?: string;
 	thinkingLevel?: string;
 	modelOverride?: string;
+	// Presupuesto del hijo en ms; al vencer se mata como un abort pero el job
+	// queda failed (timeout) y conserva la salida parcial. 0/undefined = sin
+	// limite.
+	timeoutMs?: number;
 	signal?: AbortSignal;
 	onUpdate?: (result: SingleResult) => void;
 	step?: number;
@@ -179,6 +185,7 @@ export function createJobRegistry(): JobRegistry {
 				startedAt: Date.now(),
 				exited: false,
 				killRequested: false,
+				timedOut: false,
 				proc: null,
 			};
 			jobs.set(id, job);
@@ -250,7 +257,8 @@ export function isFailedResult(result: SingleResult): boolean {
 		result.exitCode !== 0 ||
 		result.stopReason === "error" ||
 		result.stopReason === "aborted" ||
-		result.stopReason === "length"
+		result.stopReason === "length" ||
+		result.stopReason === "timeout"
 	);
 }
 
@@ -544,9 +552,22 @@ export async function launchAgent(
 				cancelTimer(deps, job.killTimer);
 				job.killTimer = undefined;
 			}
+			if (job.timeoutTimer !== undefined) {
+				cancelTimer(deps, job.timeoutTimer);
+				job.timeoutTimer = undefined;
+			}
 			removeTempPrompt(tmp);
 			result.exitCode = code;
-			if (job.status === "aborted") {
+			if (job.timedOut) {
+				// Un timeout no es un abort del usuario: el job reporta (tambien en
+				// background) y la salida parcial viaja en el diagnostico.
+				job.status = "failed";
+				job.stopReason = "timeout";
+				result.stopReason = "timeout";
+				const partial = getFinalOutput(result.messages);
+				const seconds = Math.round((options.timeoutMs ?? 0) / 1000);
+				result.errorMessage = `Timeout: el subagente excedio su presupuesto de ${seconds} s y se corto.${partial ? `\nSalida parcial:\n${partial}` : ""}`;
+			} else if (job.status === "aborted") {
 				result.stopReason = "aborted";
 			} else {
 				job.status = isFailedResult(result) ? "failed" : "completed";
@@ -570,6 +591,19 @@ export async function launchAgent(
 			finish(1);
 		});
 	});
+
+	if (options.timeoutMs && options.timeoutMs > 0) {
+		job.timeoutTimer = scheduleTimer(
+			deps,
+			() => {
+				job.timeoutTimer = undefined;
+				if (job.status !== "running") return;
+				job.timedOut = true;
+				killJob(job, deps);
+			},
+			options.timeoutMs,
+		);
+	}
 
 	if (options.signal) {
 		const abort = () => {

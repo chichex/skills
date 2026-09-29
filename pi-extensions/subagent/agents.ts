@@ -24,6 +24,7 @@ export interface AgentConfig {
 	description: string;
 	tools?: string[];
 	model?: string;
+	timeoutSeconds?: number;
 	systemPrompt: string;
 	source: AgentSource;
 	filePath: string;
@@ -55,6 +56,7 @@ type AgentFrontmatter = {
 	description?: unknown;
 	tools?: unknown;
 	model?: unknown;
+	timeout?: unknown;
 };
 
 export const PACKAGE_AGENTS_DIR = join(dirname(fileURLToPath(import.meta.url)), "agents");
@@ -109,6 +111,14 @@ function parseToolList(value: unknown): string[] | undefined {
 	return tools.length > 0 ? tools : undefined;
 }
 
+// `timeout: 300` (segundos). El parser YAML de Pi entrega number y el default
+// string; cualquier valor que no sea un entero positivo deja al agente sin
+// timeout.
+function parseTimeoutSeconds(value: unknown): number | undefined {
+	const parsed = typeof value === "number" ? value : typeof value === "string" && /^\d+$/.test(value.trim()) ? Number(value) : NaN;
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function loadAgentsFromDir(dir: string, source: AgentSource, parse: FrontmatterParser): AgentConfig[] {
 	const agents: AgentConfig[] = [];
 	if (!existsSync(dir)) return agents;
@@ -138,6 +148,7 @@ function loadAgentsFromDir(dir: string, source: AgentSource, parse: FrontmatterP
 			description: frontmatter.description,
 			tools: parseToolList(frontmatter.tools),
 			model: typeof frontmatter.model === "string" ? frontmatter.model : undefined,
+			timeoutSeconds: parseTimeoutSeconds(frontmatter.timeout),
 			systemPrompt: body,
 			source,
 			filePath,

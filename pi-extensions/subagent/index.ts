@@ -71,11 +71,19 @@ const SubagentParams = Type.Object({
 			description: "provider/id to run the child with; overrides the agent's model and the session model (no --thinking is inherited).",
 		}),
 	),
+	timeoutSeconds: Type.Optional(
+		Type.Integer({
+			minimum: 0,
+			description:
+				"Time budget per child in seconds; overrides the agent's `timeout` (scout has one). On expiry the child is killed and reported as failed (timeout) with its partial output. 0 disables it.",
+		}),
+	),
 });
 
 const DESCRIPTION = [
 	"Delegate tasks to specialized subagents with isolated context.",
 	`Modes: single (agent + task), parallel (tasks array, max ${MAX_PARALLEL_TASKS} tasks, ${MAX_CONCURRENCY} concurrent), chain (sequential with {previous} placeholder).`,
+	"Children with a time budget (agent `timeout` or timeoutSeconds) are cut on expiry and return their partial output.",
 	"Single mode accepts background: true to get a job id (sa-N) back at once; the report arrives later as a subagent-result message and /subagents lists or aborts jobs.",
 	`Default agent scope is "package": implementer, reviewer and scout bundled in ${PACKAGE_AGENTS_DIR}.`,
 	`Set agentScope to "user", "project" or "all" to include ${getAgentDir()}/agents or ${CONFIG_DIR_NAME}/agents.`,

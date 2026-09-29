@@ -4,7 +4,9 @@
 // Modos: single (agent + task), parallel (tasks[], max 8, 4 concurrentes) y
 // chain (secuencial con {previous}). Solo single admite `background: true`:
 // devuelve el id del job al instante y, al terminar el hijo, inyecta un
-// mensaje custom `subagent-result` como followUp que dispara un turno.
+// mensaje custom `subagent-result` como followUp que dispara un turno. Un hijo
+// que excede su presupuesto (`timeout` del agente o `timeoutSeconds` de la
+// llamada) se corta y queda failed (timeout) con la salida parcial.
 
 import { type AgentConfig, type AgentDiscoveryDeps, type AgentScope, discoverAgents } from "./agents.ts";
 import {
@@ -43,6 +45,7 @@ export interface SubagentParams {
 	cwd?: string;
 	background?: boolean;
 	model?: string;
+	timeoutSeconds?: number;
 }
 
 export interface ToolContextLike {
@@ -99,6 +102,14 @@ interface Dispatch {
 	model?: string;
 	thinkingLevel?: string;
 	modelOverride?: string;
+	timeoutSeconds?: number;
+}
+
+// `timeoutSeconds` de la llamada gana sobre el `timeout` del agente; 0 lo
+// desactiva. Sin ninguno de los dos, el hijo no tiene limite.
+function timeoutMsFor(agent: AgentConfig, dispatch: Dispatch): number | undefined {
+	const seconds = dispatch.timeoutSeconds ?? agent.timeoutSeconds;
+	return seconds && seconds > 0 ? seconds * 1000 : undefined;
 }
 
 function text(value: string): ToolResult["content"] {
@@ -167,6 +178,7 @@ export function createSubagentExecute(deps: SubagentToolDeps): SubagentExecute {
 				model: dispatch.model,
 				thinkingLevel: dispatch.thinkingLevel,
 				modelOverride: dispatch.modelOverride,
+				timeoutMs: timeoutMsFor(agent, dispatch),
 				signal,
 				step,
 				onUpdate,
@@ -186,6 +198,7 @@ export function createSubagentExecute(deps: SubagentToolDeps): SubagentExecute {
 			model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
 			thinkingLevel: ctx.thinkingLevel,
 			modelOverride: params.model,
+			timeoutSeconds: params.timeoutSeconds,
 		};
 
 		const hasChain = (params.chain?.length ?? 0) > 0;
@@ -344,6 +357,7 @@ export function createSubagentExecute(deps: SubagentToolDeps): SubagentExecute {
 					model: dispatch.model,
 					thinkingLevel: dispatch.thinkingLevel,
 					modelOverride: dispatch.modelOverride,
+					timeoutMs: timeoutMsFor(agent, dispatch),
 				},
 				deps.runner,
 			);

@@ -108,7 +108,7 @@ test("CA-1: la factory registra la tool `subagent` con su schema, el comando /su
 	const properties = tool.parameters.properties as Record<string, any>;
 	assert.deepEqual(
 		Object.keys(properties).sort(),
-		["agent", "agentScope", "background", "chain", "confirmProjectAgents", "cwd", "model", "task", "tasks"],
+		["agent", "agentScope", "background", "chain", "confirmProjectAgents", "cwd", "model", "task", "tasks", "timeoutSeconds"],
 	);
 	assert.equal(properties.agent.type, "string");
 	assert.equal(properties.task.type, "string");
@@ -750,6 +750,90 @@ test("CA-1: un paso de la cadena con exit 0 pero stopReason \"length\" corta la 
 	assert.match(text(result), /Chain stopped at step 1 \(implementer\)/);
 	assert.equal(result.isError, true);
 	assert.equal(h.calls.length, 1, "no debe lanzar el paso 2 con salida truncada como {previous}");
+});
+
+// --- Timeout por hijo ---------------------------------------------------------
+
+function writeSlowAgent(h: Harness, timeout = "300"): void {
+	writeFileSync(join(h.root, "pkg", "agents", "slow.md"), agentMarkdown("slow", `timeout: ${timeout}\n`));
+}
+
+test("timeout: un hijo que excede el `timeout` del agente recibe SIGTERM y queda failed (timeout) con su salida parcial, sin frenar a los demas", async () => {
+	const h = harness();
+	writeSlowAgent(h);
+	const parallel = h.execute("c", { tasks: [{ agent: "slow", task: "lento" }, { agent: "implementer", task: "rapido" }] }, undefined, undefined, h.ctx);
+	await until(() => h.calls.length === 2, "dos spawns");
+	const slow = h.calls.find((call) => call.args.at(-1) === "lento")!;
+	const fast = h.calls.find((call) => call.args.at(-1) === "rapido")!;
+	const budget = h.timers.filter((timer) => timer.ms === 300_000);
+	assert.equal(budget.length, 1, "un solo timer de 300 s, solo para el agente con timeout");
+
+	slow.child.assistant("Hallazgos parciales: booking_service.py:1-80");
+	budget[0]!.callback();
+	assert.deepEqual(slow.child.signals, ["SIGTERM"]);
+	assert.deepEqual(fast.child.signals, [], "el otro hijo sigue");
+	slow.child.close(143);
+	fast.child.assistant("salida rapida");
+	fast.child.close(0);
+
+	const result = await parallel;
+	assert.match(text(result), /Parallel: 1\/2 succeeded/);
+	assert.match(text(result), /\[slow\] failed \(timeout\)[\s\S]*300 s[\s\S]*Hallazgos parciales: booking_service\.py:1-80/);
+	assert.match(text(result), /\[implementer\] completed[\s\S]*salida rapida/);
+	assert.deepEqual(h.registry.list().map((job) => job.status).sort(), ["completed", "failed"]);
+});
+
+test("timeout: `timeoutSeconds` de la llamada gana sobre el frontmatter y 0 lo desactiva", async () => {
+	const h = harness();
+	writeSlowAgent(h);
+	const overridden = h.execute("c", { agent: "slow", task: "a", timeoutSeconds: 60 }, undefined, undefined, h.ctx);
+	await until(() => h.calls.length === 1, "spawn con override");
+	assert.deepEqual(h.timers.map((timer) => timer.ms), [60_000]);
+	h.calls[0]!.child.assistant("ok");
+	h.calls[0]!.child.close(0);
+	await overridden;
+
+	const disabled = h.execute("c", { agent: "slow", task: "b", timeoutSeconds: 0 }, undefined, undefined, h.ctx);
+	await until(() => h.calls.length === 2, "spawn sin timeout");
+	assert.deepEqual(h.timers.map((timer) => timer.ms), [60_000], "0 no agenda timer");
+	h.calls[1]!.child.assistant("ok");
+	h.calls[1]!.child.close(0);
+	await disabled;
+});
+
+test("timeout: sin `timeout` en el agente ni en la llamada no se agenda ningun timer", async () => {
+	const h = harness();
+	const pending = h.execute("c", { agent: "implementer", task: "largo" }, undefined, undefined, h.ctx);
+	await until(() => h.calls.length === 1, "spawn");
+	assert.deepEqual(h.timers, []);
+	h.calls[0]!.child.assistant("ok");
+	h.calls[0]!.child.close(0);
+	await pending;
+});
+
+test("timeout: un job background vencido si reporta subagent-result failed (timeout), a diferencia de un abort", async () => {
+	const h = harness();
+	writeSlowAgent(h, "120");
+	await h.execute("c", { agent: "slow", task: "a", background: true }, undefined, undefined, h.ctx);
+	h.timers.find((timer) => timer.ms === 120_000)!.callback();
+	h.calls[0]!.child.close(143);
+	await until(() => h.sent.length === 1, "resultado del timeout");
+	assert.equal(h.sent[0]!.message.details.status, "failed");
+	assert.equal(h.sent[0]!.message.details.stopReason, "timeout");
+	assert.match(h.sent[0]!.message.content, /failed \(timeout\)/);
+});
+
+test("timeout: si el hijo termina antes, el timer vencido tarde no manda señales", async () => {
+	const h = harness();
+	writeSlowAgent(h);
+	const pending = h.execute("c", { agent: "slow", task: "a" }, undefined, undefined, h.ctx);
+	await until(() => h.calls.length === 1, "spawn");
+	h.calls[0]!.child.assistant("listo");
+	h.calls[0]!.child.close(0);
+	assert.equal(text(await pending), "listo");
+	h.timers[0]!.callback();
+	assert.deepEqual(h.calls[0]!.child.signals, []);
+	assert.equal(h.registry.get("sa-1")?.status, "completed");
 });
 
 test("CA-5: crear la tool no lanza procesos ni timers; solo la tool y el comando los crean", () => {
