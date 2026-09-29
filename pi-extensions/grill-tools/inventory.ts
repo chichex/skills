@@ -249,9 +249,21 @@ export function normalizeGrillSnapshot(value: unknown): NormalizedSnapshotResult
 
 	const createdAt = nonEmptyString(value.createdAt) ?? new Date(0).toISOString();
 	const updatedAt = nonEmptyString(value.updatedAt) ?? createdAt;
-	const workflowMode: GrillWorkflowMode = value.workflowMode === "domain-modeling"
-		? "domain-modeling"
-		: "standard";
+	let workflowMode: GrillWorkflowMode;
+	if (value.workflowMode === "domain-modeling" || value.workflowMode === "standard") {
+		workflowMode = value.workflowMode;
+	} else {
+		const domainDecision = (value.decisions as unknown[]).find((decision) => {
+			if (!isRecord(decision)) return false;
+			const identity = `${nonEmptyString(decision.id) ?? ""} ${nonEmptyString(decision.title) ?? ""}`.toLowerCase();
+			return identity.includes("domain modeling") || identity.includes("modelado de dominio");
+		});
+		const agreement = isRecord(domainDecision)
+			? (nonEmptyString(domainDecision.agreement) ?? "").toLowerCase()
+			: "";
+		const explicitlyDisabled = /\b(no|false|standard|disabled|desactivad[oa]|sin documentaci[oó]n)\b/.test(agreement);
+		workflowMode = domainDecision && !explicitlyDisabled ? "domain-modeling" : "standard";
+	}
 	const interviewMode: GrillInterviewMode = value.interviewMode === "fast"
 		|| value.interviewMode === "rounds"
 		|| value.interviewMode === "adaptive"
@@ -264,7 +276,12 @@ export function normalizeGrillSnapshot(value: unknown): NormalizedSnapshotResult
 		? value.questionLimit as number
 		: DEFAULT_GRILL_QUESTION_LIMIT;
 	const importedHandoff = validImportedSource(value.importedHandoff);
-	const sourceIssue = validIssue(value.sourceIssue);
+	let sourceIssue = validIssue(value.sourceIssue);
+	if (!sourceIssue) {
+		const issueMatch = topic.match(/\bissue\s*#(\d+)/i) ?? recoveredId.match(/^issue-(\d+)(?:-|$)/i);
+		const issueNumber = Number(issueMatch?.[1]);
+		if (Number.isInteger(issueNumber) && issueNumber > 0) sourceIssue = { number: issueNumber };
+	}
 	const parentId = nonEmptyString(value.parentId);
 	const summary = typeof value.summary === "string" ? value.summary : undefined;
 	const handoffMarkdown = typeof value.handoffMarkdown === "string" ? value.handoffMarkdown : undefined;
@@ -422,6 +439,19 @@ function normalizedMarkdown(markdown: string): string {
 		.trim();
 }
 
+function compatiblePersistedContent(
+	snapshotMarkdown: string,
+	handoffMarkdown: string,
+	imported: boolean,
+): boolean {
+	const snapshotContent = normalizedMarkdown(snapshotMarkdown);
+	const handoffContent = normalizedMarkdown(handoffMarkdown);
+	if (snapshotContent === handoffContent) return true;
+	return imported
+		&& snapshotContent.length > 0
+		&& handoffContent.startsWith(`${snapshotContent}\n\n## Continuidad runtime importada`);
+}
+
 function sameIssue(left: IssueRef | null, right: IssueRef | null): boolean {
 	if (left === null || right === null) return left === right;
 	return left.number === right.number && left.repository.toLowerCase() === right.repository.toLowerCase();
@@ -488,7 +518,11 @@ function buildEntry(group: InspectedCandidate[]): GrillInventoryEntry {
 			}
 			const snapshotMarkdown = snapshot.importedHandoff?.markdown ?? snapshot.handoffMarkdown;
 			if (snapshotMarkdown !== undefined && handoffCandidate.markdown !== undefined
-				&& normalizedMarkdown(snapshotMarkdown) !== normalizedMarkdown(handoffCandidate.markdown)) {
+				&& !compatiblePersistedContent(
+					snapshotMarkdown,
+					handoffCandidate.markdown,
+					snapshot.importedHandoff !== undefined,
+				)) {
 				errors.push(diagnostic("grill-content-mismatch", "Snapshot and persisted handoff contents differ"));
 			}
 			state = snapshot.status;

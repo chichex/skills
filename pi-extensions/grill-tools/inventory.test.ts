@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
 	filterGrillInventory,
 	inventoryActions,
+	normalizeGrillSnapshot,
 	reconcileGrillInventory,
 	type GrillSnapshot,
 	type HandoffFileCandidate,
@@ -210,6 +211,51 @@ test("CA-4/5/6: invalid candidates remain visible, are isolated, and filters run
 	});
 	assert.equal(all.entries.length, 5);
 	assert.ok(all.entries.some((entry) => entry.projectPath === null));
+});
+
+test("CA-10: v4 snapshots normalize explicitly without losing inferred issue or workflow behavior", () => {
+	const legacy = snapshot({
+		version: 4,
+		id: "issue-42-domain",
+		topic: "Issue #42 domain review",
+		workflowMode: undefined as never,
+		decisions: [{
+			id: "domain-modeling",
+			title: "Modelado de dominio",
+			agreement: "enabled",
+			updatedAt: "2026-09-29T10:00:00.000Z",
+		}],
+	});
+	const normalized = normalizeGrillSnapshot(legacy);
+	assert.ok(normalized.snapshot);
+	assert.equal(normalized.snapshot.version, 5);
+	assert.deepEqual(normalized.snapshot.sourceIssue, { number: 42 });
+	assert.equal(normalized.snapshot.workflowMode, "domain-modeling");
+});
+
+test("CA-8/10: imported source remains compatible after a persisted continuity section is appended", () => {
+	const source = handoffMarkdown({ id: "imported-cycle", state: "finalized", body: "Original confirmed facts." });
+	const persisted = `${source.trim()}\n\n## Continuidad runtime importada\n\nNew confirmed facts.\n`;
+	const result = reconcileGrillInventory({
+		snapshots: [snapshotFile(snapshot({
+			version: 5,
+			id: "imported-cycle",
+			topic: "Imported cycle",
+			status: "finalized",
+			handoffMarkdown: "New confirmed facts.",
+			importedHandoff: {
+				kind: "handoff-only",
+				sourcePath: `${ROOT}/.sdd/grills/imported-cycle.md`,
+				markdown: source,
+				importedAt: "2026-09-29T11:00:00.000Z",
+				hadRuntimeSnapshot: false,
+			},
+		}), "imported-cycle.json")],
+		handoffs: [handoffFile(persisted, `${ROOT}/.sdd/grills/imported-cycle.md`)],
+	});
+	assert.equal(result.entries.length, 1);
+	assert.equal(result.entries[0]?.valid, true);
+	assert.equal(result.entries[0]?.authority, "handoff");
 });
 
 test("CA-2/5: incompatible state, issue, or persisted content blocks only that identity", () => {

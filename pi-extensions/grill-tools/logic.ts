@@ -27,6 +27,7 @@ export interface HandoffSnapshot {
 	decisions: { title: string; agreement: string }[];
 	pendingBranches: { title: string; description?: string }[];
 	handoffMarkdown?: string;
+	parentId?: string;
 	importedHandoff?: ImportedHandoffSource;
 }
 
@@ -209,7 +210,9 @@ export function handoffBelongsToSession(content: string, sessionId: string): boo
 export function planGrillHandoff(snapshot: HandoffSnapshot, existingContent: string | null): HandoffPlan {
 	const names = handoffFileNames(snapshot);
 	const fileName = snapshot.importedHandoff
-		? basename(snapshot.importedHandoff.sourcePath)
+		? snapshot.parentId
+			? names.fallback
+			: basename(snapshot.importedHandoff.sourcePath)
 		: existingContent === null || handoffBelongsToSession(existingContent, snapshot.id)
 			? names.primary
 			: names.fallback;

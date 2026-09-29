@@ -226,6 +226,38 @@ test("planGrillHandoff usa el nombre con sufijo cuando el archivo primario es de
 	assert.equal(plan.fileName, "2026-08-08-rate-limit-por-ip-abcd1234.md");
 });
 
+test("CA-8: una revisión hija importada escribe un handoff propio y no pisa la baseline fuente", () => {
+	const source = [
+		"# Grill — Baseline",
+		"<!-- SDD-Tracking: version=1; type=grill; state=finalized; issue=none; grill=baseline; project=%2Fworkspace%2Fdemo -->",
+		"",
+		"## Handoff",
+		"Confirmed baseline.",
+		"",
+	].join("\n");
+	const child = {
+		...makeSnapshot({
+			id: "child-20260929-abcdef12",
+			topic: "Baseline",
+			status: "paused",
+			summary: "Child continuation.",
+		}),
+		parentId: "baseline",
+		importedHandoff: {
+			kind: "handoff-only" as const,
+			sourcePath: "/workspace/demo/.sdd/grills/original.md",
+			markdown: source,
+			importedAt: "2026-09-29T11:00:00.000Z",
+			hadRuntimeSnapshot: false as const,
+		},
+	};
+	const plan = planGrillHandoff(child, null);
+	assert.notEqual(plan.fileName, "original.md");
+	assert.equal(plan.fileName, handoffFileNames(child).fallback);
+	assert.match(plan.content, /Confirmed baseline\./);
+	assert.match(plan.content, /grill=child-20260929-abcdef12/);
+});
+
 test("CA-8: pause y finalize preservan el handoff importado completo junto con la continuidad nueva", () => {
 	const sourceMarkdown = [
 		"# Grill — Imported baseline",
