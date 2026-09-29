@@ -409,3 +409,16 @@ test("Pi grill exposes quick, rounds, and one-by-one as distinct modes", async (
 	assert.match(skill, /`grill_session`[^\n]*action: "configure"[^\n]*antes de la primera pregunta/i);
 	assert.match(skill, /frontierSize/);
 });
+
+test("Pi grill assumes low-risk reversible defaults and only asks material decisions", async () => {
+	const skill = await import("node:fs/promises").then(({ readFile }) =>
+		readFile(new URL("../../pi/grill/SKILL.md", import.meta.url), "utf8")
+	);
+	assert.match(skill, /\[ASSUMED\]/);
+	assert.match(skill, /bajo riesgo[^\n]*reversible/i);
+	assert.match(skill, /alcance[^\n]*(?:datos|seguridad|privacidad)[^\n]*(?:migraci[oó]n|irreversible)/i);
+	assert.match(skill, /`standard`[^\n]*sin preguntar/i);
+	assert.match(skill, /interviewMode[^\n]*sin[^\n]*pregunta/i);
+	assert.match(skill, /cero decisiones materiales[^\n]*cierre/i);
+	assert.match(skill, /confirmaci[oó]n final[^\n]*\[ASSUMED\]/i);
+});
