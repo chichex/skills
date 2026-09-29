@@ -38,6 +38,7 @@ import {
 	GRILL_SNAPSHOT_VERSION,
 	filterGrillInventory,
 	inventoryActions,
+	isGrillHandoffCandidatePath,
 	normalizeGrillSnapshot,
 	reconcileGrillInventory,
 	type GrillDecision,
@@ -286,7 +287,10 @@ async function loadSnapshot(id: string): Promise<GrillSnapshot> {
 	try {
 		return requireNormalizedSnapshot(JSON.parse(await readFile(jsonPath(id), "utf8")), id);
 	} catch (error) {
-		throw new Error(`Could not load grill session ${id}: ${error instanceof Error ? error.message : String(error)}`);
+		const wrapped = new Error(`Could not load grill session ${id}: ${error instanceof Error ? error.message : String(error)}`);
+		const code = (error as NodeJS.ErrnoException | null)?.code;
+		if (code !== undefined) (wrapped as NodeJS.ErrnoException).code = code;
+		throw wrapped;
 	}
 }
 
@@ -294,7 +298,7 @@ async function readSnapshotIfPresent(id: string): Promise<GrillSnapshot | null> 
 	try {
 		return await loadSnapshot(id);
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT" || /ENOENT/.test(String(error))) return null;
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
 		throw error;
 	}
 }
@@ -329,6 +333,34 @@ async function projectRepository(pi: ExtensionAPI, projectPath: string): Promise
 	return result.code === 0
 		? repositoryFromRemote(result.stdout) ?? `local/${basename(projectPath)}`
 		: `local/${basename(projectPath)}`;
+}
+
+interface ProjectLookup {
+	root(cwd: string): Promise<string>;
+	repository(projectPath: string): Promise<string>;
+}
+
+function createProjectLookup(pi: ExtensionAPI): ProjectLookup {
+	const roots = new Map<string, Promise<string>>();
+	const repositories = new Map<string, Promise<string>>();
+	return {
+		root(cwd) {
+			const key = resolve(cwd);
+			const cached = roots.get(key);
+			if (cached) return cached;
+			const lookup = projectRoot(pi, key);
+			roots.set(key, lookup);
+			return lookup;
+		},
+		repository(projectPath) {
+			const key = resolve(projectPath);
+			const cached = repositories.get(key);
+			if (cached) return cached;
+			const lookup = projectRepository(pi, key);
+			repositories.set(key, lookup);
+			return lookup;
+		},
+	};
 }
 
 function isInside(parent: string, candidate: string): boolean {
@@ -469,11 +501,10 @@ function formatDate(value: string): string {
 	return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-function statusIcon(status: GrillStatus | "unknown"): string {
+function statusIcon(status: GrillStatus): string {
 	if (status === "active") return "●";
 	if (status === "paused") return "Ⅱ";
-	if (status === "finalized") return "✓";
-	return "!";
+	return "✓";
 }
 
 function inventorySource(entry: GrillInventoryEntry): string {
@@ -488,11 +519,29 @@ function inventoryMenuItem(entry: GrillInventoryEntry): MenuItem<string> {
 	const operationalRoot = entry.projectPath ?? "global";
 	const warnings = entry.warnings.length > 0 ? ` · ⚠ ${entry.warnings.length} warning(s)` : "";
 	const errors = entry.valid ? "" : ` · BLOCKED (${entry.diagnostics.length})`;
+	const icon = entry.valid && entry.state !== "unknown" ? statusIcon(entry.state) : "!";
 	return {
 		value: entry.key,
-		label: `${entry.valid ? statusIcon(entry.state) : "!"} ${entry.topic} · ${identity} @ ${operationalRoot}`,
+		label: `${icon} ${entry.topic} · ${identity} @ ${operationalRoot}`,
 		description: `${entry.state} · ${inventorySource(entry)} · authority ${entry.authority ?? "none"}${warnings}${errors}`,
 		danger: !entry.valid,
+	};
+}
+
+function compactInventorySnapshot(snapshot: GrillSnapshot): object {
+	const handoffSummary = snapshot.handoffMarkdown === undefined
+		? undefined
+		: `[${Buffer.byteLength(snapshot.handoffMarkdown, "utf8")} bytes; rendered once below]`;
+	const importedHandoff = snapshot.importedHandoff
+		? {
+			...snapshot.importedHandoff,
+			markdown: `[${Buffer.byteLength(snapshot.importedHandoff.markdown, "utf8")} bytes; rendered once below]`,
+		}
+		: undefined;
+	return {
+		...compactSnapshot(snapshot),
+		handoffMarkdown: handoffSummary,
+		importedHandoff,
 	};
 }
 
@@ -518,9 +567,18 @@ function inventoryInspectionMarkdown(entry: GrillInventoryEntry): string {
 	if (entry.diagnostics.length > 0) {
 		lines.push("", "## Diagnósticos bloqueantes", "", ...entry.diagnostics.map(({ code, message }) => `- **${code}:** ${message}`));
 	}
-	if (entry.snapshot) lines.push("", "## Snapshot runtime", "", "```json", JSON.stringify(compactSnapshot(entry.snapshot), null, 2), "```");
-	if (entry.handoffMarkdown !== undefined) lines.push("", "## Handoff persistido", "", entry.handoffMarkdown.trim());
-	return lines.join("\n");
+	if (entry.snapshot) {
+		lines.push("", "## Snapshot runtime", "", "```json", JSON.stringify(compactInventorySnapshot(entry.snapshot), null, 2), "```");
+	}
+	const handoffMarkdown = entry.handoffMarkdown
+		?? entry.snapshot?.handoffMarkdown
+		?? entry.snapshot?.importedHandoff?.markdown;
+	if (handoffMarkdown !== undefined) lines.push("", "## Handoff disponible", "", handoffMarkdown.trim());
+	const output = lines.join("\n");
+	const truncated = truncateHead(output, { maxBytes: 45 * 1024, maxLines: 1_900 });
+	if (!truncated.truncated) return truncated.content;
+	const sources = [entry.snapshotPath, ...entry.handoffPaths].filter((path): path is string => Boolean(path));
+	return `${truncated.content}\n\n[Inventory inspection truncated. Full sources: ${sources.join(", ") || "unavailable"}]`;
 }
 
 function inspectSpecDocument(
@@ -629,21 +687,15 @@ async function listSessionCwds(): Promise<string[]> {
 async function readSnapshotCandidates(
 	pi: ExtensionAPI,
 	fallbackRepository: string,
+	projects: ProjectLookup = createProjectLookup(pi),
 ): Promise<SnapshotFileCandidate[]> {
 	await ensureStore();
 	const files = (await readdir(STORE_DIR, { withFileTypes: true }))
 		.filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
 		.map((entry) => entry.name)
 		.sort();
-	const repositories = new Map<string, string>();
 	async function repositoryFor(projectPath: string | null): Promise<string> {
-		if (!projectPath) return fallbackRepository;
-		const root = resolve(projectPath);
-		const cached = repositories.get(root);
-		if (cached) return cached;
-		const repository = await projectRepository(pi, root);
-		repositories.set(root, repository);
-		return repository;
+		return projectPath ? projects.repository(projectPath) : fallbackRepository;
 	}
 	const candidates: SnapshotFileCandidate[] = [];
 	for (const file of files) {
@@ -671,29 +723,35 @@ async function knownProjectRoots(
 	pi: ExtensionAPI,
 	currentProject: string,
 	snapshots?: SnapshotFileCandidate[],
+	projects: ProjectLookup = createProjectLookup(pi),
 ): Promise<string[]> {
 	const sessionCwdsPromise = listSessionCwds();
 	const effectiveSnapshots = snapshots
-		?? await readSnapshotCandidates(pi, await projectRepository(pi, currentProject));
+		?? await readSnapshotCandidates(pi, await projects.repository(currentProject), projects);
 	const sessionCwds = await sessionCwdsPromise;
 	const snapshotRoots = effectiveSnapshots.flatMap(({ value }) => {
 		const projectPath = normalizeGrillSnapshot(value).recoveredProjectPath;
 		return projectPath ? [projectPath] : [];
 	});
-	const candidates = new Set([currentProject, ...snapshotRoots, ...sessionCwds]);
-	const roots = await Promise.all([...candidates].map(async (path) => {
-		try {
-			return await projectRoot(pi, path);
-		} catch {
-			return resolve(path);
-		}
-	}));
+	const candidates = [...new Set([currentProject, ...snapshotRoots, ...sessionCwds])];
+	const roots: string[] = [];
+	for (let index = 0; index < candidates.length; index += 4) {
+		const batch = candidates.slice(index, index + 4);
+		roots.push(...await Promise.all(batch.map(async (path) => {
+			try {
+				return await projects.root(path);
+			} catch {
+				return resolve(path);
+			}
+		})));
+	}
 	return [...new Set(roots.map((root) => resolve(root)))];
 }
 
 async function readHandoffCandidates(
 	pi: ExtensionAPI,
 	projectRoots: string[],
+	projects: ProjectLookup = createProjectLookup(pi),
 ): Promise<HandoffFileCandidate[]> {
 	const candidates: HandoffFileCandidate[] = [];
 	for (const projectPath of [...new Set(projectRoots.map((root) => resolve(root)))].sort()) {
@@ -701,13 +759,13 @@ async function readHandoffCandidates(
 		let files;
 		try {
 			files = (await readdir(directory, { withFileTypes: true }))
-				.filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+				.filter((entry) => entry.isFile() && isGrillHandoffCandidatePath(entry.name))
 				.map((entry) => entry.name)
 				.sort();
 		} catch {
 			continue;
 		}
-		const repository = await projectRepository(pi, projectPath);
+		const repository = await projects.repository(projectPath);
 		for (const file of files) {
 			const path = join(directory, file);
 			try {
@@ -726,10 +784,11 @@ async function readHandoffCandidates(
 }
 
 async function loadGrillInventory(pi: ExtensionAPI, currentProject: string): Promise<GrillInventory> {
-	const repository = await projectRepository(pi, currentProject);
-	const snapshots = await readSnapshotCandidates(pi, repository);
-	const roots = await knownProjectRoots(pi, currentProject, snapshots);
-	const handoffs = await readHandoffCandidates(pi, roots);
+	const projects = createProjectLookup(pi);
+	const repository = await projects.repository(currentProject);
+	const snapshots = await readSnapshotCandidates(pi, repository, projects);
+	const roots = await knownProjectRoots(pi, currentProject, snapshots, projects);
+	const handoffs = await readHandoffCandidates(pi, roots, projects);
 	return reconcileGrillInventory({ snapshots, handoffs });
 }
 
@@ -780,7 +839,7 @@ async function rereadHandoffOnly(
 	}
 	const directory = resolve(entry.projectPath, ".sdd", "grills");
 	const requestedPath = resolve(entry.handoffPaths[0]!);
-	if (dirname(requestedPath) !== directory || !requestedPath.endsWith(".md") || requestedPath.endsWith("-cuestionario.md")) {
+	if (dirname(requestedPath) !== directory || !isGrillHandoffCandidatePath(requestedPath)) {
 		throw new Error(`Handoff source must be one Markdown file directly under ${directory}`);
 	}
 	const [canonicalDirectory, canonicalPath] = await Promise.all([realpath(directory), realpath(requestedPath)]);
@@ -816,21 +875,13 @@ async function persistImportedPlan(plan: ReturnType<typeof buildImportedResume>)
 	snapshots: GrillSnapshot[];
 	createdIds: string[];
 }> {
-	const preexisting = new Set<string>();
-	for (const snapshot of plan.snapshots) {
-		if (await readSnapshotIfPresent(snapshot.id)) preexisting.add(snapshot.id);
-	}
-	const result = await persistImportedSnapshots(plan, {
+	return persistImportedSnapshots(plan, {
 		read: readSnapshotIfPresent,
 		writeNew: writeNewSnapshot,
 		remove: async (id) => {
 			await rm(jsonPath(id), { force: true });
 		},
 	});
-	return {
-		snapshots: result.snapshots,
-		createdIds: plan.snapshots.map(({ id }) => id).filter((id) => !preexisting.has(id)),
-	};
 }
 
 async function rollbackSnapshots(ids: string[]): Promise<void> {
@@ -882,9 +933,7 @@ async function performGrillAction(
 		const sourceTarget = entry.snapshot
 			? entry.snapshot.id
 			: await validatedFinalizedHandoffPath(pi, entry);
-		const argument = entry.snapshot
-			? `--from-grill ${sourceTarget}`
-			: `--from-grill ${JSON.stringify(sourceTarget)}`;
+		const argument = `--from-grill ${JSON.stringify(sourceTarget)}`;
 		const continuation = await continueWithMaterializedSkill(
 			pi,
 			"sdd-spec",
@@ -900,7 +949,7 @@ async function performGrillAction(
 		const sourceEntry = entry.snapshot ? entry : await rereadHandoffOnly(pi, entry, "paused");
 		const expectedId = sourceEntry.grillId;
 		if (!expectedId) throw new Error("A grill identity is required to resume");
-		const prepared = await prepareMaterializedSkill(pi, "grill", `--resume ${expectedId}`);
+		const prepared = await prepareMaterializedSkill(pi, "grill", `--resume ${JSON.stringify(expectedId)}`);
 		if (!prepared.ok) throw new Error(`Could not materialize grill: ${prepared.message}`);
 		if (entry.snapshot) {
 			const resumed = { ...entry.snapshot, status: "active" as const, interviewMode: "unselected" as const };
@@ -920,7 +969,7 @@ async function performGrillAction(
 	const sourceId = sourceEntry.grillId;
 	if (!sourceId) throw new Error("A grill identity is required to duplicate");
 	const childId = `${slugify(sourceEntry.topic)}-${timestamp.slice(0, 10).replace(/-/g, "")}-${randomUUID().slice(0, 8)}`;
-	const prepared = await prepareMaterializedSkill(pi, "grill", `--resume ${childId}`);
+	const prepared = await prepareMaterializedSkill(pi, "grill", `--resume ${JSON.stringify(childId)}`);
 	if (!prepared.ok) throw new Error(`Could not materialize grill: ${prepared.message}`);
 	let duplicate: GrillSnapshot;
 	if (entry.snapshot) {
@@ -1066,6 +1115,7 @@ export default function grillTools(pi: ExtensionAPI) {
 				const backChoice = "← Volver a la lista de sesiones";
 				const emptyChoice = "__empty-current-project__";
 				const globalErrorsChoice = "__unattributed-errors__";
+				const truncatedChoice = "__truncated-results__";
 
 				while (true) {
 					const filtered = filterGrillInventory(inventory, {
@@ -1090,6 +1140,13 @@ export default function grillTools(pi: ExtensionAPI) {
 							description: "Disponibles sólo en Ver todos; no se adjudican a este repositorio.",
 						});
 					}
+					if (filtered.truncatedCount > 0) {
+						items.push({
+							value: truncatedChoice,
+							label: `… ${filtered.truncatedCount} grill(s) adicional(es) ocultos por el límite`,
+							description: "Refiná el scope o los filtros para verlos.",
+						});
+					}
 					items.push({ value: scopeChoice, label: scopeChoice, description: "Cambia el alcance manualmente" });
 
 					const selectedChoice = await selectMenu(
@@ -1111,7 +1168,7 @@ export default function grillTools(pi: ExtensionAPI) {
 						effectiveScope = "current-project";
 						continue;
 					}
-					if (selectedChoice === emptyChoice || selectedChoice === globalErrorsChoice) continue;
+					if (selectedChoice === emptyChoice || selectedChoice === globalErrorsChoice || selectedChoice === truncatedChoice) continue;
 
 					const selected = filtered.entries.find((entry) => entry.key === selectedChoice);
 					if (!selected) throw new Error("No se pudo resolver la sesión seleccionada");
@@ -1427,7 +1484,7 @@ export default function grillTools(pi: ExtensionAPI) {
 					? await continueWithMaterializedSkill(
 						pi,
 						"sdd-spec",
-						`--from-grill ${snapshot.id}`,
+						`--from-grill ${JSON.stringify(snapshot.id)}`,
 						{ deliverAs: "followUp" },
 					)
 					: undefined;
@@ -1502,6 +1559,7 @@ export default function grillTools(pi: ExtensionAPI) {
 			const backChoice = "← Volver a la lista de sesiones";
 			const emptyChoice = "__empty-current-project__";
 			const globalErrorsChoice = "__unattributed-errors__";
+			const truncatedChoice = "__truncated-results__";
 
 			while (true) {
 				const filtered = filterGrillInventory(inventory, {
@@ -1525,6 +1583,13 @@ export default function grillTools(pi: ExtensionAPI) {
 						value: globalErrorsChoice,
 						label: `⚠ Hay ${filtered.unattributedErrorCount} error(es) global(es) sin proyecto atribuible`,
 						description: "Disponibles sólo en Ver todos; no se adjudican a este repositorio.",
+					});
+				}
+				if (filtered.truncatedCount > 0) {
+					items.push({
+						value: truncatedChoice,
+						label: `… ${filtered.truncatedCount} grill session(s) hidden by limit ${limit}`,
+						description: "Refine scope or filters to see the omitted identities.",
 					});
 				}
 				if (requestedScope === "current-project") {
@@ -1562,7 +1627,7 @@ export default function grillTools(pi: ExtensionAPI) {
 					effectiveScope = "current-project";
 					continue;
 				}
-				if (selectedChoice === emptyChoice || selectedChoice === globalErrorsChoice) continue;
+				if (selectedChoice === emptyChoice || selectedChoice === globalErrorsChoice || selectedChoice === truncatedChoice) continue;
 
 				const selected = filtered.entries.find((entry) => entry.key === selectedChoice);
 				if (!selected) throw new Error("Could not resolve the selected grill session");

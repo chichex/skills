@@ -10,6 +10,11 @@ import {
 export const GRILL_SNAPSHOT_VERSION = 5;
 export const DEFAULT_GRILL_QUESTION_LIMIT = 20;
 
+export function isGrillHandoffCandidatePath(path: string): boolean {
+	const name = basename(path);
+	return name.endsWith(".md") && !name.endsWith("-cuestionario.md");
+}
+
 export type GrillWorkflowMode = "standard" | "domain-modeling";
 export type GrillInterviewMode = "unselected" | "fast" | "rounds" | "adaptive";
 export type GrillStatus = "active" | "paused" | "finalized";
@@ -390,8 +395,8 @@ function inspectHandoff(candidate: HandoffFileCandidate): InspectedHandoff | nul
 		markdown,
 	}, { repository: candidate.repository, projectRoot: projectPath });
 
-	if (artifact.type !== "grill" && artifact.format !== "invalid" && artifact.format !== "conflict"
-		&& artifact.format !== "absent") {
+	if (artifact.format === "absent") return null;
+	if (artifact.type !== "grill" && artifact.format !== "invalid" && artifact.format !== "conflict") {
 		return null;
 	}
 	const warnings = artifact.diagnostics.filter(({ code }) => code === "legacy-metadata");
@@ -532,14 +537,15 @@ function buildEntry(group: InspectedCandidate[]): GrillInventoryEntry {
 	} else if (errors.length === 0 && snapshotCandidate) {
 		if (!snapshot) {
 			errors.push(diagnostic("invalid-snapshot", `Snapshot ${snapshotCandidate.path} is unusable`));
-		} else if (snapshot.status !== "active") {
-			errors.push(diagnostic(
-				"missing-persisted-handoff",
-				`${snapshot.status} grill ${snapshot.id} requires its persisted handoff`,
-			));
 		} else {
 			authority = "snapshot";
 			state = snapshot.status;
+			if (snapshot.status !== "active") {
+				warnings.push(diagnostic(
+					"missing-persisted-handoff",
+					`${snapshot.status} grill ${snapshot.id} has no persisted repo handoff`,
+				));
+			}
 		}
 	} else if (errors.length === 0 && handoffCandidate) {
 		authority = "handoff";
@@ -580,7 +586,7 @@ export function reconcileGrillInventory(input: {
 	const candidates: InspectedCandidate[] = [
 		...input.snapshots.map(inspectSnapshot),
 		...input.handoffs
-			.filter(({ path }) => path.endsWith(".md") && !path.endsWith("-cuestionario.md"))
+			.filter(({ path }) => isGrillHandoffCandidatePath(path))
 			.map(inspectHandoff)
 			.filter((candidate): candidate is InspectedHandoff => candidate !== null),
 	];
@@ -598,7 +604,10 @@ export function reconcileGrillInventory(input: {
 
 export function inventoryActions(entry: GrillInventoryEntry): GrillInventoryAction[] {
 	if (!entry.valid) return ["inspect"];
-	if (entry.state === "finalized") return ["inspect", "create-spec", "duplicate"];
+	if (entry.state === "finalized") {
+		const hasSpecSource = Boolean(entry.handoffMarkdown?.trim() || entry.snapshot?.handoffMarkdown?.trim());
+		return hasSpecSource ? ["inspect", "create-spec", "duplicate"] : ["inspect", "duplicate"];
+	}
 	if (entry.state === "active" || entry.state === "paused") return ["inspect", "resume"];
 	return ["inspect"];
 }
@@ -612,11 +621,11 @@ export function filterGrillInventory(
 		query?: string;
 		limit: number;
 	},
-): { entries: GrillInventoryEntry[]; unattributedErrorCount: number } {
+): { entries: GrillInventoryEntry[]; unattributedErrorCount: number; truncatedCount: number } {
 	const currentProject = resolve(options.currentProject);
 	const query = options.query?.trim().toLowerCase();
 	const unattributedErrorCount = inventory.entries.filter((entry) => entry.projectPath === null && !entry.valid).length;
-	const entries = inventory.entries.filter((entry) => {
+	const matches = inventory.entries.filter((entry) => {
 		if (options.scope === "current-project" && entry.projectPath !== currentProject) return false;
 		if (entry.valid) {
 			if (options.status === "resumable" && entry.state === "finalized") return false;
@@ -632,6 +641,7 @@ export function filterGrillInventory(
 			if (!searchable.includes(query)) return false;
 		}
 		return true;
-	}).slice(0, options.limit);
-	return { entries, unattributedErrorCount };
+	});
+	const entries = matches.slice(0, options.limit);
+	return { entries, unattributedErrorCount, truncatedCount: matches.length - entries.length };
 }

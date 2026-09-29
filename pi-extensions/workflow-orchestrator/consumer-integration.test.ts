@@ -42,8 +42,8 @@ test("grill consumers share inventory and materialize ID-or-path transitions in 
 	const source = await readFile(new URL("../grill-tools/index.ts", import.meta.url), "utf8");
 	assert.match(source, /loadGrillInventory/);
 	assert.ok((source.match(/await loadGrillInventory\(pi, currentProject\)/g) ?? []).length >= 2);
-	assert.match(source, /prepareMaterializedSkill\(pi, "grill", `--resume \$\{expectedId\}`\)/);
-	assert.match(source, /prepareMaterializedSkill\(pi, "grill", `--resume \$\{childId\}`\)/);
+	assert.match(source, /prepareMaterializedSkill\(pi, "grill", `--resume \$\{JSON\.stringify\(expectedId\)\}`\)/);
+	assert.match(source, /prepareMaterializedSkill\(pi, "grill", `--resume \$\{JSON\.stringify\(childId\)\}`\)/);
 	assert.match(source, /validatedFinalizedHandoffPath/);
 	assert.match(source, /`--from-grill \$\{JSON\.stringify\(sourceTarget\)\}`/);
 	assert.match(source, /continueWithMaterializedSkill\(\s*pi,\s*"sdd-spec",\s*argument/s);

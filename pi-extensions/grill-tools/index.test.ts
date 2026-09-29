@@ -17,6 +17,8 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { after, before, test } from "node:test";
 
+import { snapshotStorageStem } from "./runtime-import.ts";
+
 interface RegisteredTool {
 	name: string;
 	execute: (...args: any[]) => Promise<any>;
@@ -491,7 +493,7 @@ test("CA-7/8: resume imports the exact logical identity and complete handoff bef
 		assert.equal(result.details.selected.importedHandoff.sourcePath, handoffPath);
 		assert.equal(result.details.selected.importedHandoff.historicalProjectPath, "/historical/project");
 		assert.equal(sentMessages.length, 1);
-		assert.match(sentMessages[0]!.content, /--resume resume\/unsafe id$/);
+		assert.ok(sentMessages[0]!.content.endsWith(`--resume ${JSON.stringify(id)}`));
 		assert.deepEqual(sentMessages[0]!.options, { deliverAs: "followUp" });
 	} finally {
 		removeStoredSnapshot(id);
@@ -520,6 +522,172 @@ test("CA-9: finalized handoff-only queues sdd-spec by validated absolute path wi
 	assert.equal(storedSnapshotIds().includes(id), false);
 	assert.equal(sentMessages.length, 1);
 	assert.match(sentMessages[0]!.content, new RegExp(`--from-grill ${JSON.stringify(handoffPath).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
+});
+
+test("CA-5/6: inventory inspection truncates oversized persisted handoffs", async () => {
+	const tool = tools.get("select_grill_session");
+	assert.ok(tool);
+	const projectPath = join(sandbox, "large-inspection-project");
+	const handoffPath = join(projectPath, ".sdd", "grills", "large.md");
+	const id = "large-inspection";
+	const largeFact = "confirmed-context-".repeat(6_000);
+	const markdown = canonicalHandoff(id, "finalized", "Large inspection", projectPath).replace(
+		"Confirmed source context.",
+		largeFact,
+	);
+	mkdirSync(dirname(handoffPath), { recursive: true });
+	writeFileSync(handoffPath, markdown);
+
+	const result = await tool.execute(
+		"large-inspection",
+		{ status: "finalized", query: "Large inspection", intent: "spec-source" },
+		undefined,
+		undefined,
+		rpcContext(projectPath, ["Large inspection"]),
+	);
+	const content = result.content[0].text as string;
+	assert.ok(Buffer.byteLength(content, "utf8") < 48 * 1024, "inspection output stays under the tool budget");
+	assert.match(content, /Inventory inspection truncated/);
+});
+
+test("CA-9: snapshot-backed spec dispatch quotes an unsafe logical grill id", async () => {
+	const tool = tools.get("select_grill_session");
+	assert.ok(tool);
+	const projectPath = join(sandbox, "snapshot-spec-source");
+	const storeDirectory = join(process.env.HOME!, ".pi", "agent", "grill-sessions");
+	const id = "final/unsafe id";
+	const topic = "Unsafe snapshot spec source";
+	const handoffMarkdown = canonicalHandoff(id, "finalized", topic, projectPath);
+	const timestamp = "2026-09-29T12:00:00.000Z";
+	mkdirSync(projectPath, { recursive: true });
+	mkdirSync(storeDirectory, { recursive: true });
+	writeFileSync(join(storeDirectory, `${snapshotStorageStem(id)}.json`), `${JSON.stringify({
+		version: 5,
+		id,
+		topic,
+		projectPath,
+		projectName: "snapshot-spec-source",
+		status: "finalized",
+		workflowMode: "standard",
+		interviewMode: "adaptive",
+		createdAt: timestamp,
+		updatedAt: timestamp,
+		estimate: { min: 1, likely: 2, max: 3 },
+		questionLimit: 20,
+		sections: [],
+		interactions: [],
+		decisions: [],
+		pendingBranches: [],
+		handoffMarkdown,
+		revision: 1,
+	}, null, 2)}\n`);
+	sentMessages = [];
+	try {
+		const result = await tool.execute(
+			"spec-from-unsafe-id",
+			{ status: "finalized", query: topic },
+			undefined,
+			undefined,
+			rpcContext(projectPath, [topic, "Crear spec SDD"]),
+		);
+		assert.equal(result.details.action, "create-spec");
+		assert.equal(result.details.sourceTarget, id);
+		assert.equal(sentMessages.length, 1);
+		assert.ok(sentMessages[0]!.content.endsWith(`--from-grill ${JSON.stringify(id)}`));
+	} finally {
+		removeStoredSnapshot(id);
+	}
+});
+
+test("CA-7: corrupt snapshots whose id contains ENOENT are not mistaken for missing files", async () => {
+	const tool = tools.get("select_grill_session");
+	assert.ok(tool);
+	const projectPath = join(sandbox, "corrupt-enoent-project");
+	const handoffPath = join(projectPath, ".sdd", "grills", "corrupt.md");
+	const storeDirectory = join(process.env.HOME!, ".pi", "agent", "grill-sessions");
+	const id = "corrupt-ENOENT-id";
+	const snapshotPath = join(storeDirectory, `${id}.json`);
+	const corruptContent = `{"id":"${id}","broken":`;
+	mkdirSync(dirname(handoffPath), { recursive: true });
+	mkdirSync(storeDirectory, { recursive: true });
+	writeFileSync(handoffPath, canonicalHandoff(id, "paused", "Corrupt ENOENT snapshot", projectPath));
+	writeFileSync(snapshotPath, corruptContent);
+	sentMessages = [];
+	try {
+		await assert.rejects(
+			tool.execute(
+				"corrupt-enoent",
+				{ status: "paused", query: "Corrupt ENOENT snapshot" },
+				undefined,
+				undefined,
+				rpcContext(projectPath, ["Corrupt ENOENT snapshot", "Retomar"]),
+			),
+			(error: Error) => {
+				assert.match(error.message, /Could not load grill session.*corrupt-ENOENT-id/i);
+				assert.doesNotMatch(error.message, /EEXIST/);
+				return true;
+			},
+		);
+		assert.equal(readFileSync(snapshotPath, "utf8"), corruptContent);
+		assert.equal(sentMessages.length, 0);
+	} finally {
+		rmSync(snapshotPath, { force: true });
+	}
+});
+
+test("CA-1: inventory discovery shares repository lookups and bounds git root concurrency", async () => {
+	const tool = tools.get("select_grill_session");
+	assert.ok(tool);
+	const projectPath = join(sandbox, "inventory-cache-project");
+	const handoffPath = join(projectPath, ".sdd", "grills", "cached.md");
+	mkdirSync(dirname(handoffPath), { recursive: true });
+	writeFileSync(handoffPath, canonicalHandoff("cached-inventory", "paused", "Cached inventory", projectPath));
+
+	const sessionsDirectory = join(process.env.HOME!, ".pi", "agent", "sessions");
+	for (let index = 0; index < 8; index += 1) {
+		const cwd = join(sandbox, `known-project-${index}`);
+		const directory = join(sessionsDirectory, `cache-session-${index}`);
+		mkdirSync(directory, { recursive: true });
+		writeFileSync(join(directory, "session.jsonl"), `${JSON.stringify({ type: "session", cwd })}\n`);
+	}
+
+	let activeRootLookups = 0;
+	let maxRootConcurrency = 0;
+	const repositoryCalls = new Map<string, number>();
+	execHandler = async (command: string, args: string[], options: { cwd?: string }) => {
+		assert.equal(command, "git");
+		const cwd = resolve(options.cwd ?? projectPath);
+		if (args[0] === "rev-parse") {
+			activeRootLookups += 1;
+			maxRootConcurrency = Math.max(maxRootConcurrency, activeRootLookups);
+			await new Promise((resolveDone) => setTimeout(resolveDone, 5));
+			activeRootLookups -= 1;
+			return { code: 0, stdout: `${cwd}\n`, stderr: "" };
+		}
+		if (args[0] === "config") {
+			repositoryCalls.set(cwd, (repositoryCalls.get(cwd) ?? 0) + 1);
+			return { code: 0, stdout: "git@github.com:chichex/skills.git\n", stderr: "" };
+		}
+		throw new Error(`unexpected git args: ${args.join(" ")}`);
+	};
+	try {
+		await tool.execute(
+			"bounded-inventory",
+			{ status: "all", scope: "all", query: "no-such-grill" },
+			undefined,
+			undefined,
+			{
+				cwd: projectPath,
+				hasUI: true,
+				mode: "rpc",
+				ui: { async select() { return undefined; } },
+			},
+		);
+		assert.ok(maxRootConcurrency <= 4, `git root concurrency was ${maxRootConcurrency}`);
+		assert.equal(repositoryCalls.get(resolve(projectPath)), 1);
+	} finally {
+		execHandler = async (..._args: any[]) => ({ code: 0, stdout: "", stderr: "" });
+	}
 });
 
 test("persist_sdd_spec exposes the parser-backed boundary and returns a receipt after a local reread", { skip: !PI_PACKAGE_ROOT }, async () => {

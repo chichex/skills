@@ -164,7 +164,7 @@ async function cleanupCreated(ids: string[], ports: SnapshotImportPorts): Promis
 export async function persistImportedSnapshots(
 	plan: ImportedSnapshotPlan,
 	ports: SnapshotImportPorts,
-): Promise<{ snapshots: GrillSnapshot[] }> {
+): Promise<{ snapshots: GrillSnapshot[]; createdIds: string[] }> {
 	if (plan.snapshots.length === 0) throw new Error("An import plan must contain at least one snapshot");
 	const ids = plan.snapshots.map(({ id }) => id);
 	if (new Set(ids).size !== ids.length) throw new Error("An import plan cannot repeat a logical grill id");
@@ -195,7 +195,7 @@ export async function persistImportedSnapshots(
 			}
 			snapshots.push(reread);
 		}
-		return { snapshots };
+		return { snapshots, createdIds: [...created] };
 	} catch (error) {
 		const cleanupFailures = await cleanupCreated(created, ports);
 		const message = error instanceof Error ? error.message : String(error);

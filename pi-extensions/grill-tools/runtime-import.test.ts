@@ -116,10 +116,12 @@ test("CA-7: persistence rereads before success, is idempotent, and rejects an in
 	const ports = memoryPorts();
 	const first = await persistImportedSnapshots(plan, ports);
 	assert.deepEqual(first.snapshots.map(({ id }) => id), ["portable/../id"]);
+	assert.deepEqual(first.createdIds, ["portable/../id"]);
 	assert.deepEqual(ports.writes, ["portable/../id"]);
 
 	const retry = await persistImportedSnapshots(plan, ports);
 	assert.deepEqual(retry.snapshots.map(({ id }) => id), ["portable/../id"]);
+	assert.deepEqual(retry.createdIds, []);
 	assert.deepEqual(ports.writes, ["portable/../id"], "a compatible retry reuses the persisted snapshot");
 
 	const incompatible = clone(plan.snapshots[0]!);
@@ -172,10 +174,12 @@ test("CA-8: duplicate materializes one imported baseline and one child without a
 	const ports = memoryPorts();
 	const receipt = await persistImportedSnapshots(plan, ports);
 	assert.deepEqual(receipt.snapshots.map(({ id }) => id), ["portable/../id", "child-safe-id"]);
+	assert.deepEqual(receipt.createdIds, ["portable/../id", "child-safe-id"]);
 	assert.deepEqual(ports.writes, ["portable/../id", "child-safe-id"]);
 
 	const retryPlan = buildImportedDuplicate(source, "second-child", "2026-09-29T13:00:00.000Z");
-	await persistImportedSnapshots(retryPlan, ports);
+	const retryReceipt = await persistImportedSnapshots(retryPlan, ports);
+	assert.deepEqual(retryReceipt.createdIds, ["second-child"]);
 	assert.deepEqual(ports.writes, ["portable/../id", "child-safe-id", "second-child"]);
 	assert.equal(ports.store.size, 3, "the compatible baseline is reused and each requested child exists once");
 });

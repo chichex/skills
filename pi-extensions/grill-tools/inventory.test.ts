@@ -121,6 +121,49 @@ test("CA-1/2: snapshot-only, handoff-only and compatible dual-source candidates 
 	assert.deepEqual(both?.handoffPaths, [`${ROOT}/.sdd/grills/both.md`]);
 });
 
+test("CA-6/10: legacy paused and finalized snapshots remain actionable without a repo handoff", () => {
+	const finalizedMarkdown = handoffMarkdown({ id: "legacy-finalized", state: "finalized" });
+	const result = reconcileGrillInventory({
+		snapshots: [
+			snapshotFile(snapshot({
+				id: "legacy-paused",
+				topic: "Legacy paused",
+				status: "paused",
+			}), "legacy-paused.json"),
+			snapshotFile(snapshot({
+				id: "legacy-finalized",
+				topic: "Legacy finalized",
+				status: "finalized",
+				handoffMarkdown: finalizedMarkdown,
+			}), "legacy-finalized.json"),
+			snapshotFile(snapshot({
+				id: "legacy-finalized-without-source",
+				topic: "Legacy finalized without source",
+				status: "finalized",
+			}), "legacy-finalized-without-source.json"),
+		],
+		handoffs: [],
+	});
+
+	const paused = result.entries.find((entry) => entry.grillId === "legacy-paused");
+	assert.equal(paused?.valid, true);
+	assert.equal(paused?.authority, "snapshot");
+	assert.deepEqual(inventoryActions(paused!), ["inspect", "resume"]);
+	assert.ok(paused?.warnings.some(({ code }) => code === "missing-persisted-handoff"));
+
+	const finalized = result.entries.find((entry) => entry.grillId === "legacy-finalized");
+	assert.equal(finalized?.valid, true);
+	assert.equal(finalized?.authority, "snapshot");
+	assert.deepEqual(inventoryActions(finalized!), ["inspect", "create-spec", "duplicate"]);
+	assert.ok(finalized?.warnings.some(({ code }) => code === "missing-persisted-handoff"));
+
+	const finalizedWithoutSource = result.entries.find(
+		(entry) => entry.grillId === "legacy-finalized-without-source",
+	);
+	assert.equal(finalizedWithoutSource?.valid, true);
+	assert.deepEqual(inventoryActions(finalizedWithoutSource!), ["inspect", "duplicate"]);
+});
+
 test("CA-2/3: persisted authority, equivalent duplicates, portable roots and conflicts never use timestamps as a tiebreaker", () => {
 	const portable = handoffMarkdown({ id: "portable", state: "finalized", project: "/Users/old/repo" });
 	const equivalent = handoffMarkdown({ id: "equivalent", state: "paused" });
@@ -200,6 +243,7 @@ test("CA-4/5/6: invalid candidates remain visible, are isolated, and filters run
 		limit: 1,
 	});
 	assert.equal(local.entries.length, 1, "limit applies after source reconciliation and query filtering");
+	assert.equal(local.truncatedCount, 1, "callers can disclose identities hidden by the limit");
 	assert.equal(local.unattributedErrorCount, 1, "local scope reports but does not misattribute global corrupt files");
 	assert.equal(local.entries[0]?.topic, "Shared topic");
 
@@ -210,7 +254,27 @@ test("CA-4/5/6: invalid candidates remain visible, are isolated, and filters run
 		limit: 100,
 	});
 	assert.equal(all.entries.length, 5);
+	assert.equal(all.truncatedCount, 0);
 	assert.ok(all.entries.some((entry) => entry.projectPath === null));
+});
+
+test("CA-5: plain Markdown is ignored while a malformed SDD marker remains diagnosable", () => {
+	const result = reconcileGrillInventory({
+		snapshots: [],
+		handoffs: [
+			handoffFile("# Notas\n\nUn borrador sin metadata SDD.\n", `${ROOT}/.sdd/grills/NOTAS.md`),
+			handoffFile([
+				"# Grill — Unknown marker type",
+				"<!-- SDD-Tracking: version=1; type=unknown-kind; state=paused; issue=none; grill=broken; project=%2Fworkspace -->",
+				"",
+			].join("\n"), `${ROOT}/.sdd/grills/broken-marker.md`),
+		],
+	});
+
+	assert.equal(result.entries.length, 1);
+	assert.equal(result.entries[0]?.valid, false);
+	assert.ok(result.entries[0]?.diagnostics.some(({ code }) => code === "invalid-handoff"));
+	assert.equal(result.entries[0]?.handoffPaths[0], `${ROOT}/.sdd/grills/broken-marker.md`);
 });
 
 test("CA-10: v4 snapshots normalize explicitly without losing inferred issue or workflow behavior", () => {
