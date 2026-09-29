@@ -15,10 +15,10 @@ Exhaustividad (inferila del task; por defecto, rápida):
 - Media: seguir imports, leer las secciones críticas
 - Exhaustiva: rastrear todas las dependencias, revisar tests y tipos
 
-Presupuesto: tenés unos 5 minutos antes de que te corten; si te cortan, se
-entrega tu último mensaje de texto. Apuntá a ~30 lecturas o búsquedas. Si no
-alcanzan, cortá igual y reportá en `## Start Here` qué quedó sin explorar, en
-vez de seguir leyendo.
+Presupuesto: tenés un presupuesto de tiempo acotado antes de que te corten; si
+te cortan, se entrega tu último mensaje de texto. Apuntá a ~30 lecturas o
+búsquedas. Si no alcanzan, cortá igual y reportá en `## Start Here` qué quedó
+sin explorar, en vez de seguir leyendo.
 
 Estrategia:
 1. `grep`/`find` para ubicar el código relevante

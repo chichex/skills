@@ -20,7 +20,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { after, test } from "node:test";
 
-import { abortRunningJobs, createJobRegistry, PER_TASK_OUTPUT_CAP, type RunnerDeps, type SpawnLike } from "./jobs.ts";
+import { abortRunningJobs, createJobRegistry, PER_TASK_OUTPUT_CAP, type RunnerDeps, type SpawnLike, shutdownJobs } from "./jobs.ts";
 import { createSubagentExecute, NESTING_ERROR, type SubagentToolDeps, type ToolContextLike } from "./tool.ts";
 
 // Issue #44:
@@ -124,6 +124,8 @@ test("CA-1: la factory registra la tool `subagent` con su schema, el comando /su
 	assert.equal(properties.background.default, false);
 	assert.match(properties.background.description, /single/i);
 	assert.equal(properties.model.type, "string");
+	assert.equal(properties.timeoutSeconds.minimum, 0);
+	assert.match(properties.timeoutSeconds.description, /applies to every child of the call/i, "el alcance por llamada (todas las tasks de parallel/chain) queda explicito");
 	assert.match(tool.description, /8 tareas|max(imo)? 8|8 tasks/i);
 	assert.match(tool.description, /package/);
 
@@ -322,7 +324,8 @@ class FakeChild extends EventEmitter {
 			},
 		});
 	}
-	close(code = 0): void {
+	// `null` = muerte por señal: Node emite "close" con code null y signal.
+	close(code: number | null = 0): void {
 		this.exitCode = code;
 		this.emit("close", code);
 	}
@@ -339,7 +342,7 @@ interface Harness {
 	deps: SubagentToolDeps;
 	calls: SpawnCall[];
 	sent: Array<{ message: Record<string, any>; options: Record<string, any> }>;
-	timers: Array<{ callback: () => void; ms: number }>;
+	timers: Array<{ callback: () => void; ms: number; cancelled: boolean }>;
 	registry: ReturnType<typeof createJobRegistry>;
 	execute: ReturnType<typeof createSubagentExecute>;
 	ctx: ToolContextLike;
@@ -378,11 +381,13 @@ function harness(overrides: { env?: NodeJS.ProcessEnv; trusted?: boolean; hasUI?
 		resolveInvocation: (args) => ({ command: "pi", args }),
 		env: overrides.env ?? { PATH: "/usr/bin", HOME: root },
 		setTimeout: (callback, ms) => {
-			const timer = { callback, ms };
+			const timer = { callback, ms, cancelled: false };
 			timers.push(timer);
 			return timer;
 		},
-		clearTimeout: () => {},
+		clearTimeout: (handle) => {
+			(handle as Harness["timers"][number]).cancelled = true;
+		},
 	};
 	const registry = createJobRegistry();
 	const deps: SubagentToolDeps = {
@@ -831,9 +836,22 @@ test("timeout: si el hijo termina antes, el timer vencido tarde no manda señale
 	h.calls[0]!.child.assistant("listo");
 	h.calls[0]!.child.close(0);
 	assert.equal(text(await pending), "listo");
+	assert.equal(h.timers[0]!.cancelled, true, "finish() cancela el timer del budget al cerrar el hijo");
 	h.timers[0]!.callback();
 	assert.deepEqual(h.calls[0]!.child.signals, []);
 	assert.equal(h.registry.get("sa-1")?.status, "completed");
+});
+
+test("timeout: al vencer, el kill agenda su gracia y el cierre cancela ambos timers", async () => {
+	const h = harness();
+	writeSlowAgent(h);
+	const pending = h.execute("c", { agent: "slow", task: "a" }, undefined, undefined, h.ctx);
+	await until(() => h.calls.length === 1, "spawn");
+	h.timers[0]!.callback();
+	assert.equal(h.timers.length, 2, "budget + gracia de SIGKILL");
+	h.calls[0]!.child.close(143);
+	await pending;
+	assert.deepEqual(h.timers.map((timer) => timer.cancelled), [false, true], "el timer de gracia se cancela al cerrar; el del budget ya disparo");
 });
 
 test("CA-5: crear la tool no lanza procesos ni timers; solo la tool y el comando los crean", () => {
@@ -841,4 +859,158 @@ test("CA-5: crear la tool no lanza procesos ni timers; solo la tool y el comando
 	assert.equal(h.calls.length, 0);
 	assert.equal(h.timers.length, 0);
 	assert.deepEqual(h.registry.list(), []);
+});
+
+// PR #55 review: un hijo al que ya se le pidio kill (timeout o /subagents abort)
+// queda status "aborted" hasta que cierra; session_shutdown tiene que seguir
+// esperandolo aunque registry.running() ya no lo vea.
+test("timeout: session_shutdown espera al hijo que ya recibio SIGTERM por timeout hasta su close real, sin re-mandar SIGTERM", async () => {
+	const h = harness();
+	writeSlowAgent(h);
+	const pending = h.execute("c", { agent: "slow", task: "a" }, undefined, undefined, h.ctx);
+	await until(() => h.calls.length === 1, "spawn");
+	const child = h.calls[0]!.child;
+	h.timers.find((timer) => timer.ms === 300_000)!.callback();
+	assert.deepEqual(child.signals, ["SIGTERM"]);
+	assert.equal(h.registry.running().length, 0, "el job en kill ya no figura running");
+
+	const { aborted, exit } = shutdownJobs(h.registry, h.deps.runner);
+	assert.deepEqual(aborted, [], "no hay jobs nuevos que abortar");
+	let exited = false;
+	void exit.then(() => {
+		exited = true;
+	});
+	await settles(() => exited, 20);
+	assert.equal(exited, false, "el shutdown espera al hijo que ignora SIGTERM");
+	assert.deepEqual(child.signals, ["SIGTERM"], "killJob es idempotente: no re-manda SIGTERM");
+
+	const grace = h.timers.find((timer) => timer.ms === 5000)!;
+	grace.callback();
+	assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"], "la gracia agendada por el timeout garantiza el SIGKILL");
+	await settles(() => exited, 20);
+	assert.equal(exited, false, "sigue esperando el close real tras el SIGKILL");
+	child.close(null);
+	await exit;
+	assert.equal(exited, true);
+	assert.equal((await pending).isError, true);
+});
+
+test("un hijo muerto por señal ajena (close con code null, sin timeout ni abort) queda failed, no completed", async () => {
+	const h = harness();
+	const pending = h.execute("c", { agent: "implementer", task: "a" }, undefined, undefined, h.ctx);
+	await until(() => h.calls.length === 1, "spawn");
+	h.calls[0]!.child.assistant("a medias");
+	h.calls[0]!.child.close(null);
+	const result = await pending;
+	assert.equal(result.isError, true);
+	assert.equal(h.registry.get("sa-1")?.status, "failed");
+});
+
+test("timeout: en chain el paso que vence (close con code null) corta la cadena y no lanza el siguiente", async () => {
+	const h = harness();
+	writeSlowAgent(h);
+	const chain = h.execute(
+		"c",
+		{ chain: [{ agent: "slow", task: "primero" }, { agent: "reviewer", task: "Sigue con: {previous}" }] },
+		undefined,
+		undefined,
+		h.ctx,
+	);
+	await until(() => h.calls.length === 1, "paso 1 de la cadena");
+	h.calls[0]!.child.assistant("parcial del paso 1");
+	h.timers.find((timer) => timer.ms === 300_000)!.callback();
+	assert.deepEqual(h.calls[0]!.child.signals, ["SIGTERM"]);
+	h.calls[0]!.child.close(null);
+	const continued = await settles(() => h.calls.length === 2);
+	if (continued) {
+		h.calls[1]!.child.assistant("no deberia correr");
+		h.calls[1]!.child.close(0);
+	}
+	const result = await chain;
+	assert.equal(continued, false, "el paso 2 no se lanza");
+	assert.equal(result.isError, true);
+	assert.match(text(result), /Chain stopped at step 1 \(slow\)[\s\S]*Timeout[\s\S]*parcial del paso 1/);
+	assert.equal(h.calls.length, 1);
+	const details = result.details as { results: Array<{ stopReason?: string }> };
+	assert.equal(details.results[0]!.stopReason, "timeout");
+});
+
+test("timeout: en modo single la tool devuelve `Agent timeout: Timeout: ...` con la salida parcial", async () => {
+	const h = harness();
+	writeSlowAgent(h);
+	const pending = h.execute("c", { agent: "slow", task: "a" }, undefined, undefined, h.ctx);
+	await until(() => h.calls.length === 1, "spawn");
+	h.calls[0]!.child.assistant("parcial single");
+	h.timers.find((timer) => timer.ms === 300_000)!.callback();
+	h.calls[0]!.child.close(null);
+	const result = await pending;
+	assert.equal(result.isError, true);
+	assert.match(text(result), /^Agent timeout: Timeout:[\s\S]*parcial single/);
+});
+
+// El chain con paso vencido o truncado no puede pintarse con ✓ en la TUI: el
+// exit code puede ser 0 (o null colapsado) aunque stopReason sea timeout/length.
+test("renderResult de chain pinta ✗ el paso con stopReason timeout o length aunque su exitCode sea 0", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const sandbox = mkdtempSync(join(tmpdir(), "chichex-subagent-render-chain-"));
+	cleanups.push(sandbox);
+	for (const entry of readdirSync(EXTENSION_DIR)) {
+		if (entry.endsWith(".ts") && !entry.endsWith(".test.ts")) copyFileSync(join(EXTENSION_DIR, entry), join(sandbox, entry));
+	}
+	const scopedRoot = join(sandbox, "node_modules", "@earendil-works");
+	mkdirSync(scopedRoot, { recursive: true });
+	for (const packageName of ["pi-ai", "pi-tui", "pi-agent-core"]) {
+		symlinkSync(join(PI_PACKAGE_ROOT!, "node_modules", "@earendil-works", packageName), join(scopedRoot, packageName), "dir");
+	}
+	symlinkSync(PI_PACKAGE_ROOT!, join(scopedRoot, "pi-coding-agent"), "dir");
+	symlinkSync(join(PI_PACKAGE_ROOT!, "node_modules", "typebox"), join(sandbox, "node_modules", "typebox"), "dir");
+
+	const { renderResult } = await import(`${pathToFileURL(join(sandbox, "render.ts")).href}?test=${Date.now()}`);
+	const fakeTheme = { fg: (color: string, t: string) => `<${color}>${t}</${color}>`, bold: (t: string) => t };
+	const step = (n: number, agent: string, stopReason: string) => ({
+		agent,
+		agentSource: "package",
+		task: "t",
+		exitCode: 0,
+		messages: [{ role: "assistant", content: [{ type: "text", text: `salida ${n}` }] }],
+		stderr: "",
+		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 1 },
+		stopReason,
+		step: n,
+	});
+	for (const stopReason of ["timeout", "length"]) {
+		const result = {
+			content: [{ type: "text", text: "x" }],
+			details: { mode: "chain", agentScope: "package", projectAgentsDir: null, results: [step(1, "scout", stopReason)] },
+		};
+		for (const expanded of [false, true]) {
+			const rendered = (renderResult(result, { expanded }, fakeTheme) as { render(width: number): string[] }).render(200).join("\n");
+			assert.match(rendered, /<error>✗<\/error>[\s\S]*0\/1 steps|0\/1 steps[\s\S]*<error>✗<\/error>/, `${stopReason} expanded=${expanded}: titulo 0/1 con ✗`);
+			assert.doesNotMatch(rendered, /<success>✓<\/success>/, `${stopReason} expanded=${expanded}: sin ✓`);
+		}
+	}
+});
+
+test("timeout: un `timeout` malformado en el frontmatter no falla en silencio: la salida de la tool lo avisa", async () => {
+	const h = harness();
+	writeFileSync(join(h.root, "pkg", "agents", "torcido.md"), agentMarkdown("torcido", "timeout: 5m\n"));
+	const single = h.execute("c", { agent: "torcido", task: "a" }, undefined, undefined, h.ctx);
+	await until(() => h.calls.length === 1, "spawn");
+	assert.deepEqual(h.timers, [], "malformado no agenda timer (corre sin limite)");
+	h.calls[0]!.child.assistant("hecho");
+	h.calls[0]!.child.close(0);
+	const result = await single;
+	assert.notEqual(result.isError, true);
+	assert.match(text(result), /^hecho/);
+	assert.match(text(result), /torcido[\s\S]*timeout "5m"[\s\S]*sin limite/);
+
+	const background = await h.execute("c", { agent: "torcido", task: "b", background: true }, undefined, undefined, h.ctx);
+	assert.match(text(background), /Job sa-2 lanzado \(torcido\)[\s\S]*"5m"/);
+	h.calls[1]!.child.close(0);
+
+	// Un agente sano no agrega ruido.
+	const clean = h.execute("c", { agent: "implementer", task: "c" }, undefined, undefined, h.ctx);
+	await until(() => h.calls.length === 3, "spawn sano");
+	h.calls[2]!.child.assistant("ok");
+	h.calls[2]!.child.close(0);
+	assert.equal(text(await clean), "ok");
 });

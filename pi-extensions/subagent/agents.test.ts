@@ -165,6 +165,55 @@ test("timeout: `timeout` del frontmatter se lee en segundos, como number o strin
 	}
 });
 
+// Un `timeout` presente pero malformado no puede degradar en silencio a "sin
+// limite": el agente lleva un `timeoutWarning` que la tool expone.
+test("timeout: un `timeout` presente pero malformado deja timeoutWarning con el valor crudo; ausente o valido no avisa", async () => {
+	const fx = await fixture();
+	try {
+		const malformed: Record<string, string> = {
+			m1: "300s",
+			m2: "5m",
+			m3: "2.5",
+			m4: "-1",
+			m5: "0",
+			m6: "300 # comentario",
+		};
+		for (const [name, value] of Object.entries(malformed)) {
+			await writeFile(join(fx.packageAgentsDir, `${name}.md`), agentMarkdown(name, `timeout: ${value}\n`));
+		}
+		await writeFile(join(fx.packageAgentsDir, "ok.md"), agentMarkdown("ok", "timeout: 300\n"));
+		const found = discoverAgents(fx.cwd, "package", deps(fx)).agents as Array<{ name: string; timeoutSeconds?: number; timeoutWarning?: string }>;
+		for (const [name, value] of Object.entries(malformed)) {
+			const agent = found.find((candidate) => candidate.name === name)!;
+			assert.equal(agent.timeoutSeconds, undefined, `${name}: sigue sin timeout efectivo`);
+			assert.match(agent.timeoutWarning ?? "", new RegExp(`"${value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`), `${name}: el aviso cita el valor`);
+			assert.match(agent.timeoutWarning ?? "", /entero positivo/, `${name}: dice que forma vale`);
+		}
+		assert.equal(found.find((agent) => agent.name === "ok")?.timeoutWarning, undefined);
+		assert.equal(found.find((agent) => agent.name === "alpha")?.timeoutWarning, undefined, "sin `timeout` no hay aviso");
+
+		const yaml = (value: unknown) =>
+			discoverAgents(fx.cwd, "package", {
+				...deps(fx),
+				parseFrontmatter: <T extends Record<string, unknown>>() => ({ frontmatter: { name: "n", description: "d", timeout: value } as unknown as T, body: "b" }),
+			}).agents[0] as { timeoutSeconds?: number; timeoutWarning?: string };
+		assert.match(yaml(null).timeoutWarning ?? "", /null/, "`timeout:` vacio del parser YAML tambien avisa");
+		assert.match(yaml(2.5).timeoutWarning ?? "", /2\.5/);
+		assert.equal(yaml(120).timeoutWarning, undefined);
+	} finally {
+		await rm(fx.root, { recursive: true, force: true });
+	}
+});
+
+test("timeout: el prompt del scout no hardcodea minutos (el limite vive en el frontmatter)", () => {
+	const scout = discoverAgents(REPO_ROOT, "package", {}).agents.find((agent) => agent.name === "scout");
+	assert.ok(scout);
+	assert.doesNotMatch(scout.systemPrompt, /\b\d+\s*(minutos?|min|segundos?|s)\b/i, "sin numero de tiempo en el body");
+	assert.match(scout.systemPrompt, /presupuesto de tiempo/);
+	assert.match(scout.systemPrompt, /~30 lecturas/);
+	assert.match(scout.systemPrompt, /## Start Here/);
+});
+
 test("timeout: el scout bundleado declara un presupuesto de tiempo; implementer y reviewer no", () => {
 	const agents = discoverAgents(REPO_ROOT, "package", {}).agents;
 	const scout = agents.find((agent) => agent.name === "scout");

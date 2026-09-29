@@ -188,7 +188,7 @@ export function createSubagentExecute(deps: SubagentToolDeps): SubagentExecute {
 		return launched.completion;
 	};
 
-	return async (_toolCallId, params, signal, onUpdate, ctx) => {
+	const execute: SubagentExecute = async (_toolCallId, params, signal, onUpdate, ctx) => {
 		const agentScope: AgentScope = params.agentScope ?? "package";
 		const discovery = discoverAgents(ctx.cwd, agentScope, deps.discovery ?? {});
 		const agents = discovery.agents;
@@ -397,5 +397,23 @@ export function createSubagentExecute(deps: SubagentToolDeps): SubagentExecute {
 			};
 		}
 		return { content: text(getFinalOutput(result.messages) || "(no output)"), details: makeDetails("single")([result]) };
+	};
+
+	// Un `timeout` malformado en el frontmatter de un agente pedido no puede
+	// pasar en silencio: el aviso viaja en el texto que ve el modelo (tambien en
+	// un resultado de error).
+	return async (toolCallId, params, signal, onUpdate, ctx) => {
+		const result = await execute(toolCallId, params, signal, onUpdate, ctx);
+		const requested = new Set<string>();
+		if (params.agent) requested.add(params.agent);
+		for (const item of params.tasks ?? []) requested.add(item.agent);
+		for (const item of params.chain ?? []) requested.add(item.agent);
+		if (requested.size === 0) return result;
+		const discovery = discoverAgents(ctx.cwd, params.agentScope ?? "package", deps.discovery ?? {});
+		const warnings = discovery.agents
+			.filter((agent) => requested.has(agent.name) && agent.timeoutWarning)
+			.map((agent) => `Aviso (${agent.name}): ${agent.timeoutWarning}`);
+		if (warnings.length === 0) return result;
+		return { ...result, content: [...result.content, { type: "text", text: `\n\n${warnings.join("\n")}` }] };
 	};
 }

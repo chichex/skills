@@ -15,14 +15,13 @@ import { Type } from "typebox";
 
 import { PACKAGE_AGENTS_DIR } from "./agents.ts";
 import {
-	abortRunningJobs,
-	awaitJobsExit,
 	createJobRegistry,
 	formatAbortNotice,
 	MAX_CONCURRENCY,
 	MAX_PARALLEL_TASKS,
 	type RunnerDeps,
 	type SpawnLike,
+	shutdownJobs,
 	subagentsCommand,
 } from "./jobs.ts";
 import { renderCall, renderResult } from "./render.ts";
@@ -75,7 +74,7 @@ const SubagentParams = Type.Object({
 		Type.Integer({
 			minimum: 0,
 			description:
-				"Time budget per child in seconds; overrides the agent's `timeout` (scout has one). On expiry the child is killed and reported as failed (timeout) with its partial output. 0 disables it.",
+				"Time budget in seconds; applies to every child of the call (all tasks of parallel and every step of chain) and overrides each agent's own `timeout` (scout has one). On expiry a child is killed and reported as failed (timeout) with its partial output. 0 disables it.",
 		}),
 	),
 });
@@ -129,11 +128,11 @@ export default function (pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
-		const aborted = abortRunningJobs(registry, runner);
+		const { aborted, exit } = shutdownJobs(registry, runner);
 		if (aborted.length > 0 && ctx.hasUI) ctx.ui.notify(formatAbortNotice(aborted), "warning");
 		// Pi corre process.exit(0) apenas este handler resuelve (PR #48 review
 		// comment 4076517086): sin esperar el cierre real, un hijo que ignora
 		// SIGTERM sobrevive al proceso padre.
-		await awaitJobsExit(aborted);
+		await exit;
 	});
 }

@@ -366,6 +366,18 @@ export function awaitJobsExit(jobs: SubagentJob[]): Promise<void> {
 	).then(() => undefined);
 }
 
+// Lo que session_shutdown hace con los hijos: aborta los running y espera el
+// cierre real de TODOS los que ya tienen un kill en curso, incluidos los que
+// venian de un timeout o de /subagents abort. Esos quedan `aborted` (fuera de
+// registry.running()) hasta que el hijo cierra; sin esperarlos, uno que ignora
+// SIGTERM sobreviviria a Pi (PR #55 review). killJob es idempotente: no
+// re-manda SIGTERM, y el SIGKILL de gracia ya quedo agendado por el kill original.
+export function shutdownJobs(registry: JobRegistry, deps: RunnerDeps): { aborted: SubagentJob[]; exit: Promise<void> } {
+	const aborted = abortRunningJobs(registry, deps);
+	const draining = registry.list().filter((job) => job.killRequested && !job.exited && job.proc !== null);
+	return { aborted, exit: awaitJobsExit(draining) };
+}
+
 // --- Comando /subagents --------------------------------------------------------
 
 export function subagentsCommand(
@@ -585,7 +597,9 @@ export async function launchAgent(
 		proc.stderr.on("data", (chunk) => {
 			result.stderr += chunk.toString();
 		});
-		proc.on("close", (code) => finish(code ?? 0));
+		// code null = el hijo murio por señal (OOM killer, kill ajeno, SIGKILL de
+		// gracia): nunca es exito, asi que no se colapsa a 0.
+		proc.on("close", (code) => finish(code ?? 1));
 		proc.on("error", (error) => {
 			result.stderr += error.message;
 			finish(1);
