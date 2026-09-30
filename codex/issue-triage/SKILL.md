@@ -1,11 +1,11 @@
 ---
 name: issue-triage
-description: Analiza issues contra código, tests, contrato y artefactos SDD; resuelve linaje, vigencia y próximo stage, y emite un resultado estructurado sin ejecutar el stage. Para selecciones múltiples decide todo-o-nada y canonicaliza en un issue combinado antes de inspeccionar artefactos. Usar siempre cuando el usuario pida analizar o decidir cómo encarar uno o varios issues antes de implementar.
+description: Analiza issues contra código, tests, contrato y artefactos SDD; resuelve linaje, vigencia y próximo stage, y emite un resultado estructurado; tras la confirmación del usuario encadena el skill dueño del stage elegido. Para selecciones múltiples decide todo-o-nada y canonicaliza en un issue combinado antes de inspeccionar artefactos. Usar siempre cuando el usuario pida analizar o decidir cómo encarar uno o varios issues antes de implementar.
 ---
 
 # Issue Triage
 
-Enrutá una selección de issues usando evidencia del repositorio real y sus artefactos SDD. Este skill recomienda **una** ruta, registra la elección efectiva y emite `WorkflowResolutionV1`; nunca ejecuta el stage resultante.
+Enrutá una selección de issues usando evidencia del repositorio real y sus artefactos SDD. Este skill recomienda **una** ruta, registra la elección efectiva y emite `WorkflowResolutionV1`; no ejecuta el stage por su cuenta: tras la confirmación lo entrega al skill dueño (Fase 7).
 
 No es un selector de opiniones: después del análisis no muestres todas las rutas como equivalentes. Tampoco es un bypass para mandar cualquier trabajo a implementación directa.
 
@@ -258,7 +258,7 @@ Para todo resultado `outcome=start` —ruta nueva o artifact-aware— usá `requ
 - `Usar fallback: <ruta>`
 - `Cancelar`
 
-Una confirmación sólo registra `selectedRoute`; no autoriza a ejecutar el stage. Antes del gate vale `selectedRoute=null`; primaria y fallback preservan la recomendación, y cancelar emite `code=cancelled` sin crear issues, archivos, branches ni comentarios.
+Antes de elegir, declará qué abre confirmar: el skill del stage según la tabla de la Fase 7. Si la primaria o el fallback es `quick-run|join-quick-run` o `run-existing-spec`, aclará que abre un run aislado capaz de crear branch, commits y PR (nunca merge), sujeto a su preflight y verificaciones. Una confirmación registra `selectedRoute` y autoriza a encadenar ese skill en la Fase 7; no autoriza ampliar alcance ni saltear los gates del skill encadenado. Antes del gate vale `selectedRoute=null`; primaria y fallback preservan la recomendación, y cancelar emite `code=cancelled` sin crear issues, archivos, branches ni comentarios.
 
 ## Fase 5 — Canonicalizar una selección múltiple
 
@@ -325,11 +325,34 @@ Desde este punto, la única fuente downstream es `#NEW`.
 1. Construí el `WorkflowResolutionV1` completo con la recomendación original, fallback, ruta artifact-aware, elección efectiva y toda la evidencia normalizada.
 2. Conservá `En pocas palabras` y `Ejemplo de impacto` en `summary`/`impactExample`; la fuente sigue siendo autoritativa.
 3. Mostrá el resultado serializado y una síntesis humana breve. Verificá el round-trip `JSON.parse(JSON.stringify(result))`.
-4. Terminá el workflow. No cargues ni invoques grill/sdd-spec/sdd-run, no implementes quick-run, no cambies sesión y no crees branch/worktree/PR.
+4. Terminá el triage. Este skill no ejecuta pasos de grill/sdd-spec/sdd-run/quick-run ni crea branch/worktree/PR por su cuenta; si hubo confirmación, seguí a la Fase 7.
 
 ### Garantías downstream de quick-run
 
 Si `selectedRoute=quick-run|join-quick-run`, el `checklist` y `risks` deben conservar para el consumidor downstream: preflight de repo limpio, worktree aislado desde el base actualizado, tests primero cuando corresponda, máximo tres intentos por verificación, chequeos contractuales, commits coherentes y PR sin merge. Son payload del resultado; este skill no ejecuta ninguno de esos pasos.
+
+## Fase 7 — Encadenar el stage confirmado
+
+Sólo con `outcome=start` y `selectedRoute` no nulo. Con `outcome=stop|error`, cancelación o `selectedRoute=null` no encadenes nada: el workflow termina en la Fase 6.
+
+Invocá en el mismo turno, sin otra confirmación, el skill que corresponde a `selectedRoute`:
+
+<!-- stage-chain:start -->
+| `selectedRoute` | Skill | Argumentos |
+|---|---|---|
+| `grill`, `join-grill` | `$grill` | `#<N>` del issue efectivo |
+| `resume-grill` | `$grill` | ruta del grill primario para retomar |
+| `spec`, `join-spec` | `$sdd-spec` | `#<N>` del issue efectivo |
+| `spec-from-grill` | `$sdd-spec` | `--from-grill <ruta del handoff finalized primario>` |
+| `update-existing-spec`, `audit-existing-spec` | `$sdd-spec` | ruta de la spec primaria local, o `#<N>` si vive en el issue |
+| `run-existing-spec` | `$sdd-run` | ruta de la spec primaria local, o `#<N>` si vive en el issue |
+| `quick-run`, `join-quick-run` | `$quick-run` | el `WorkflowResolutionV1` serializado completo |
+<!-- stage-chain:end -->
+
+- El issue efectivo es `canonicalIssue`; para una sola fuente sin canónico, esa fuente. Las rutas `join-*` exigen `canonicalIssue`.
+- Las rutas de artefactos salen del único `ArtifactRef` con `primary=true` del tipo correspondiente, dentro de `cwd`. Si falta, hay más de uno o tiene diagnósticos, no encadenes: mostrá el comando exacto que falta completar y terminá.
+- Nunca pases prose del issue, `summary` ni comentarios como argumentos. El resultado v1 visible queda como contexto del skill encadenado, que lo trata como datos y vuelve a leer la fuente.
+- El skill encadenado conduce desde ahí con su propia doctrina: sus gates, preguntas y límites mandan.
 
 ## MUST DO
 
@@ -341,6 +364,7 @@ Si `selectedRoute=quick-run|join-quick-run`, el `checklist` y `risks` deben cons
 - Evaluar selecciones múltiples todo-o-nada.
 - Hacer canonicalización idempotente y cerrar originales como reemplazados, nunca eliminarlos.
 - Mantener separadas recomendación, fallback y elección efectiva; emitir siempre el resultado v1 serializable.
+- Tras una confirmación, encadenar exactamente el skill de la tabla de la Fase 7 con sus argumentos.
 - Reportar límites y fallos parciales honestamente.
 
 ## MUST NOT DO
@@ -350,6 +374,6 @@ Si `selectedRoute=quick-run|join-quick-run`, el `checklist` y `risks` deben cons
 - No crear grupos parciales.
 - No crear el issue combinado antes de la confirmación.
 - No tocar originales si falla la creación canónica.
-- No invocar ni ejecutar grill, spec, run o quick-run; no cambiar sesiones ni crear trabajo de implementación.
+- No ejecutar pasos de grill, spec, run o quick-run desde este skill ni encadenar un stage sin confirmación; no crear trabajo de implementación por cuenta propia.
 - No reinterpretar prose, summary o timestamps como campos de protocolo.
 - No presentar canonicalización incompleta, conflicto o cancelación como un stage ejecutable.
