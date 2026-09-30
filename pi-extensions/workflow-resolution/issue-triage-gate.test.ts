@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import { test } from "node:test";
 
+import { ACTIONABLE_ROUTE_CONTRACT } from "../workflow-orchestrator/route-contract.ts";
+
 const HARNESSES = ["claude", "codex", "pi"] as const;
 type Harness = (typeof HARNESSES)[number];
 
@@ -144,8 +146,10 @@ test("issue-triage has one equivalent artifact-aware contract in all existing ha
 	]) {
 		assert.ok(contract.includes(rule), rule);
 	}
-	assert.match(contract, /termina.*sin ejecutar.*stage/is);
-	assert.match(contract, /no ejecuta grill, spec, run ni quick-run/i);
+	assert.match(contract, /no ejecuta pasos de ningún stage/i);
+	assert.match(contract, /en Claude y Codex lo encadena la Fase 7/);
+	assert.match(contract, /en Pi lo abre el orquestador de `\/issues`/);
+	assert.doesNotMatch(contract, /triage produce contexto y termina/);
 });
 
 test("artifact-aware gate reports injected route/schema drift", () => {
@@ -160,4 +164,101 @@ test("artifact-aware gate reports injected route/schema drift", () => {
 
 test("issue-triage remains absent from OpenCode", async () => {
 	await assert.rejects(access(repoFile("opencode/issue-triage/SKILL.md")));
+});
+
+const CHAINING_HARNESSES = ["claude", "codex"] as const;
+
+// Stage → skill dueño; las rutas salen del contrato que usa el orquestador de Pi.
+const STAGE_SKILLS: Record<string, string> = {
+	grill: "grill",
+	spec: "sdd-spec",
+	"quick-run": "quick-run",
+	"run-existing-spec": "sdd-run",
+};
+
+const START_ROUTE_SKILLS: Record<string, string> = Object.fromEntries(
+	Object.entries(ACTIONABLE_ROUTE_CONTRACT).map(([route, { stage }]) => [route, STAGE_SKILLS[stage]!]),
+);
+
+export function stageChainBlock(markdown: string): string {
+	const match = markdown.match(/<!-- stage-chain:start -->\n([\s\S]*?)\n<!-- stage-chain:end -->/);
+	assert.ok(match?.[1], "tabla normativa stage-chain presente");
+	return match[1];
+}
+
+function stageChainRows(block: string): string[][] {
+	return block.split("\n").filter((row) => row.startsWith("|")).slice(2)
+		.map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
+}
+
+export function stageChainRoutes(block: string, invocation: string): Map<string, string> {
+	const routes = new Map<string, string>();
+	for (const [routeCell = "", skillCell = ""] of stageChainRows(block)) {
+		const skill = skillCell.replaceAll("`", "");
+		for (const route of routeCell.matchAll(/`([a-z-]+)`/g)) {
+			routes.set(route[1]!, skill.startsWith(invocation) ? skill.slice(invocation.length) : `?${skill}`);
+		}
+	}
+	return routes;
+}
+
+export function stageChainArguments(block: string): Map<string, string> {
+	const args = new Map<string, string>();
+	for (const [routeCell = "", , argsCell = ""] of stageChainRows(block)) {
+		for (const route of routeCell.matchAll(/`([a-z-]+)`/g)) args.set(route[1]!, argsCell);
+	}
+	return args;
+}
+
+test("issue-triage chains the confirmed stage in harnesses without orchestrator", async () => {
+	const interaction = parseInteractionDifferences(await readRepoFile("docs/harness-interaction-differences.md"));
+	const blocks = new Map<Harness, string>();
+	for (const harness of CHAINING_HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/issue-triage/SKILL.md`);
+		const block = stageChainBlock(markdown);
+		const routes = stageChainRoutes(block, interaction.invocation[harness]);
+		assert.deepEqual(Object.fromEntries(routes), START_ROUTE_SKILLS, `${harness}: mapeo ruta → skill`);
+		const args = stageChainArguments(block);
+		for (const route of ["quick-run", "join-quick-run"]) {
+			assert.match(args.get(route) ?? "", /^—/, `${harness}: ${route} sin args, como dispatch.ts`);
+		}
+		assert.match(args.get("spec-from-grill") ?? "", /--from-grill/);
+		for (const route of ["update-existing-spec", "audit-existing-spec"]) {
+			assert.match(args.get(route) ?? "", /--triage-route/, `${harness}: ${route} distingue update/audit`);
+		}
+		assert.match(markdown, /code=selectedRoute/);
+		assert.match(markdown, /join-\*[^\n]*sin `canonicalIssue`[^\n]*no encadenes/);
+		assert.match(markdown, /reescribe el body del issue/);
+		blocks.set(harness, normalizeArtifactAwareBlock(block, harness, interaction));
+		assert.match(markdown, /## Fase 7 — Encadenar el stage confirmado/);
+		assert.doesNotMatch(markdown, /no autoriza a ejecutar el stage/);
+		assert.doesNotMatch(markdown, /No invocar ni ejecutar grill, spec, run o quick-run/);
+		assert.match(markdown, /selectedRoute=null[^\n]*no encadenes/i);
+	}
+	assert.equal(blocks.get("codex"), blocks.get("claude"), "codex diverge de claude en stage-chain");
+});
+
+test("claude and codex sdd-spec accept the chained triage target", async () => {
+	for (const harness of CHAINING_HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
+		assert.match(markdown, /### Entrada encadenada desde issue-triage/, harness);
+		assert.match(markdown, /\| ruta de spec\]/, `${harness}: firma acepta ruta de spec`);
+		assert.match(markdown, /--triage-route update-existing-spec\|audit-existing-spec/, harness);
+	}
+});
+
+test("pi issue-triage keeps chaining in the orchestrator, not in the skill", async () => {
+	const markdown = await readRepoFile("pi/issue-triage/SKILL.md");
+	assert.doesNotMatch(markdown, /<!-- stage-chain:start -->/);
+	assert.match(markdown, /submit_workflow_resolution/);
+});
+
+test("stage-chain gate reports a route mapped to the wrong skill", () => {
+	const block = [
+		"| `selectedRoute` | Skill | Argumentos |",
+		"|---|---|---|",
+		"| `grill`, `join-grill` | `/sdd-spec` | `#<N>` |",
+	].join("\n");
+	assert.equal(stageChainRoutes(block, "/").get("join-grill"), "sdd-spec");
+	assert.equal(stageChainRoutes(block, "$").get("grill"), "?/sdd-spec");
 });
