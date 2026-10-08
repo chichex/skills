@@ -19,6 +19,7 @@ import {
 	HARNESSES,
 	fencedBlocks,
 	firstDifference,
+	escapeRegExp,
 	normalizeInvocations,
 	parseInteractionTable,
 } from "./interaction.ts";
@@ -174,20 +175,22 @@ const FEEDBACK_REMEDIATION_QUESTION_STYLE: Record<Harness, RegExp> = {
 // cuatro harnesses; el atajo liviano vive en claude, codex y opencode.
 const GRILL_ROUNDS_DOCTRINE = [
 	/frontera de dependencias/,
-	/misma ronda/,
+	/(?:acopladas de hecho|cambiaría cómo se formula otra)[\s\S]{0,200}ronda siguiente/,
 	/[Rr]ecalculá la frontera/,
 ];
 const GRILL_NON_BLOCKING_FACTS_DOCTRINE = [
 	/los hechos los averigua el agente, nunca el usuario/i,
 	/solo esperan las preguntas que dependen de ese hecho/i,
 	/el resto de la frontera se pregunta ya/i,
+	/toda la frontera depende de hechos pendientes[\s\S]{0,200}ronda vacía/i,
+	/exploración falla o vence[\s\S]{0,300}supuesto visible/i,
 ];
 const GRILL_LIGHT_SHORTCUT = /### Atajo liviano \(1 a 3 preguntas\)/;
 const GRILL_LIGHT_SHORTCUT_HARNESSES: readonly Harness[] = ["claude", "codex", "opencode"];
 const GRILL_FACT_EXPLORATION: Record<Harness, RegExp> = {
 	claude: /`Agent`[\s\S]{0,80}`Explore`[\s\S]{0,80}background/,
-	codex: /subagente `explorer`/,
-	opencode: /subagente `explore`[\s\S]{0,80}`task`/,
+	codex: /subagente `explorer`[\s\S]{0,400}misma ronda/,
+	opencode: /subagente `explore`[\s\S]{0,80}`task`[\s\S]{0,400}misma ronda/,
 	pi: /`subagent`[\s\S]{0,80}`scout`[\s\S]{0,80}`background: true`/,
 };
 
@@ -601,7 +604,11 @@ test("grill nombra en cada harness la tool de preguntas que declara la tabla", a
 		const tool = questionTools[harness];
 		if (tool === null) continue;
 		const markdown = await readRepoFile(`${harness}/grill/SKILL.md`);
-		if (!markdown.includes(`\`${tool}\``)) missing.push(`${harness}/grill/SKILL.md no nombra \`${tool}\``);
+		const name = escapeRegExp(`\`${tool}\``);
+		const usage = new RegExp(`(?:UNA llamada a |[Uu]s(?:ar|á) (?:la tool )?|invocá )${name}`);
+		const negated = new RegExp(`no (?:hay|existe)[^.\\n]{0,60}${name}`, "i");
+		if (!usage.test(markdown)) missing.push(`${harness}/grill/SKILL.md no instruye usar \`${tool}\``);
+		if (negated.test(markdown)) missing.push(`${harness}/grill/SKILL.md niega \`${tool}\``);
 	}
 	assert.deepEqual(missing, []);
 });

@@ -35,7 +35,13 @@ el prefijo del harness (`/sdd-spec`, `$sdd-spec`, `/skill:sdd-spec`) se
 reduce a un token común. Todo otro byte divergente en un template es drift
 y hace fallar CI.
 
-Las filas `tool-preguntas` y `extras` documentan por qué el gate NO compara
+La fila `tool-preguntas` también es machine-readable: el harness-gate
+(`parseInteractionTable` en `pi-extensions/harness-gate/interaction.ts`) exige
+que cada `grill` instruya usar la tool de su harness y no la niegue, y los
+gates de `pi-extensions/workflow-resolution/` la leen para normalizar la tool
+de preguntas. Cambiar una celda rompe CI hasta portear los skills.
+
+Las filas `tool-preguntas` y `extras` documentan además por qué el gate NO compara
 los cuerpos completos de los SKILL.md: la conducción de la entrevista, los
 gates interactivos y los sidecars difieren legítimamente por harness. Esas
 diferencias viven fuera de los templates de artefactos; dentro de un

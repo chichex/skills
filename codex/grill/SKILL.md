@@ -25,6 +25,8 @@ Si `request_user_input` no está disponible, formular la misma pregunta o ronda 
 
 Hacer exactamente una pregunta por vez en el modo pregunta a pregunta.
 
+Si un gate tiene más opciones de las que admite la llamada (3 por pregunta), poné como opciones las primeras según el orden recomendado, nombrá el resto en el texto visible de la pregunta y dejá que se elijan vía "Other". Vale para la elección de bloque, la reanudación y la confirmación del cierre.
+
 No depender de extensiones de Pi ni de tools inexistentes. Persistir sesiones únicamente como Markdown en `.sdd/grills/`, mediante ediciones normales de archivos. No crear el directorio hasta que el usuario elija guardar o pausar una sesión.
 
 ## Principios
@@ -46,7 +48,7 @@ Antes de entrevistar:
 4. Estimá preguntas mínimas, probables y máximas. La cifra operativa es la probable; presentala como estimación, no como promesa — una respuesta puede abrir o cerrar ramas.
 5. Diagnosticá la modalidad recomendada:
    - **Por rondas** (default) cuando el árbol es razonablemente estable, hay ramas independientes que se pueden preguntar en paralelo y corregir un rumbo es barato.
-   - **Rápido** cuando el árbol sea estable, poco profundo y las decisiones sean reversibles e independientes.
+   - **Rápido** cuando el árbol sea estable, las decisiones sean reversibles e independientes y cada una tenga una recomendación respaldada que se pueda aprobar en bloque. Ante la duda entre Rápido y Por rondas, Por rondas.
    - **Pregunta a pregunta** cuando las dependencias son densas (casi cada respuesta reformula la siguiente pregunta), hay contradicciones por resolver, decisiones costosas de revertir o alta probabilidad de que las respuestas abran ramas nuevas.
    - La cantidad de preguntas no es el criterio: lo que importa es cuánta adaptación exige el árbol.
 6. Mostrá un mapa breve como mensaje visible: objetivo de desambiguación, hechos ya comprobados, docs de dominio existentes (solo lectura), supuestos, secciones del árbol con sus dependencias, estimación mínima/probable/máxima, alcance de la sesión, y modalidad recomendada con sus señales.
@@ -78,7 +80,7 @@ Si el usuario ya fijó la modalidad en su pedido, no la vuelvas a preguntar.
 El motor default. Cada ronda presenta la **frontera de dependencias**: solo las decisiones cuyas dependencias ya están resueltas.
 
 1. Calculá la frontera actual del árbol.
-2. **Hechos sin bloqueo.** Si una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, no se lo preguntes al usuario: lanzá la exploración y no frenes la ronda. Solo esperan las preguntas que dependen de ese hecho; el resto de la frontera se pregunta ya. Cuando vuelve el hecho, sumalo a los hechos comprobados y recalculá la frontera para la ronda siguiente. En Codex no hay exploración en background: explorá inline, o delegá en el subagente `explorer` si los subagentes están habilitados, antes de llamar a `request_user_input`. Codex espera a sus subagentes, así que la ronda sale cuando vuelve la exploración; las preguntas que dependen del hecho igual pasan a la ronda siguiente, para formularlas con el hecho ya incorporado.
+2. **Hechos sin bloqueo.** Si una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, no se lo preguntes al usuario: lanzá la exploración y no frenes la ronda. Solo esperan las preguntas que dependen de ese hecho; el resto de la frontera se pregunta ya. Cuando vuelve el hecho, sumalo a los hechos comprobados y recalculá la frontera para la ronda siguiente. Si toda la frontera depende de hechos pendientes, no abras una ronda vacía ni le preguntes el hecho al usuario: esperá la exploración. Si la exploración falla o vence, reintentala o explorá inline; si el hecho sigue sin poder comprobarse, registralo como supuesto visible y seguí. En Codex no hay exploración en background, así que no hay ronda que frenar: explorá inline, o delegá en el subagente `explorer` si los subagentes están habilitados, antes de llamar a `request_user_input` (Codex espera a sus subagentes). Con el hecho ya incorporado, recalculá la frontera: las preguntas que dependían de él entran en esa misma ronda, salvo que queden acopladas.
 3. Si dos preguntas de la frontera están acopladas de hecho (la respuesta de una cambiaría cómo se formula la otra o sus opciones), dejá una para la ronda siguiente.
 4. Armá UNA llamada a `request_user_input` con hasta 3 preguntas de la frontera, priorizando las que desbloquean más ramas. Cada pregunta: autocontenida, con un `header` corto de su sección, 2 a 3 opciones mutuamente comprensibles, la recomendada primera y con el sufijo "(Recommended)", con su trade-off en la descripción. No hay selección múltiple: si varias respuestas pueden coexistir, ofrecé la combinación como opción o dejá que la respuesta libre la exprese. Sin `request_user_input`, la misma ronda va en texto plano con el formato de «Interacción en Codex» y terminás el turno.
 5. Con las respuestas: registrá cada decisión, actualizá el árbol y recalculá la frontera. Ahí se abre la ronda siguiente.
@@ -133,7 +135,7 @@ Al pausar, ofrecer además exportar las decisiones pendientes como cuestionario 
 Para retomar:
 
 1. Listar `.sdd/grills/*.md` por fecha si no se indicó una ruta.
-2. Pedir elegir solo si hay más de un candidato razonable.
+2. Pedir elegir solo si hay más de un candidato razonable; si hay más de los que entran como opciones, los más recientes van como opciones y el resto vía "Other".
 3. Leer el archivo completo y contrastar sus hechos con el estado actual del repo. Los handoffs viejos pueden traer una sección `## Modo`: ignorarla, ya no existe.
 4. Si existe un `<fecha>-<slug>-cuestionario.md` con respuestas completadas, leerlo e incorporar cada respuesta como decisión resuelta; repreguntar solo lo ambiguo.
 5. Mostrar decisiones resueltas, ramas pendientes y próxima pregunta.

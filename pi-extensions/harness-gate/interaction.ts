@@ -61,7 +61,7 @@ export function parseInteractionTable(doc: string): InteractionTable {
 	assert.ok(questionRow, "fila tool-preguntas presente en la tabla");
 	const questionTools = {} as Record<Harness, string | null>;
 	HARNESSES.forEach((harness, index) => {
-		const cell = (questionRow[index] ?? "").trim();
+		const cell = questionRow[index] ?? "";
 		questionTools[harness] = cell === "—" ? null : cell.replaceAll("`", "");
 		assert.ok(questionTools[harness] !== "", `celda tool-preguntas de ${harness} no vacia`);
 	});
