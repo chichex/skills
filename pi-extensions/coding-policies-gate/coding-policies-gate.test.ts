@@ -702,14 +702,13 @@ for (const harness of HARNESSES) {
 			/coding policies[\s\S]*buenas prácticas[\s\S]*políticas de código/i,
 			"la description dispara con los pedidos esperados",
 		);
-		assert.match(split.fields.description ?? "", /"mis prácticas de <stack>"/, "la description dispara con una sola rama por stack");
-		for (const stack of ["Go", "TypeScript", "Node", "React", "Next\\.js", "React Native", "Kotlin Multiplatform", "KMP", "KMM"]) {
-			assert.match(
-				split.fields.description ?? "",
-				new RegExp(`"mis prácticas de <stack>" \\([^)]*\\b${stack}\\b`),
-				`la description lista el stack ${stack}`,
-			);
-		}
+		const stacks = (split.fields.description ?? "").match(/"mis prácticas de …" \(([^)]*)\)/);
+		assert.ok(stacks, "la description dispara con una sola rama por stack");
+		assert.deepEqual(
+			stacks[1].split(", "),
+			["Go", "TypeScript", "Node", "React", "Next.js", "React Native", "Kotlin Multiplatform", "KMP", "KMM"],
+			"la rama única lista exactamente los nueve stacks aprobados",
+		);
 		assert.match(markdown, /`references\/typescript\.md` — TypeScript/, "la lista de referencias incluye TypeScript");
 		assert.match(markdown, /`references\/node\.md` — Node\.js/, "la lista de referencias incluye Node.js");
 		assert.match(markdown, /`references\/react\.md` — React/, "la lista de referencias incluye React");

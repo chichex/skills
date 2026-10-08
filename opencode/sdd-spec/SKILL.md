@@ -1,7 +1,7 @@
 ---
 name: sdd-spec
 description: >-
-  Convierte un pedido de feature (texto libre, issue de GitHub o handoff confirmado de grill) en una spec verificable — el "qué" contra el que /sdd-run trabaja después. Usar SIEMPRE para especificar una feature antes de implementarla, convertir un handoff de grill o un issue en spec, escribir criterios de aceptación, o diga "hagamos la spec de X", "definamos bien esto antes de codear", "especifica este issue". Exige .sdd/project.md: si no existe, correr /sdd-init primero.
+  Convierte un pedido de feature (texto libre, issue de GitHub o handoff confirmado de grill) en una spec verificable — el "qué" contra el que /sdd-run trabaja después. Usar SIEMPRE para especificar una feature antes de implementarla, convertir un handoff de grill o un issue en spec, escribir criterios de aceptación, o cuando el usuario diga "hagamos la spec de X" o "definamos bien esto antes de codear". Exige .sdd/project.md: si no existe, correr /sdd-init primero.
 ---
 
 Convierte un pedido en una spec: el **"qué" verificable** que `/sdd-run` usa como criterio de terminado. La spec no es prosa aspiracional: cada criterio de aceptación declara CÓMO se va a verificar y qué tan confiable es esa verificación en ESTE repo. Los argumentos pueden traer el pedido libre ("agregar dark mode al settings"), una referencia a issue (`#42` o URL), y/o flags.
