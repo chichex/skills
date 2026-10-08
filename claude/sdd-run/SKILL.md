@@ -86,6 +86,28 @@ Planificar contra el código real, no contra la idea del código (explorar lo qu
 5. **Regresión**: la suite existente completa (comando del contrato) tiene que quedar verde, no solo los tests nuevos.
 6. Commitear por pasos coherentes (mensaje referencia el CA: `CA-2: rate limit por IP con ventana deslizante`), nunca un mega-commit final. Si el contrato declara convención de commits, cada mensaje la cumple además de referenciar el CA.
 
+### Ownership y tareas
+
+- El agente principal conserva ownership del run hasta cerrar la spec y emitir el reporte final. Puede delegar exploración o unidades independientes con la tool `Agent` (`Explore` u otro subagente), pero NO delegar "completar toda la spec" ni transferir el ownership del cierre.
+- Toda tarea delegada bloqueante debe ser esperada y reconciliada antes de responder al usuario: revisar su resultado, inspeccionar el worktree y ejecutar la verificación relevante. Un subagente `running` no constituye progreso terminado.
+- Si un subagente expira, se interrumpe o no devuelve resultado, el agente principal inspecciona los cambios parciales, recupera el trabajo y continúa directamente. Nunca termina la sesión dejando una tarea bloqueante en `running`.
+- Antes del cierre, comprobar que no queden tool calls, procesos o subagentes bloqueantes en estado `running`.
+
+### Timeouts y procesos colgados
+
+- Un timeout del harness o un `SIGTERM` NO equivale a test fallido, test verde ni fin de la corrida.
+- Ante un timeout: inspeccionar la salida parcial; comprobar si quedaron handles o procesos vivos; focalizar el comando; usar modo no-watch/no-interactivo y un timeout suficiente; luego repetir el mecanismo requerido por el CA.
+- No describir una suite como verde si el proceso no terminó con exit code exitoso. Tampoco abandonar implementación pendiente por un timeout de infraestructura.
+- Solo registrar FALLA después de agotar el presupuesto del CA con diagnóstico concreto. Si el bloqueo es del harness y no del comportamiento, reportarlo como bloqueo de ejecución, no como CA verificado ni como implementación terminada.
+
+### Gate de entrega humana
+
+Antes de levantar o presentar la app para validación humana:
+
+- Verificar que el flujo solicitado sea accesible y operable desde su interfaz pública; no puede seguir deshabilitado, oculto ni marcado "a definir".
+- Ejecutar al menos los tests focalizados, typecheck y build correspondientes, salvo que el contrato declare otro mecanismo.
+- No pedir prueba humana de un CA cuya implementación todavía no existe. Si el flujo no está listo, decirlo explícitamente y continuar trabajando.
+
 ## Fase 4 — Verificación final y cierre de la spec
 
 1. Correr la escalera del contrato completa hasta su techo (typecheck, unit, build, levantar la app y probarla si el contrato sabe como).
@@ -153,6 +175,40 @@ Run completo: PR #<n> <url>   (o: branch sdd/<slug> committeado, sin PR)
 - commits: <M> en sdd/<slug>
 - pendiente tuyo: <revisar PR | protocolo humano de CA-n | decidir sobre CA en FALLA>
 ```
+
+### Run interrumpido
+
+Si una restricción externa obliga a detener la sesión antes del cierre, NO usar `Run completo`. Emitir `RUN INTERRUMPIDO` e incluir obligatoriamente:
+
+```text
+RUN INTERRUMPIDO
+- ultimo CA terminado: <CA-n | ninguno>
+- tarea/comando activo o bloqueo: <detalle>
+- cambios sin commit: <paths o ninguno>
+- tests rojos/no concluyentes: <detalle>
+- worktree: <ruta>
+- reanudar con: <instruccion exacta>
+```
+
+Conservar el worktree. Nunca presentar una interrupción, timeout o subagente pendiente como una entrega parcial lista para validar.
+
+### Checklist de cierre obligatorio
+
+Antes de emitir `Run completo`, comprobar todos estos invariantes:
+
+- [ ] Todos los CAs tienen estado y evidencia.
+- [ ] Ninguna tarea, tool call, proceso o subagente bloqueante sigue `running`.
+- [ ] Tests focalizados terminaron verdes.
+- [ ] Regresión completa terminó verde o su FALLA quedó documentada.
+- [ ] Cada política de generación activa fue verificada con su gate; si alguna quedó en FALLA, el PR salió en draft y la falla figura en spec, PR y reporte.
+- [ ] Se ejecutó la escalera contractual hasta su techo.
+- [ ] La spec contiene `Resultado de ejecucion`.
+- [ ] La evidencia del Resultado de ejecucion es consistente con el diff real contra el base (receipt de Fase 4.4).
+- [ ] Se crearon los commits requeridos.
+- [ ] Se creó el PR, o existe un motivo contractual explícito para no crearlo.
+- [ ] El worktree está limpio, o todos sus cambios pendientes fueron reportados como parte de un `RUN INTERRUMPIDO`.
+
+Si falla un solo item, está prohibido emitir `Run completo`.
 
 ## MUST DO
 
