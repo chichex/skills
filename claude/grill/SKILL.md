@@ -38,7 +38,7 @@ Antes de entrevistar:
 
 ### Atajo liviano (1 a 3 preguntas)
 
-Si la estimación probable es de 1 a 3 preguntas, decilo en una línea (es el territorio de `/mini-grill`) y resolvelo liviano: sin mapa ni configuración , todo en una sola ronda de `AskUserQuestion`, y directo al cierre. El invariante del cierre no se negocia: contrato visible — puede ser breve — antes de pedir confirmación. Guardá el handoff solo si el usuario lo pide, pausa, o elige encadenar la spec (que necesita la ruta).
+Si la estimación probable es de 1 a 3 preguntas, decilo en una línea (es el territorio de `/mini-grill`) y resolvelo liviano: sin mapa ni configuración, todo en una sola ronda de `AskUserQuestion`, y directo al cierre. El invariante del cierre no se negocia: contrato visible — puede ser breve — antes de pedir confirmación. Guardá el handoff solo si el usuario lo pide, pausa, o elige encadenar la spec (que necesita la ruta).
 
 ### Límite de 20
 
