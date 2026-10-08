@@ -111,7 +111,7 @@ skills/
 └── scripts/        # lint, drift y sincronizadores deterministas
 ```
 
-El repo corre CI en GitHub Actions (`.github/workflows/ci.yml`): valida sintaxis y estilo de los shells (`bash -n` + shellcheck), el frontmatter de todos los skills (`scripts/lint-frontmatter.sh`, que también corre en macOS local) y los tests de `pi-extensions` con Node 26. Además publica un reporte informativo de drift entre las copias de cada skill por harness (`scripts/drift-report.sh`): la divergencia esperada es solo la capa de interacción de cada harness; una divergencia grande en doctrina amerita revisión manual.
+El repo corre CI en GitHub Actions (`.github/workflows/ci.yml`): valida sintaxis y estilo de los shells (`bash -n` + shellcheck), el frontmatter de todos los skills (`scripts/lint-frontmatter.sh`, que también corre en macOS local), los tests de `pi-extensions` con Node 26 y el manifest del plugin de Claude Code (`claude plugin validate .`). Además publica un reporte informativo de drift entre las copias de cada skill por harness (`scripts/drift-report.sh`): la divergencia esperada es solo la capa de interacción de cada harness; una divergencia grande en doctrina amerita revisión manual.
 
 ## Instalación
 
@@ -140,7 +140,7 @@ El plugin expone todos los skills de `claude/` y los agentes de `agents/` — lo
   }
   ```
 
-Con eso Claude Code refresca el marketplace y actualiza el plugin en background poco después de arrancar cada sesión (con hasta diez minutos de demora) y avisa para correr `/reload-plugins`; si no, la versión nueva carga en el próximo arranque. Como `plugin.json` no pinea `version`, Claude Code versiona por commit y cada push a `main` llega como update. Para ponerte al día sin esperar:
+Con eso Claude Code refresca el marketplace y actualiza el plugin en background poco después de arrancar cada sesión (con hasta diez minutos de demora) y avisa para correr `/reload-plugins`; si no, la versión nueva carga en el próximo arranque. Como `plugin.json` no declara `version` a propósito, Claude Code versiona por commit y cada push a `main` llega como update; con una `version` declarada, un push solo llegaría al subirla. Para ponerte al día sin esperar:
 
 ```
 claude plugin marketplace update chichex

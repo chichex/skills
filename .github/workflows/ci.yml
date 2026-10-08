@@ -71,3 +71,31 @@ jobs:
       - name: Reporte de drift
         continue-on-error: true
         run: bash scripts/drift-report.sh | tee -a "$GITHUB_STEP_SUMMARY"
+
+  plugin-validate:
+    name: Validar plugin de Claude Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      # Pin: los chequeos de `validate` cambian entre versiones. Si lo subis,
+      # reverifica `claude plugin validate .` y la fila del contrato.
+      - name: Instalar Claude Code 2.1.294
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.294
+          claude --version
+      # Sin --strict: el warning de CLAUDE.md en la raiz del plugin es inevitable.
+      # `validate` es estatico: no pide autenticacion ni llama a la API.
+      - name: claude plugin validate
+        run: |
+          status=0
+          out=$(claude plugin validate . 2>&1) || status=$?
+          {
+            echo '### claude plugin validate'
+            echo '```'
+            echo "$out"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$status"
