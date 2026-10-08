@@ -194,6 +194,58 @@ const GRILL_FACT_EXPLORATION: Record<Harness, RegExp> = {
 	pi: /`subagent`[\s\S]{0,80}`scout`[\s\S]{0,80}`background: true`/,
 };
 
+// Stacks de PRs por spec (issue #66, CA-1/CA-2): `sdd-spec` propone el corte
+// en capas dentro de la spec; doctrina idéntica entre harnesses dentro del
+// bloque `sdd-spec-delivery`.
+const SDD_SPEC_DELIVERY_DOCTRINE = [
+	/`## Plan de entrega`[\s\S]*`\| Capa \| Etapa \| CAs \| Justificacion \|`/,
+	/cada capa es un grupo coherente de CAs[\s\S]*tests dan verde solos[\s\S]*regresión completa/i,
+	/tamaño máximo de PR[\s\S]*activo[\s\S]*cada capa entra en el límite/i,
+	/una sola capa[\s\S]*todo entra en un PR/i,
+	/propuesta se escribe sin preguntar[\s\S]*`Solicitar cambios`/i,
+];
+
+// Stacks de PRs por spec (issue #66, CA-3 a CA-9): `sdd-run` entrega un stack
+// nativo de GitHub cuando el Plan de entrega tiene 2 o más capas. Bloque
+// `sdd-run-stack`, idéntico entre harnesses.
+const SDD_RUN_STACK_DOCTRINE = [
+	// CA-3: preflight
+	/`## Plan de entrega` de 2 o más capas[\s\S]*`gh` ≥ 2\.90\.0[\s\S]*`git` ≥ 2\.36[\s\S]*`github\/gh-stack`[\s\S]*`gh extension list`/,
+	/interactivo[\s\S]*`gh extension install github\/gh-stack` ahí mismo/,
+	/`--assume`[\s\S]*frena antes de ramificar[\s\S]*comando exacto/,
+	/una sola capa[\s\S]*nada cambia/i,
+	// CA-4: ramificado
+	/`gh stack init -b <base> sdd\/<slug>\/1-<etapa>`[\s\S]*`\.\.\/<repo>-sdd-<slug>`/,
+	/`gh stack add sdd\/<slug>\/<n>-<etapa>`/,
+	/no existe el branch pelado `sdd\/<slug>`/,
+	/cualquier ref `sdd\/<slug>` o `sdd\/<slug>\/\*`[\s\S]*bloqueo de Fase 1\.4/,
+	/slug kebab de hasta 20 caracteres[\s\S]*`Etapa`/,
+	// CA-5: verificación por capa
+	/antes de `gh stack add`[\s\S]*CAs verificados con su mecanismo[\s\S]*regresión completa[\s\S]*escalera del contrato hasta su techo/,
+	/receipt Git por capa[\s\S]*`git diff --name-status <base de la capa>\.\.HEAD`/,
+	/CA en FALLA congela su capa[\s\S]*no se abren[\s\S]*el reporte lo dice/,
+	// CA-6: resultado por capa
+	/`Capa` = `n\/N`[\s\S]*`1\/1` sin stack/,
+	/su propio branch/,
+	/`state=implemented`[\s\S]*solo en la capa top/,
+	// CA-7: publicación
+	/`gh stack submit --auto --open`[\s\S]*`gh pr edit --body-file`/,
+	/de abajo lleva la spec completa[\s\S]*checklist humano[\s\S]*`Closes #NN`/,
+	/`Capa n\/N del stack · spec en #<PR de abajo>`/,
+	/`<título de la spec> — capa n\/N: <etapa>`/,
+	/política de generación en FALLA[\s\S]*draft solo la capa que la viola[\s\S]*`gh pr ready --undo`/,
+	/`--no-pr`[\s\S]*sin `submit`/,
+	/Sigue sin mergear/,
+	// CA-8: seguimiento
+	/Fase 6[\s\S]*todos los PRs del stack de abajo hacia arriba/,
+	/`Code review`[\s\S]*por cada PR/,
+	/capa baja[\s\S]*`gh stack sync`[\s\S]*restackear/,
+	/worktree del stack se retiene[\s\S]*`Terminar`[\s\S]*solo si está limpio/,
+	// CA-9: force
+	/único force permitido es el `--force-with-lease`[\s\S]*`gh stack push`[\s\S]*`gh stack sync`[\s\S]*`gh stack rebase`[\s\S]*`sdd\/<slug>\/\*`/,
+	/`git push --force` y `--force-with-lease` a mano siguen prohibidos/,
+];
+
 // Valores concretos para instanciar placeholders de un template de marker.
 const PLACEHOLDER_SAMPLE: Record<string, string> = {
 	"#NN": "#12",
@@ -595,6 +647,61 @@ test("sdd-run imprime el plan y sigue, desvía sin preguntar y ofrece code revie
 	const claude = await readRepoFile("claude/sdd-run/SKILL.md");
 	assert.match(claude, /subagent_type: "reviewer"/, "Claude lanza el review con el subagente reviewer");
 	assert.match(claude, /`\/code-review --comment`/, "Claude nombra el code review nativo");
+});
+
+test("sdd-spec propone el Plan de entrega en el template y el criterio de corte, sin '2+ specs encadenadas', en cada harness", async () => {
+	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
+	const byHarness = new Map<Harness, string[]>();
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
+		assert.doesNotMatch(markdown, /2\+ specs encadenadas/, `${harness}/sdd-spec/SKILL.md todavía parte por tamaño en specs encadenadas`);
+		const template = censusTemplates(markdown).markerFences[0]?.content ?? "";
+		assert.match(
+			template,
+			/## Comportamiento esperado\n[^#]*\n## Plan de entrega\n[^#]*\| Capa \| Etapa \| CAs \| Justificacion \|\n[^#]*\n## Fuera de alcance\n/,
+			`${harness}/sdd-spec/SKILL.md: el template no lleva ## Plan de entrega entre Comportamiento esperado y Fuera de alcance con la tabla Capa/Etapa/CAs/Justificacion`,
+		);
+		const doctrine = delimitedDoctrine(markdown, "sdd-spec-delivery");
+		for (const expected of SDD_SPEC_DELIVERY_DOCTRINE) {
+			assert.match(doctrine, expected, `${harness}/sdd-spec/SKILL.md no declara ${expected}`);
+		}
+		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
+	}
+	assert.deepEqual(compareTemplates("sdd-spec delivery", byHarness), []);
+});
+
+test("sdd-run entrega un stack de PRs por capas con preflight, verificación por capa y force acotado en cada harness", async () => {
+	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
+	const byHarness = new Map<Harness, string[]>();
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
+		const doctrine = delimitedDoctrine(markdown, "sdd-run-stack");
+		for (const expected of SDD_RUN_STACK_DOCTRINE) {
+			assert.match(doctrine, expected, `${harness}/sdd-run/SKILL.md no declara ${expected}`);
+		}
+		// CA-6: el template de resultado lleva la columna Capa.
+		const resultado = fencedBlocks(markdown).find((fence) => /^## Resultado de ejecucion/.test(fence.content));
+		assert.match(
+			resultado?.content ?? "",
+			/\| CA \| Capa \| Estado \| Evidencia \|\n\|---\|---\|---\|---\|\n\| CA-1 \| 1\/1 \|/,
+			`${harness}/sdd-run/SKILL.md: el template de Resultado de ejecucion no lleva la columna Capa`,
+		);
+		// CA-10: el reporte sugiere sdd-land y lista los PRs por capa.
+		const report = fencedBlocks(markdown).find((fence) => /^Run completo:/.test(fence.content));
+		assert.ok(report, `${harness}/sdd-run/SKILL.md no instruye el bloque Run completo`);
+		assert.match(report.content, new RegExp(`siguiente paso: ${escapeRegExp(prefixes[harness])}sdd-land <stack\\|PR>`), `${harness}/sdd-run/SKILL.md: Run completo sin la línea siguiente paso`);
+		assert.match(report.content, /PRs por capa/, `${harness}/sdd-run/SKILL.md: Run completo no lista los PRs por capa`);
+		// CA-9: MUST DO y MUST NOT DO nombran el force acotado.
+		for (const heading of ["MUST DO", "MUST NOT DO"]) {
+			const section = markdown.match(new RegExp(`## ${heading}\\n([\\s\\S]*?)(?=\\n## |$)`))?.[1] ?? "";
+			assert.match(section, /--force-with-lease[\s\S]*`gh stack (?:push|sync|rebase)`/, `${harness}/sdd-run/SKILL.md ## ${heading} no acota el force a gh stack`);
+		}
+		byHarness.set(harness, [
+			normalizeInvocations(doctrine, prefixes[harness]),
+			normalizeInvocations(report.content, prefixes[harness]),
+		]);
+	}
+	assert.deepEqual(compareTemplates("sdd-run stack", byHarness), []);
 });
 
 test("grill nombra en cada harness la tool de preguntas que declara la tabla", async () => {

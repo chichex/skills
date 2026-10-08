@@ -101,7 +101,7 @@ Reglas:
 
 - El grado sale de lo que el contrato dice que se puede correr HOY, no de lo teóricamente posible. Una feature TDD-able en un repo cuyo test runner figura `FALLA` NO es ALTA — es BAJA hasta que alguien arregle el runner, y se dice explícitamente ("sería ALTA si `pnpm test` funcionara — ver Gaps del contrato").
 - Si los criterios tienen grados distintos, NO promediar: desglosar por criterio y reportar mixto ("CA-1..CA-3 ALTA; CA-4 NULA — vibración en dispositivo, exige prueba tuya").
-- Cruzar el alcance contra las políticas de generación del contrato y decirlo en el veredicto: una spec cuyo blast-radius estimado excede el *tamaño máximo de PR* se reporta con propuesta de partición (2+ specs encadenadas, cada una dentro del límite) — mejor partir acá que descubrirlo con el PR en draft. Un *coverage mínimo* activo sube la vara del plan de verificación: los tests de los CA ALTA tienen que cubrir el código nuevo, no solo el happy path. *Dependencias nuevas: prohibido* convierte cualquier CA que exija una dep en conflicto a resolver en la spec, no en el run. Las políticas de la tecnología con gate (linter, script) integran la vara igual que coverage; las filas `guia` no gatean ni cambian el veredicto.
+- Cruzar el alcance contra las políticas de generación del contrato y decirlo en el veredicto: una spec cuyo blast-radius estimado excede el *tamaño máximo de PR* se reporta con el corte en capas del `## Plan de entrega` (cada capa dentro del límite) — mejor partir acá que descubrirlo con el PR en draft. Un *coverage mínimo* activo sube la vara del plan de verificación: los tests de los CA ALTA tienen que cubrir el código nuevo, no solo el happy path. *Dependencias nuevas: prohibido* convierte cualquier CA que exija una dep en conflicto a resolver en la spec, no en el run. Las políticas de la tecnología con gate (linter, script) integran la vara igual que coverage; las filas `guia` no gatean ni cambian el veredicto.
 - El veredicto va a la sección `## Verificabilidad` con el porqué y se resume en el reporte: es el dato que le dice al usuario cuánto puede delegar de la ejecución.
 
 ## Fase 5 — Mecanismo de verificación
@@ -128,6 +128,14 @@ Con EXACTAMENTE esta estructura:
 <criterios de aceptacion CA-1..CA-n, cada uno observable (se puede decir paso/no paso
 sin interpretacion) y con su grado de verificabilidad al lado>
 
+## Plan de entrega
+<las capas ordenadas con que se entrega la spec, una por PR; una sola fila si todo
+entra en un PR>
+
+| Capa | Etapa | CAs | Justificacion |
+|---|---|---|---|
+| 1 | <etapa> | CA-1 a CA-n | <por que esta capa se sostiene sola> |
+
 ## Fuera de alcance
 <lo que NO entra, derivado de las inferencias de alcance>
 
@@ -145,6 +153,14 @@ el protocolo de prueba paso a paso>
 <[ASSUMED] riesgosos, dependencias, flakiness conocida, [NEEDS-INPUT] pendientes,
 conflictos con politicas de generacion del contrato (tamaño, coverage, deps)>
 ```
+
+<!-- sdd-spec-delivery:start -->
+### Plan de entrega
+
+Toda spec lleva la sección `## Plan de entrega` inmediatamente después de `## Comportamiento esperado`, con la tabla `| Capa | Etapa | CAs | Justificacion |`: las capas ordenadas con que `/sdd-run` entrega la spec —una por PR atómico—, la etapa (nombre corto de la capa, del que `/sdd-run` deriva el slug del branch), los CAs que cierra y por qué se sostiene sola.
+
+**Criterio de corte.** Cada capa es un grupo coherente de CAs cuyos tests dan verde solos más la regresión completa. Si el contrato tiene *tamaño máximo de PR* activo, cada capa entra en el límite. Una sola capa cuando todo entra en un PR: la tabla lleva una fila y `/sdd-run` entrega el PR único de siempre. La propuesta se escribe sin preguntar, como una inferencia más del modelo, y el usuario la ajusta desde `Solicitar cambios` sobre la spec ya publicada.
+<!-- sdd-spec-delivery:end -->
 
 Estado: siempre `draft` al publicar; `aprobada` solo por la transición del menú final al elegir un run (ver "Flujo sin fricción").
 
