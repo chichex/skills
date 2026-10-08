@@ -113,7 +113,7 @@ skills/
 └── scripts/        # lint, drift, and deterministic synchronizers
 ```
 
-The repo runs CI on GitHub Actions (`.github/workflows/ci.yml`): it validates shell syntax and style (`bash -n` + shellcheck), the frontmatter of every skill (`scripts/lint-frontmatter.sh`, which also runs on local macOS), and the `pi-extensions` tests on Node 26. It also publishes an informational drift report between each skill's per-harness copies (`scripts/drift-report.sh`): the expected divergence is only each harness's interaction layer; a large divergence in doctrine warrants manual review.
+The repo runs CI on GitHub Actions (`.github/workflows/ci.yml`): it validates shell syntax and style (`bash -n` + shellcheck), the frontmatter of every skill (`scripts/lint-frontmatter.sh`, which also runs on local macOS), the `pi-extensions` tests on Node 26, and the Claude Code plugin manifest (`claude plugin validate .`). It also publishes an informational drift report between each skill's per-harness copies (`scripts/drift-report.sh`): the expected divergence is only each harness's interaction layer; a large divergence in doctrine warrants manual review.
 
 ## Installation
 
@@ -142,7 +142,7 @@ The plugin exposes every skill in `claude/` and the agents of `agents/` — the 
   }
   ```
 
-With that, Claude Code refreshes the marketplace and updates the plugin in the background shortly after each session starts (with a delay of up to ten minutes) and prompts you to run `/reload-plugins`; otherwise the new version loads on the next launch. Since `plugin.json` does not pin a `version`, Claude Code versions by commit, so every push to `main` arrives as an update. To catch up without waiting:
+With that, Claude Code refreshes the marketplace and updates the plugin in the background shortly after each session starts (with a delay of up to ten minutes) and prompts you to run `/reload-plugins`; otherwise the new version loads on the next launch. Since `plugin.json` declares a `version` (`1.0.0`), Claude Code uses that string, so a push to `main` only arrives as an update when the `version` is bumped. To catch up without waiting:
 
 ```
 claude plugin marketplace update chichex
