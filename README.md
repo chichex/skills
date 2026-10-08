@@ -111,7 +111,7 @@ skills/
 └── scripts/        # lint, drift y sincronizadores deterministas
 ```
 
-El repo corre CI en GitHub Actions (`.github/workflows/ci.yml`): valida sintaxis y estilo de los shells (`bash -n` + shellcheck), el frontmatter de todos los skills (`scripts/lint-frontmatter.sh`, que también corre en macOS local) y los tests de `pi-extensions` con Node 26. Además publica un reporte informativo de drift entre las copias de cada skill por harness (`scripts/drift-report.sh`): la divergencia esperada es solo la capa de interacción de cada harness; una divergencia grande en doctrina amerita revisión manual.
+El repo corre CI en GitHub Actions (`.github/workflows/ci.yml`): valida sintaxis y estilo de los shells (`bash -n` + shellcheck), el frontmatter de todos los skills (`scripts/lint-frontmatter.sh`, que también corre en macOS local) los tests de `pi-extensions` con Node 26 y el manifest del plugin de Claude Code (`claude plugin validate .`). Además publica un reporte informativo de drift entre las copias de cada skill por harness (`scripts/drift-report.sh`): la divergencia esperada es solo la capa de interacción de cada harness; una divergencia grande en doctrina amerita revisión manual.
 
 ## Instalación
 
