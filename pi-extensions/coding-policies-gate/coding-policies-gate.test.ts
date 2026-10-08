@@ -200,6 +200,8 @@ const CLEAN_CODE_SECTIONS = [
 	"Adopción y excepciones",
 	"Lectura ampliada",
 ];
+// Descripción de la baseline en cada SKILL.md: debe anunciar el contenido nuevo.
+const CLEAN_CODE_SKILL_LINE = /`references\/clean-code\.md` — baseline transversal siempre incluida[^\n]*smells[^\n]*módulos profundos[^\n]*Ousterhout/;
 const CLEAN_CODE_LINKS = [
 	"https://google.github.io/styleguide/cppguide.html#Write_Short_Functions",
 	"https://eslint.org/docs/latest/rules/max-lines-per-function",
@@ -955,12 +957,18 @@ test(`${SKILL}: clean-code trata los smells como juicio y declara módulos profu
 		"intermediario",
 	]) {
 		assert.match(smells, new RegExp(smell, "i"), `smell ${smell}`);
+		assert.match(smells, new RegExp(`${smell} \\([^\\n]*?→`, "i"), `smell ${smell} en formato qué es → arreglo`);
 	}
+	assert.doesNotMatch(smells, /\by y\b/, "sin conjunción duplicada");
+	assert.match(smells, /por la misma razón de cambio/i, "duplicación solo si comparte razón de cambio");
+	assert.match(smells, /interfaz mayormente solo delega[^\n]*frontera/i, "intermediario acotado por fronteras");
+	assert.match(smells, /ya \*\*falla\*\*/i, "solo se omite lo que ya falla en las herramientas");
 	assert.match(smells, /juicio[^\n]*nunca[^\n]*regla dura/i);
 	assert.match(smells, /regla documentada del repo[^\n]*gana/i);
 	assert.match(smells, /formatter[^\n]*linter[^\n]*typechecker/i);
 	const extraction = ruleLinesInSection(markdown, "Extracción sin sobre-split").join("\n");
 	assert.match(extraction, /test de borrado/i);
+	assert.match(extraction, /módulo profundo/i);
 	assert.match(extraction, /un solo adapter[^\n]*hipotético[^\n]*dos[^\n]*real/i);
 	assert.match(extraction, /interfaz es la superficie de test/i);
 });
@@ -1202,3 +1210,9 @@ test("autotest: un archivo untracked se reporta como no trackeado y uno trackead
 		await rm(repoFile(scratch), { force: true });
 	}
 });
+
+for (const harness of HARNESSES) {
+	test(`${harness}/${SKILL}: SKILL.md anuncia smells y módulos profundos en la baseline`, async () => {
+		assert.match(await skillMarkdown(harness), CLEAN_CODE_SKILL_LINE);
+	});
+}
