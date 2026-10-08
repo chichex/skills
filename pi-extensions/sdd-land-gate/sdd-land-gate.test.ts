@@ -84,8 +84,11 @@ function missing(text: string, patterns: RegExp[]): string[] {
 // Doctrina por CA, la misma en los cuatro harnesses.
 const DOCTRINE: Record<string, RegExp[]> = {
 	"CA-13": [
-		/\/sdd-land \[<stack#> \| <PR#> \| <URL de PR> \.\.\.\] \[--method merge\|squash\|rebase\] \[--wait N\] \[--dry-run\]/,
+		/\/sdd-land \[<stack#> \| <PR#> \| <URL de PR> \.\.\.\] \[--method merge\|squash\|rebase\] \[--wait N\] \[--dry-run\] \[--clean-only\]/,
 		/Pelado[\s\S]*lista los PRs abiertos del repo agrupados por stack[\s\S]*pregunta cuál/,
+		/`--clean-only` \(sin targets\)[\s\S]*salta el merge[\s\S]*checkout principal[\s\S]*limpieza local[\s\S]*barrido[\s\S]*reporte/,
+		/`Solo limpiar y sincronizar`[\s\S]*equivale a `--clean-only`/,
+		/`<PR#>` dentro de un stack significa «hasta ese PR inclusive»[\s\S]*`gh stack merge <PR>`[\s\S]*el plan lista exactamente qué PRs aterrizan/,
 		/Un PR sin stack es un stack de uno/,
 		/`isCrossRepository`[\s\S]*se rechazan con diagnóstico/,
 		/No existen `--yes` ni `--assume`/,
@@ -95,7 +98,8 @@ const DOCTRINE: Record<string, RegExp[]> = {
 		/branch default leído del remote[\s\S]*nunca asumir `main`/,
 		/`\.sdd\/project\.md` si existe[\s\S]*`## Limites` prohíbe mergear sin una excepción para `\/sdd-land`[\s\S]*frena antes de tocar nada/,
 		/`gh stack` exigido solo si algún target es un stack/,
-		/se recorre `baseRefName` hasta el branch default[\s\S]*`gh stack view --json`/,
+		/un PR pertenece a un stack si su `baseRefName` no es el default o si existe algún PR abierto cuyo `baseRefName` es su `headRefName`[\s\S]*se confirma con `gh stack view --json`/,
+		/se recorre `baseRefName` hasta el branch default/,
 		/cadena de PRs no vinculada[\s\S]*`gh stack link`/,
 	],
 	"CA-15": [
@@ -106,21 +110,26 @@ const DOCTRINE: Record<string, RegExp[]> = {
 		/Sin confirmación no hay merge/,
 	],
 	"CA-16": [
-		/abierto, no draft[\s\S]*`CONFLICTING`[\s\S]*`CHANGES_REQUESTED`[\s\S]*`statusCheckRollup`[\s\S]*`FAILURE`\/`ERROR`[\s\S]*checks pendientes/,
+		/abierto, no draft[\s\S]*`CONFLICTING`[\s\S]*`CHANGES_REQUESTED`[\s\S]*`statusCheckRollup`[\s\S]*lista de inclusión/,
+		/cada `CheckRun` con `conclusion` `SUCCESS`, `NEUTRAL` o `SKIPPED` y cada `StatusContext` con `state` `SUCCESS`/,
+		/check pendiente espera hasta `--wait`/,
+		/cualquier otro estado \(`FAILURE`, `ERROR`, `TIMED_OUT`, `CANCELLED`, `ACTION_REQUIRED`, `STARTUP_FAILURE`, `STALE`\) deja el target `DETENIDO`/,
 		/`reviewThreads`[\s\S]*paginando hasta agotar/,
 		/polling en primer plano cada 60 s hasta `--wait`[\s\S]*20 min[\s\S]*cancelable[\s\S]*sin `&` ni `nohup`/,
 		/`DETENIDO`[\s\S]*sin merge parcial[\s\S]*targets independientes siguen/,
 	],
 	"CA-17": [
-		/`gh stack merge <PR top> --merge-method <m> --yes`[\s\S]*solo saltea el prompt propio de gh-stack[\s\S]*después de la confirmación/,
+		/`gh stack merge <PR objetivo> --merge-method <m> --yes`[\s\S]*solo saltea el prompt propio de gh-stack[\s\S]*después de la confirmación/,
+		/`<PR objetivo>` es el top del stack o el `<PR#>` pedido[\s\S]*ese PR y todos los de abajo, nunca los de arriba/,
+		/aterrizaje parcial[\s\S]*no se borra ningún branch del stack, ni remoto ni local[\s\S]*pendiente/,
 		/`gh pr merge <n> --<m>` sin `--delete-branch` ni `--admin`/,
 		/`viewerDefaultMergeMethod`/,
 		/merge queue[\s\S]*`en cola`[\s\S]*hasta `--wait`/,
 		/releyendo `state == MERGED` de cada PR, nunca por exit code/,
 	],
 	"CA-18": [
-		/solo cuando todos los PRs del target están `MERGED`[\s\S]*`gh api -X DELETE`[\s\S]*`refs\/heads\/<branch>`[\s\S]*idempotente/,
-		/demás remotos ya mergeados[\s\S]*sin PR abierto[\s\S]*UNA confirmación que nombra cada branch/,
+		/solo cuando todos los PRs del target están `MERGED` y el aterrizaje no es parcial[\s\S]*`gh api -X DELETE`[\s\S]*`refs\/heads\/<branch>`[\s\S]*idempotente/,
+		/solo branches remotos cuyo PR está `MERGED` \(`gh pr list --state merged --json headRefName`\) y que no tienen PR abierto[\s\S]*excluyendo el default y los branches protegidos[\s\S]*nunca por mera ancestría[\s\S]*UNA confirmación que nombra cada branch/,
 		/Nunca borra un branch con PR abierto o sin mergear/,
 	],
 	"CA-19": [
@@ -130,6 +139,7 @@ const DOCTRINE: Record<string, RegExp[]> = {
 		/`gh stack unstack --local`/,
 		/`git worktree prune`/,
 		/checkout principal está parado en uno de esos branches no cambia de branch[\s\S]*lo reporta con el comando/,
+		/checkout principal no pudo sincronizarse[\s\S]*`git branch -d` puede negarse[\s\S]*se reporta con el comando, sin `-D`/,
 	],
 	"CA-20": [
 		/branches locales ya mergeados en `origin\/<default>`[\s\S]*excluyendo el default y el actual/,
@@ -143,13 +153,17 @@ const DOCTRINE: Record<string, RegExp[]> = {
 		/`Conservar en wip\/<fecha>-<slug>, sin push \(Recomendado\)` \/ `Descartar` \/ `Tratar por path` \/ `Dejar como está`/,
 		/`git switch -c wip\/<YYYY-MM-DD>-<slug>`[\s\S]*sin secrets, sin `--no-verify`[\s\S]*fast-forward/,
 		/`git reset --hard HEAD`[\s\S]*`git clean -fd`[\s\S]*nunca `-x`/,
-		/`conservar \/ descartar \/ ignorar`[\s\S]*`\.gitignore`[\s\S]*branch `wip\/`/,
+		/una pregunta por path[\s\S]*`conservar \/ descartar \/ ignorar`[\s\S]*`ignorar` solo se ofrece para paths untracked[\s\S]*`\.git\/info\/exclude`[\s\S]*local, sin commit[\s\S]*solo se crea el branch `wip\/` si algún path eligió `conservar`/,
+		/^(?![\s\S]*\.gitignore)[\s\S]*$/,
+		/fast-forward a `origin\/<default>`[\s\S]*`Conservar`, `Descartar` y `Tratar por path`[\s\S]*`Dejar como está` es el único que no lo hace/,
 		/commits locales adelante[\s\S]*se reporta, sin switch/,
 		/Nunca stash/,
 	],
 	"CA-22": [
 		/`SDD-LAND TERMINADO` solo con todos los targets mergeados y verificados/,
 		/`HEAD == origin\/<default>` y status limpio/,
+		/targets: ninguno \(--clean-only\)/,
+		/pendiente: <capas abiertas encima del PR elegido/,
 		/`SDD-LAND DETENIDO`[\s\S]*comando para reanudar/,
 		/sha de merge[\s\S]*remotos borrados[\s\S]*worktrees removidos[\s\S]*branches borrados[\s\S]*ruido podado/,
 	],
@@ -157,7 +171,7 @@ const DOCTRINE: Record<string, RegExp[]> = {
 		/no bypass de protección ni `--admin`/i,
 		/no `git push --force\*`/i,
 		/no push al default/i,
-		/no reset, stash ni clean del checkout principal fuera del flujo de la Fase 7/i,
+		/no reset, stash ni clean del checkout principal fuera del flujo de la Fase 5/i,
 		/no borrar branches con PR abierto o sin mergear/i,
 		/no cambiar settings del repo \(`deleteBranchOnMerge`, protecciones\)/i,
 		/no polling en background/i,
@@ -204,8 +218,8 @@ test("CA-12: sdd-land existe en los cuatro harnesses con name, description y tri
 for (const [ca, patterns] of Object.entries(DOCTRINE)) {
 	test(`${ca}: la doctrina de sdd-land está declarada en los cuatro harnesses`, async () => {
 		const problems: string[] = [];
+		const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
 		for (const harness of HARNESSES) {
-			const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
 			// Las regexes se escriben con la sintaxis de Claude (`/sdd-land`): se normaliza y se vuelve a ella.
 			const doctrine = normalizeInvocations(doctrineBlock(await readRepoFile(`${harness}/sdd-land/SKILL.md`)), prefixes[harness]).replace(/«skill:([a-z-]+)»/g, "/$1");
 			for (const problem of missing(doctrine, patterns)) problems.push(`${harness}/sdd-land/SKILL.md: ${problem}`);
@@ -246,6 +260,32 @@ test("CA-13 a CA-23: cada harness nombra su propia tool de preguntas y ninguna a
 		}
 	}
 	assert.deepEqual(problems, []);
+});
+
+test("CA-19, CA-21: las fases corren en el orden remotos, checkout principal, limpieza local, barrido y reporte", async () => {
+	const expected = ["Remotos", "Checkout principal", "Limpieza local automática", "Barrido del ruido previo", "Reporte"];
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-land/SKILL.md`);
+		const phases = [...markdown.matchAll(/^## Fase (\d+) — (.+)$/gm)].map((match) => `${match[1]}:${match[2]}`);
+		const tail = phases.slice(-5);
+		assert.deepEqual(tail, expected.map((name, index) => `${index + 4}:${name}`), `${harness}/sdd-land/SKILL.md: orden de fases`);
+	}
+});
+
+test("CA-24: sdd-land dice que reemplaza a repo-clean, que existía en Codex y Pi, igual en los cuatro harnesses", async () => {
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-land/SKILL.md`);
+		assert.match(markdown, /Reemplaza a `repo-clean`, que existía en Codex y Pi: absorbe su sincronización del checkout principal\./, `${harness}/sdd-land/SKILL.md`);
+	}
+});
+
+test("CA-21: Tratar por path pregunta por path y multiSelect/multiple queda solo para Elegir cuáles", async () => {
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-land/SKILL.md`);
+		const tail = markdown.split("<!-- sdd-land-doctrine:end -->")[1] ?? "";
+		assert.match(tail, /`Tratar por path`[\s\S]*pregunta por path/, `${harness}/sdd-land/SKILL.md: capa de interacción de Tratar por path`);
+		assert.doesNotMatch(tail, /la selección por path/, `${harness}/sdd-land/SKILL.md: la selección por path no es selección múltiple`);
+	}
 });
 
 test("CA-23: MUST NOT DO y MUST DO de sdd-land existen en los cuatro harnesses", async () => {
