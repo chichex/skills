@@ -252,6 +252,8 @@ In addition, `grill`'s **questionnaire export** is inspired by his `to-questionn
 
 The **SDD** family (`sdd-init`, `sdd-spec`, `sdd-run`) is my own: inspired by the same way of working (tracer bullets, tests-first, spec → implementation) as his `to-spec` / `to-tickets` / `implement` / `wayfinder` skills, but with different artifacts — the `.sdd/project.md` autonomy contract and the verifiability verdict.
 
+The smell baseline in `coding-policies` (`clean-code.md`) adapts Matt Pocock's `code-review`, and its deep-module rules adapt his `codebase-design` ([mattpocock/skills](https://github.com/mattpocock/skills), MIT).
+
 `find-skills` is kept exactly as installed from [`vercel-labs/skills`](https://skills.sh/vercel-labs/skills/find-skills); it is not my own skill.
 
 ## License

@@ -196,6 +196,7 @@ const CLEAN_CODE_SECTIONS = [
 	"Archivos, clases y módulos",
 	"SOLID sin ceremonia",
 	"Extracción sin sobre-split",
+	"Smells como juicio",
 	"Adopción y excepciones",
 	"Lectura ampliada",
 ];
@@ -213,6 +214,8 @@ const CLEAN_CODE_LINKS = [
 	"https://refactoring.com/catalog/extractFunction.html",
 	"https://blog.cleancoder.com/uncle-bob/2014/05/08/SingleReponsibilityPrinciple.html",
 	"https://blog.cleancoder.com/uncle-bob/2020/10/18/Solid-Relevance.html",
+	"https://martinfowler.com/books/refactoring.html",
+	"https://web.stanford.edu/~ouster/cgi-bin/book.php",
 ];
 const GO_SECTIONS = [
 	"Layout de paquetes",
@@ -936,6 +939,30 @@ test(`${SKILL}: clean-code fija umbrales como señales y prohíbe el sobre-split
 	assert.match(markdown, /hasta 3 parámetros[^\n]*más de 5/);
 	assert.match(markdown, /[Nn]unca extraer[^\n]*solo para reducir LOC/);
 	for (const principle of ["SRP", "OCP", "LSP", "ISP", "DIP"]) assert.match(markdown, new RegExp(`\\b${principle}\\b`));
+});
+
+test(`${SKILL}: clean-code trata los smells como juicio y declara módulos profundos`, async () => {
+	const markdown = await readRepoFile(`${CANONICAL_REFERENCES}/clean-code.md`);
+	const smells = ruleLinesInSection(markdown, "Smells como juicio").join("\n");
+	for (const smell of [
+		"código duplicado",
+		"envidia de datos",
+		"grupos de datos",
+		"obsesión por primitivos",
+		"switches repetidos",
+		"cambio divergente",
+		"cadenas de mensajes",
+		"intermediario",
+	]) {
+		assert.match(smells, new RegExp(smell, "i"), `smell ${smell}`);
+	}
+	assert.match(smells, /juicio[^\n]*nunca[^\n]*regla dura/i);
+	assert.match(smells, /regla documentada del repo[^\n]*gana/i);
+	assert.match(smells, /formatter[^\n]*linter[^\n]*typechecker/i);
+	const extraction = ruleLinesInSection(markdown, "Extracción sin sobre-split").join("\n");
+	assert.match(extraction, /test de borrado/i);
+	assert.match(extraction, /un solo adapter[^\n]*hipotético[^\n]*dos[^\n]*real/i);
+	assert.match(extraction, /interfaz es la superficie de test/i);
 });
 
 test(`${SKILL}: las secciones condicionales guardan cada regla`, async () => {

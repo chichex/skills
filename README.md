@@ -250,6 +250,8 @@ Además, la **exportación de cuestionario** de `grill` está inspirada en su sk
 
 La familia **SDD** (`sdd-init`, `sdd-spec`, `sdd-run`) es propia: está inspirada en el mismo enfoque de trabajo (tracer bullets, tests-first, spec → implementación) de sus skills `to-spec` / `to-tickets` / `implement` / `wayfinder`, pero con artefactos distintos — el contrato de autonomía `.sdd/project.md` y el veredicto de verificabilidad.
 
+La baseline de smells de `coding-policies` (`clean-code.md`) adapta el `code-review` de Matt Pocock, y sus reglas de módulos profundos adaptan su `codebase-design` ([mattpocock/skills](https://github.com/mattpocock/skills), MIT).
+
 `find-skills` se conserva tal como fue instalado desde [`vercel-labs/skills`](https://skills.sh/vercel-labs/skills/find-skills); no es un skill propio.
 
 ## Licencia
