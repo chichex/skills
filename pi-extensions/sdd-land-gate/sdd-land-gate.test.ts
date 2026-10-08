@@ -355,6 +355,19 @@ test("CA-24: el contrato autoriza el merge de /sdd-land, declara el gate nuevo y
 	assert.match(section(contract, /^## Gaps$/), /gh-stack[^\n]*v\d+\.\d+\.\d+/);
 });
 
+test("conflictos cruzados: preflight predice con merge-tree, el plan pregunta aparte, la Fase 3 hace fetch --prune y MUST NOT prohíbe actualizar sin pregunta", async () => {
+	for (const harness of HARNESSES) {
+		const file = `${harness}/sdd-land/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		assert.match(section(markdown, /^## Fase 1 — Preflight/), /git merge-tree --write-tree origin\/<a> origin\/<b>`[^\n]*pares/, `${file}: predicción de conflictos cruzados en la Fase 1`);
+		const plan = section(markdown, /^## Fase 2 — Plan y confirmación/);
+		assert.match(plan, /Actualizar el branch con <default> \(Recomendado\)` \/ `Dejarlo detenido`/, `${file}: pregunta de actualización en el plan`);
+		assert.match(plan, /nunca rebase, nunca force/, `${file}: sin rebase ni force al actualizar`);
+		assert.match(section(markdown, /^## Fase 3 — Gate de merge/), /Antes del primer gate, `git fetch --prune`/, `${file}: fetch --prune al inicio de la Fase 3`);
+		assert.match(section(markdown, /^## MUST NOT DO$/), /^- No actualizar el branch de un PR sin la pregunta del plan, ni con rebase\.$/m, `${file}: MUST NOT DO de actualizar branches`);
+	}
+});
+
 test("autotest: un harness sin la doctrina de un CA se reporta con el patrón que falta", () => {
 	const problems = missing("texto sin nada relevante", DOCTRINE["CA-22"] ?? []);
 	assert.ok(problems.length >= 4);
