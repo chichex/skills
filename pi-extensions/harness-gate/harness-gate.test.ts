@@ -715,6 +715,37 @@ test("sdd-run entrega un stack de PRs por capas con preflight, verificación por
 	assert.deepEqual(compareTemplates("sdd-run stack", byHarness), []);
 });
 
+const RIESGO_DE_MERGE_TEMPLATE = [
+	"## Riesgo de merge",
+	"Reversible con un revert: <sí | no>. <si no: qué cambió afuera del repo y cómo se vuelve atrás: backup, flag, script, comando>",
+	"Si sale mal, le pega a: <usuarios, sistemas o flujos afectados, una frase>",
+].join("\n");
+
+test("sdd-run y quick-run piden el loop rojo antes de tocar código y la sección Riesgo de merge en el body del PR", async () => {
+	const withQuickRun = HARNESSES.filter((harness) => harness !== "opencode");
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
+		const risk = fencedBlocks(markdown).filter((fence) => /^## Riesgo de merge/.test(fence.content));
+		assert.equal(risk.length, 1, `${harness}/sdd-run/SKILL.md: debe traer un solo template de Riesgo de merge`);
+		assert.equal(risk[0]?.content, RIESGO_DE_MERGE_TEMPLATE, `${harness}/sdd-run/SKILL.md: el template de Riesgo de merge no es byte-idéntico`);
+		// El template fenced lleva su propio "## " en columna 0: la Fase 5 se delimita por la Fase 6, no por el primer "\n## ".
+		const phase5 = markdown.match(/## Fase 5 — PR\n([\s\S]*?)(?=\n## Fase 6)/)?.[1] ?? "";
+		assert.match(phase5, /draft[\s\S]*Riesgo de merge|Riesgo de merge[\s\S]*draft/, `${harness}/sdd-run/SKILL.md: Fase 5 no ata el riesgo sin rollback a draft`);
+		assert.match(phase5, /PR de abajo[\s\S]*capas superiores|capas superiores[\s\S]*PR de abajo/, `${harness}/sdd-run/SKILL.md: Fase 5 no distingue PR de abajo y capas superiores`);
+		const budget = markdown.match(/\n3\. \*\*Presupuesto por CA\*\*[^\n]*(?:\n   [^\n]*)*/)?.[0] ?? "";
+		assert.match(budget, /loop rojo/, `${harness}/sdd-run/SKILL.md: el presupuesto por CA no exige el loop rojo`);
+		assert.match(budget, /no cuentan/, `${harness}/sdd-run/SKILL.md: sin loop rojo los intentos no cuentan`);
+	}
+	for (const harness of withQuickRun) {
+		const markdown = await readRepoFile(`${harness}/quick-run/SKILL.md`);
+		const risk = fencedBlocks(markdown).filter((fence) => /^## Riesgo de merge/.test(fence.content));
+		assert.equal(risk.length, 1, `${harness}/quick-run/SKILL.md: debe traer un solo template de Riesgo de merge`);
+		assert.equal(risk[0]?.content, RIESGO_DE_MERGE_TEMPLATE, `${harness}/quick-run/SKILL.md: el template de Riesgo de merge no es byte-idéntico`);
+		assert.match(markdown, /### Ruta bug: loop rojo antes de tocar código/, `${harness}/quick-run/SKILL.md: sin ruta bug con loop rojo`);
+		assert.match(markdown, /\[DEBUG-/, `${harness}/quick-run/SKILL.md: sin prefijo de instrumentación [DEBUG-xxxx]`);
+	}
+});
+
 test("grill nombra en cada harness la tool de preguntas que declara la tabla", async () => {
 	const { questionTools } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
 	const missing: string[] = [];

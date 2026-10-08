@@ -250,6 +250,8 @@ Además, la **exportación de cuestionario** de `grill` está inspirada en su sk
 
 La familia **SDD** (`sdd-init`, `sdd-spec`, `sdd-run`) es propia: está inspirada en el mismo enfoque de trabajo (tracer bullets, tests-first, spec → implementación) de sus skills `to-spec` / `to-tickets` / `implement` / `wayfinder`, pero con artefactos distintos — el contrato de autonomía `.sdd/project.md` y el veredicto de verificabilidad.
 
+Además, el **loop rojo antes de tocar código** de `quick-run` y `sdd-run` adapta `diagnosing-bugs` de Matt Pocock, y la sección **Riesgo de merge** del body del PR adapta "Merge Danger" de su skill `pr`, que a su vez viene del skill `show-me` de Dex Horthy (Humanlayer). MIT.
+
 `find-skills` se conserva tal como fue instalado desde [`vercel-labs/skills`](https://skills.sh/vercel-labs/skills/find-skills); no es un skill propio.
 
 ## Licencia
