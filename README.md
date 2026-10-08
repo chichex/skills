@@ -32,7 +32,7 @@ Las disciplinas sobre las que SDD se apoya — y que también uso sueltas, fuera
 | **`code-review`** *(Codex/Pi/opencode)* | Revisa un PR en tres ejes separados —correctness y riesgo, estándares y spec—, ejecuta verificaciones y muestra findings con evidencia y la preview exacta. Por default publica los comments en GitHub como un único review COMMENT; `--no-publish` lo deja solo en la conversación. Nunca aprueba ni pide cambios. |
 | **`wait-pr`** | Monitorea el repo actual cada 60 segundos en busca de PRs nuevos y ejecuta `code-review` sobre cada uno, en orden y sin duplicados. Ignora los PRs ya abiertos salvo `--include-open`, puede terminar tras uno con `--once` y nunca publica comments: en Codex, Pi y opencode pasa `--no-publish`; en Claude Code delega en el `/code-review` nativo del harness sin agregar `--comment` ni `--fix`. |
 | **`github-issue-selector`** *(Codex/Pi)* | Permite elegir o inspeccionar un issue cuando todavía no diste un número concreto. |
-| **`issue-triage`** *(Codex/Claude/Pi)* | Analiza uno o varios issues contra código, tests y dependencias; clasifica el próximo stage y emite un handoff estructurado; tras la confirmación, en Claude y Codex encadena el skill del stage (`grill`, `sdd-spec`, `sdd-run` o `quick-run`) y en Pi lo abre el orquestador de `/issues`. Para selecciones conjuntas crea un issue canónico y cierra los originales como reemplazados. |
+| **`issue-triage`** *(Codex/Claude/Pi)* | Analiza uno o varios issues contra código, tests y dependencias; clasifica el próximo stage y emite un handoff estructurado; tras la confirmación, en Claude encadena el skill del stage (`grill`, `sdd-spec`, `sdd-run` o `quick-run`); en Codex encadena `grill` y `sdd-spec`, y para `sdd-run` y `quick-run` (que exigen invocación explícita) deja el comando listo para enviar; en Pi el stage lo abre el orquestador de `/issues`. Para selecciones conjuntas crea un issue canónico y cierra los originales como reemplazados. |
 | **`quick-run`** *(Codex/Claude/Pi)* | Consume únicamente un handoff confirmado de `issue-triage` para implementar un cambio pequeño en un worktree aislado, con tests primero cuando corresponde, presupuesto finito y PR o commit local con evidencia exacta. |
 | **`repo-clean`** *(Codex/Pi)* | Deja el branch actual sin cambios pendientes y sincronizado con `origin/<branch>`. Si hay trabajo sin commit, muestra el impacto y pregunta si conservarlo o descartarlo; nunca cambia de branch ni hace force-push. |
 | **`find-skills`** *(Codex/Pi)* | Busca skills instalables en el ecosistema abierto mediante `npx skills`. Vendorizado desde `vercel-labs/skills`. |
@@ -111,7 +111,7 @@ skills/
 └── scripts/        # lint, drift y sincronizadores deterministas
 ```
 
-El repo corre CI en GitHub Actions (`.github/workflows/ci.yml`): valida sintaxis y estilo de los shells (`bash -n` + shellcheck), el frontmatter de todos los skills (`scripts/lint-frontmatter.sh`, que también corre en macOS local) y los tests de `pi-extensions` con Node 26. Además publica un reporte informativo de drift entre las copias de cada skill por harness (`scripts/drift-report.sh`): la divergencia esperada es solo la capa de interacción de cada harness; una divergencia grande en doctrina amerita revisión manual.
+El repo corre CI en GitHub Actions (`.github/workflows/ci.yml`): valida sintaxis y estilo de los shells (`bash -n` + shellcheck), el frontmatter de todos los skills (`scripts/lint-frontmatter.sh`, que también corre en macOS local), los tests de `pi-extensions` con Node 26 y el manifest del plugin de Claude Code (`claude plugin validate .`). Además publica un reporte informativo de drift entre las copias de cada skill por harness (`scripts/drift-report.sh`): la divergencia esperada es solo la capa de interacción de cada harness; una divergencia grande en doctrina amerita revisión manual.
 
 ## Instalación
 
@@ -140,7 +140,7 @@ El plugin expone todos los skills de `claude/` y los agentes de `agents/` — lo
   }
   ```
 
-Con eso Claude Code refresca el marketplace y actualiza el plugin en background poco después de arrancar cada sesión (con hasta diez minutos de demora) y avisa para correr `/reload-plugins`; si no, la versión nueva carga en el próximo arranque. Como `plugin.json` no pinea `version`, Claude Code versiona por commit y cada push a `main` llega como update. Para ponerte al día sin esperar:
+Con eso Claude Code refresca el marketplace y actualiza el plugin en background poco después de arrancar cada sesión (con hasta diez minutos de demora) y avisa para correr `/reload-plugins`; si no, la versión nueva carga en el próximo arranque. Como `plugin.json` no declara `version` a propósito, Claude Code versiona por commit y cada push a `main` llega como update; con una `version` declarada, un push solo llegaría al subirla. Para ponerte al día sin esperar:
 
 ```
 claude plugin marketplace update chichex

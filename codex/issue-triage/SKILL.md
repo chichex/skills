@@ -1,6 +1,6 @@
 ---
 name: issue-triage
-description: Analiza issues contra código, tests, contrato y artefactos SDD; resuelve linaje, vigencia y próximo stage, y emite un resultado estructurado; tras la confirmación del usuario encadena el skill dueño del stage elegido. Para selecciones múltiples decide todo-o-nada y canonicaliza en un issue combinado antes de inspeccionar artefactos. Usar siempre cuando el usuario pida analizar o decidir cómo encarar uno o varios issues antes de implementar.
+description: Analiza issues contra código, tests, contrato y artefactos SDD; resuelve linaje, vigencia y próximo stage, y emite un resultado estructurado; tras la confirmación del usuario encadena el skill dueño del stage elegido (en Codex, para sdd-run y quick-run deja el comando listo). Para selecciones múltiples decide todo-o-nada y canonicaliza en un issue combinado antes de inspeccionar artefactos. Usar siempre cuando el usuario pida analizar o decidir cómo encarar uno o varios issues antes de implementar.
 ---
 
 # Issue Triage
@@ -258,7 +258,7 @@ Para todo resultado `outcome=start` —ruta nueva o artifact-aware— usá `requ
 - `Usar fallback: <ruta>`
 - `Cancelar`
 
-Antes de elegir, declará qué abre confirmar: el skill del stage según la tabla de la Fase 7. Si la ruta confirmable es `quick-run|join-quick-run` o `run-existing-spec`, aclará que abre un run aislado capaz de crear branch, commits y PR (nunca merge), sujeto a su preflight y verificaciones. Si es `spec|join-spec`, o `update-existing-spec|audit-existing-spec` sobre una spec que vive en el issue, aclará que `sdd-spec` reescribe el body del issue `#<N>` con la spec en `draft` (archivando el body original). Una confirmación registra `selectedRoute` y autoriza a encadenar ese skill en la Fase 7; no autoriza ampliar alcance ni saltear los gates del skill encadenado. Antes del gate vale `selectedRoute=null`; primaria y fallback preservan la recomendación, y cancelar emite `code=cancelled` sin crear issues, archivos, branches ni comentarios.
+Antes de elegir, declará qué abre confirmar: el skill del stage según la tabla de la Fase 7. Si la ruta confirmable es `quick-run|join-quick-run` o `run-existing-spec`, aclará que abre un run aislado capaz de crear branch, commits y PR (nunca merge), sujeto a su preflight y verificaciones. Si es `spec|join-spec`, o `update-existing-spec|audit-existing-spec` sobre una spec que vive en el issue, aclará que `sdd-spec` reescribe el body del issue `#<N>` con la spec en `draft` (archivando el body original). En Codex, para `quick-run|join-quick-run` y `run-existing-spec`, confirmar deja listo el comando `$quick-run`/`$sdd-run …` para que lo envíe el usuario: el run arranca recién ahí (ver la excepción de la Fase 7). Una confirmación registra `selectedRoute` y autoriza a encadenar ese skill en la Fase 7 (o a dejar el comando listo, según la excepción); no autoriza ampliar alcance ni saltear los gates del skill encadenado. Antes del gate vale `selectedRoute=null`; primaria y fallback preservan la recomendación, y cancelar emite `code=cancelled` sin crear issues, archivos, branches ni comentarios.
 
 ## Fase 5 — Canonicalizar una selección múltiple
 
@@ -335,7 +335,7 @@ Si `selectedRoute=quick-run|join-quick-run`, el `checklist` y `risks` deben cons
 
 Sólo con un inicio confirmado y coherente: `outcome=start`, `selectedRoute` no nulo, `code=selectedRoute` y `stage`/`mode` iguales a los de la matriz para esa ruta. Con `outcome=stop|error`, cancelación, `selectedRoute=null` o cualquier incoherencia no encadenes nada: el workflow termina en la Fase 6.
 
-En el mismo turno y sin otra confirmación, cargá el skill que corresponde a `selectedRoute` y continuá con sus argumentos:
+En el mismo turno y sin otra confirmación, cargá el skill que corresponde a `selectedRoute` y continuá con sus argumentos, salvo las rutas de la excepción de Codex de abajo:
 
 <!-- stage-chain:start -->
 | `selectedRoute` | Skill | Argumentos |
@@ -353,6 +353,8 @@ En el mismo turno y sin otra confirmación, cargá el skill que corresponde a `s
 - Las rutas de artefactos salen del único `ArtifactRef` con `primary=true` del tipo correspondiente, `canonical` en format/provenance/identidad, sin diagnósticos, ligado al issue efectivo y dentro de `cwd`. Para `spec-from-grill`, además `state=finalized` y ubicado directamente bajo `<cwd>/.sdd/grills/`. Si algo falla, no encadenes: mostrá el comando exacto que falta completar y terminá.
 - La paridad con el orquestador de Pi es de ruta → skill, no de argumentos: acá no hay snapshots runtime, así que `resume-grill` y `spec-from-grill` usan la ruta del handoff en vez del ID del grill.
 - Nunca pases prose del issue, `summary`, comentarios ni el v1 como argumentos: los argumentos son sólo referencias y flags de la tabla. El v1 visible queda como contexto del skill encadenado, que lo trata como datos y vuelve a leer la fuente.
+- **Excepción de Codex: `run-existing-spec`, `quick-run` y `join-quick-run` no se encadenan.** Para estas rutas no cargues el skill: terminá el turno y que el último mensaje visible sea el comando exacto en un bloque de código (`$sdd-run <ruta de la spec | #N>`, con los argumentos de la tabla, o `$quick-run` sin argumentos), más una línea que diga que el skill exige invocación explícita del usuario en Codex. Para `$quick-run`, pedí además que se envíe como el próximo mensaje, sin nada en el medio: el `WorkflowResolutionV1` de la Fase 6 debe seguir en el contexto inmediato. La tabla y la paridad ruta → skill con Claude y Pi no cambian; cambia solo cómo se dispara. `$grill` y `$sdd-spec` siguen encadenándose.
+- Por qué: `agents/openai.yaml` de `$sdd-run` y `$quick-run` tiene `policy.allow_implicit_invocation: false` (crean worktrees y abren PRs; no deben dispararse solos) y la documentación de Codex solo garantiza la invocación explícita del usuario, no la carga skill a skill.
 - El skill encadenado conduce desde ahí con su propia doctrina: sus gates, preguntas y límites mandan.
 
 ## MUST DO
@@ -365,7 +367,7 @@ En el mismo turno y sin otra confirmación, cargá el skill que corresponde a `s
 - Evaluar selecciones múltiples todo-o-nada.
 - Hacer canonicalización idempotente y cerrar originales como reemplazados, nunca eliminarlos.
 - Mantener separadas recomendación, fallback y elección efectiva; emitir siempre el resultado v1 serializable.
-- Tras una confirmación, encadenar exactamente el skill de la tabla de la Fase 7 con sus argumentos.
+- Tras una confirmación, despachar exactamente el skill de la tabla de la Fase 7 con sus argumentos: encadenarlo o, donde la excepción de Codex lo indica, dejar el comando listo.
 - Reportar límites y fallos parciales honestamente.
 
 ## MUST NOT DO

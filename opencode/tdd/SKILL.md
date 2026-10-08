@@ -21,7 +21,7 @@ Un **seam** es el límite público donde se testea: la interfaz donde se observa
 
 **Testear solo en seams pre-acordados.** Antes de escribir cualquier test, anotar los seams bajo prueba y confirmarlos con el usuario. No se escribe ningún test en un seam no confirmado. No se puede testear todo: acordar los seams de antemano es lo que hace que el esfuerzo de testing caiga sobre los caminos críticos y la lógica compleja, no sobre cada caso borde.
 
-Preguntar: "Cuál es la interfaz pública, y qué seams testeamos?"
+Preguntar: "Cuál es la interfaz pública, y qué seams testeamos?" Al proponer los seams, acompañar cada uno con una nota de una línea sobre qué atrapa y qué deja pasar.
 
 ## Anti-patrones
 

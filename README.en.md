@@ -34,7 +34,7 @@ The disciplines SDD builds on — which I also use standalone, outside the pipel
 | **`code-review`** *(Codex/Pi/opencode)* | Reviews a PR across three separate axes—correctness and risk, standards, and spec—runs available checks, and reports evidence-backed findings with an exact preview. By default it posts the comments to GitHub as a single COMMENT review; `--no-publish` keeps them in the conversation only. It never approves or requests changes. |
 | **`wait-pr`** | Polls the current repository every 60 seconds for new PRs and runs `code-review` on each one sequentially without duplicates. It ignores already-open PRs unless `--include-open`, can stop after one with `--once`, and never publishes comments: on Codex, Pi, and opencode it passes `--no-publish`; on Claude Code it delegates to the harness's built-in `/code-review` without adding `--comment` or `--fix`. |
 | **`github-issue-selector`** *(Codex/Pi)* | Lets you choose or inspect an issue when no specific number was provided. |
-| **`issue-triage`** *(Codex/Claude/Pi)* | Analyzes one or more issues against code, tests, and dependencies; classifies the next stage and emits a structured handoff; after confirmation, Claude and Codex chain the stage skill (`grill`, `sdd-spec`, `sdd-run` or `quick-run`) and in Pi the `/issues` orchestrator opens it. Joint selections become one canonical issue while originals are closed as superseded. |
+| **`issue-triage`** *(Codex/Claude/Pi)* | Analyzes one or more issues against code, tests, and dependencies; classifies the next stage and emits a structured handoff; after confirmation, Claude chains the stage skill (`grill`, `sdd-spec`, `sdd-run` or `quick-run`); in Codex it chains `grill` and `sdd-spec`, and for `sdd-run` and `quick-run` (which require explicit invocation) leaves the command ready to send; in Pi, the `/issues` orchestrator opens the stage. Joint selections become one canonical issue while originals are closed as superseded. |
 | **`quick-run`** *(Codex/Claude/Pi)* | Consumes only a confirmed `issue-triage` handoff to implement a small change in an isolated worktree, with tests first when applicable, a finite attempt budget, and a PR or local commit carrying exact evidence. |
 | **`repo-clean`** *(Codex/Pi)* | Leaves the current branch with no pending changes and synchronized with `origin/<branch>`. When uncommitted work exists, it shows the impact and asks whether to preserve or discard it; it never switches branches or force-pushes. |
 | **`find-skills`** *(Codex/Pi)* | Searches the open ecosystem for installable skills through `npx skills`. Vendored from `vercel-labs/skills`. |
@@ -113,7 +113,7 @@ skills/
 └── scripts/        # lint, drift, and deterministic synchronizers
 ```
 
-The repo runs CI on GitHub Actions (`.github/workflows/ci.yml`): it validates shell syntax and style (`bash -n` + shellcheck), the frontmatter of every skill (`scripts/lint-frontmatter.sh`, which also runs on local macOS), and the `pi-extensions` tests on Node 26. It also publishes an informational drift report between each skill's per-harness copies (`scripts/drift-report.sh`): the expected divergence is only each harness's interaction layer; a large divergence in doctrine warrants manual review.
+The repo runs CI on GitHub Actions (`.github/workflows/ci.yml`): it validates shell syntax and style (`bash -n` + shellcheck), the frontmatter of every skill (`scripts/lint-frontmatter.sh`, which also runs on local macOS), the `pi-extensions` tests on Node 26, and the Claude Code plugin manifest (`claude plugin validate .`). It also publishes an informational drift report between each skill's per-harness copies (`scripts/drift-report.sh`): the expected divergence is only each harness's interaction layer; a large divergence in doctrine warrants manual review.
 
 ## Installation
 
@@ -142,7 +142,7 @@ The plugin exposes every skill in `claude/` and the agents of `agents/` — the 
   }
   ```
 
-With that, Claude Code refreshes the marketplace and updates the plugin in the background shortly after each session starts (with a delay of up to ten minutes) and prompts you to run `/reload-plugins`; otherwise the new version loads on the next launch. Since `plugin.json` does not pin a `version`, Claude Code versions by commit, so every push to `main` arrives as an update. To catch up without waiting:
+With that, Claude Code refreshes the marketplace and updates the plugin in the background shortly after each session starts (with a delay of up to ten minutes) and prompts you to run `/reload-plugins`; otherwise the new version loads on the next launch. Since `plugin.json` deliberately declares no `version`, Claude Code versions by commit, so every push to `main` arrives as an update; with a declared `version`, a push would only arrive once it is bumped. To catch up without waiting:
 
 ```
 claude plugin marketplace update chichex
