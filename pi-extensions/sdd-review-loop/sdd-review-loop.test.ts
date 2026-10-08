@@ -62,8 +62,12 @@ const FIXER_DOCTRINE: Array<RegExp | string> = [
 // Issue #66 CA-11: si el PR pertenece a un stack, el corrector trabaja sobre el
 // branch real de la capa; los PRs sin stack conservan el modelo detached.
 const STACK_FIXER_DOCTRINE: Array<RegExp | string> = [
+	/PR pertenece a un stack si su `baseRefName` no es el default o si existe algún PR abierto cuyo `baseRefName` es su `headRefName`; se confirma con `gh stack view --json`/,
 	/PR pertenece a un stack[\s\S]*branch real de la capa/,
-	/worktree que ya es dueño de ese branch[\s\S]*existe y está limpio/,
+	/worktree que ya es dueño de ese branch[\s\S]*excluyendo el checkout principal, que nunca cuenta como worktree dueño/,
+	/worktree dueño existe pero está sucio, frena la ronda con diagnóstico: no hay fallback[\s\S]*mismo branch en dos worktrees/,
+	/`git fetch origin <headRef>` y `git merge --ff-only origin\/<headRef>` sobre el branch local; si diverge, frena con diagnóstico/,
+	/Si `gh stack sync` o `gh stack rebase` frenan por conflicto, no resuelve a ciegas: `gh stack rebase --abort`[\s\S]*sin operación a medias[\s\S]*ronda queda `DETENIDA`/,
 	"../<repo>-review-loop-<PR>",
 	/`<headRef>` local[\s\S]*`origin\/<headRef>` si falta/,
 	/push normal a esa capa/,
