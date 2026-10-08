@@ -26,7 +26,7 @@ Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. 
 
 Antes de entrevistar:
 
-1. Explorá el codebase cuando el tema dependa de él y resolvé todos los hechos comprobables relevantes.
+1. Explorá el codebase cuando el tema dependa de él y resolvé todos los hechos comprobables relevantes. Los hechos los averigua el agente, nunca el usuario: si más adelante una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, se averigua sin frenar la ronda (ver "Entrevista por rondas").
 2. Buscá `CONTEXT-MAP.md`, `CONTEXT.md`, `docs/adr/` y handoffs previos en `.sdd/grills/`. Leé los relevantes para entender vocabulario y decisiones ya tomadas; son solo lectura, este skill nunca los escribe.
 3. Construí un árbol provisional de decisiones con secciones y dependencias explícitas: qué pregunta desbloquea a cuáles.
 4. Estimá preguntas mínimas, probables y máximas. La cifra operativa es la probable; presentala como estimación, no como promesa — una respuesta puede abrir o cerrar ramas.
@@ -62,12 +62,13 @@ Si el usuario ya fijó la modalidad en su pedido, no la vuelvas a preguntar.
 El motor default. Cada ronda presenta la **frontera de dependencias**: solo las decisiones cuyas dependencias ya están resueltas.
 
 1. Calculá la frontera actual del árbol.
-2. Si dos preguntas de la frontera están acopladas de hecho (la respuesta de una cambiaría cómo se formula la otra o sus opciones), dejá una para la ronda siguiente.
-3. Armá UNA llamada a `AskUserQuestion` con hasta 4 preguntas de la frontera, priorizando las que desbloquean más ramas. Cada pregunta: autocontenida, con un encabezado corto de su sección, 2 a 4 opciones mutuamente comprensibles, la recomendada primera y marcada "(Recommended)" con su trade-off en la descripción, y `multiSelect` solo si las respuestas pueden coexistir.
-4. Con las respuestas: registrá cada decisión, actualizá el árbol y recalculá la frontera. Ahí se abre la ronda siguiente.
-5. Si una respuesta (típicamente vía "Other") contradice una decisión ya resuelta o invalida decisiones posteriores: mostrá la contradicción como mensaje visible, recalculá lo afectado y volvé a preguntar solo eso.
-6. Repetí hasta agotar las ramas del alcance elegido.
-7. Si el usuario cancela una ronda, no abras otra: escribí un resumen visible de lo resuelto y lo pendiente, y ofrecé pausar (con exportación de cuestionario disponible).
+2. **Hechos sin bloqueo.** Si una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, no se lo preguntes al usuario: lanzá la exploración y no frenes la ronda. Solo esperan las preguntas que dependen de ese hecho; el resto de la frontera se pregunta ya. Cuando vuelve el hecho, sumalo a los hechos comprobados y recalculá la frontera para la ronda siguiente. Si toda la frontera depende de hechos pendientes, no abras una ronda vacía ni le preguntes el hecho al usuario: esperá la exploración. Si la exploración falla o vence, reintentala o explorá inline; si el hecho sigue sin poder comprobarse, registralo como supuesto visible y seguí. En Claude Code, lanzá la exploración con la tool `Agent` (subagente `Explore`) en background y armá la ronda sin esperarla.
+3. Si dos preguntas de la frontera están acopladas de hecho (la respuesta de una cambiaría cómo se formula la otra o sus opciones), dejá una para la ronda siguiente.
+4. Armá UNA llamada a `AskUserQuestion` con hasta 4 preguntas de la frontera, priorizando las que desbloquean más ramas. Cada pregunta: autocontenida, con un encabezado corto de su sección, 2 a 4 opciones mutuamente comprensibles, la recomendada primera y marcada "(Recommended)" con su trade-off en la descripción, y `multiSelect` solo si las respuestas pueden coexistir.
+5. Con las respuestas: registrá cada decisión, actualizá el árbol y recalculá la frontera. Ahí se abre la ronda siguiente.
+6. Si una respuesta (típicamente vía "Other") contradice una decisión ya resuelta o invalida decisiones posteriores: mostrá la contradicción como mensaje visible, recalculá lo afectado y volvé a preguntar solo eso.
+7. Repetí hasta agotar las ramas del alcance elegido.
+8. Si el usuario cancela una ronda, no abras otra: escribí un resumen visible de lo resuelto y lo pendiente, y ofrecé pausar (con exportación de cuestionario disponible).
 
 ## Entrevista pregunta a pregunta
 

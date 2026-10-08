@@ -62,7 +62,7 @@ Una sesión finalizada es inmutable. Para cambiarla, duplicala como nueva revisi
 
 Antes de entrevistar:
 
-1. Explorá el codebase y resolvé todos los hechos comprobables relevantes.
+1. Explorá el codebase y resolvé todos los hechos comprobables relevantes. Los hechos los averigua el agente, nunca el usuario: si más adelante una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, se averigua sin frenar la ronda (ver **Modalidad B: Por rondas**).
 2. Buscá `CONTEXT-MAP.md`, los `CONTEXT.md` y `docs/adr/`; informá su existencia en el mapa. Leé los que sean relevantes para entender el vocabulario; nunca los modifiques.
 3. Separá explícitamente: hechos comprobados, instrucciones ya dadas por el usuario y elecciones todavía abiertas.
 4. Resolvé la política de supuestos antes de podar. Si el usuario pidió un grill exhaustivo o sin supuestos, usá `explicit-only`: no conviertas ningún punto en `[ASSUMED]` y tratá todas las elecciones abiertas como decisiones explícitas, también para la estimación y el límite. En otro caso usá `risk-pruned`: convertí cada elección respaldada, de bajo riesgo y reversible en `[ASSUMED]`; si corregirla durante la spec o implementación sería local y barato, no merece un gate.
@@ -165,18 +165,19 @@ Para cada decisión material:
 Cada ronda presenta la **frontera de dependencias**: solo decisiones cuyas dependencias ya están resueltas.
 
 1. Calculá la frontera actual. Con `risk-pruned`, convertí en `[ASSUMED]` los defaults de bajo riesgo que hayan quedado desbloqueados; con `explicit-only`, no conviertas ninguno. Priorizá las decisiones materiales que desbloquean más ramas.
-2. Si la respuesta de una decisión material cambiaría cómo se formula otra o sus opciones, no las pongas en la misma ronda: dejá la dependiente para la ronda siguiente.
-3. Elegí hasta 4 decisiones independientes de la frontera:
+2. **Hechos sin bloqueo.** Si una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, no se lo preguntes al usuario: lanzá la exploración y no frenes la ronda. Solo esperan las preguntas que dependen de ese hecho; el resto de la frontera se pregunta ya. Cuando vuelve el hecho, sumalo a los hechos comprobados y recalculá la frontera para la ronda siguiente. Si toda la frontera depende de hechos pendientes, no abras una ronda vacía ni le preguntes el hecho al usuario: esperá la exploración. Si la exploración falla o vence, reintentala o explorá inline; si el hecho sigue sin poder comprobarse, registralo como supuesto visible y seguí. En Pi, lanzá la exploración con la tool `subagent` (agente `scout`, `background: true`) y armá la ronda sin esperarla: el reporte vuelve como mensaje `subagent-result`. Si la tool `subagent` no está disponible, explorá inline antes de la ronda.
+3. Si la respuesta de una decisión material cambiaría cómo se formula otra o sus opciones, no las pongas en la misma ronda: dejá la dependiente para la ronda siguiente.
+4. Elegí hasta 4 decisiones independientes entre las preguntables de la frontera (las que no esperan un hecho):
    - con 2 a 4, invocá `ask_user_questions` una sola vez con `grill: { sessionId, phase: "interview", frontierSize: N }` y enviá una entrada por decisión, cada una con `id` único, pregunta autocontenida, `section`, progreso, opciones, recomendación con motivo, `selectionMode` y `allowOther: true`;
-   - si la frontera tiene una sola decisión, invocá `ask_user_question` con `grill: { sessionId, phase: "interview", frontierSize: 1 }`; una ronda de una pregunta es válida cuando las dependencias no permiten agrupar.
-4. Esperá la ronda completa. La tool no devuelve control al agente entre preguntas: no incluyas dos decisiones acopladas esperando corregir la segunda sobre la marcha.
-5. Por cada respuesta recibida, en orden:
+   - si queda una sola decisión preguntable, invocá `ask_user_question` con `grill: { sessionId, phase: "interview", frontierSize: 1 }`; una ronda de una pregunta es válida cuando las dependencias no permiten agrupar.
+5. Esperá la ronda completa. La tool no devuelve control al agente entre preguntas: no incluyas dos decisiones acopladas esperando corregir la segunda sobre la marcha.
+6. Por cada respuesta recibida, en orden:
    - actualizá el árbol;
    - persistí un `checkpoint` separado con interacción y decisión normalizada;
    - reemplazá `pendingBranches` y actualizá secciones o estimación.
-6. Recalculá la frontera recién después de procesar toda la ronda y abrí la siguiente.
-7. Si una respuesta contradice una decisión previa o invalida otra rama, mostrá la contradicción y resolvé solo lo afectado antes de continuar. No repitas respuestas válidas.
-8. Si el usuario cancela con respuestas parciales, checkpointá primero las respuestas efectivamente devueltas y después seguí el procedimiento de pausa. Las preguntas no respondidas siguen pendientes.
+7. Recalculá la frontera recién después de procesar toda la ronda y abrí la siguiente.
+8. Si una respuesta contradice una decisión previa o invalida otra rama, mostrá la contradicción y resolvé solo lo afectado antes de continuar. No repitas respuestas válidas.
+9. Si el usuario cancela con respuestas parciales, checkpointá primero las respuestas efectivamente devueltas y después seguí el procedimiento de pausa. Las preguntas no respondidas siguen pendientes.
 
 Cada pregunta incluida en la ronda cuenta individualmente contra el límite de 20.
 
