@@ -230,7 +230,8 @@ const SDD_RUN_STACK_DOCTRINE = [
 	/`state=implemented`[\s\S]*solo en la capa top/,
 	// CA-7: publicación
 	/`gh stack submit --auto --open`[\s\S]*`gh pr edit --body-file`/,
-	/de abajo lleva la spec completa[\s\S]*checklist humano[\s\S]*`Closes #NN`/,
+	/de abajo lleva la spec completa[\s\S]*checklist humano[\s\S]*`Refs #NN`[\s\S]*PR top lleva `Closes #NN`[\s\S]*GitHub cierra el issue solo cuando aterriza la capa top/,
+	/checklist humano del PR de abajo suma «verificar que GitHub cierra el issue al mergear la capa top»/,
 	/`Capa n\/N del stack · spec en #<PR de abajo>`/,
 	/`<título de la spec> — capa n\/N: <etapa>`/,
 	/política de generación en FALLA[\s\S]*draft solo la capa que la viola[\s\S]*`gh pr ready --undo`/,
@@ -241,6 +242,9 @@ const SDD_RUN_STACK_DOCTRINE = [
 	/`Code review`[\s\S]*por cada PR/,
 	/capa baja[\s\S]*`gh stack sync`[\s\S]*restackear/,
 	/worktree del stack se retiene[\s\S]*`Terminar`[\s\S]*solo si está limpio/,
+	// Remediación de review PR #67: conflicto de restack y trunk local
+	/Si `gh stack sync` o `gh stack rebase` frenan por conflicto, no se resuelve a ciegas[\s\S]*`gh stack rebase --abort`[\s\S]*sin operación a medias[\s\S]*pendiente humano con el comando/,
+	/`gh stack sync` no puede fast-forwardear el trunk local[\s\S]*checkouteado y sucio en el checkout original[\s\S]*frena con diagnóstico/,
 	// CA-9: force
 	/único force permitido es el `--force-with-lease`[\s\S]*`gh stack push`[\s\S]*`gh stack sync`[\s\S]*`gh stack rebase`[\s\S]*`sdd\/<slug>\/\*`/,
 	/`git push --force` y `--force-with-lease` a mano siguen prohibidos/,
@@ -685,6 +689,13 @@ test("sdd-run entrega un stack de PRs por capas con preflight, verificación por
 			resultado?.content ?? "",
 			/\| CA \| Capa \| Estado \| Evidencia \|\n\|---\|---\|---\|---\|\n\| CA-1 \| 1\/1 \|/,
 			`${harness}/sdd-run/SKILL.md: el template de Resultado de ejecucion no lleva la columna Capa`,
+		);
+		// Remediación de review PR #67: con 2 o más capas el push lo hace gh stack submit.
+		const phase5 = markdown.match(/## Fase 5 — PR\n([\s\S]*?)(?=\n## )/)?.[1] ?? "";
+		assert.match(
+			phase5,
+			/con 2 o más capas el push lo hace `gh stack submit`[\s\S]*solo verifica aptitud y Limites[\s\S]*no ejecuta `git push -u origin sdd\/<slug>`/,
+			`${harness}/sdd-run/SKILL.md: Fase 5 paso 1 sigue ordenando git push -u con 2 o más capas`,
 		);
 		// CA-10: el reporte sugiere sdd-land y lista los PRs por capa.
 		const report = fencedBlocks(markdown).find((fence) => /^Run completo:/.test(fence.content));
