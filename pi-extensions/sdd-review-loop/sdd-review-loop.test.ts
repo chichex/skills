@@ -59,6 +59,23 @@ const FIXER_DOCTRINE: Array<RegExp | string> = [
 	/remueve el worktree[^\n]*limpio/i,
 ];
 
+// Issue #66 CA-11: si el PR pertenece a un stack, el corrector trabaja sobre el
+// branch real de la capa; los PRs sin stack conservan el modelo detached.
+const STACK_FIXER_DOCTRINE: Array<RegExp | string> = [
+	/PR pertenece a un stack si su `baseRefName` no es el default o si existe algún PR abierto cuyo `baseRefName` es su `headRefName`; se confirma con `gh stack view --json`/,
+	/PR pertenece a un stack[\s\S]*branch real de la capa/,
+	/worktree que ya es dueño de ese branch[\s\S]*excluyendo el checkout principal, que nunca cuenta como worktree dueño/,
+	/worktree dueño existe pero está sucio, frena la ronda con diagnóstico: no hay fallback[\s\S]*mismo branch en dos worktrees/,
+	/`git fetch origin <headRef>` y `git merge --ff-only origin\/<headRef>` sobre el branch local; si diverge, frena con diagnóstico/,
+	/Si `gh stack sync` o `gh stack rebase` frenan por conflicto, no resuelve a ciegas: `gh stack rebase --abort`[\s\S]*sin operación a medias[\s\S]*ronda queda `DETENIDA`/,
+	"../<repo>-review-loop-<PR>",
+	/`<headRef>` local[\s\S]*`origin\/<headRef>` si falta/,
+	/push normal a esa capa/,
+	/`gh stack sync`[\s\S]*único force-with-lease permitido[\s\S]*`sdd\/<slug>\/\*`/,
+	/worktree dueño de una capa superior está sucio[\s\S]*frena la ronda con diagnóstico/,
+	/PRs sin stack conservan el modelo detached/,
+];
+
 // Doctrina del cierre (Fase 4), identica entre Claude y Pi.
 const CLOSING_DOCTRINE: Array<RegExp | string> = [
 	/SDD-REVIEW-LOOP <TERMINADO\|DETENIDO>/,
@@ -524,4 +541,13 @@ test("issue #44 CA-11: corrector, cierre y MUST NOT DO del port Pi identicos a C
 	expectAll(section(doctrine, /Fase 4/), CLOSING_DOCTRINE, "## Fase 4 (pi)");
 	section(doctrine, /^## MUST DO$/);
 	expectAll(section(doctrine, /^## MUST NOT DO$/), forbiddenDoctrine("pi"), "## MUST NOT DO (pi)");
+});
+
+test("issue #66 CA-11: el corrector de un PR de stack trabaja sobre el branch real de la capa y restackea con gh stack sync (claude y pi)", async () => {
+	for (const path of [SKILL, PI_SKILL]) {
+		const doctrine = body(await readRepoFile(path));
+		expectAll(section(doctrine, /Fase 3/), STACK_FIXER_DOCTRINE, `## Fase 3 (${path})`);
+		const mustNot = section(doctrine, /^## MUST NOT DO$/);
+		assert.match(mustNot, /force-push[\s\S]*`gh stack sync`/, `${path}: MUST NOT DO no acota el force a gh stack sync`);
+	}
 });

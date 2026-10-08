@@ -525,6 +525,27 @@ test("CA-12: sdd-run nombra Explore + tool Agent en la Fase 2, sin agregar un ti
 	assert.doesNotMatch(phase2, /`implementer`|`reviewer`/);
 });
 
+test("issue #66 CA-9, CA-10, CA-24: sdd-run acota el force a gh stack, sugiere sdd-land y el contrato y el plugin reconocen sdd-land", async () => {
+	const markdown = await readRepoFile("claude/sdd-run/SKILL.md");
+	assert.match(markdown, /único force permitido es el `--force-with-lease`[\s\S]*`gh stack push`[\s\S]*`gh stack sync`[\s\S]*`gh stack rebase`/);
+	assert.match(markdown, /siguiente paso: \/sdd-land <stack\|PR>/);
+
+	const plugin = JSON.parse(await readRepoFile(".claude-plugin/plugin.json")) as { description: string };
+	assert.match(plugin.description, /sdd-land/, "plugin.json nombra sdd-land");
+	const marketplace = JSON.parse(await readRepoFile(".claude-plugin/marketplace.json")) as {
+		plugins: Array<{ name: string; description: string }>;
+	};
+	assert.match(marketplace.plugins.find((entry) => entry.name === "chichex-skills")?.description ?? "", /sdd-land/, "marketplace.json nombra sdd-land");
+
+	const contract = await readRepoFile(".sdd/project.md");
+	assert.match(contract, /salvo `\/sdd-land` invocado por el humano, que confirma el plan antes de mergear/, "contrato: excepción de merge para sdd-land en ## Limites");
+	assert.match(contract, /node --test pi-extensions\/sdd-land-gate\/sdd-land-gate\.test\.ts/, "contrato: fila del gate de sdd-land");
+	assert.match(contract, /gh-stack/, "contrato: versión de gh-stack verificada en ## Gaps");
+	// Literales que pi-package.test.ts assertea sobre el mismo archivo.
+	assert.match(contract, /## Politicas de generacion\nSin politicas activas\./);
+	assert.match(contract, /## Decisiones humanas\n/);
+});
+
 test("issue #45: la description de implementer invita a usarlo proactivamente en cualquier implementación", async () => {
 	const markdown = await readRepoFile("agents/implementer.md");
 	const line = markdown.split("\n").find((candidate) => /^description:/.test(candidate)) ?? "";
