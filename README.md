@@ -246,9 +246,9 @@ Dos de los **skills fundacionales** están **basados en** los skills de **[Matt 
 | `grill` | `grilling` |
 | `tdd` | `tdd` |
 
-La referencia de escritura de `harness-port` (`.claude/skills/harness-port/references/escritura.md`, de uso interno del repo) adapta `writing-for-agents` de Matt Pocock (MIT).
-
 Además, la **exportación de cuestionario** de `grill` está inspirada en su skill `to-questionnaire`.
+
+La referencia de escritura de `harness-port` (`.claude/skills/harness-port/references/escritura.md`, de uso interno del repo) adapta `writing-for-agents` de Matt Pocock (MIT).
 
 La familia **SDD** (`sdd-init`, `sdd-spec`, `sdd-run`) es propia: está inspirada en el mismo enfoque de trabajo (tracer bullets, tests-first, spec → implementación) de sus skills `to-spec` / `to-tickets` / `implement` / `wayfinder`, pero con artefactos distintos — el contrato de autonomía `.sdd/project.md` y el veredicto de verificabilidad.
 
