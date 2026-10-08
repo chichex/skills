@@ -142,7 +142,7 @@ The plugin exposes every skill in `claude/` and the agents of `agents/` — the 
   }
   ```
 
-With that, Claude Code refreshes the marketplace and updates the plugin in the background shortly after each session starts (with a delay of up to ten minutes) and prompts you to run `/reload-plugins`; otherwise the new version loads on the next launch. Since `plugin.json` declares a `version` (`1.0.0`), Claude Code uses that string, so a push to `main` only arrives as an update when the `version` is bumped. To catch up without waiting:
+With that, Claude Code refreshes the marketplace and updates the plugin in the background shortly after each session starts (with a delay of up to ten minutes) and prompts you to run `/reload-plugins`; otherwise the new version loads on the next launch. Since `plugin.json` deliberately declares no `version`, Claude Code versions by commit, so every push to `main` arrives as an update; with a declared `version`, a push would only arrive once it is bumped. To catch up without waiting:
 
 ```
 claude plugin marketplace update chichex
