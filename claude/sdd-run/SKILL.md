@@ -88,8 +88,9 @@ Planificar contra el código real, no contra la idea del código (explorar lo qu
 
 ### Ownership y tareas
 
-- El agente principal conserva ownership del run hasta cerrar la spec y emitir el reporte final. Puede delegar exploración o unidades independientes con la tool `Agent` (`Explore` u otro subagente), pero NO delegar "completar toda la spec" ni transferir el ownership del cierre.
+- El agente que corre el run (la sesión principal, o el `implementer` lanzado por `sdd-run con subagente`) conserva ownership hasta cerrar la spec y emitir el reporte final. Puede delegar exploración o unidades independientes con la tool `Agent` (`Explore` u otro subagente) cuando la tiene disponible, pero NO delegar "completar toda la spec" ni transferir el ownership del cierre.
 - Toda tarea delegada bloqueante debe ser esperada y reconciliada antes de responder al usuario: revisar su resultado, inspeccionar el worktree y ejecutar la verificación relevante. Un subagente `running` no constituye progreso terminado.
+- La tool `Agent` puede correr en background: una delegación bloqueante se espera hasta recibir su notificación de fin, sin responder antes de ella.
 - Si un subagente expira, se interrumpe o no devuelve resultado, el agente principal inspecciona los cambios parciales, recupera el trabajo y continúa directamente. Nunca termina la sesión dejando una tarea bloqueante en `running`.
 - Antes del cierre, comprobar que no queden tool calls, procesos o subagentes bloqueantes en estado `running`.
 
