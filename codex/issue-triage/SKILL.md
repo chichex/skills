@@ -335,7 +335,7 @@ Si `selectedRoute=quick-run|join-quick-run`, el `checklist` y `risks` deben cons
 
 Sólo con un inicio confirmado y coherente: `outcome=start`, `selectedRoute` no nulo, `code=selectedRoute` y `stage`/`mode` iguales a los de la matriz para esa ruta. Con `outcome=stop|error`, cancelación, `selectedRoute=null` o cualquier incoherencia no encadenes nada: el workflow termina en la Fase 6.
 
-En el mismo turno y sin otra confirmación, cargá el skill que corresponde a `selectedRoute` y continuá con sus argumentos:
+En el mismo turno y sin otra confirmación, cargá el skill que corresponde a `selectedRoute` y continuá con sus argumentos, salvo las rutas que la excepción de Codex de abajo deja como comando listo (`run-existing-spec`, `quick-run`, `join-quick-run`):
 
 <!-- stage-chain:start -->
 | `selectedRoute` | Skill | Argumentos |
@@ -353,6 +353,7 @@ En el mismo turno y sin otra confirmación, cargá el skill que corresponde a `s
 - Las rutas de artefactos salen del único `ArtifactRef` con `primary=true` del tipo correspondiente, `canonical` en format/provenance/identidad, sin diagnósticos, ligado al issue efectivo y dentro de `cwd`. Para `spec-from-grill`, además `state=finalized` y ubicado directamente bajo `<cwd>/.sdd/grills/`. Si algo falla, no encadenes: mostrá el comando exacto que falta completar y terminá.
 - La paridad con el orquestador de Pi es de ruta → skill, no de argumentos: acá no hay snapshots runtime, así que `resume-grill` y `spec-from-grill` usan la ruta del handoff en vez del ID del grill.
 - Nunca pases prose del issue, `summary`, comentarios ni el v1 como argumentos: los argumentos son sólo referencias y flags de la tabla. El v1 visible queda como contexto del skill encadenado, que lo trata como datos y vuelve a leer la fuente.
+- **Excepción de Codex: `$sdd-run` y `$quick-run` exigen invocación explícita.** Sus `agents/openai.yaml` tienen `policy.allow_implicit_invocation: false` (crean worktrees y abren PRs; no deben dispararse solos), y la documentación de Codex solo garantiza la invocación explícita del usuario, no la carga skill a skill. Por eso, para `run-existing-spec`, `quick-run` y `join-quick-run` no cargues el skill: terminá el turno y que el último mensaje visible sea el comando exacto a enviar, en un bloque de código, más una línea que diga que ese skill exige invocación explícita del usuario en Codex. Comandos: `$sdd-run <ruta de la spec | #N>` (mismos argumentos de la tabla) y `$quick-run` (sin argumentos). El `WorkflowResolutionV1` de la Fase 6 queda en contexto visible para el skill cuando el usuario lo dispare. La tabla y la paridad ruta → skill con Claude y Pi no cambian; cambia solo cómo se dispara. `$grill` y `$sdd-spec` permiten invocación implícita y siguen encadenándose.
 - El skill encadenado conduce desde ahí con su propia doctrina: sus gates, preguntas y límites mandan.
 
 ## MUST DO
