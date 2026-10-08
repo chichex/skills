@@ -1393,10 +1393,10 @@ export default function grillTools(pi: ExtensionAPI) {
 			}
 
 			if (params.action === "configure") {
-				if (!params.interviewMode) {
-					throw new Error("configure requires interviewMode");
+				if (!params.interviewMode || params.interviewMode === "unselected") {
+					throw new Error("configure requires interviewMode: fast, rounds or adaptive");
 				}
-				if (params.interviewMode) snapshot.interviewMode = params.interviewMode;
+				snapshot.interviewMode = params.interviewMode;
 				snapshot.status = "active";
 				await saveSnapshot(snapshot);
 				publishInterviewState(pi, snapshot);

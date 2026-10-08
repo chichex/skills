@@ -51,10 +51,9 @@ Si la estimación probable es de 1 a 3 preguntas, decilo en una línea (es el te
 
 Salvo en el atajo liviano, después del mapa y antes de la primera pregunta, elegí la modalidad con `AskUserQuestion`:
 
-1. **Modalidad**
-   - `Por rondas`: hasta 4 preguntas ya desbloqueadas por llamada.
-   - `Pregunta a pregunta`: una por vez; cada respuesta moldea la siguiente.
-   - Marcá como recomendada la que salió del diagnóstico del reconocimiento y explicá el motivo en la descripción.
+- `Por rondas`: hasta 4 preguntas ya desbloqueadas por llamada.
+- `Pregunta a pregunta`: una por vez; cada respuesta moldea la siguiente.
+- Marcá como recomendada la que salió del diagnóstico del reconocimiento y explicá el motivo en la descripción.
 
 Si el usuario ya fijó la modalidad en su pedido, no la vuelvas a preguntar.
 

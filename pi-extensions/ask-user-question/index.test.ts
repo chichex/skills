@@ -425,9 +425,7 @@ test("Pi grill assumes low-risk reversible defaults and only asks material decis
 
 test("Pi grill makes exhaustive mode override every assumption-pruning procedure", async () => {
 	const { readFile } = await import("node:fs/promises");
-	const [grill] = await Promise.all([
-		readFile(new URL("../../pi/grill/SKILL.md", import.meta.url), "utf8"),
-	]);
+	const grill = await readFile(new URL("../../pi/grill/SKILL.md", import.meta.url), "utf8");
 	assert.match(grill, /`explicit-only`[^\n]*no apliques[^\n]*poda/i);
 	assert.ok((grill.match(/`explicit-only`/g) ?? []).length >= 6, "the override reaches recognition, resume, every interview mode, and persistence");
 	assert.match(grill, /summary[^\n]*pol[ií]tica de supuestos/i);

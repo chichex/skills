@@ -50,11 +50,11 @@ Cuando el usuario quiera ver, inspeccionar o retomar sesiones de grilling:
 
 1. Si recibiste `--resume <sessionId>`, cargá ese snapshot con `grill_session` (`action: "get"`); de lo contrario invocá `select_grill_session`.
 2. Si el snapshot o selector devuelve `resume` o `duplicate`, tratá la selección como estado autoritativo.
-3. Los snapshots y handoffs viejos pueden traer una sección `## Modo` de una versión anterior: ignorala, ya no existe.
+3. Los handoffs viejos pueden traer una sección `## Modo`: ignorala, ya no existe.
 4. Si existe un cuestionario exportado con respuestas completadas (ver **Exportar cuestionario**), leelo e incorporá cada respuesta como decisión resuelta con su checkpoint; repreguntá solo lo materialmente ambiguo.
-6. Mostrá brevemente el tema, la política de supuestos persistida, las decisiones resueltas, los supuestos `[ASSUMED]`, lo pendiente y el próximo bloque recomendado.
-7. Reevaluá las ramas pendientes usando los criterios de la Fase 0. Si el `summary` conserva `explicit-only`, no hagas ninguna poda; en otro caso podá los puntos que ahora puedan asumirse. Elegí **Grillado rápido**, **Por rondas** o **Grillado pregunta a pregunta**. Conservá una preferencia explícita del usuario; de lo contrario informá el modo elegido en una línea, sin abrir otro gate.
-8. Persistí inmediatamente el modo con `grill_session` (`action: "configure"`, `interviewMode: "fast" | "rounds" | "adaptive"`) antes de la primera pregunta. Continuá desde la siguiente decisión material pendiente; no repitas decisiones ni supuestos aceptados salvo que el usuario quiera revisarlos.
+5. Mostrá brevemente el tema, la política de supuestos persistida, las decisiones resueltas, los supuestos `[ASSUMED]`, lo pendiente y el próximo bloque recomendado.
+6. Reevaluá las ramas pendientes usando los criterios de la Fase 0. Si el `summary` conserva `explicit-only`, no hagas ninguna poda; en otro caso podá los puntos que ahora puedan asumirse. Elegí **Grillado rápido**, **Por rondas** o **Grillado pregunta a pregunta**. Conservá una preferencia explícita del usuario; de lo contrario informá el modo elegido en una línea, sin abrir otro gate.
+7. Persistí inmediatamente el modo con `grill_session` (`action: "configure"`, `interviewMode: "fast" | "rounds" | "adaptive"`) antes de la primera pregunta. Continuá desde la siguiente decisión material pendiente; no repitas decisiones ni supuestos aceptados salvo que el usuario quiera revisarlos.
 
 Una sesión finalizada es inmutable. Para cambiarla, duplicala como nueva revisión mediante `select_grill_session`. Para convertirla en spec sin cambiarla, elegí la acción de crear spec SDD del selector: usa el ID si existe un snapshot válido y la ruta absoluta física si es un handoff-only; el handoff congelado se usa como fuente.
 
@@ -75,8 +75,8 @@ Antes de entrevistar:
    - elegí **Por rondas** cuando haya varias decisiones materiales desbloqueadas e independientes y alcance con recalcular el árbol entre rondas;
    - elegí **Grillado rápido** como default cuando el árbol resultante sea estable, existan recomendaciones respaldadas y corregir el rumbo sea barato.
    Ante evidencia mixta, aislá la rama crítica en vez de volver quisquillosa toda la sesión. No uses la cantidad de preguntas como criterio decisivo.
-11. Si el tema proviene de un issue de GitHub, conservá su número como referencia estructurada y resolvé `owner/repo` con `gh repo view --json nameWithOwner` cuando esté disponible. Esta referencia es metadata local del workflow: no agregues labels ni comments al issue sólo para marcarlo.
-12. No cuentes como preguntas de entrevista los supuestos `[ASSUMED]`, la elección automática de configuración, la elección de bloque, la revisión colectiva del Grillado rápido ni la confirmación final. Cada decisión material incluida en una ronda sí cuenta por separado.
+10. Si el tema proviene de un issue de GitHub, conservá su número como referencia estructurada y resolvé `owner/repo` con `gh repo view --json nameWithOwner` cuando esté disponible. Esta referencia es metadata local del workflow: no agregues labels ni comments al issue sólo para marcarlo.
+11. No cuentes como preguntas de entrevista los supuestos `[ASSUMED]`, la elección automática de configuración, la elección de bloque, la revisión colectiva del Grillado rápido ni la confirmación final. Cada decisión material incluida en una ronda sí cuenta por separado.
 
 El total puede cambiar porque una respuesta abre o cierra ramas. Presentalo como estimación, no como promesa exacta. Si quedan cero decisiones materiales, creá y configurá la sesión para dejar trazabilidad y pasá directo al cierre.
 

@@ -228,6 +228,17 @@ test("grill_session persists interviewMode and refuses checkpoints before it is 
 		/configure.*interviewMode/i,
 	);
 
+	await assert.rejects(
+		tool.execute(
+			"configure-unselected",
+			{ action: "configure", sessionId: created.details.snapshot.id, interviewMode: "unselected" },
+			undefined,
+			undefined,
+			{ cwd: projectPath },
+		),
+		/configure requires interviewMode/i,
+	);
+
 	const configured = await tool.execute(
 		"configure-rounds",
 		{

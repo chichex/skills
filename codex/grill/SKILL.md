@@ -39,9 +39,8 @@ Antes de entrevistar:
 
 Elegir la modalidad:
 
-1. **Modalidad**
-   - `Grillado rápido`.
-   - `Grillado pregunta a pregunta`.
+- `Grillado rápido`.
+- `Grillado pregunta a pregunta`.
 
 Si el usuario ya fijó una elección en su pedido, no volver a preguntarla.
 
