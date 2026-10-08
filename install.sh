@@ -3,7 +3,8 @@
 # Instala/actualiza los skills de este repo en Codex, Claude Code, opencode y Pi,
 # junto con las extensiones de Pi.
 # Hace git pull y copia cada skill a su carpeta, SIN borrar los otros skills
-# que ya tengas: solo agrega/actualiza los que vienen del repo.
+# que ya tengas: agrega/actualiza los que vienen del repo y solo poda los que
+# este mismo repo instaló antes (figuran en el manifest del destino) y retiró.
 #
 # Uso:
 #   ./install.sh              # instala los cuatro sets
@@ -124,6 +125,35 @@ pi_forget_manifest() {
   rm -f "$(pi_manifest_path "$1")"
 }
 
+# Poda en $dest los skills que este repo instaló alguna vez (figuran en el
+# manifest del destino) y que el checkout ACTUAL ya no tiene. Solo toca
+# nombres administrados: un skill ajeno, que nunca pasó por el manifest,
+# sobrevive. Los nombres inválidos (vacíos, con '/' o '..') se descartan sin
+# resolverse, para que un manifest corrupto no pueda borrar fuera del destino.
+# Reescribe el manifest sin lo podado.
+prune_retired_skills() {
+  local src="$1" dest="$2" manifest current kept name
+  manifest="$(pi_manifest_path "$dest")"
+  [ -f "$manifest" ] || return 0
+  current="$(pi_managed_names "$src" dirs)"
+  kept="$(mktemp "$dest/.chichex-skills-managed.XXXXXX")"
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    case "$name" in
+      */*|.|..) continue ;;
+    esac
+    if printf '%s\n' "$current" | grep -Fxq "$name"; then
+      printf '%s\n' "$name" >> "$kept"
+    else
+      if [ -e "$dest/$name" ] || [ -L "$dest/$name" ]; then
+        rm -rf "${dest:?}/$name"
+        echo "   ✗ $name (retirado del repo, podado)"
+      fi
+    fi
+  done < "$manifest"
+  mv "$kept" "$manifest"
+}
+
 install_set() {
   local name="$1" src="$2" dest="$3" base
   if [ ! -d "$src" ]; then
@@ -132,6 +162,7 @@ install_set() {
   fi
   mkdir -p "$dest"
   echo "→ $name → $dest"
+  prune_retired_skills "$src" "$dest"
   while IFS= read -r base; do
     [ -n "$base" ] || continue
     # reemplaza solo ESTE skill (limpio, sin dejar archivos viejos);

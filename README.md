@@ -219,7 +219,7 @@ Destinos por defecto: `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~
 
 Como Codex también descubre los skills de Pi en `~/.agents/skills` y no fusiona nombres repetidos, la instalación de Codex agrega un bloque administrado a `${CODEX_HOME:-~/.codex}/config.toml`: desactiva para Codex únicamente las copias Pi que tienen una versión equivalente en `codex/`. Pi sigue usando sus archivos normalmente. El resto de `config.toml` se preserva y las corridas posteriores actualizan el mismo bloque sin duplicarlo. Usá `CODEX_DEDUPLICATE_PI_SKILLS=0` para omitir este cambio o `CODEX_CONFIG_FILE` para apuntar a otro config.
 
-Para **actualizar** más adelante, volvé a correr `./install.sh` — ya hace el `pull` solo.
+Para **actualizar** más adelante, volvé a correr `./install.sh` — ya hace el `pull` solo. Al instalar también **poda** de cada destino los skills que este repo instaló antes (figuran en el manifest oculto `.chichex-skills-managed` del destino) y ya retiró, como `domain-modeling` y `grill-with-domain-modeling`; los skills que no instaló este repo no se tocan.
 
 Si preferís a mano, es un simple copy:
 
