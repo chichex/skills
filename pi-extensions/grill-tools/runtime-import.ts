@@ -6,7 +6,6 @@ import {
 	GRILL_SNAPSHOT_VERSION,
 	type GrillInventoryEntry,
 	type GrillSnapshot,
-	type GrillWorkflowMode,
 } from "./inventory.ts";
 
 export interface ImportedSnapshotPlan {
@@ -24,14 +23,6 @@ const SAFE_STORAGE_ID = /^[A-Za-z0-9_-]+$/;
 export function snapshotStorageStem(id: string): string {
 	if (SAFE_STORAGE_ID.test(id)) return id;
 	return `imported-${createHash("sha256").update(id).digest("hex").slice(0, 40)}`;
-}
-
-function importedWorkflowMode(markdown: string): GrillWorkflowMode {
-	const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
-	const headingIndex = lines.findIndex((line) => /^##\s+(?:Modo|Mode)\s*$/i.test(line.trim()));
-	if (headingIndex < 0) return "standard";
-	const value = lines.slice(headingIndex + 1).find((line) => line.trim())?.trim().toLowerCase();
-	return value === "domain-modeling" ? "domain-modeling" : "standard";
 }
 
 function assertHandoffOnly(
@@ -65,7 +56,6 @@ function importedBaseline(
 		projectPath,
 		projectName: basename(projectPath),
 		status,
-		workflowMode: importedWorkflowMode(entry.handoffMarkdown),
 		interviewMode: "unselected",
 		...(entry.issue
 			? { sourceIssue: { number: entry.issue.number, repository: entry.issue.repository } }
@@ -135,7 +125,6 @@ function compatibleSnapshot(actual: GrillSnapshot, expected: GrillSnapshot): boo
 	return actual.id === expected.id
 		&& resolve(actual.projectPath) === resolve(expected.projectPath)
 		&& actual.status === expected.status
-		&& actual.workflowMode === expected.workflowMode
 		&& actual.interviewMode === expected.interviewMode
 		&& actual.parentId === expected.parentId
 		&& actual.revision === expected.revision

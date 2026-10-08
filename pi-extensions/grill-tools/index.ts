@@ -51,7 +51,6 @@ import {
 	type SnapshotFileCandidate,
 } from "./inventory.ts";
 import {
-	allowsFinalizeSpecContinuation,
 	handoffFileNames,
 	planGrillHandoff,
 	slugify,
@@ -139,11 +138,6 @@ const GrillSessionParams = Type.Object({
 	sessionId: Type.Optional(Type.String({ description: "Required except for create" })),
 	topic: Type.Optional(Type.String({ description: "Required for create" })),
 	projectPath: Type.Optional(Type.String({ description: "Defaults to the current git root or cwd" })),
-	workflowMode: Type.Optional(
-		StringEnum(["standard", "domain-modeling"] as const, {
-			description: "Whether the grill only produces a handoff or also maintains domain documentation",
-		}),
-	),
 	interviewMode: Type.Optional(
 		StringEnum(["unselected", "fast", "rounds", "adaptive"] as const, {
 			description: "Persisted answer-collection mode. Configure it immediately after the user chooses a grill modality.",
@@ -470,7 +464,6 @@ function compactSnapshot(snapshot: GrillSnapshot): object {
 		topic: snapshot.topic,
 		projectPath: snapshot.projectPath,
 		status: snapshot.status,
-		workflowMode: snapshot.workflowMode,
 		interviewMode: snapshot.interviewMode,
 		sourceIssue: snapshot.sourceIssue,
 		progress: `${snapshot.interactions.length} of ~${snapshot.estimate.likely} (limit ${snapshot.questionLimit})`,
@@ -1335,7 +1328,7 @@ export default function grillTools(pi: ExtensionAPI) {
 		name: "grill_session",
 		label: "Grill session",
 		description:
-			"Create, configure, checkpoint, pause, finalize, or retrieve a persistent grill interview. Persists both documentation workflowMode and answer-collection interviewMode; checkpoints are rejected until interviewMode is selected. Grill sessions survive Pi sessions. Use only as directed by the grill skill.",
+			"Create, configure, checkpoint, pause, finalize, or retrieve a persistent grill interview. Persists the answer-collection interviewMode; checkpoints are rejected until interviewMode is selected. Grill sessions survive Pi sessions. Use only as directed by the grill skill.",
 		parameters: GrillSessionParams,
 		executionMode: "sequential",
 
@@ -1358,7 +1351,6 @@ export default function grillTools(pi: ExtensionAPI) {
 					projectPath: root,
 					projectName: basename(root),
 					status: "active",
-					workflowMode: params.workflowMode ?? "standard",
 					interviewMode: params.interviewMode ?? "unselected",
 					sourceIssue: params.sourceIssue
 						? {
@@ -1401,10 +1393,9 @@ export default function grillTools(pi: ExtensionAPI) {
 			}
 
 			if (params.action === "configure") {
-				if (!params.workflowMode && !params.interviewMode) {
-					throw new Error("configure requires workflowMode and/or interviewMode");
+				if (!params.interviewMode) {
+					throw new Error("configure requires interviewMode");
 				}
-				if (params.workflowMode) snapshot.workflowMode = params.workflowMode;
 				if (params.interviewMode) snapshot.interviewMode = params.interviewMode;
 				snapshot.status = "active";
 				await saveSnapshot(snapshot);
@@ -1467,9 +1458,6 @@ export default function grillTools(pi: ExtensionAPI) {
 			}
 
 			if (params.action === "finalize") {
-				if (params.continueWithSpec && !allowsFinalizeSpecContinuation(snapshot.workflowMode)) {
-					throw new Error("domain-modeling finalize cannot continue to sdd-spec before the separate ADR review completes");
-				}
 				if (!params.handoffMarkdown?.trim()) throw new Error("handoffMarkdown is required for finalize");
 				if (params.pendingBranches) snapshot.pendingBranches = params.pendingBranches;
 				if (params.sections) snapshot.sections = params.sections;
@@ -1527,7 +1515,7 @@ export default function grillTools(pi: ExtensionAPI) {
 			const snapshot = details.snapshot;
 			const suffix = details.markdownPath ? `\n${theme.fg("dim", details.markdownPath)}` : "";
 			return new Text(
-				`${theme.fg("success", "✓ ")}${snapshot.topic} · ${snapshot.status} · ${snapshot.workflowMode}/${snapshot.interviewMode} · ${snapshot.interactions.length}/~${snapshot.estimate.likely}${suffix}`,
+				`${theme.fg("success", "✓ ")}${snapshot.topic} · ${snapshot.status} · ${snapshot.interviewMode} · ${snapshot.interactions.length}/~${snapshot.estimate.likely}${suffix}`,
 				0,
 				0,
 			);

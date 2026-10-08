@@ -25,10 +25,8 @@ Las disciplinas sobre las que SDD se apoya — y que también uso sueltas, fuera
 
 | Skill | Qué hace |
 |---|---|
-| **`grill`** | Entrevista implacable sobre un plan o diseño **antes** de construir. En los cuatro harnesses arranca con un reconocimiento previo (código, docs de dominio, handoffs anteriores) que arma el árbol de decisiones con sus dependencias y persiste y reanuda sesiones en `.sdd/grills/` (Pi reanuda desde su snapshot runtime global, pero cada pausa o cierre escribe además el handoff interoperable en `.sdd/grills/` del proyecto), puede exportar las decisiones pendientes como cuestionario autocontenido para un stakeholder sin agente (por ejemplo, pegándolo en un Google Doc) y al cierre encadena con `sdd-spec --from-grill`. En Pi se elige entre **Grillado rápido**, **Por rondas** —hasta 4 decisiones independientes por llamada a `ask_user_questions`— y pregunta a pregunta; Claude Code también recorre la frontera por rondas o 1×1 y agrega un atajo liviano para 1-3 preguntas. En los cuatro harnesses también puede mantener la documentación de dominio. |
+| **`grill`** | Entrevista implacable sobre un plan o diseño **antes** de construir. En los cuatro harnesses arranca con un reconocimiento previo (código, docs de dominio, handoffs anteriores) que arma el árbol de decisiones con sus dependencias y persiste y reanuda sesiones en `.sdd/grills/` (Pi reanuda desde su snapshot runtime global, pero cada pausa o cierre escribe además el handoff interoperable en `.sdd/grills/` del proyecto), puede exportar las decisiones pendientes como cuestionario autocontenido para un stakeholder sin agente (por ejemplo, pegándolo en un Google Doc) y al cierre encadena con `sdd-spec --from-grill`. En Pi se elige entre **Grillado rápido**, **Por rondas** —hasta 4 decisiones independientes por llamada a `ask_user_questions`— y pregunta a pregunta; Claude Code también recorre la frontera por rondas o 1×1 y agrega un atajo liviano para 1-3 preguntas. |
 | **`mini-grill`** *(Codex/Claude/opencode)* | Versión express de `grill`: desambigua un pedido puntual en una a tres preguntas (con opción recomendada primero) y confirma la interpretación antes de actuar. Si aparecen muchas decisiones, deriva al `grill` completo. |
-| **`grill-with-domain-modeling`** *(Codex/Claude/opencode)* | Un `grill` que además mantiene los docs del dominio (`CONTEXT.md` + ADRs) a medida que las decisiones se resuelven. En los cuatro harnesses esta modalidad también puede elegirse dentro de `grill`; en Claude Code este skill es un wrapper que fija esa elección y saltea la pregunta de configuración. |
-| **`domain-modeling`** | Mantiene vivo el modelo de dominio mientras se diseña: desafía términos, afila el lenguaje difuso, y escribe el glosario (`CONTEXT.md`) y las decisiones (`docs/adr/`) cuando cristalizan. Regla de contaminación cero: nunca introduce la práctica en un repo que no la usa. |
 | **`tdd`** | Referencia de test-driven development: el loop rojo → verde, qué es un buen test, dónde van (seams), los anti-patrones. Incluye guías de `mocking` y `tests`. Disponible en los cuatro harnesses; `sdd-run` referencia su doctrina en la declaración de seams del plan y en el paso de tests primero. |
 | **`coding-policies`** | Genera en el proyecto `.sdd/coding-policies.md` (o la ruta que le pidas): un archivo autocontenido con una baseline transversal siempre incluida de Clean Code y SOLID —SRP, tamaños saludables y protección contra el sobre-split— más tus buenas prácticas por stack, como reglas MUST/SHOULD con porqué y gate. Detecta los stacks del repo (Go, TypeScript, Node, React, Next.js, React Native, Kotlin Multiplatform, Kotlin Android) y lo engancha, con tu confirmación, en `CLAUDE.md`, `AGENTS.md` o `.sdd/project.md`. Regenerar reescribe todo salvo la sección "Ajustes de este proyecto", que se preserva verbatim. Trae contenido para Go, TypeScript, Node, React, Next.js, React Native y Kotlin Multiplatform; Kotlin Android se detecta pero queda "sin prácticas definidas todavía". `sdd-init` lo referencia como `guia` si existe y ofrece generarlo si no. Disponible en los cuatro harnesses. |
 | **`code-review`** *(Codex/Pi/opencode)* | Revisa un PR en tres ejes separados —correctness y riesgo, estándares y spec—, ejecuta verificaciones y muestra findings con evidencia y la preview exacta. Por default publica los comments en GitHub como un único review COMMENT; `--no-publish` lo deja solo en la conversación. Nunca aprueba ni pide cambios. |
@@ -40,7 +38,7 @@ Las disciplinas sobre las que SDD se apoya — y que también uso sueltas, fuera
 | **`find-skills`** *(Codex/Pi)* | Busca skills instalables en el ecosistema abierto mediante `npx skills`. Vendorizado desde `vercel-labs/skills`. |
 | **`yt-summary`** *(Codex/Claude)* | Descarga con `yt-dlp` un único track de subtítulos de YouTube y guía un resumen con TL;DR, puntos clave y timestamps. |
 
-SDD no reemplaza a estos skills: los orquesta. El diseño previo a una spec se afila con `grill` y `domain-modeling`, y `sdd-run` implementa siguiendo la disciplina de `tdd`.
+SDD no reemplaza a estos skills: los orquesta. El diseño previo a una spec se afila con `grill`, y `sdd-run` implementa siguiendo la disciplina de `tdd`.
 
 Aparte, el repo tiene un **skill interno** en `.claude/skills/harness-port/`: guía el porteo y mantenimiento de skills entre los cuatro harnesses (doctrina idéntica, solo cambia la capa de interacción — tool de preguntas, sintaxis de invocación, extras como el sidecar `agents/openai.yaml` en Codex o el campo `compatibility` en Pi), con el par codex/pi de `code-review` como ejemplo canónico. Es un project skill de Claude Code: solo se carga trabajando dentro de este repo, y no se distribuye ni por `install.sh` ni por el plugin.
 
@@ -52,7 +50,7 @@ La única fuente editable es `shared/coding-policies/references/`. `clean-code.m
 
 ### Integración con Pi
 
-En Pi, `grill` es el único entry point de entrevista: el usuario elige si quiere solo handoff o también documentación de dominio. El riel actual usa señales estructuradas y skills materializados desde la procedencia canónica de Pi; los entrypoints ya no se limitan a inyectar slash skills como texto.
+En Pi, `grill` es el único entry point de entrevista: solo desambigua y produce el handoff, nunca escribe documentación de dominio. El riel actual usa señales estructuradas y skills materializados desde la procedencia canónica de Pi; los entrypoints ya no se limitan a inyectar slash skills como texto.
 
 #### Riel orquestado y fronteras de sesión
 
@@ -241,13 +239,11 @@ Una vez instalados, Codex los invoca como `$grill`, `$code-review`, `$sdd-spec`,
 
 ## Créditos
 
-Cuatro de los **skills fundacionales** están **basados en** los skills de **[Matt Pocock](https://github.com/mattpocock)** — de su repo [mattpocock/skills](https://github.com/mattpocock/skills) (MIT); `mini-grill` es una variante propia reducida de `grill`:
+Dos de los **skills fundacionales** están **basados en** los skills de **[Matt Pocock](https://github.com/mattpocock)** — de su repo [mattpocock/skills](https://github.com/mattpocock/skills) (MIT); `mini-grill` es una variante propia reducida de `grill`:
 
 | En este repo | Original de Matt Pocock |
 |---|---|
 | `grill` | `grilling` |
-| `grill-with-domain-modeling` | `grill-with-docs` |
-| `domain-modeling` | `domain-modeling` |
 | `tdd` | `tdd` |
 
 Además, la **exportación de cuestionario** de `grill` está inspirada en su skill `to-questionnaire`.

@@ -91,7 +91,7 @@ Nada extra: solo `SKILL.md` más los archivos de referencia del skill. Un `agent
 ## Procedimiento
 
 1. **Elegir la fuente**: la versión más completa y actualizada del skill, o la que originó el cambio a propagar. Si no es obvio cuál está más al día, diffear las versiones existentes primero.
-2. **Crear la carpeta destino** `<harness>/<nombre>/` y copiar `SKILL.md` junto con TODOS los archivos de referencia del skill (ej. `mocking.md` y `tests.md` en `tdd`; `CONTEXT-FORMAT.md` y `ADR-FORMAT.md` en `domain-modeling`). Para `coding-policies`, no copiar desde otro harness: ejecutar el sincronizador desde `shared/coding-policies/references/`.
+2. **Crear la carpeta destino** `<harness>/<nombre>/` y copiar `SKILL.md` junto con TODOS los archivos de referencia del skill (ej. `mocking.md` y `tests.md` en `tdd`). Para `coding-policies`, no copiar desde otro harness: ejecutar el sincronizador desde `shared/coding-policies/references/`.
 3. **Aplicar la capa de interacción del destino** según el mapeo: tool de preguntas, invocaciones, extras, menciones del harness.
 4. **Si es propagación de un cambio**, aplicar el mismo delta doctrinal a cada versión existente, adaptando solo la capa de interacción de cada una. Si cambia una referencia de `coding-policies`, editar únicamente la fuente canónica, sincronizar y comprobar con `node scripts/sync-coding-policies-references.mjs --check`.
 5. **Actualizar el README** cuando cambia la disponibilidad por harness: las tablas de `README.md` y `README.en.md` anotan en qué harnesses vive cada skill (ej. *(Codex/Pi)*).

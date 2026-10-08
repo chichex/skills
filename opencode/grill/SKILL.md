@@ -1,6 +1,6 @@
 ---
 name: grill
-description: Entrevista implacable para desambiguar un tema, plan o diseño y producir un contrato de handoff antes de escribir una spec. Permite mantener opcionalmente CONTEXT.md y ADRs durante la entrevista. Usar cuando el usuario quiere stress-testear, aclarar o alinear una idea, pide "grill", "grillame", "entrevistame sobre esto", o quiere retomar un handoff guardado. No implementa ni escribe la spec definitiva.
+description: Entrevista implacable para desambiguar un tema, plan o diseño y producir un contrato de handoff antes de escribir una spec. Usar cuando el usuario quiere stress-testear, aclarar o alinear una idea, pide "grill", "grillame", "entrevistame sobre esto", o quiere retomar un handoff guardado. No implementa ni escribe la spec definitiva.
 ---
 
 # Grill
@@ -27,7 +27,7 @@ No depender de extensiones de Pi ni de tools inexistentes. Persistir sesiones ú
 Antes de entrevistar:
 
 1. Explorar el codebase cuando el tema dependa de él.
-2. Buscar `CONTEXT-MAP.md`, `CONTEXT.md`, `docs/adr/` y handoffs en `.sdd/grills/`.
+2. Buscar `CONTEXT-MAP.md`, `CONTEXT.md`, `docs/adr/` y handoffs en `.sdd/grills/`. Los docs de dominio son solo lectura: este skill nunca los escribe.
 3. Construir un árbol provisional de decisiones, secciones y dependencias.
 4. Estimar preguntas mínimas, probables y máximas.
 5. Recomendar un modo:
@@ -37,12 +37,9 @@ Antes de entrevistar:
 
 ## Configuración
 
-Elegir por separado:
+Elegir la modalidad:
 
-1. **Documentación**
-   - `Solo grill y handoff` (default): no modificar glosarios ni proponer ADRs.
-   - `Grill + documentación de dominio`: cargar `domain-modeling`; elegirlo cuenta como consentimiento explícito para mantener `CONTEXT.md`, pero cada ADR conserva su gate de aprobación.
-2. **Modalidad**
+1. **Modalidad**
    - `Grillado rápido`.
    - `Grillado pregunta a pregunta`.
 
@@ -57,7 +54,6 @@ Por cada decisión:
 3. Poner primero la opción recomendada y explicar el trade-off.
 4. Esperar la respuesta.
 5. Actualizar el árbol y no repetir decisiones resueltas.
-6. En modo de dominio, actualizar inmediatamente el `CONTEXT.md` correcto cuando quede confirmado un término.
 
 ## Grillado rápido
 
@@ -66,7 +62,6 @@ Por cada decisión:
 3. Aclarar que son propuestas, no decisiones confirmadas.
 4. Pedir al usuario que indique cuáles quiere revisar; ninguna objeción explícita confirma las propuestas visibles.
 5. Resolver una por una las decisiones objetadas. Recalcular las dependientes cuando cambie una respuesta.
-6. En modo de dominio, escribir términos confirmados solo después de la aprobación del lote o de la resolución individual.
 
 ## Persistencia y reanudación
 
@@ -76,9 +71,6 @@ Para pausar o guardar, escribir `.sdd/grills/<fecha>-<slug>.md` con:
 # Grill — <tema>
 <!-- Estado: paused|finalized. Proyecto: <ruta absoluta>. Fuente: <issue o pedido>. -->
 <!-- SDD-Tracking: version=1; type=grill; state=<paused|finalized>; issue=<#NN|owner/repo#NN|none>; grill=<ref>; project=<ref> -->
-
-## Modo
-<standard|domain-modeling>
 
 ## Hechos comprobados
 ...
@@ -101,7 +93,7 @@ Para retomar:
 
 1. Listar `.sdd/grills/*.md` por fecha si no se indicó una ruta.
 2. Pedir elegir solo si hay más de un candidato razonable.
-3. Leer el archivo completo y contrastar sus hechos con el estado actual del repo.
+3. Leer el archivo completo y contrastar sus hechos con el estado actual del repo. Los handoffs viejos pueden traer una sección `## Modo`: ignorarla, ya no existe.
 4. Si existe un `<fecha>-<slug>-cuestionario.md` con respuestas completadas, leerlo e incorporar cada respuesta como decisión resuelta; repreguntar solo lo ambiguo.
 5. Mostrar decisiones resueltas, ramas pendientes y próxima pregunta.
 6. No modificar un handoff `finalized`; para revisarlo crear un archivo nuevo con sufijo `-rev-N`.
@@ -128,12 +120,10 @@ Cuando las ramas del alcance estén resueltas:
 3. Tras confirmar, guardar el mismo contenido como handoff `finalized` en `.sdd/grills/`.
 4. Si pidió crear spec, cargar `sdd-spec` y continuar con `--from-grill <ruta-del-handoff>`.
 
-En modo `domain-modeling`, evaluar ADRs recién después de confirmar el handoff. Mostrar evidencia, ruta y borrador completo; pedir aprobación separada para cada ADR. Nunca mezclar la aprobación del handoff con la de un ADR.
-
 ## Límites
 
 - No implementar el plan.
 - No escribir la spec definitiva desde este skill.
-- No crear artefactos de dominio en modo estándar.
+- No crear ni modificar `CONTEXT.md`, glosarios ni ADRs.
 - No persistir recomendaciones como decisiones antes de la aprobación del usuario.
 - No hacer preguntas compuestas para esquivar el límite de 20.

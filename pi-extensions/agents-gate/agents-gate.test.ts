@@ -474,7 +474,7 @@ test("CA-10: ningun agents/ bajo claude/, opencode/ o pi/; los sidecars de codex
 	assert.deepEqual(forbidden, [], `agents/ prohibido fuera de la raiz: ${forbidden.join(", ")}`);
 
 	const codexSidecars = allPaths.filter((path) => /^codex\/[^/]+\/agents\/openai\.yaml$/.test(path));
-	assert.ok(codexSidecars.length >= 17, "los sidecars de codex siguen presentes y no los toca este gate");
+	assert.ok(codexSidecars.length >= 15, "los sidecars de codex siguen presentes y no los toca este gate");
 });
 
 test("CA-11: READMEs, harness-port y el contrato documentan el layer de agentes", async () => {
