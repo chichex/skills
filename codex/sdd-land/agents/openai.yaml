@@ -1,0 +1,6 @@
+interface:
+  display_name: "SDD Land"
+  short_description: "Mergeá un stack o PR y dejá el repo limpio y al día"
+  default_prompt: "Usá $sdd-land para mergear este stack de PRs, confirmar el plan y limpiar el repo."
+policy:
+  allow_implicit_invocation: false
