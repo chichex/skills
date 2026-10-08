@@ -728,13 +728,19 @@ test("sdd-run y quick-run piden el loop rojo antes de tocar código y la secció
 		const risk = fencedBlocks(markdown).filter((fence) => /^## Riesgo de merge/.test(fence.content));
 		assert.equal(risk.length, 1, `${harness}/sdd-run/SKILL.md: debe traer un solo template de Riesgo de merge`);
 		assert.equal(risk[0]?.content, RIESGO_DE_MERGE_TEMPLATE, `${harness}/sdd-run/SKILL.md: el template de Riesgo de merge no es byte-idéntico`);
-		// El template fenced lleva su propio "## " en columna 0: la Fase 5 se delimita por la Fase 6, no por el primer "\n## ".
-		const phase5 = markdown.match(/## Fase 5 — PR\n([\s\S]*?)(?=\n## Fase 6)/)?.[1] ?? "";
-		assert.match(phase5, /draft[\s\S]*Riesgo de merge|Riesgo de merge[\s\S]*draft/, `${harness}/sdd-run/SKILL.md: Fase 5 no ata el riesgo sin rollback a draft`);
-		assert.match(phase5, /PR de abajo[\s\S]*capas superiores|capas superiores[\s\S]*PR de abajo/, `${harness}/sdd-run/SKILL.md: Fase 5 no distingue PR de abajo y capas superiores`);
+		// El template fenced lleva su propio "## " en columna 0: la subsección se delimita por la Fase 6, no por el primer "\n## ".
+		const risk5 = markdown.match(/### Riesgo de merge en el body\n([\s\S]*?)(?=\n## Fase 6)/)?.[1] ?? "";
+		assert.match(risk5, /es `no` y el body no dice cómo se vuelve atrás[^\n]*`--draft`/, `${harness}/sdd-run/SKILL.md: la regla de draft por riesgo sin rollback no está en la subsección`);
+		assert.match(risk5, /PR de abajo[\s\S]*capas superiores/, `${harness}/sdd-run/SKILL.md: no distingue PR de abajo y capas superiores`);
+		assert.match(risk5, /el draft va a la capa que no se revierte/, `${harness}/sdd-run/SKILL.md: no dice qué capa del stack sale en draft`);
+		assert.match(risk5, /antes de `## Riesgo de merge`[\s\S]*conserva esa sección/, `${harness}/sdd-run/SKILL.md: no protege la sección ante la Fase 6`);
+		assert.match(risk5, /`pendiente tuyo`/, `${harness}/sdd-run/SKILL.md: el draft por riesgo no se reporta`);
 		const budget = markdown.match(/\n3\. \*\*Presupuesto por CA\*\*[^\n]*(?:\n   [^\n]*)*/)?.[0] ?? "";
 		assert.match(budget, /loop rojo/, `${harness}/sdd-run/SKILL.md: el presupuesto por CA no exige el loop rojo`);
 		assert.match(budget, /no cuentan/, `${harness}/sdd-run/SKILL.md: sin loop rojo los intentos no cuentan`);
+		assert.match(budget, /después de implementarlo/, `${harness}/sdd-run/SKILL.md: el loop rojo no está acotado a CAs rotos`);
+		assert.match(budget, /sin loop rojo»[^\n]*se sigue con los demás/, `${harness}/sdd-run/SKILL.md: falta el tope cuando no se arma el loop`);
+		assert.match(markdown, /salvo la FALLA «sin loop rojo»/, `${harness}/sdd-run/SKILL.md: Timeouts no exceptúa la FALLA sin loop rojo`);
 	}
 	for (const harness of withQuickRun) {
 		const markdown = await readRepoFile(`${harness}/quick-run/SKILL.md`);
@@ -743,6 +749,17 @@ test("sdd-run y quick-run piden el loop rojo antes de tocar código y la secció
 		assert.equal(risk[0]?.content, RIESGO_DE_MERGE_TEMPLATE, `${harness}/quick-run/SKILL.md: el template de Riesgo de merge no es byte-idéntico`);
 		assert.match(markdown, /### Ruta bug: loop rojo antes de tocar código/, `${harness}/quick-run/SKILL.md: sin ruta bug con loop rojo`);
 		assert.match(markdown, /\[DEBUG-/, `${harness}/quick-run/SKILL.md: sin prefijo de instrumentación [DEBUG-xxxx]`);
+		assert.match(markdown, /falla si alguna corrida falla/, `${harness}/quick-run/SKILL.md: el loop listo no contempla intermitentes`);
+		assert.match(markdown, /sale en `--draft`[^\n]*pendiente humano/, `${harness}/quick-run/SKILL.md: el draft por riesgo no se reporta`);
+	}
+});
+
+test("los implementer exigen el loop rojo antes de declarar una FALLA con diagnóstico", async () => {
+	for (const file of ["agents/implementer.md", "pi-extensions/subagent/agents/implementer.md"]) {
+		const markdown = await readRepoFile(file);
+		const section = markdown.match(/## 6\. Tope de tres intentos honestos\n([\s\S]*?)(?=\n## 7)/)?.[1] ?? "";
+		assert.match(section, /loop rojo/, `${file}: §6 no menciona el loop rojo`);
+		assert.match(section, /sin loop rojo/i, `${file}: §6 no define la FALLA sin loop rojo`);
 	}
 });
 

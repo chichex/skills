@@ -76,7 +76,7 @@ Aplica cuando el checklist describe algo roto (un error, un resultado incorrecto
 
 1. **Gate**: prohibido formular hipótesis o editar código sin un comando ya corrido que se ponga rojo por ESE síntoma. Leer código para armar una teoría antes de que ese comando exista es el error que este gate previene. Sin loop rojo no corre el presupuesto de tres intentos.
 2. **Construí el loop**, en este orden de preferencia: test en el seam que alcanza el bug; `curl` o script contra el servicio levantado; CLI con un fixture; navegador headless; replay de un request o payload capturado; harness descartable; fuzz de unos 1000 inputs; bisección automatizada; comparar versión vieja contra nueva. Redactá los secretos antes de mostrar salidas.
-3. **Loop listo** cuando podés nombrar un comando que ya corriste (mostrá comando y salida), se pone rojo por el síntoma del reporte y no por otro cercano, es determinista y tarda segundos. Si no podés armar ninguno, frená: listá qué probaste y pedí acceso, un artefacto capturado o permiso para instrumentar.
+3. **Loop listo** cuando podés nombrar un comando que ya corriste (mostrá comando y salida), se pone rojo por el síntoma del reporte y no por otro cercano, es determinista y tarda segundos (en un intermitente, un comando que repite el disparador N veces y falla si alguna corrida falla). Si no podés armar ninguno, frená: listá qué probaste y pedí acceso, un artefacto capturado o permiso para instrumentar.
 4. **Intermitentes**: no busques una repro limpia, subí la tasa de reproducción (repetí el disparador 100 veces, en paralelo, con stress) hasta que falle una de cada dos.
 5. **Minimizá de a uno**: sacá inputs, callers, config y pasos de a uno, re-corriendo el loop; terminás cuando sacar cualquier cosa lo pone verde.
 6. **Hipótesis**: escribí de 3 a 5, cada una falsable («si X es la causa, cambiar Y lo hace desaparecer») y mostralas al usuario en el mensaje, sin bloquear.
@@ -103,7 +103,7 @@ Reversible con un revert: <sí | no>. <si no: qué cambió afuera del repo y có
 Si sale mal, le pega a: <usuarios, sistemas o flujos afectados, una frase>
 ```
 
-«Reversible con un revert» es `no` cuando algo cambió afuera del repo y el revert no lo devuelve (datos, contratos ya consumidos, archivos persistidos, copias instaladas). Con `no`, el body dice cómo se vuelve atrás (backup, flag, script, comando); sin eso, el PR sale en `--draft`.
+«Reversible con un revert» es `no` cuando algo cambió afuera del repo y el revert no lo devuelve (datos, contratos ya consumidos, archivos persistidos, copias instaladas). Con `no`, el body dice cómo se vuelve atrás (backup, flag, script, comando); sin eso, el PR sale en `--draft` y el reporte lo lista en `pendiente humano` con su motivo.
 
 Para `join-quick-run`, la branch, el título, la fuente del body y `Closes #N` se derivan únicamente de `canonicalIssue`; listá `sources` originales como trazabilidad, sin cerrarlos ni convertirlos en autoridad.
 
