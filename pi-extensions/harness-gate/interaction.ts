@@ -31,6 +31,9 @@ export const SKILL_NAMES = [
 
 export interface InteractionTable {
 	prefixes: Record<Harness, string>;
+	// Tool de preguntas por harness segun la fila `tool-preguntas`; `null`
+	// cuando la celda es `—` (el harness no tiene tool y pregunta en texto).
+	questionTools: Record<Harness, string | null>;
 }
 
 export function parseInteractionTable(doc: string): InteractionTable {
@@ -54,7 +57,15 @@ export function parseInteractionTable(doc: string): InteractionTable {
 		assert.ok(pattern.endsWith("nombre"), `celda invocacion de ${harness} termina en "nombre"`);
 		prefixes[harness] = pattern.slice(0, -"nombre".length);
 	});
-	return { prefixes };
+	const questionRow = byField.get("tool-preguntas");
+	assert.ok(questionRow, "fila tool-preguntas presente en la tabla");
+	const questionTools = {} as Record<Harness, string | null>;
+	HARNESSES.forEach((harness, index) => {
+		const cell = (questionRow[index] ?? "").trim();
+		questionTools[harness] = cell === "—" ? null : cell.replaceAll("`", "");
+		assert.ok(questionTools[harness] !== "", `celda tool-preguntas de ${harness} no vacia`);
+	});
+	return { prefixes, questionTools };
 }
 
 export function escapeRegExp(text: string): string {

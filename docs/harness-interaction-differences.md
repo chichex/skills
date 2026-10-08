@@ -17,11 +17,13 @@ renombrar `Campo` ni las columnas sin actualizar el gate.
 |---|---|---|---|---|
 | carpeta | `claude/` | `codex/` | `opencode/` | `pi/` |
 | invocacion | `/nombre` | `$nombre` | `/nombre` | `/skill:nombre` |
-| tool-preguntas | `AskUserQuestion` | `request_user_input` | — | `ask_user_question` |
+| tool-preguntas | `AskUserQuestion` | `request_user_input` | `question` | `ask_user_question` |
 | extras | — | `agents/openai.yaml` | — | `compatibility` |
 <!-- interaction-differences:end -->
 
 En Pi, la misma extensión agrega además `ask_user_questions` como variante batch para rondas de 2 a 4 decisiones independientes. La fila machine-readable conserva `ask_user_question` como token canónico porque los gates que normalizan doctrina de a una decisión lo reemplazan literalmente.
+
+En opencode, `question` es una tool built-in registrada solo para los clientes `app`, `cli` y `desktop` (o con `OPENCODE_ENABLE_QUESTION_TOOL`); en cualquier otro cliente no existe y el gate se formula en texto plano. Acepta un array `questions` (cada una con `header`, `question`, `options` y `multiple` opcional) sin tope declarado de preguntas ni de opciones, agrega sola la respuesta libre y pide la recomendada primera con `(Recommended)`. En Codex, `request_user_input` acepta de 1 a 3 preguntas por llamada, de 2 a 3 opciones cada una, sin selección múltiple, y solo está disponible en algunos modos de colaboración.
 
 ## Qué normaliza el gate
 

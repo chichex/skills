@@ -170,6 +170,27 @@ const FEEDBACK_REMEDIATION_QUESTION_STYLE: Record<Harness, RegExp> = {
 	pi: /usar `ask_user_question`[\s\S]*Resolver feedback automáticamente/,
 };
 
+// grill: rondas por frontera de dependencias y hechos sin bloqueo en los
+// cuatro harnesses; el atajo liviano vive en claude, codex y opencode.
+const GRILL_ROUNDS_DOCTRINE = [
+	/frontera de dependencias/,
+	/misma ronda/,
+	/[Rr]ecalculá la frontera/,
+];
+const GRILL_NON_BLOCKING_FACTS_DOCTRINE = [
+	/los hechos los averigua el agente, nunca el usuario/i,
+	/solo esperan las preguntas que dependen de ese hecho/i,
+	/el resto de la frontera se pregunta ya/i,
+];
+const GRILL_LIGHT_SHORTCUT = /### Atajo liviano \(1 a 3 preguntas\)/;
+const GRILL_LIGHT_SHORTCUT_HARNESSES: readonly Harness[] = ["claude", "codex", "opencode"];
+const GRILL_FACT_EXPLORATION: Record<Harness, RegExp> = {
+	claude: /`Agent`[\s\S]{0,80}`Explore`[\s\S]{0,80}background/,
+	codex: /subagente `explorer`/,
+	opencode: /subagente `explore`[\s\S]{0,80}`task`/,
+	pi: /`subagent`[\s\S]{0,80}`scout`[\s\S]{0,80}`background: true`/,
+};
+
 // Valores concretos para instanciar placeholders de un template de marker.
 const PLACEHOLDER_SAMPLE: Record<string, string> = {
 	"#NN": "#12",
@@ -571,6 +592,48 @@ test("sdd-run imprime el plan y sigue, desvía sin preguntar y ofrece code revie
 	const claude = await readRepoFile("claude/sdd-run/SKILL.md");
 	assert.match(claude, /subagent_type: "reviewer"/, "Claude lanza el review con el subagente reviewer");
 	assert.match(claude, /`\/code-review --comment`/, "Claude nombra el code review nativo");
+});
+
+test("grill nombra en cada harness la tool de preguntas que declara la tabla", async () => {
+	const { questionTools } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
+	const missing: string[] = [];
+	for (const harness of HARNESSES) {
+		const tool = questionTools[harness];
+		if (tool === null) continue;
+		const markdown = await readRepoFile(`${harness}/grill/SKILL.md`);
+		if (!markdown.includes(`\`${tool}\``)) missing.push(`${harness}/grill/SKILL.md no nombra \`${tool}\``);
+	}
+	assert.deepEqual(missing, []);
+});
+
+test("grill entrevista por rondas con hechos sin bloqueo en cada harness y atajo liviano fuera de Pi", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/grill/SKILL.md`);
+		const expected = [...GRILL_ROUNDS_DOCTRINE, ...GRILL_NON_BLOCKING_FACTS_DOCTRINE, GRILL_FACT_EXPLORATION[harness]];
+		if (GRILL_LIGHT_SHORTCUT_HARNESSES.includes(harness)) expected.push(GRILL_LIGHT_SHORTCUT);
+		for (const pattern of expected) {
+			if (!pattern.test(markdown)) problems.push(`${harness}/grill/SKILL.md no declara ${pattern}`);
+		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("autotest: la fila tool-preguntas mapea `—` a null y quita backticks", () => {
+	const doc = [
+		"<!-- interaction-differences:start -->",
+		"| Campo | claude | codex | opencode | pi |",
+		"|---|---|---|---|---|",
+		"| invocacion | `/nombre` | `$nombre` | `/nombre` | `/skill:nombre` |",
+		"| tool-preguntas | `AskUserQuestion` | `request_user_input` | — | `ask_user_question` |",
+		"<!-- interaction-differences:end -->",
+	].join("\n");
+	assert.deepEqual(parseInteractionTable(doc).questionTools, {
+		claude: "AskUserQuestion",
+		codex: "request_user_input",
+		opencode: null,
+		pi: "ask_user_question",
+	});
 });
 
 test("ultracode no aparece en ningún skill de claude/", async () => {

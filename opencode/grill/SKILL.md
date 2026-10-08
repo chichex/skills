@@ -9,7 +9,21 @@ Desambiguar el tema hasta alcanzar un entendimiento compartido. El resultado es 
 
 ## Interacción en opencode
 
-No hay tool de preguntas en opencode: cada gate se formula en texto plano, con opciones numeradas y la recomendada primera marcada `(Recomendado)`, y se termina el turno esperando la respuesta. No hay selección múltiple nativa: hacer exactamente una pregunta por turno.
+Usar la tool `question` cuando esté disponible: opencode la registra solo en los clientes app, cli y desktop (o con `OPENCODE_ENABLE_QUESTION_TOOL`). Acepta un array `questions`; cada una lleva un `header` corto (30 caracteres o menos), `question`, `options` (`label` de 1 a 5 palabras + `description`) y `multiple: true` solo cuando las respuestas pueden coexistir. La recomendada va primera con "(Recommended)" al final de su label, y la respuesta libre la agrega la tool: no incluir "Other" entre las opciones. La tool no declara tope de preguntas ni de opciones; este skill usa el mismo de Claude Code: hasta 4 preguntas por llamada y 2 a 4 opciones por pregunta.
+
+Si `question` no está disponible, cada gate se formula en texto plano, con opciones numeradas y la recomendada primera marcada `(Recomendado)`, y se termina el turno esperando la respuesta. Una ronda en texto plano numera cada pregunta y las separa con `---`:
+
+```text
+❓ Q1 — <sección>: <pregunta autocontenida>
+1. <opción recomendada> (Recomendado) — <trade-off>
+2. <opción> — <trade-off>
+➡️ Recomendación: <opción> porque <motivo>
+---
+❓ Q2 — <sección>: <pregunta autocontenida>
+...
+```
+
+Hacer exactamente una pregunta por vez en el modo pregunta a pregunta.
 
 No depender de extensiones de Pi ni de tools inexistentes. Persistir sesiones únicamente como Markdown en `.sdd/grills/`, mediante ediciones normales de archivos. No crear el directorio hasta que el usuario elija guardar o pausar una sesión.
 
@@ -26,23 +40,51 @@ No depender de extensiones de Pi ni de tools inexistentes. Persistir sesiones ú
 
 Antes de entrevistar:
 
-1. Explorar el codebase cuando el tema dependa de él.
-2. Buscar `CONTEXT-MAP.md`, `CONTEXT.md`, `docs/adr/` y handoffs en `.sdd/grills/`. Los docs de dominio son solo lectura: este skill nunca los escribe.
-3. Construir un árbol provisional de decisiones, secciones y dependencias.
-4. Estimar preguntas mínimas, probables y máximas.
-5. Recomendar un modo:
+1. Explorá el codebase cuando el tema dependa de él y resolvé todos los hechos comprobables relevantes. Los hechos los averigua el agente, nunca el usuario: si más adelante una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, se averigua sin frenar la ronda (ver «Entrevista por rondas»).
+2. Buscá `CONTEXT-MAP.md`, `CONTEXT.md`, `docs/adr/` y handoffs previos en `.sdd/grills/`. Leé los relevantes para entender vocabulario y decisiones ya tomadas; son solo lectura, este skill nunca los escribe.
+3. Construí un árbol provisional de decisiones con secciones y dependencias explícitas: qué pregunta desbloquea a cuáles.
+4. Estimá preguntas mínimas, probables y máximas. La cifra operativa es la probable; presentala como estimación, no como promesa — una respuesta puede abrir o cerrar ramas.
+5. Diagnosticá la modalidad recomendada:
+   - **Por rondas** (default) cuando el árbol es razonablemente estable, hay ramas independientes que se pueden preguntar en paralelo y corregir un rumbo es barato.
    - **Rápido** cuando el árbol sea estable, poco profundo y las decisiones sean reversibles e independientes.
-   - **Pregunta a pregunta** cuando haya contradicciones, riesgos altos, decisiones costosas de revertir o respuestas que puedan abrir ramas nuevas.
-6. Mostrar un mapa breve: objetivo, hechos, supuestos, ramas, estimación y recomendación.
+   - **Pregunta a pregunta** cuando las dependencias son densas (casi cada respuesta reformula la siguiente pregunta), hay contradicciones por resolver, decisiones costosas de revertir o alta probabilidad de que las respuestas abran ramas nuevas.
+   - La cantidad de preguntas no es el criterio: lo que importa es cuánta adaptación exige el árbol.
+6. Mostrá un mapa breve como mensaje visible: objetivo de desambiguación, hechos ya comprobados, docs de dominio existentes (solo lectura), supuestos, secciones del árbol con sus dependencias, estimación mínima/probable/máxima, alcance de la sesión, y modalidad recomendada con sus señales.
+
+### Atajo liviano (1 a 3 preguntas)
+
+Si la estimación probable es de 1 a 3 preguntas, decilo en una línea (es el territorio de `/mini-grill`) y resolvelo liviano: sin mapa ni configuración, todo en una sola ronda de `question` (o en texto plano si no está disponible), y directo al cierre. El invariante del cierre no se negocia: contrato visible — puede ser breve — antes de pedir confirmación. Guardá el handoff solo si el usuario lo pide, pausa, o elige encadenar la spec (que necesita la ruta).
+
+### Límite de 20
+
+- Si la estimación probable supera 20, no empieces la entrevista completa: proponé una división en bloques de hasta 20 preguntas, explicá las dependencias entre bloques, recomendá cuál abordar primero y dejá que el usuario elija con `question` (si la división produce más de 4 bloques, los primeros según el orden recomendado van como opciones y el resto vía "Other"). Los bloques no elegidos quedan como ramas pendientes de la sesión.
+- Cada pregunta presentada en una ronda cuenta individualmente contra el tope, aunque varias salgan en la misma llamada.
+- Si durante la entrevista aparecen ramas nuevas y se llega a 20: pausá, mostrá lo resuelto, lo pendiente y una división recomendada para continuar en otra sesión (la exportación de cuestionario queda disponible).
+- La configuración, la elección de bloque, las preguntas de reanudación y la confirmación final no cuentan contra las 20.
 
 ## Configuración
 
-Elegir la modalidad:
+Salvo en el atajo liviano, después del mapa y antes de la primera pregunta, elegí la modalidad con `question` (o en texto plano si no está disponible):
 
-- `Grillado rápido`.
-- `Grillado pregunta a pregunta`.
+- `Por rondas`: hasta 4 preguntas ya desbloqueadas por llamada.
+- `Grillado rápido`: propuestas en bloque; el usuario señala cuáles revisar.
+- `Pregunta a pregunta`: una por vez; cada respuesta moldea la siguiente.
+- Marcá como recomendada la que salió del diagnóstico del reconocimiento y explicá el motivo en la descripción.
 
-Si el usuario ya fijó una elección en su pedido, no volver a preguntarla.
+Si el usuario ya fijó la modalidad en su pedido, no la vuelvas a preguntar.
+
+## Entrevista por rondas
+
+El motor default. Cada ronda presenta la **frontera de dependencias**: solo las decisiones cuyas dependencias ya están resueltas.
+
+1. Calculá la frontera actual del árbol.
+2. **Hechos sin bloqueo.** Si una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, no se lo preguntes al usuario: lanzá la exploración y no frenes la ronda. Solo esperan las preguntas que dependen de ese hecho; el resto de la frontera se pregunta ya. Cuando vuelve el hecho, sumalo a los hechos comprobados y recalculá la frontera para la ronda siguiente. En opencode no hay exploración en background: explorá inline, o delegá en el subagente `explore` con la tool `task`, antes de llamar a `question`. La ronda sale cuando vuelve la exploración; las preguntas que dependen del hecho igual pasan a la ronda siguiente, para formularlas con el hecho ya incorporado.
+3. Si dos preguntas de la frontera están acopladas de hecho (la respuesta de una cambiaría cómo se formula la otra o sus opciones), dejá una para la ronda siguiente.
+4. Armá UNA llamada a `question` con hasta 4 preguntas de la frontera, priorizando las que desbloquean más ramas. Cada pregunta: autocontenida, con un `header` corto de su sección, 2 a 4 opciones mutuamente comprensibles, la recomendada primera y con "(Recommended)" al final de su label, con su trade-off en la descripción, y `multiple: true` solo si las respuestas pueden coexistir. Sin `question`, la misma ronda va en texto plano con el formato de «Interacción en opencode» y terminás el turno.
+5. Con las respuestas: registrá cada decisión, actualizá el árbol y recalculá la frontera. Ahí se abre la ronda siguiente.
+6. Si una respuesta (típicamente vía "Other") contradice una decisión ya resuelta o invalida decisiones posteriores: mostrá la contradicción como mensaje visible, recalculá lo afectado y volvé a preguntar solo eso.
+7. Repetí hasta agotar las ramas del alcance elegido.
+8. Si el usuario cancela una ronda, no abras otra: escribí un resumen visible de lo resuelto y lo pendiente, y ofrecé pausar (con exportación de cuestionario disponible).
 
 ## Entrevista pregunta a pregunta
 
@@ -126,3 +168,4 @@ Cuando las ramas del alcance estén resueltas:
 - No crear ni modificar `CONTEXT.md`, glosarios ni ADRs.
 - No persistir recomendaciones como decisiones antes de la aprobación del usuario.
 - No hacer preguntas compuestas para esquivar el límite de 20.
+- No agrupes en una misma ronda una decisión y otra que depende de ella.
