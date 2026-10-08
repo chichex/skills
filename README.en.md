@@ -250,6 +250,8 @@ Two of the **foundational skills** are **based on** **[Matt Pocock](https://gith
 
 In addition, `grill`'s **questionnaire export** is inspired by his `to-questionnaire` skill.
 
+`harness-port`'s writing reference (`.claude/skills/harness-port/references/escritura.md`, internal to this repo) adapts Matt Pocock's `writing-for-agents` (MIT).
+
 The **SDD** family (`sdd-init`, `sdd-spec`, `sdd-run`) is my own: inspired by the same way of working (tracer bullets, tests-first, spec → implementation) as his `to-spec` / `to-tickets` / `implement` / `wayfinder` skills, but with different artifacts — the `.sdd/project.md` autonomy contract and the verifiability verdict.
 
 `find-skills` is kept exactly as installed from [`vercel-labs/skills`](https://skills.sh/vercel-labs/skills/find-skills); it is not my own skill.

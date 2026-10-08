@@ -1,9 +1,13 @@
 ---
 name: harness-port
-description: Portea y mantiene skills de este repo entre sus cuatro harnesses — Claude Code (claude/), Codex (codex/), opencode (opencode/) y Pi (pi/) — manteniendo la doctrina idéntica y cambiando solo la capa de interacción. Usar cuando el usuario quiera portear un skill a otro harness, crear la versión codex/opencode/pi/claude de un skill existente, propagar un cambio de un skill a sus otras versiones, o revisar consistencia entre harnesses.
+description: Portea y mantiene skills de este repo entre sus cuatro harnesses — Claude Code (claude/), Codex (codex/), opencode (opencode/) y Pi (pi/) — manteniendo la doctrina idéntica y cambiando solo la capa de interacción. Usar cuando el usuario quiera portear un skill a otro harness, crear la versión codex/opencode/pi/claude de un skill existente, propagar un cambio de un skill a sus otras versiones, o revisar consistencia entre harnesses. También al crear o editar un `SKILL.md`, un `agents/*.md`, un `agents/openai.yaml`, un `references/*.md` o un `CLAUDE.md`/`AGENTS.md` de este repo.
 ---
 
 Este repo mantiene una versión por harness de cada skill: una carpeta por skill dentro de `claude/`, `codex/`, `opencode/` y `pi/`, cada una con su `SKILL.md` y, opcionalmente, archivos de referencia. Las versiones comparten la doctrina y difieren SOLO en la capa de interacción. Este skill define qué se traduce, qué se copia intacto y cómo se verifica el resultado.
+
+## Antes de escribir
+
+Antes de crear o editar cualquier documento que un agente consume en este repo, leé [`references/escritura.md`](references/escritura.md) y aplicá su checklist al diff. Alcance: `SKILL.md`, `agents/*.md` (incluidos los de `pi-extensions/subagent/agents/`), `agents/openai.yaml`, `references/*.md` de los skills y `CLAUDE.md`/`AGENTS.md`. Define cómo se escribe; las secciones de abajo definen cómo se porta. En un porteo mandan las reglas de porteo: un hallazgo del checklist se reporta o se propaga a todas las versiones, no se corrige solo en el destino.
 
 ## Regla central
 
