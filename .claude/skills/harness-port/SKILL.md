@@ -5,6 +5,10 @@ description: Portea y mantiene skills de este repo entre sus cuatro harnesses �
 
 Este repo mantiene una versión por harness de cada skill: una carpeta por skill dentro de `claude/`, `codex/`, `opencode/` y `pi/`, cada una con su `SKILL.md` y, opcionalmente, archivos de referencia. Las versiones comparten la doctrina y difieren SOLO en la capa de interacción. Este skill define qué se traduce, qué se copia intacto y cómo se verifica el resultado.
 
+## Antes de crear o editar un SKILL.md
+
+Antes de crear o editar un `SKILL.md`, un `agents/openai.yaml` o un `CLAUDE.md`/`AGENTS.md`, leé [`references/escritura.md`](references/escritura.md) y aplicá su checklist al diff. Define cómo se escribe; las secciones de abajo definen cómo se porta.
+
 ## Regla central
 
 **La doctrina se portea idéntica; solo cambia la capa de interacción.** Doctrina es todo lo que define el comportamiento del skill: fases, principios, formatos de reporte, tablas, severidades, gates y sus opciones, secciones MUST DO / MUST NOT DO. Capa de interacción es únicamente: la tool de preguntas, la sintaxis de invocación (incluidas las referencias cruzadas a otros skills), los extras propios del harness y las menciones del harness en description y prosa.

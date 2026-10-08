@@ -248,6 +248,8 @@ Two of the **foundational skills** are **based on** **[Matt Pocock](https://gith
 | `grill` | `grilling` |
 | `tdd` | `tdd` |
 
+`harness-port`'s writing reference (`.claude/skills/harness-port/references/escritura.md`, internal to this repo) adapts Matt Pocock's `writing-for-agents` (MIT).
+
 In addition, `grill`'s **questionnaire export** is inspired by his `to-questionnaire` skill.
 
 The **SDD** family (`sdd-init`, `sdd-spec`, `sdd-run`) is my own: inspired by the same way of working (tracer bullets, tests-first, spec → implementation) as his `to-spec` / `to-tickets` / `implement` / `wayfinder` skills, but with different artifacts — the `.sdd/project.md` autonomy contract and the verifiability verdict.
