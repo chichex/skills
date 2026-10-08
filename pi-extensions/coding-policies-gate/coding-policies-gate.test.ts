@@ -702,14 +702,13 @@ for (const harness of HARNESSES) {
 			/coding policies[\s\S]*buenas prácticas[\s\S]*políticas de código/i,
 			"la description dispara con los pedidos esperados",
 		);
-		assert.match(split.fields.description ?? "", /"mis prácticas de TypeScript"/, "la description dispara para TypeScript");
-		assert.match(split.fields.description ?? "", /"mis prácticas de Node"/, "la description dispara para Node");
-		assert.match(split.fields.description ?? "", /"mis prácticas de React"/, "la description dispara para React");
-		assert.match(split.fields.description ?? "", /"mis prácticas de Next\.js"/, "la description dispara para Next.js");
-		assert.match(split.fields.description ?? "", /"mis prácticas de React Native"/, "la description dispara para React Native");
-		assert.match(split.fields.description ?? "", /"mis prácticas de Kotlin Multiplatform"/, "la description dispara para Kotlin Multiplatform");
-		assert.match(split.fields.description ?? "", /"mis prácticas de KMP"/, "la description dispara para KMP");
-		assert.match(split.fields.description ?? "", /"mis prácticas de KMM"/, "la description dispara para KMM");
+		const stacks = (split.fields.description ?? "").match(/"mis prácticas de …" \(([^)]*)\)/);
+		assert.ok(stacks, "la description dispara con una sola rama por stack");
+		assert.deepEqual(
+			stacks[1].split(", "),
+			["Go", "TypeScript", "Node", "React", "Next.js", "React Native", "Kotlin Multiplatform", "KMP", "KMM"],
+			"la rama única lista exactamente los nueve stacks aprobados",
+		);
 		assert.match(markdown, /`references\/typescript\.md` — TypeScript/, "la lista de referencias incluye TypeScript");
 		assert.match(markdown, /`references\/node\.md` — Node\.js/, "la lista de referencias incluye Node.js");
 		assert.match(markdown, /`references\/react\.md` — React/, "la lista de referencias incluye React");

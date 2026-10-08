@@ -238,6 +238,15 @@ test("issue-triage chains the confirmed stage in harnesses without orchestrator"
 	assert.equal(blocks.get("codex"), blocks.get("claude"), "codex diverge de claude en stage-chain");
 });
 
+test("codex issue-triage leaves run and quick-run as a ready command because their sidecars forbid implicit invocation", async () => {
+	const markdown = await readRepoFile("codex/issue-triage/SKILL.md");
+	assert.match(markdown, /Excepción de Codex[^\n]*run-existing-spec[^\n]*quick-run[^\n]*join-quick-run/);
+	for (const skill of ["sdd-run", "quick-run"]) {
+		const sidecar = await readRepoFile(`codex/${skill}/agents/openai.yaml`);
+		assert.match(sidecar, /allow_implicit_invocation:\s*false/, `${skill}: la excepción de issue-triage depende de esta política`);
+	}
+});
+
 test("claude and codex sdd-spec accept the chained triage target", async () => {
 	for (const harness of CHAINING_HARNESSES) {
 		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
