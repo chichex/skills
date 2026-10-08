@@ -27,18 +27,18 @@ Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. 
 Antes de entrevistar:
 
 1. Explorá el codebase cuando el tema dependa de él y resolvé todos los hechos comprobables relevantes.
-2. Buscá `CONTEXT-MAP.md`, `CONTEXT.md`, `docs/adr/` y handoffs previos en `.sdd/grills/`. Leé los relevantes para entender vocabulario y decisiones ya tomadas, sin modificarlos todavía.
+2. Buscá `CONTEXT-MAP.md`, `CONTEXT.md`, `docs/adr/` y handoffs previos en `.sdd/grills/`. Leé los relevantes para entender vocabulario y decisiones ya tomadas; son solo lectura, este skill nunca los escribe.
 3. Construí un árbol provisional de decisiones con secciones y dependencias explícitas: qué pregunta desbloquea a cuáles.
 4. Estimá preguntas mínimas, probables y máximas. La cifra operativa es la probable; presentala como estimación, no como promesa — una respuesta puede abrir o cerrar ramas.
 5. Diagnosticá la modalidad recomendada:
    - **Por rondas** (default) cuando el árbol es razonablemente estable, hay ramas independientes que se pueden preguntar en paralelo y corregir un rumbo es barato.
    - **Pregunta a pregunta** cuando las dependencias son densas (casi cada respuesta reformula la siguiente pregunta), hay contradicciones por resolver, decisiones costosas de revertir o alta probabilidad de que las respuestas abran ramas nuevas.
    - La cantidad de preguntas no es el criterio: lo que importa es cuánta adaptación exige el árbol.
-6. Mostrá un mapa breve como mensaje visible: objetivo de desambiguación, hechos ya comprobados, artefactos de dominio encontrados, supuestos, secciones del árbol con sus dependencias, estimación mínima/probable/máxima, alcance de la sesión, y modalidad recomendada con sus señales.
+6. Mostrá un mapa breve como mensaje visible: objetivo de desambiguación, hechos ya comprobados, docs de dominio existentes (solo lectura), supuestos, secciones del árbol con sus dependencias, estimación mínima/probable/máxima, alcance de la sesión, y modalidad recomendada con sus señales.
 
 ### Atajo liviano (1 a 3 preguntas)
 
-Si la estimación probable es de 1 a 3 preguntas, decilo en una línea (es el territorio de `/mini-grill`) y resolvelo liviano: sin mapa ni configuración (modo `standard`, salvo pedido explícito de documentación de dominio), todo en una sola ronda de `AskUserQuestion`, y directo al cierre. El invariante del cierre no se negocia: contrato visible — puede ser breve — antes de pedir confirmación. Guardá el handoff solo si el usuario lo pide, pausa, o elige encadenar la spec (que necesita la ruta).
+Si la estimación probable es de 1 a 3 preguntas, decilo en una línea (es el territorio de `/mini-grill`) y resolvelo liviano: sin mapa ni configuración, todo en una sola ronda de `AskUserQuestion`, y directo al cierre. El invariante del cierre no se negocia: contrato visible — puede ser breve — antes de pedir confirmación. Guardá el handoff solo si el usuario lo pide, pausa, o elige encadenar la spec (que necesita la ruta).
 
 ### Límite de 20
 
@@ -49,18 +49,13 @@ Si la estimación probable es de 1 a 3 preguntas, decilo en una línea (es el te
 
 ## Configuración
 
-Salvo en el atajo liviano, después del mapa y antes de la primera pregunta, elegí con UNA llamada a `AskUserQuestion` que trae dos preguntas:
+Salvo en el atajo liviano, después del mapa y antes de la primera pregunta, elegí la modalidad con `AskUserQuestion`:
 
-1. **Documentación**
-   - `Solo grill y handoff`: no modifica glosarios ni propone ADRs.
-   - `Grill + documentación de dominio`: cargá el skill `/domain-modeling` y mantené el `CONTEXT.md` correcto a medida que se confirman términos; después del handoff se evalúan ADRs uno por uno. Elegirla cuenta como el pedido explícito que exige la regla de contaminación cero (se pueden crear `CONTEXT.md` o `docs/adr/` aunque el repo no los use todavía), pero cada ADR conserva su gate de aprobación individual.
-   - Recomendá según la evidencia del reconocimiento: dominio si el repo ya mantiene esos artefactos y el tema los toca, o si el usuario pidió documentar; `Solo grill y handoff` en el resto de los casos.
-2. **Modalidad**
-   - `Por rondas`: hasta 4 preguntas ya desbloqueadas por llamada.
-   - `Pregunta a pregunta`: una por vez; cada respuesta moldea la siguiente.
-   - Marcá como recomendada la que salió del diagnóstico del reconocimiento y explicá el motivo en la descripción.
+- `Por rondas`: hasta 4 preguntas ya desbloqueadas por llamada.
+- `Pregunta a pregunta`: una por vez; cada respuesta moldea la siguiente.
+- Marcá como recomendada la que salió del diagnóstico del reconocimiento y explicá el motivo en la descripción.
 
-Si el usuario ya fijó una elección en su pedido — o llegó vía `/grill-with-domain-modeling`, que fija la documentación — no la vuelvas a preguntar.
+Si el usuario ya fijó la modalidad en su pedido, no la vuelvas a preguntar.
 
 ## Entrevista por rondas
 
@@ -72,8 +67,7 @@ El motor default. Cada ronda presenta la **frontera de dependencias**: solo las 
 4. Con las respuestas: registrá cada decisión, actualizá el árbol y recalculá la frontera. Ahí se abre la ronda siguiente.
 5. Si una respuesta (típicamente vía "Other") contradice una decisión ya resuelta o invalida decisiones posteriores: mostrá la contradicción como mensaje visible, recalculá lo afectado y volvé a preguntar solo eso.
 6. Repetí hasta agotar las ramas del alcance elegido.
-7. En modo de dominio, actualizá el `CONTEXT.md` correcto apenas quede confirmado un término, antes de la ronda siguiente.
-8. Si el usuario cancela una ronda, no abras otra: escribí un resumen visible de lo resuelto y lo pendiente, y ofrecé pausar (con exportación de cuestionario disponible).
+7. Si el usuario cancela una ronda, no abras otra: escribí un resumen visible de lo resuelto y lo pendiente, y ofrecé pausar (con exportación de cuestionario disponible).
 
 ## Entrevista pregunta a pregunta
 
@@ -87,9 +81,6 @@ Para pausar o guardar, escribí `.sdd/grills/<fecha>-<slug>.md` con:
 # Grill — <tema>
 <!-- Estado: paused|finalized. Proyecto: <ruta absoluta>. Fuente: <issue o pedido>. -->
 <!-- SDD-Tracking: version=1; type=grill; state=<paused|finalized>; issue=<#NN|owner/repo#NN|none>; grill=<ref>; project=<ref> -->
-
-## Modo
-<standard|domain-modeling>
 
 ## Hechos comprobados
 ...
@@ -112,7 +103,7 @@ Para retomar:
 
 1. Si no se indicó una ruta, listá `.sdd/grills/*.md` por fecha.
 2. Pedí elegir con `AskUserQuestion` solo si hay más de un candidato razonable; si hay más de 4, ofrecé los más recientes como opciones y el resto vía "Other".
-3. Leé el archivo completo y contrastá sus hechos con el estado actual del repo; si difieren, mostrá la contradicción y resolvela antes de avanzar.
+3. Leé el archivo completo y contrastá sus hechos con el estado actual del repo; si difieren, mostrá la contradicción y resolvela antes de avanzar. Los handoffs viejos pueden traer una sección `## Modo`: ignorala, ya no existe.
 4. Mostrá tema, decisiones resueltas, ramas pendientes y la próxima frontera.
 5. Reevaluá la modalidad para lo pendiente si cambió el panorama; no repitas decisiones ya resueltas salvo que el usuario quiera revisarlas.
 6. No modifiques un handoff `finalized`; para revisarlo creá un archivo nuevo con sufijo `-rev-N`.
@@ -164,14 +155,12 @@ Cerrá solo cuando las ramas dentro del alcance elegido estén resueltas.
 
 3. **Persistencia final.** Tras confirmar (con o sin encadenado), guardá el mismo contenido del contrato como handoff `finalized` en `.sdd/grills/<fecha>-<slug>.md` con el formato de "Persistencia y reanudación", e informá la ruta.
 
-4. **ADRs separados** (solo en modo de dominio). Recién después de congelar el handoff — y antes de encadenar la spec, si el usuario eligió crearla —, evaluá cada decisión contra los 3 criterios de `/domain-modeling` (costo concreto de revertir, pregunta concreta de un lector sin contexto, alternativa concreta descartada con su motivo). Si ninguna califica, informá que el cierre produce cero ADRs. Por cada candidato que sí: mostrá la evidencia, la ruta y el borrador completo como mensaje visible, y abrí un `AskUserQuestion` dedicado únicamente a ese ADR. Nunca mezcles la confirmación del handoff con la aprobación de un ADR.
-
-5. **Encadenar la spec.** Si eligió crear la spec, cargá el skill `sdd-spec` y continuá con `--from-grill <ruta-del-handoff>`. Este es el último paso del cierre: en modo de dominio va recién después de resolver los ADRs. El handoff confirmado es fuente autoritativa: la spec no vuelve a preguntar decisiones ya cerradas, y sigue exigiendo `.sdd/project.md`.
+4. **Encadenar la spec.** Si eligió crear la spec, cargá el skill `sdd-spec` y continuá con `--from-grill <ruta-del-handoff>`. Este es el último paso del cierre. El handoff confirmado es fuente autoritativa: la spec no vuelve a preguntar decisiones ya cerradas, y sigue exigiendo `.sdd/project.md`.
 
 ## Límites
 
 - No implementes el plan ni escribas la spec definitiva desde este skill.
-- No crees artefactos de dominio en modo `Solo grill y handoff`.
+- No crees ni modifiques `CONTEXT.md`, glosarios ni ADRs.
 - No persistas recomendaciones como decisiones antes de la aprobación del usuario.
 - No hagas preguntas compuestas para esquivar el límite de 20.
 - No agrupes en una misma ronda una decisión y otra que depende de ella.

@@ -56,7 +56,6 @@ function snapshot(overrides: Partial<GrillSnapshot> = {}): GrillSnapshot {
 		projectPath: ROOT,
 		projectName: "current repo",
 		status: "active",
-		workflowMode: "standard",
 		interviewMode: "adaptive",
 		createdAt: timestamp,
 		updatedAt: timestamp,
@@ -277,12 +276,11 @@ test("CA-5: plain Markdown is ignored while a malformed SDD marker remains diagn
 	assert.equal(result.entries[0]?.handoffPaths[0], `${ROOT}/.sdd/grills/broken-marker.md`);
 });
 
-test("CA-10: v4 snapshots normalize explicitly without losing inferred issue or workflow behavior", () => {
+test("CA-10: v4 snapshots normalize explicitly without losing the inferred issue and without a workflow mode", () => {
 	const legacy = snapshot({
 		version: 4,
 		id: "issue-42-domain",
 		topic: "Issue #42 domain review",
-		workflowMode: undefined as never,
 		decisions: [{
 			id: "domain-modeling",
 			title: "Modelado de dominio",
@@ -294,7 +292,7 @@ test("CA-10: v4 snapshots normalize explicitly without losing inferred issue or 
 	assert.ok(normalized.snapshot);
 	assert.equal(normalized.snapshot.version, 5);
 	assert.deepEqual(normalized.snapshot.sourceIssue, { number: 42 });
-	assert.equal(normalized.snapshot.workflowMode, "domain-modeling");
+	assert.equal("workflowMode" in normalized.snapshot, false);
 });
 
 test("CA-8/10: imported source remains compatible after a persisted continuity section is appended", () => {

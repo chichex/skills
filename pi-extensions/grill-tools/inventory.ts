@@ -15,7 +15,6 @@ export function isGrillHandoffCandidatePath(path: string): boolean {
 	return name.endsWith(".md") && !name.endsWith("-cuestionario.md");
 }
 
-export type GrillWorkflowMode = "standard" | "domain-modeling";
 export type GrillInterviewMode = "unselected" | "fast" | "rounds" | "adaptive";
 export type GrillStatus = "active" | "paused" | "finalized";
 
@@ -78,7 +77,6 @@ export interface GrillSnapshot {
 	projectPath: string;
 	projectName: string;
 	status: GrillStatus;
-	workflowMode: GrillWorkflowMode;
 	interviewMode: GrillInterviewMode;
 	sourceIssue?: GrillIssueReference;
 	createdAt: string;
@@ -254,21 +252,6 @@ export function normalizeGrillSnapshot(value: unknown): NormalizedSnapshotResult
 
 	const createdAt = nonEmptyString(value.createdAt) ?? new Date(0).toISOString();
 	const updatedAt = nonEmptyString(value.updatedAt) ?? createdAt;
-	let workflowMode: GrillWorkflowMode;
-	if (value.workflowMode === "domain-modeling" || value.workflowMode === "standard") {
-		workflowMode = value.workflowMode;
-	} else {
-		const domainDecision = (value.decisions as unknown[]).find((decision) => {
-			if (!isRecord(decision)) return false;
-			const identity = `${nonEmptyString(decision.id) ?? ""} ${nonEmptyString(decision.title) ?? ""}`.toLowerCase();
-			return identity.includes("domain modeling") || identity.includes("modelado de dominio");
-		});
-		const agreement = isRecord(domainDecision)
-			? (nonEmptyString(domainDecision.agreement) ?? "").toLowerCase()
-			: "";
-		const explicitlyDisabled = /\b(no|false|standard|disabled|desactivad[oa]|sin documentaci[oó]n)\b/.test(agreement);
-		workflowMode = domainDecision && !explicitlyDisabled ? "domain-modeling" : "standard";
-	}
 	const interviewMode: GrillInterviewMode = value.interviewMode === "fast"
 		|| value.interviewMode === "rounds"
 		|| value.interviewMode === "adaptive"
@@ -299,7 +282,6 @@ export function normalizeGrillSnapshot(value: unknown): NormalizedSnapshotResult
 			projectPath: resolve(recoveredProjectPath),
 			projectName: nonEmptyString(value.projectName) ?? basename(recoveredProjectPath),
 			status,
-			workflowMode,
 			interviewMode,
 			...(sourceIssue ? { sourceIssue } : {}),
 			createdAt,

@@ -120,12 +120,12 @@ test("Pi issue-triage shows its result before one terminal submission and keeps 
 	assert.doesNotMatch(skill, /confirmaci[oó]n s[oó]lo registra `selectedRoute`; no autoriza/i);
 });
 
-test("grill resume validates materialization before any import and domain modeling cannot auto-continue on finalize", async () => {
+test("grill resume validates materialization before any import and finalize no longer depends on a domain mode", async () => {
 	const [source, skill] = await Promise.all([
 		readFile(new URL("../grill-tools/index.ts", import.meta.url), "utf8"),
 		readFile(new URL("../../pi/grill/SKILL.md", import.meta.url), "utf8"),
 	]);
-	assert.match(source, /allowsFinalizeSpecContinuation\(snapshot\.workflowMode\)/);
+	assert.doesNotMatch(source, /allowsFinalizeSpecContinuation|workflowMode|domain.modeling/);
 	const actionStart = source.indexOf("async function performGrillAction");
 	assert.ok(actionStart >= 0);
 	const actionRegion = source.slice(actionStart, source.indexOf("export default function", actionStart));
@@ -135,8 +135,8 @@ test("grill resume validates materialization before any import and domain modeli
 		assert.ok(actionRegion.indexOf(mutation) > firstPrepare, mutation);
 	}
 	assert.match(actionRegion, /queueWithRollback/);
-	assert.match(skill, /domain-modeling[\s\S]*continueWithSpec:\s*false/i);
-	assert.match(skill, /ADRs[\s\S]*select_grill_session/is);
+	assert.doesNotMatch(skill, /domain.modeling|workflowMode/);
+	assert.match(skill, /continueWithSpec:\s*true/);
 });
 
 test("workflow validation, route contracts, and direct descriptors have one implementation", async () => {

@@ -474,7 +474,7 @@ test("CA-10: ningun agents/ bajo claude/, opencode/ o pi/; los sidecars de codex
 	assert.deepEqual(forbidden, [], `agents/ prohibido fuera de la raiz: ${forbidden.join(", ")}`);
 
 	const codexSidecars = allPaths.filter((path) => /^codex\/[^/]+\/agents\/openai\.yaml$/.test(path));
-	assert.ok(codexSidecars.length >= 17, "los sidecars de codex siguen presentes y no los toca este gate");
+	assert.ok(codexSidecars.length >= 15, "los sidecars de codex siguen presentes y no los toca este gate");
 });
 
 test("CA-11: READMEs, harness-port y el contrato documentan el layer de agentes", async () => {
@@ -1010,4 +1010,77 @@ test("autotest (issue #44): un patron de doctrina ausente en el port Pi falla co
 	const claudeOnly = "publicar los comments que genera `--comment` es parte del trabajo";
 	assert.notDeepEqual(checkOrderedPatterns(claudeOnly, [reviewerDoctrine("pi")[7]!]), []);
 	assert.deepEqual(checkOrderedPatterns(claudeOnly, [reviewerDoctrine("claude")[7]!]), []);
+});
+
+test("install.sh poda los skills administrados retirados y respeta los no administrados, en todos los destinos", async () => {
+	const root = await mkdtemp(join(tmpdir(), "chichex-prune-"));
+	try {
+		const fixtureRepo = join(root, "repo");
+		const { copyFile } = await import("node:fs/promises");
+		await mkdir(fixtureRepo, { recursive: true });
+		await copyFile(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+		const dests = {
+			claude: join(root, "dest", "claude-skills"),
+			codex: join(root, "dest", "codex-skills"),
+			opencode: join(root, "dest", "opencode-skills"),
+			pi: join(root, "dest", "pi-skills"),
+		};
+		const sentinel = join(root, "dest", "sentinel");
+		await mkdir(join(root, "dest"), { recursive: true });
+		await writeFile(sentinel, "no tocar");
+		for (const harness of Object.keys(dests)) {
+			await mkdir(join(fixtureRepo, harness, "live-skill"), { recursive: true });
+			await writeFile(join(fixtureRepo, harness, "live-skill", "SKILL.md"), "---\nname: live-skill\n---\n");
+		}
+		for (const [harness, dest] of Object.entries(dests)) {
+			for (const name of ["retired-skill", "user-skill"]) {
+				await mkdir(join(dest, name), { recursive: true });
+				await writeFile(join(dest, name, "SKILL.md"), `${harness} ${name}`);
+			}
+			// retired-skill figura en el manifest; user-skill no. "../sentinel" es un
+			// nombre hostil que la poda nunca debe resolver fuera del destino.
+			await writeFile(join(dest, ".chichex-skills-managed"), "retired-skill\n../sentinel\n");
+		}
+		const configFile = join(root, "dest", "codex-config.toml");
+		await writeFile(
+			configFile,
+			[
+				"# >>> chichex/skills: prefer Codex over Pi >>>",
+				"[[skills.config]]",
+				`path = "${join(dests.pi, "retired-skill", "SKILL.md")}"`,
+				"enabled = false",
+				"# <<< chichex/skills: prefer Codex over Pi <<<",
+				"",
+			].join("\n"),
+		);
+
+		const result = runInstaller(join(fixtureRepo, "install.sh"), ["all"], {
+			HOME: join(root, "home"),
+			CLAUDE_SKILLS_DIR: dests.claude,
+			CLAUDE_AGENTS_DIR: join(root, "dest", "agents"),
+			CLAUDE_PLUGIN_REGISTRY_FILE: join(root, "no-registry.json"),
+			PI_SKILLS_DIR: dests.pi,
+			PI_EXTENSIONS_DIR: join(root, "dest", "pi-extensions"),
+			PI_THEMES_DIR: join(root, "dest", "pi-themes"),
+			CODEX_SKILLS_DIR: dests.codex,
+			CODEX_CONFIG_FILE: configFile,
+			OPENCODE_SKILLS_DIR: dests.opencode,
+			PATH: process.env.PATH ?? "",
+		});
+		assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+
+		for (const [harness, dest] of Object.entries(dests)) {
+			assert.equal(await absolutePathExists(join(dest, "retired-skill")), false, `${harness}: el skill administrado retirado debe podarse`);
+			assert.ok(await absolutePathExists(join(dest, "user-skill", "SKILL.md")), `${harness}: el skill no administrado debe sobrevivir`);
+			assert.ok(await absolutePathExists(join(dest, "live-skill", "SKILL.md")), `${harness}: el skill vigente se instala`);
+			const manifest = await readFile(join(dest, ".chichex-skills-managed"), "utf8");
+			assert.match(manifest, /^live-skill$/m, `${harness}: el manifest registra el skill vigente`);
+			assert.doesNotMatch(manifest, /retired-skill|sentinel/, `${harness}: el manifest se reescribe sin lo podado ni nombres hostiles`);
+		}
+		assert.equal(await readFile(sentinel, "utf8"), "no tocar", "un nombre hostil del manifest no puede borrar fuera del destino");
+		const config = await readFile(configFile, "utf8");
+		assert.doesNotMatch(config, /retired-skill/, "el bloque de precedencia de Codex no conserva entradas de skills retirados");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });

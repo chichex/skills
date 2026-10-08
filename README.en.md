@@ -27,10 +27,8 @@ The disciplines SDD builds on — which I also use standalone, outside the pipel
 
 | Skill | What it does |
 |---|---|
-| **`grill`** | A relentless interview about a plan or design **before** building. In all four harnesses it starts with an upfront reconnaissance (code, domain docs, previous handoffs) that builds the decision tree with its dependencies and persists and resumes sessions in `.sdd/grills/` (Pi resumes from its global runtime snapshot, but every pause or close also writes the interoperable handoff into the project's `.sdd/grills/`), can export the pending decisions as a self-contained questionnaire for a stakeholder without an agent, and on close chains into `sdd-spec --from-grill`. Pi offers **Quick grilling**, **Rounds**—up to 4 independent decisions per `ask_user_questions` call—and one question at a time; Claude Code also traverses the frontier in rounds or 1×1 and adds a lightweight shortcut for 1-3 questions. In all four harnesses it can also maintain domain documentation. |
+| **`grill`** | A relentless interview about a plan or design **before** building. In all four harnesses it starts with an upfront reconnaissance (code, domain docs, previous handoffs) that builds the decision tree with its dependencies and persists and resumes sessions in `.sdd/grills/` (Pi resumes from its global runtime snapshot, but every pause or close also writes the interoperable handoff into the project's `.sdd/grills/`), can export the pending decisions as a self-contained questionnaire for a stakeholder without an agent, and on close chains into `sdd-spec --from-grill`. Pi offers **Quick grilling**, **Rounds**—up to 4 independent decisions per `ask_user_questions` call—and one question at a time; Claude Code also traverses the frontier in rounds or 1×1 and adds a lightweight shortcut for 1-3 questions. |
 | **`mini-grill`** *(Codex/Claude/opencode)* | An express `grill`: disambiguates a single request in one to three questions (recommended option first) and confirms the interpretation before acting. If too many decisions surface, it hands off to the full `grill`. |
-| **`grill-with-domain-modeling`** *(Codex/Claude/opencode)* | A `grill` that also maintains the domain docs (`CONTEXT.md` + ADRs) as decisions get resolved. In all four harnesses this mode can also be selected inside `grill`; in Claude Code this skill is a wrapper that pins that choice and skips the configuration question. |
-| **`domain-modeling`** | Keeps the domain model alive while designing: challenges terms, sharpens fuzzy language, and writes the glossary (`CONTEXT.md`) and decisions (`docs/adr/`) the moment they crystallize. Zero-contamination rule: it never introduces the practice into a repo that doesn't already use it. |
 | **`tdd`** | A test-driven development reference: the red → green loop, what makes a good test, where tests live (seams), the anti-patterns. Includes `mocking` and `tests` guides. Available in all four harnesses; `sdd-run` references its doctrine when declaring the plan's seams and in the tests-first step. |
 | **`coding-policies`** | Generates `.sdd/coding-policies.md` (or the path you ask for) in the project: a self-contained file with an always-included cross-cutting Clean Code and SOLID baseline —SRP, healthy size signals, and protection against over-splitting— plus your per-stack practices as short MUST/SHOULD rules with their rationale and gate. It detects the repo's stacks (Go, TypeScript, Node, React, Next.js, React Native, Kotlin Multiplatform, Kotlin Android) and links the file, with your confirmation, from `CLAUDE.md`, `AGENTS.md` or `.sdd/project.md`. Regenerating rewrites everything except the "Ajustes de este proyecto" section (project adjustments), which is preserved verbatim. It ships content for Go, TypeScript, Node, React, Next.js, React Native, and Kotlin Multiplatform; Kotlin Android is detected but reported as "sin prácticas definidas todavía". `sdd-init` references it as a `guia` when it exists and offers to generate it otherwise. Available in all four harnesses. |
 | **`code-review`** *(Codex/Pi/opencode)* | Reviews a PR across three separate axes—correctness and risk, standards, and spec—runs available checks, and reports evidence-backed findings with an exact preview. By default it posts the comments to GitHub as a single COMMENT review; `--no-publish` keeps them in the conversation only. It never approves or requests changes. |
@@ -42,7 +40,7 @@ The disciplines SDD builds on — which I also use standalone, outside the pipel
 | **`find-skills`** *(Codex/Pi)* | Searches the open ecosystem for installable skills through `npx skills`. Vendored from `vercel-labs/skills`. |
 | **`yt-summary`** *(Codex/Claude)* | Downloads a single YouTube subtitle track with `yt-dlp` and guides a summary with a TL;DR, key points, and timestamps. |
 
-SDD doesn't replace these skills — it orchestrates them. The design that precedes a spec is sharpened with `grill` and `domain-modeling`, and `sdd-run` implements following the `tdd` discipline.
+SDD doesn't replace these skills — it orchestrates them. The design that precedes a spec is sharpened with `grill`, and `sdd-run` implements following the `tdd` discipline.
 
 Separately, the repo has an **internal skill** at `.claude/skills/harness-port/`: it guides porting and maintaining skills across the four harnesses (identical doctrine, only the interaction layer changes — question tool, invocation syntax, extras like the `agents/openai.yaml` sidecar in Codex or the `compatibility` field in Pi), with the codex/pi `code-review` pair as the canonical example. It's a Claude Code project skill: it only loads while working inside this repo, and it isn't distributed by `install.sh` or the plugin.
 
@@ -54,7 +52,7 @@ The only editable source is `shared/coding-policies/references/`. `clean-code.md
 
 ### Pi integration
 
-In Pi, `grill` is the single interview entry point: the user chooses between handoff only and maintaining domain documentation as well. The current rail uses structured signals and skills materialized from Pi's canonical provenance; entrypoints no longer merely inject slash skills as text.
+In Pi, `grill` is the single interview entry point: it only disambiguates and produces the handoff, and never writes domain documentation. The current rail uses structured signals and skills materialized from Pi's canonical provenance; entrypoints no longer merely inject slash skills as text.
 
 #### Orchestrated rail and session boundaries
 
@@ -223,7 +221,7 @@ Default destinations: `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~
 
 Because Codex also discovers Pi skills under `~/.agents/skills` and does not merge duplicate names, installing the Codex set adds a managed block to `${CODEX_HOME:-~/.codex}/config.toml`. It disables only the Pi copies that have an equivalent under `codex/`; Pi keeps using its files normally. The rest of `config.toml` is preserved and later runs update the same block without duplicating it. Set `CODEX_DEDUPLICATE_PI_SKILLS=0` to skip this change or `CODEX_CONFIG_FILE` to target another config.
 
-To **update** later, just run `./install.sh` again — it does the `pull` for you.
+To **update** later, just run `./install.sh` again — it does the `pull` for you. It also **prunes**, in each destination, the skills this repo installed earlier (listed in the destination's hidden `.chichex-skills-managed` manifest) and has since retired, such as `domain-modeling` and `grill-with-domain-modeling`; skills this repo did not install are left alone.
 
 If you'd rather do it by hand, it's a plain copy:
 
@@ -243,13 +241,11 @@ Once installed, Codex invokes them as `$grill`, `$code-review`, `$sdd-spec`, and
 
 ## Credits
 
-Four of the **foundational skills** are **based on** **[Matt Pocock](https://github.com/mattpocock)**'s skills — from his [mattpocock/skills](https://github.com/mattpocock/skills) repo (MIT); `mini-grill` is my own stripped-down variant of `grill`:
+Two of the **foundational skills** are **based on** **[Matt Pocock](https://github.com/mattpocock)**'s skills — from his [mattpocock/skills](https://github.com/mattpocock/skills) repo (MIT); `mini-grill` is my own stripped-down variant of `grill`:
 
 | In this repo | Matt Pocock's original |
 |---|---|
 | `grill` | `grilling` |
-| `grill-with-domain-modeling` | `grill-with-docs` |
-| `domain-modeling` | `domain-modeling` |
 | `tdd` | `tdd` |
 
 In addition, `grill`'s **questionnaire export** is inspired by his `to-questionnaire` skill.

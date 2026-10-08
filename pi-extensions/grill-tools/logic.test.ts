@@ -7,7 +7,6 @@ import { test } from "node:test";
 
 import { parseSddArtifact } from "../sdd-artifacts/index.ts";
 import {
-	allowsFinalizeSpecContinuation,
 	composeHandoffMarkdown,
 	grillMetadataFromSnapshot,
 	handoffBelongsToSession,
@@ -23,7 +22,6 @@ function makeSnapshot(overrides: Partial<HandoffSnapshot> = {}): HandoffSnapshot
 		topic: "Rate limit por IP",
 		projectPath: "/workspace/demo",
 		status: "paused",
-		workflowMode: "standard",
 		createdAt: "2026-08-08T14:00:00.000Z",
 		decisions: [{ title: "Ventana", agreement: "deslizante de 60 segundos" }],
 		pendingBranches: [{ title: "Persistencia", description: "redis o memoria" }],
@@ -36,11 +34,6 @@ const MARKER_LINE = /^<!--\s*SDD-Tracking\s*:.*-->$/i;
 function markerCount(markdown: string): number {
 	return markdown.split("\n").filter((line) => MARKER_LINE.test(line.trim())).length;
 }
-
-test("solo el modo standard puede encadenar spec durante finalize", () => {
-	assert.equal(allowsFinalizeSpecContinuation("standard"), true);
-	assert.equal(allowsFinalizeSpecContinuation("domain-modeling"), false);
-});
 
 test("slugify normaliza acentos, espacios y mayusculas", () => {
 	assert.equal(slugify("Sesión de diseño"), "sesion-de-diseno");
@@ -91,13 +84,12 @@ test("composeHandoffMarkdown emite el template interoperable y es determinista",
 	);
 	const headings = lines.filter((line) => line.startsWith("## "));
 	assert.deepEqual(headings, [
-		"## Modo",
 		"## Hechos comprobados",
 		"## Decisiones resueltas",
 		"## Ramas pendientes",
 		"## Handoff",
 	]);
-	assert.ok(markdown.includes("standard"));
+	assert.ok(!markdown.includes("## Modo"));
 	assert.ok(markdown.includes("Se acordo limitar por IP."));
 	assert.ok(markdown.includes("1. Ventana — deslizante de 60 segundos"));
 	assert.ok(markdown.includes("- Persistencia — redis o memoria"));

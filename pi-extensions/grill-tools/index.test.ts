@@ -205,7 +205,6 @@ test("grill_session persists interviewMode and refuses checkpoints before it is 
 			action: "create",
 			topic: "Round persistence",
 			projectPath,
-			workflowMode: "standard",
 			estimate: { min: 2, likely: 4, max: 6 },
 		},
 		undefined,
@@ -227,6 +226,17 @@ test("grill_session persists interviewMode and refuses checkpoints before it is 
 			{ cwd: projectPath },
 		),
 		/configure.*interviewMode/i,
+	);
+
+	await assert.rejects(
+		tool.execute(
+			"configure-unselected",
+			{ action: "configure", sessionId: created.details.snapshot.id, interviewMode: "unselected" },
+			undefined,
+			undefined,
+			{ cwd: projectPath },
+		),
+		/configure requires interviewMode/i,
 	);
 
 	const configured = await tool.execute(
@@ -292,7 +302,6 @@ test("CA-1/4/6: /grills and select_grill_session expose the same handoff and sna
 		projectPath,
 		projectName: "inventory-project",
 		status: "active",
-		workflowMode: "standard",
 		interviewMode: "adaptive",
 		createdAt: timestamp,
 		updatedAt: timestamp,
@@ -568,7 +577,6 @@ test("CA-9: snapshot-backed spec dispatch quotes an unsafe logical grill id", as
 		projectPath,
 		projectName: "snapshot-spec-source",
 		status: "finalized",
-		workflowMode: "standard",
 		interviewMode: "adaptive",
 		createdAt: timestamp,
 		updatedAt: timestamp,

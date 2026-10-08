@@ -92,7 +92,7 @@ test("CA-3/7: resume import uses the physical root, explicit conservative defaul
 	assert.equal(imported.id, "portable/../id");
 	assert.equal(imported.projectPath, ROOT);
 	assert.equal(imported.status, "active");
-	assert.equal(imported.workflowMode, "domain-modeling");
+	assert.equal("workflowMode" in imported, false);
 	assert.equal(imported.interviewMode, "unselected");
 	assert.deepEqual(imported.estimate, { min: 0, likely: 0, max: 0 });
 	assert.equal(imported.questionLimit, 20);

@@ -417,7 +417,7 @@ test("Pi grill assumes low-risk reversible defaults and only asks material decis
 	assert.match(skill, /\[ASSUMED\]/);
 	assert.match(skill, /bajo riesgo[^\n]*reversible/i);
 	assert.match(skill, /alcance[^\n]*(?:datos|seguridad|privacidad)[^\n]*(?:migraci[oó]n|irreversible)/i);
-	assert.match(skill, /`standard`[^\n]*sin preguntar/i);
+	assert.match(skill, /Nunca escribe ni propone `CONTEXT\.md`, glosarios ni ADRs/);
 	assert.match(skill, /interviewMode[^\n]*sin[^\n]*pregunta/i);
 	assert.match(skill, /cero decisiones materiales[^\n]*cierre/i);
 	assert.match(skill, /confirmaci[oó]n final[^\n]*\[ASSUMED\]/i);
@@ -425,13 +425,8 @@ test("Pi grill assumes low-risk reversible defaults and only asks material decis
 
 test("Pi grill makes exhaustive mode override every assumption-pruning procedure", async () => {
 	const { readFile } = await import("node:fs/promises");
-	const [grill, domainModeling] = await Promise.all([
-		readFile(new URL("../../pi/grill/SKILL.md", import.meta.url), "utf8"),
-		readFile(new URL("../../pi/domain-modeling/SKILL.md", import.meta.url), "utf8"),
-	]);
+	const grill = await readFile(new URL("../../pi/grill/SKILL.md", import.meta.url), "utf8");
 	assert.match(grill, /`explicit-only`[^\n]*no apliques[^\n]*poda/i);
 	assert.ok((grill.match(/`explicit-only`/g) ?? []).length >= 6, "the override reaches recognition, resume, every interview mode, and persistence");
 	assert.match(grill, /summary[^\n]*pol[ií]tica de supuestos/i);
-	assert.match(domainModeling, /pedir expl[ií]citamente[^\n]*documentaci[oó]n de dominio/i);
-	assert.match(domainModeling, /selecci[oó]n autom[aá]tica[^\n]*no cuenta[^\n]*consentimiento/i);
 });

@@ -20,7 +20,6 @@ export interface HandoffSnapshot {
 	topic: string;
 	projectPath: string;
 	status: "active" | "paused" | "finalized";
-	workflowMode: "standard" | "domain-modeling";
 	sourceIssue?: { number: number; repository?: string };
 	createdAt: string;
 	summary?: string;
@@ -39,10 +38,6 @@ export interface HandoffPlan {
 
 const MARKER_LINE = /^[ \t]*<!--\s*SDD-Tracking\s*:.*-->[ \t]*$/i;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
-
-export function allowsFinalizeSpecContinuation(workflowMode: HandoffSnapshot["workflowMode"]): boolean {
-	return workflowMode === "standard";
-}
 
 export function slugify(text: string): string {
 	const slug = text
@@ -102,9 +97,6 @@ export function composeHandoffMarkdown(snapshot: HandoffSnapshot): string {
 	return [
 		`# Grill — ${snapshot.topic}`,
 		`<!-- Estado: ${state}. Proyecto: ${snapshot.projectPath}. Fuente: ${fuente}. -->`,
-		"",
-		"## Modo",
-		snapshot.workflowMode,
 		"",
 		"## Hechos comprobados",
 		snapshot.summary?.trim() || "(sin registrar en el snapshot)",
