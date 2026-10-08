@@ -161,7 +161,7 @@ Coding policies listas: <ruta> (<generado|regenerado>)
 
 ## Referencias
 
-- `references/clean-code.md` — baseline transversal siempre incluida, con responsabilidad única, tamaños saludables, SOLID y protección contra el sobre-split. Fuentes: criterios confirmados por el usuario, Google, ESLint, Detekt, golangci-lint, React, Martin Fowler y Robert C. Martin.
+- `references/clean-code.md` — baseline transversal siempre incluida, con responsabilidad única, tamaños saludables, SOLID, protección contra el sobre-split, smells como juicio y módulos profundos. Fuentes: criterios confirmados por el usuario, Google, ESLint, Detekt, golangci-lint, React, Martin Fowler, Robert C. Martin, John Ousterhout y Matt Pocock.
 - `references/go.md` — Go. Fuentes: prácticas del usuario observadas en sus repos, Uber Go Style Guide, Effective Go, Go Code Review Comments y Package Oriented Design.
 - `references/typescript.md` — TypeScript general y transversal al runtime o framework. Fuentes: criterios provistos por el usuario, documentación de TypeScript, typescript-eslint, Node.js, Zod y la guía de rendimiento del compilador.
 - `references/node.md` — Node.js. Fuentes: criterios provistos por el usuario y documentación oficial de Node.js y npm.

@@ -2,7 +2,7 @@
 # Mantenimiento: editar solo shared/coding-policies/references/clean-code.md y ejecutar `node scripts/sync-coding-policies-references.mjs`.
 stack: clean-code
 name: Clean Code y SOLID
-version: 2026-09-14
+version: 2026-10-08
 ---
 
 ### Responsabilidad única y cohesión
@@ -56,6 +56,17 @@ version: 2026-09-14
 - **MUST** Dar a toda unidad extraída un nombre específico del dominio o de la intención y entradas, salidas y efectos acotados. Porqué: nombres como `handlePart`, `processData` o `helper` desplazan líneas pero no explican responsabilidades. Gate: `revisión de nombres y firma` más tests del contrato
 - **MUST** Preservar localidad cuando varios pasos comparten una invariante, orden o estado y se entienden mejor de forma secuencial. Porqué: dispersar un flujo cohesivo entre muchos archivos obliga al lector a reconstruir contexto sin reducir el conocimiento necesario. Gate: `review de navegación` desde el entry point hasta el resultado
 - **SHOULD** Evitar wrappers pasantes, microarchivos y cadenas de funciones de una sola llamada salvo que marquen una frontera estable, mejoren el lenguaje o habiliten sustitución y tests. Porqué: cada indirección tiene costo cognitivo y debe comprar una separación verificable. Gate: `grafo de llamadas` o revisión de callers y contratos
+- **SHOULD** Aplicar el test de borrado antes de crear o conservar un módulo: si al borrarlo la complejidad desaparece era un pasamanos, y si reaparece repetida en N llamadores se ganaba su lugar. Porqué: un módulo profundo concentra mucho comportamiento detrás de una interfaz chica, mientras que uno superficial solo suma un salto. Gate: `review del PR` que describa qué complejidad reaparece y en cuántos llamadores
+- **SHOULD** No introducir un puerto o seam hasta tener dos adapters justificados, normalmente producción y test: un solo adapter es un seam hipotético y dos son un seam real. Porqué: una interfaz con una única implementación solo agrega indirección sin variación que proteger. Gate: `revisión de abstracciones` que nombre ambos adapters
+- **SHOULD** Asumir que la interfaz es la superficie de test: si para testear hay que entrar por detrás de la interfaz, el módulo probablemente tiene la forma equivocada. Porqué: tests acoplados a internos se rompen al refactorizar sin que cambie el comportamiento observable. Gate: `tests por la interfaz pública` que sobrevivan a un refactor interno
+
+### Smells como juicio
+
+- **MUST** Usar los smells como juicio y nunca como regla dura: nombrarlos como "posible envidia de datos" y citar el fragmento; si una regla documentada del repo avala el patrón señalado, esa regla gana sobre el smell. Porqué: son heurísticas de Fowler que señalan dónde mirar, no violaciones demostrables. Gate: `review del PR` con el smell nombrado como hallazgo de juicio
+- **MUST** No repetir como hallazgo lo que el formatter, el linter o el typechecker ya **falla**; las advertencias que la baseline deja como señal de revisión sí se evalúan. Porqué: duplicar una señal automática ensucia el review sin aportar criterio. Gate: `review del PR` sin hallazgos que dupliquen la salida de formatter, linter y typechecker
+- **SHOULD** Revisar duplicación y datos sin tipo: código duplicado (la misma lógica, por la misma razón de cambio, en más de un lugar → extraer la forma común y llamarla desde ambos), grupos de datos (los mismos campos o parámetros viajan juntos → agruparlos en un tipo) y obsesión por primitivos (un primitivo o string hace de concepto de dominio → darle un tipo pequeño propio). Porqué: la repetición de forma indica un concepto que todavía no tiene nombre. Gate: `review del diff` buscando formas repetidas
+- **SHOULD** Revisar acoplamiento entre objetos: envidia de datos (un método usa más datos ajenos que propios → moverlo hacia los datos), cadenas de mensajes (`a.b().c().d()` que el llamador no debería conocer → ocultar el recorrido tras un método del primer objeto) e intermediario (una clase cuya interfaz mayormente solo delega, sin marcar frontera, mejorar el lenguaje ni habilitar sustitución → eliminarla y llamar al destino real; ocultar el recorrido de una cadena de mensajes puede crear justo ese pasamanos, y el juicio decide cuál pesa más). Porqué: cada una hace que un cambio local se propague a quien solo debía pedir un resultado. Gate: `review de callers y contratos`
+- **SHOULD** Revisar cómo se propaga el cambio: switches repetidos (el mismo `switch` o cascada de `if` sobre el mismo tipo en varios sitios → polimorfismo o un mapa compartido) y cambio divergente (un módulo se edita por razones no relacionadas → separarlo para que cambie por una sola). Porqué: un cambio de negocio no debería exigir editar sitios dispersos ni un archivo debería ser tocado por actores distintos. Gate: `git log -- <archivo>` más revisión del diff
 
 ### Adopción y excepciones
 
@@ -79,3 +90,5 @@ version: 2026-09-14
 - [Refactoring: Extract Function](https://refactoring.com/catalog/extractFunction.html) — mecánica y motivación de una extracción con nombre significativo.
 - [Robert C. Martin: The Single Responsibility Principle](https://blog.cleancoder.com/uncle-bob/2014/05/08/SingleReponsibilityPrinciple.html) — razón de cambio, actores, cohesión y separación de responsabilidades.
 - [Robert C. Martin: SOLID Relevance](https://blog.cleancoder.com/uncle-bob/2020/10/18/Solid-Relevance.html) — alcance de los cinco principios y su aplicación a diseño y arquitectura.
+- [Martin Fowler: Refactoring, cap. 3 "Bad Smells in Code"](https://martinfowler.com/books/refactoring.html) — catálogo de smells (duplicación, envidia de datos, grupos de datos, obsesión por primitivos, switches repetidos, cambio divergente, cadenas de mensajes, intermediario) como heurísticas de juicio.
+- [John Ousterhout: A Philosophy of Software Design](https://web.stanford.edu/~ouster/cgi-bin/book.php) — módulos profundos: interfaces pequeñas con mucho comportamiento detrás, frente a módulos superficiales y pasamanos.

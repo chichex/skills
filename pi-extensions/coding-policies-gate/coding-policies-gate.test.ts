@@ -196,9 +196,12 @@ const CLEAN_CODE_SECTIONS = [
 	"Archivos, clases y módulos",
 	"SOLID sin ceremonia",
 	"Extracción sin sobre-split",
+	"Smells como juicio",
 	"Adopción y excepciones",
 	"Lectura ampliada",
 ];
+// Descripción de la baseline en cada SKILL.md: debe anunciar el contenido nuevo.
+const CLEAN_CODE_SKILL_LINE = /`references\/clean-code\.md` — baseline transversal siempre incluida[^\n]*smells[^\n]*módulos profundos[^\n]*Ousterhout/;
 const CLEAN_CODE_LINKS = [
 	"https://google.github.io/styleguide/cppguide.html#Write_Short_Functions",
 	"https://eslint.org/docs/latest/rules/max-lines-per-function",
@@ -213,6 +216,8 @@ const CLEAN_CODE_LINKS = [
 	"https://refactoring.com/catalog/extractFunction.html",
 	"https://blog.cleancoder.com/uncle-bob/2014/05/08/SingleReponsibilityPrinciple.html",
 	"https://blog.cleancoder.com/uncle-bob/2020/10/18/Solid-Relevance.html",
+	"https://martinfowler.com/books/refactoring.html",
+	"https://web.stanford.edu/~ouster/cgi-bin/book.php",
 ];
 const GO_SECTIONS = [
 	"Layout de paquetes",
@@ -938,6 +943,36 @@ test(`${SKILL}: clean-code fija umbrales como señales y prohíbe el sobre-split
 	for (const principle of ["SRP", "OCP", "LSP", "ISP", "DIP"]) assert.match(markdown, new RegExp(`\\b${principle}\\b`));
 });
 
+test(`${SKILL}: clean-code trata los smells como juicio y declara módulos profundos`, async () => {
+	const markdown = await readRepoFile(`${CANONICAL_REFERENCES}/clean-code.md`);
+	const smells = ruleLinesInSection(markdown, "Smells como juicio").join("\n");
+	for (const smell of [
+		"código duplicado",
+		"envidia de datos",
+		"grupos de datos",
+		"obsesión por primitivos",
+		"switches repetidos",
+		"cambio divergente",
+		"cadenas de mensajes",
+		"intermediario",
+	]) {
+		assert.match(smells, new RegExp(smell, "i"), `smell ${smell}`);
+		assert.match(smells, new RegExp(`${smell} \\([^\\n]*?→`, "i"), `smell ${smell} en formato qué es → arreglo`);
+	}
+	assert.doesNotMatch(smells, /\by y\b/, "sin conjunción duplicada");
+	assert.match(smells, /por la misma razón de cambio/i, "duplicación solo si comparte razón de cambio");
+	assert.match(smells, /interfaz mayormente solo delega[^\n]*frontera/i, "intermediario acotado por fronteras");
+	assert.match(smells, /ya \*\*falla\*\*/i, "solo se omite lo que ya falla en las herramientas");
+	assert.match(smells, /juicio[^\n]*nunca[^\n]*regla dura/i);
+	assert.match(smells, /regla documentada del repo[^\n]*gana/i);
+	assert.match(smells, /formatter[^\n]*linter[^\n]*typechecker/i);
+	const extraction = ruleLinesInSection(markdown, "Extracción sin sobre-split").join("\n");
+	assert.match(extraction, /test de borrado/i);
+	assert.match(extraction, /módulo profundo/i);
+	assert.match(extraction, /un solo adapter[^\n]*hipotético[^\n]*dos[^\n]*real/i);
+	assert.match(extraction, /interfaz es la superficie de test/i);
+});
+
 test(`${SKILL}: las secciones condicionales guardan cada regla`, async () => {
 	const reactNative = await readRepoFile(`claude/${SKILL}/references/react-native.md`);
 	const expoRules = ruleLinesInSection(reactNative, "Expo");
@@ -1175,3 +1210,9 @@ test("autotest: un archivo untracked se reporta como no trackeado y uno trackead
 		await rm(repoFile(scratch), { force: true });
 	}
 });
+
+for (const harness of HARNESSES) {
+	test(`${harness}/${SKILL}: SKILL.md anuncia smells y módulos profundos en la baseline`, async () => {
+		assert.match(await skillMarkdown(harness), CLEAN_CODE_SKILL_LINE);
+	});
+}
