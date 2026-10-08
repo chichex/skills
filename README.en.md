@@ -254,6 +254,8 @@ In addition, `grill`'s **questionnaire export** is inspired by his `to-questionn
 
 The **SDD** family (`sdd-init`, `sdd-spec`, `sdd-run`) is my own: inspired by the same way of working (tracer bullets, tests-first, spec → implementation) as his `to-spec` / `to-tickets` / `implement` / `wayfinder` skills, but with different artifacts — the `.sdd/project.md` autonomy contract and the verifiability verdict.
 
+Also, the **red loop before touching code** in `quick-run` and `sdd-run` adapts Matt Pocock's `diagnosing-bugs`, and the **Merge risk** section of the PR body adapts "Merge Danger" from his `pr` skill, which in turn comes from Dex Horthy's (Humanlayer) `show-me` skill. MIT.
+
 The "Smells como juicio" section of the `clean-code.md` baseline in `coding-policies` adapts Matt Pocock's `code-review`, and its deep-module rules (deletion test, seams, interface as test surface) adapt his `codebase-design` ([mattpocock/skills](https://github.com/mattpocock/skills), MIT).
 
 `find-skills` is kept exactly as installed from [`vercel-labs/skills`](https://skills.sh/vercel-labs/skills/find-skills); it is not my own skill.

@@ -65,6 +65,11 @@ Tenés hasta tres intentos honestos por verificación. Si al tercero sigue en ro
 reportalo como FALLA con diagnóstico concreto (qué probaste, qué dio, tu hipótesis) en vez
 de seguir intentando. Un cuarto intento disfrazado de "refactor" está prohibido.
 
+Si lo que está en rojo es un bug o un CA que sigue roto después de implementarlo, el primer intento
+es construir un loop rojo: un comando ya corrido que se pone rojo por ESE síntoma. Sin loop rojo no
+cuentan los intentos ni podés reportar FALLA "con diagnóstico": reportala como FALLA "sin loop rojo",
+con lo que probaste y lo que falta. El diagnóstico de una FALLA cita el comando del loop y su salida roja.
+
 ## 7. Prohibido debilitar una verificación
 
 Nunca aflojes un assert, borres un test que molesta, agregues `skip`/`only`, bajes un

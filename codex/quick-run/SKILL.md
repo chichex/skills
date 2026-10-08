@@ -70,16 +70,40 @@ Si el branch o path de worktree ya existe, si el base diverge o si no podés ais
 
 Una verificación inconclusa o roja congela ese ítem con diagnóstico; no se declara éxito parcial. Un timeout o proceso terminado por el harness no cuenta como verde ni como rojo de comportamiento hasta diagnosticarlo.
 
+### Ruta bug: loop rojo antes de tocar código
+
+Aplica cuando el checklist describe algo roto (un error, un resultado incorrecto, una regresión). Para comportamiento nuevo vale el paso 2 de arriba.
+
+1. **Gate**: prohibido formular hipótesis o editar código sin un comando ya corrido que se ponga rojo por ESE síntoma. Leer código para armar una teoría antes de que ese comando exista es el error que este gate previene. Sin loop rojo no corre el presupuesto de tres intentos.
+2. **Construí el loop**, en este orden de preferencia: test en el seam que alcanza el bug; `curl` o script contra el servicio levantado; CLI con un fixture; navegador headless; replay de un request o payload capturado; harness descartable; fuzz de unos 1000 inputs; bisección automatizada; comparar versión vieja contra nueva. Redactá los secretos antes de mostrar salidas.
+3. **Loop listo** cuando podés nombrar un comando que ya corriste (mostrá comando y salida), se pone rojo por el síntoma del reporte y no por otro cercano, es determinista y tarda segundos (en un intermitente, un comando que repite el disparador N veces y falla si alguna corrida falla). Si no podés armar ninguno, frená: listá qué probaste y pedí acceso, un artefacto capturado o permiso para instrumentar.
+4. **Intermitentes**: no busques una repro limpia, subí la tasa de reproducción (repetí el disparador 100 veces, en paralelo, con stress) hasta que falle una de cada dos.
+5. **Minimizá de a uno**: sacá inputs, callers, config y pasos de a uno, re-corriendo el loop; terminás cuando sacar cualquier cosa lo pone verde.
+6. **Hipótesis**: escribí de 3 a 5, cada una falsable («si X es la causa, cambiar Y lo hace desaparecer») y mostralas al usuario en el mensaje, sin bloquear.
+7. **Instrumentá**: debugger antes que logs; si son logs, con prefijo único `[DEBUG-xxxx]` y una variable por vez. En performance, medí un baseline y bisecá en vez de loguear.
+8. **Regresión antes del fix**: convertí la repro minimizada en un test en el seam que reproduce el patrón real del bug. Rojo, fix, verde, y re-corré el loop original. Si no hay un seam correcto, ese es el hallazgo: anotalo en el PR.
+9. **Limpieza**: `grep` del prefijo `[DEBUG-` hasta que no quede nada, borrá los prototipos y dejá la hipótesis correcta en el mensaje del commit.
+
 ### Gate de éxito, commits y PR
 
 El éxito exige checklist completo, verificaciones requeridas concluyentes, ningún proceso ni tarea pendiente, commits coherentes y worktree sin cambios sin commit.
 
 1. Commiteá pasos coherentes; no dejes cambios sin commit al declarar éxito.
 2. Si remote, `gh` y límites lo permiten, pusheá sólo la branch quick y creá un PR contra el branch default. Nunca publiques el checkout o branch default.
-3. El body del PR contiene, en este orden lógico: fuente canónica y `Closes #N`; checklist observable; evidencia exacta de comandos ejecutados; limitaciones/no ejecutado; y firma estándar del repo si existe.
+3. El body del PR contiene, en este orden lógico: fuente canónica y `Closes #N`; checklist observable; evidencia exacta de comandos ejecutados; limitaciones/no ejecutado; sección final `## Riesgo de merge` (ver abajo); y firma estándar del repo si existe.
 4. No merges el PR, no hagas force-push y no cierres manualmente la fuente.
 5. Si publicar no es posible, terminá en branch + commit local e informá el comando siguiente exacto para pushear o crear el PR.
 6. Remové el worktree tras un PR exitoso. Ante interrupción o rojo, preservalo y reportá la ruta.
+
+Sección final del body, antes de la firma: `## Riesgo de merge`, con este template:
+
+```markdown
+## Riesgo de merge
+Reversible con un revert: <sí | no>. <si no: qué cambió afuera del repo y cómo se vuelve atrás: backup, flag, script, comando>
+Si sale mal, le pega a: <usuarios, sistemas o flujos afectados, una frase>
+```
+
+«Reversible con un revert» es `no` cuando algo cambió afuera del repo y el revert no lo devuelve (datos, contratos ya consumidos, archivos persistidos, copias instaladas). Con `no`, el body dice cómo se vuelve atrás (backup, flag, script, comando); sin eso, el PR sale en `--draft` y el reporte lo lista en `pendiente humano` con su motivo.
 
 Para `join-quick-run`, la branch, el título, la fuente del body y `Closes #N` se derivan únicamente de `canonicalIssue`; listá `sources` originales como trazabilidad, sin cerrarlos ni convertirlos en autoridad.
 
