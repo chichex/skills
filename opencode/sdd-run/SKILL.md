@@ -47,6 +47,22 @@ La spec puede traer un `## Plan de entrega` con capas ordenadas (`| Capa | Etapa
 - **Force acotado.** El único force permitido es el `--force-with-lease` que `gh stack push`, `gh stack sync` y `gh stack rebase` aplican sobre `sdd/<slug>/*` del run. `git push --force` y `--force-with-lease` a mano siguen prohibidos, igual que cualquier push a main o a branches ajenos.
 <!-- sdd-run-stack:end -->
 
+## Diseño en el run
+
+<!-- sdd-run-design:start -->
+La Fase 1 lee `## Diseño` de `.sdd/project.md` junto con el resto del contrato. La Fase 2 imprime, junto al plan efímero y solo si la spec trae `## Diseño`, el plan de diseño, por pantalla o componente: tokens y componentes del inventario que reusa, qué crea nuevo y qué referencia o captura debe igualar.
+
+```text
+Plan de diseño
+- Finanzas / filtro por categoría: reusa Select y Chip (components/ui), tokens color.primary y space.2;
+  crea CategoryFilter; iguala .sdd/grills/2026-10-09-filtro-finanzas/finanzas.png
+```
+
+Si la superficie está `sin sistema`, aplica la doctrina mínima de `/design-system`: plan de tokens, revisar contra el pedido y el inventario, construir y autocrítica. En Claude Code carga `frontend-design` si está instalado, como refuerzo. El plan de diseño no se escribe a disco ni actualiza `## Diseño` de la spec ni el inventario: vive en la conversación, como el plan efímero.
+
+**Evidencia de fidelidad.** En la Fase 3, cada CA de UI con mecanismo de captura produce la captura de la implementación con el comando que la spec declara. En el `## Resultado de ejecucion`, la celda `Evidencia` cita el comando y la ruta de la captura; la cabecera `| CA | Capa | Estado | Evidencia |` no cambia. El body del PR gana la sección `## Fidelidad visual` con la tabla `| Pantalla o estado | Referencia | Implementacion | Diferencias declaradas |`, ubicada antes de `## Riesgo de merge`, que sigue siendo la última sección. Las capturas de implementación se commitean en el branch bajo `.sdd/evidence/<slug>/` y se embeben por URL raw del branch (`https://github.com/<owner>/<repo>/raw/<branch>/.sdd/evidence/<slug>/<pantalla>.png`); son evidencia nueva y no reescriben los artefactos de entrada. Con stack, la sección va en el PR de la capa que la produjo.
+<!-- sdd-run-design:end -->
+
 ## Fase 0 — Lanzador (solo con `/sdd-run` pelado)
 
 Dispara SOLO cuando los argumentos vienen vacíos. Si trajo spec, issue o flags, saltear.

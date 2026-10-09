@@ -540,6 +540,84 @@ test("CA-11: el template del handoff gana ## Diseño entre ## Ramas pendientes y
 	assert.deepEqual(problems, []);
 });
 
+// ---------------------------------------------------------------------------
+// D y E. Spec y run (CA-12 a CA-15)
+// ---------------------------------------------------------------------------
+
+const SPEC_TEMPLATE_DESIGN: RegExp[] = [
+	/solo si el pedido toca una superficie UI del contrato; si no, omitir la seccion/,
+	/inventario citado por superficie/,
+	/pantallas y estados/,
+	/componentes reusados y nuevos/,
+	/wireframe ASCII por pantalla nueva/,
+	/capturas de referencia \(ruta relativa o URL raw\)/,
+];
+
+const SDD_SPEC_DESIGN: RegExp[] = [
+	/La Fase 1 lee `## Diseño` de `\.sdd\/project\.md`/,
+	/La Fase 2 clasifica el pedido cruzando las raíces de cada superficie con los paths que el pedido tocaría/,
+	/con `--from-grill`, el `## Diseño` del handoff entra confirmado/,
+	/sin grill y con UI, las decisiones de diseño van a `## Diseño` y a la tabla de inferencias como `\[ASSUMED\]`, sin preguntar/i,
+	/cada CA de UI cita el componente o token concreto del inventario/i,
+	/La Fase 4 gradúa la fidelidad: grep o test sobre componentes y tokens = ALTA; capturas de la implementación contra la referencia = MEDIA; mobile sin simulador declarado en el contrato = NULA, con protocolo humano/,
+	/La Fase 5 escribe en `## Plan de verificacion` el mecanismo de capturas: comando, pantalla y referencia a igualar/,
+	/`sin sistema`[^\n]*`## Riesgos y gaps`[^\n]*«sin sistema de diseño: `design-system` disponible, el run sigue con `\[ASSUMED\]`»/,
+];
+
+const SDD_RUN_DESIGN: RegExp[] = [
+	/La Fase 1 lee `## Diseño` de `\.sdd\/project\.md`/,
+	/La Fase 2 imprime, junto al plan efímero y solo si la spec trae `## Diseño`, el plan de diseño/,
+	/por pantalla o componente: tokens y componentes del inventario que reusa, qué crea nuevo y qué referencia o captura debe igualar/,
+	/Si la superficie está `sin sistema`, aplica la doctrina mínima de `\/design-system`: plan de tokens, revisar contra el pedido y el inventario, construir y autocrítica/,
+	/En Claude Code carga `frontend-design` si está instalado/,
+	/El plan de diseño no se escribe a disco ni actualiza `## Diseño` de la spec ni el inventario/,
+	/En la Fase 3, cada CA de UI con mecanismo de captura produce la captura de la implementación con el comando que la spec declara/,
+	/la celda `Evidencia` cita el comando y la ruta de la captura; la cabecera `\| CA \| Capa \| Estado \| Evidencia \|` no cambia/,
+	/`## Fidelidad visual` con la tabla `\| Pantalla o estado \| Referencia \| Implementacion \| Diferencias declaradas \|`, ubicada antes de `## Riesgo de merge`, que sigue siendo la última sección/,
+	/se commitean en el branch bajo `\.sdd\/evidence\/<slug>\/` y se embeben por URL raw del branch/,
+	/Con stack, la sección va en el PR de la capa que la produjo/,
+];
+
+test("CA-12: el template de la spec gana ## Diseño condicional entre ## Contexto y ## Comportamiento esperado", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const path = `${harness}/sdd-spec/SKILL.md`;
+		const fences = fencedBlocks(await readRepoFile(path)).filter((fence) => fence.content.includes("type=spec"));
+		const template = fences.find((fence) => fence.content.includes("## Contexto"))?.content;
+		if (fences.length !== 2 || template === undefined) {
+			problems.push(`${path}: ${fences.length} templates de marker type=spec (se esperan 2, uno con ## Contexto)`);
+			continue;
+		}
+		const list = headings(template);
+		const context = list.indexOf("## Contexto");
+		if (list[context + 1] !== "## Diseño" || list[context + 2] !== "## Comportamiento esperado") problems.push(`${path}: orden ${list.join(" > ")}`);
+		const design = section(template, /^## Diseño$/).replace(/\s+/g, " ");
+		for (const problem of missing(design, SPEC_TEMPLATE_DESIGN)) problems.push(`${path} template ## Diseño: ${problem}`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("CA-13: sdd-spec declara el bloque sdd-spec-design en los cuatro harnesses, idéntico", async () => {
+	const problems = await doctrineProblems("sdd-spec", "sdd-spec-design", SDD_SPEC_DESIGN);
+	assert.deepEqual([...problems, ...(await identityProblems("sdd-spec", "sdd-spec-design"))], []);
+});
+
+test("CA-14, CA-15: sdd-run declara el bloque sdd-run-design en los cuatro harnesses, idéntico", async () => {
+	const problems = await doctrineProblems("sdd-run", "sdd-run-design", SDD_RUN_DESIGN);
+	assert.deepEqual([...problems, ...(await identityProblems("sdd-run", "sdd-run-design"))], []);
+});
+
+test("CA-15: el template de Riesgo de merge sigue siendo la última sección y el Resultado no cambia de cabecera", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const path = `${harness}/sdd-run/SKILL.md`;
+		const markdown = await readRepoFile(path);
+		if (!/^\| CA \| Capa \| Estado \| Evidencia \|$/m.test(markdown)) problems.push(`${path}: cabecera del Resultado de ejecucion cambiada`);
+		if (!/La última sección del body, antes de la firma, es `## Riesgo de merge`/.test(markdown)) problems.push(`${path}: Riesgo de merge ya no es la última sección`);
+	}
+	assert.deepEqual(problems, []);
+});
+
 test("autotest: un bloque ausente o divergente se reporta con su diagnóstico", () => {
 	assert.equal(delimitedBlock("sin bloque", "design-system-doctrine"), null);
 	assert.equal(delimitedBlock("<!-- x:start -->\nhola\n<!-- x:end -->", "x"), "hola");
