@@ -14,12 +14,17 @@ Tres ideas fuerza:
 ## Argumentos
 
 ```text
-/sdd-run [.sdd/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>]
+/sdd-run [.sdd/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>] [--subagent] [--model M] [--effort E]
 ```
 
 - `--assume` — cero preguntas: encadena `/sdd-spec --assume` (y este `/sdd-init --assume`) si faltan precondiciones, no frena ni ante choques del plan con políticas, resuelve desviaciones con sesgo mínimo seguro y no ofrece nada post-PR. Para correr desatendido.
 - `--no-pr` — frena después del commit en el branch: no pushea ni crea PR. Para repos sin remote o cuando el PR lo arma el usuario.
 - `--base <branch>` — branch base para ramificar y para el PR (default: el branch default que declara el contrato — main/master/otro).
+- `--subagent` — delega el run completo a un subagente `implementer` en background que corre `/sdd-run <target> --assume`; la sesión queda libre y releva el PR y el reporte al terminar (ver «Run con subagente»).
+- `--model M` — modelo del subagente; `M` es un alias de la tool `Agent`: `sonnet`, `opus`, `fable` o `haiku`. Sin el flag se pregunta (o se deriva con `--assume`).
+- `--effort E` — effort del subagente; `E` es `low`, `medium`, `high`, `xhigh` o `max`. Sin el flag se pregunta (o se deriva con `--assume`).
+- `--model` o `--effort` sin `--subagent` implican `--subagent`.
+- `--model`/`--effort` con un valor fuera de su lista (`claude-opus-5-5`, `gpt`, `extreme`) o sin valor (no hay token siguiente, o el siguiente empieza con `--`): interactivo → se trata como ausente, se avisa y se pregunta; `--assume` → abortar con diagnóstico antes de preguntar y antes de lanzar. Un token que empieza con `--` nunca se lee como valor del flag anterior.
 
 <!-- sdd-run-flow:start -->
 ### Flujo sin fricción
@@ -65,9 +70,56 @@ Si la superficie está `sin sistema`, aplica la doctrina mínima de `/design-sys
 **Evidencia de fidelidad.** En la Fase 3, cada CA de UI con mecanismo de captura produce la captura de la implementación con el comando que la spec declara. En el `## Resultado de ejecucion`, la celda `Evidencia` cita el comando y la ruta de la captura; la cabecera `| CA | Capa | Estado | Evidencia |` no cambia. El body del PR gana la sección `## Fidelidad visual` con la tabla `| Pantalla o estado | Referencia | Implementacion | Diferencias declaradas |`, ubicada antes de `## Riesgo de merge`, que sigue siendo la última sección. Las capturas de implementación se commitean en el branch bajo `.sdd/evidence/<slug>/` y se embeben por URL raw del sha del commit que las agrega (`https://github.com/<owner>/<repo>/raw/<sha>/.sdd/evidence/<slug>/<pantalla>.png`), que sigue resolviendo después de que `/sdd-land` borre el branch; si `gh stack sync` restackea, se reescriben las URLs con el sha nuevo. Son evidencia nueva y no reescriben los artefactos de entrada; el plan de diseño las declara, y `.sdd/evidence/` queda fuera de los gates de tamaño de PR y de líneas por archivo, como los generados. Con stack, la sección va en el PR de la capa que la produjo. En una capa superior, que no lleva `## Riesgo de merge`, va al final de su sección de capa, antes de la línea de riesgo si la hay. En la Fase 6, una resincronización del body desde la spec conserva `## Fidelidad visual` igual que `## Riesgo de merge`, y un fix sobre un CA de UI rehace su captura.
 <!-- sdd-run-design:end -->
 
+## Run con subagente (solo con --subagent, --model o --effort)
+
+La sesión que recibe `--subagent` (o `--model`/`--effort`, que lo implican) es **lanzadora, no corredora**: resuelve el target (ruta local o `#NN`, leyendo el body con `gh issue view` cuando es issue), corre las precondiciones del lanzador (abajo), lee la spec para derivar el recomendado, imprime la traza con el recomendado, pregunta lo que falte, imprime la traza con la elección final y lanza el subagente; no ejecuta ninguna fase del run más allá de las precondiciones de la Fase 1 (pasos 1 a 3) y el preflight de stack, ni crea worktree ni branch. Las Fases 1 a 5 las corre el `implementer`, que conserva el ownership del run (ver «Ownership y tareas»). Con `--subagent` la sesión lanzadora no ofrece la Fase 6: el `implementer` corre con `--assume` y no hay oferta post-PR. `--no-pr` y `--base` recibidos junto con `--subagent` se propagan tal cual (con su branch) al prompt del subagente. `/sdd-run --subagent` sin target pasa por la Fase 0 como `/sdd-run` pelado: el lanzador elige la spec como siempre y después aplica esta sección.
+
+### Precondiciones del lanzador
+
+Antes de preguntar modelo y effort, el lanzador corre los pasos 1 a 3 de la Fase 1 y el preflight de stack de «Entrega por capas», con la misma doctrina interactiva o `--assume` que tendría el run inline. Sin este chequeo, el `implementer` (que corre con `--assume`) encadenaría en background `/sdd-init --assume` o `/sdd-spec --assume` sobre algo que nadie revisó, o frenaría por `gh-stack` recién visible en la notificación.
+
+1. **Contrato** (Fase 1, paso 1): leer `.sdd/project.md`. Si no existe: interactivo → ofrecer `/sdd-init` ahí mismo; `--assume` → correr `/sdd-init --assume` y seguir.
+2. **Spec** (Fase 1, pasos 2 y 3): el target tiene que resolver a una spec SDD (ruta existente, o issue cuyo body trae la spec de `/sdd-spec`). Si no: interactivo → frenar y ofrecer `/sdd-spec <target>`; `--assume` → encadenar `/sdd-spec <target> --assume` en esta sesión y lanzar sobre la spec resultante. Nunca lanzar sobre un target sin spec. Una spec en `draft` se acepta sin preguntar, como en el run inline.
+3. **Stack**: con 2 o más capas en `## Plan de entrega`, correr el preflight de stack (`gh` ≥ 2.90.0, `git` ≥ 2.36 y `github/gh-stack` en `gh extension list`). Si falta la extensión: interactivo → ofrecer `gh extension install github/gh-stack` ahí mismo y seguir si se instala; `--assume` → frenar antes de lanzar e imprimir el comando exacto. Una versión vieja de `gh` o de `git` frena en ambos modos, con el diagnóstico.
+
+### Recomendado derivado de la spec
+
+- **Conteo de CAs**: ids únicos `CA-N` en los headings (`##` a `####`) de `## Comportamiento esperado`; si da 0, las filas `| CA-N |` de `## Plan de verificacion`; si ambos dan 0, no se deriva: el recomendado es `opus` con el aviso «no pude contar CAs».
+- **Capas**: filas numeradas de la tabla de `## Plan de entrega`; sin sección, 1 capa.
+- **Tabla de umbrales** (escalón = el mayor que proponga cualquier señal):
+
+  | Señal | `sonnet` | `opus` | `fable` |
+  |---|---|---|---|
+  | CAs | hasta 10 | 11 a 16 | 17 o más |
+  | Capas | 1 | 2 o más | — |
+
+- **Effort recomendado: `xhigh` siempre**, independiente del escalón.
+- **Verificabilidad solo avisa**: la sección `## Verificabilidad` de la spec se lee para contar o listar los CAs MEDIA, BAJA y NULA, y ese dato se imprime junto al recomendado; nunca mueve el escalón.
+
+### Pregunta de modelo y effort
+
+- Interactivo y sin flags: **una sola** llamada a `AskUserQuestion` con **dos preguntas**: modelo, con opciones `sonnet` / `opus` / `fable` / `Modelo de la sesión`, el recomendado derivado primero y marcado `(Recomendado)`; y effort, con opciones `medium` / `high` / `xhigh` / `max`, `xhigh` primero y marcado `(Recomendado)`. «Other» cubre `haiku` y `low`.
+- Cada pregunta se autocontiene: su texto o sus descripciones nombran el escalón derivado, el conteo de CAs y capas, y el aviso de verificabilidad, además de la traza impresa como texto visible en el mismo mensaje (ver «Traza»).
+- `--model` presente saltea la pregunta de modelo; `--effort` presente saltea la de effort; con ambos no hay `AskUserQuestion`.
+- Con `--assume` nunca se pregunta: se usa el recomendado derivado para lo que falte.
+- `Modelo de la sesión` significa no pasar `model` a la tool `Agent` (hereda el de la sesión o `CLAUDE_CODE_SUBAGENT_MODEL`); `effort` se pasa siempre. Antes de preguntar, chequear `printenv CLAUDE_CODE_SUBAGENT_MODEL`: si la variable está definida en el entorno de la sesión, el hijo hereda ese modelo y no el de la sesión, así que la descripción de la opción, la traza y la línea `subagente:` del reporte dicen `modelo heredado (CLAUDE_CODE_SUBAGENT_MODEL=<valor>)` en vez de `modelo de la sesión`.
+
+### Lanzamiento
+
+- Lanzar la tool `Agent` con `subagent_type: "implementer"`, `run_in_background: true`, `model` (omitido solo con `Modelo de la sesión`) y `effort`. Este skill pide explícitamente pasar `effort`: el schema de la tool lo exige así.
+- El prompt del subagente le pide seguir el skill `sdd-run` sobre el target con `/sdd-run <target> --assume` (más `--no-pr`/`--base` si vinieron), devolver el PR y el reporte, e incluir en su reporte `Run completo` la línea `subagente: <modelo> · <effort>` (con `Modelo de la sesión`, `subagente: modelo de la sesión · <effort>`). El bloque de código `Run completo` de este skill no cambia: la línea se pide por prompt.
+- Si el tipo `implementer` no está disponible, usar `general-purpose` y anunciarlo. Si la tool no acepta `effort` en la instalación, anunciarlo y lanzar sin él.
+
+### Traza
+
+- Antes de preguntar o lanzar, la sesión imprime como texto visible una línea con este formato: `Subagente implementer: modelo <m> (<escalón>: <N> CAs · <k> capas) · effort <e> · verificabilidad: ALTA <a> · MEDIA/BAJA <b> · NULA <c>`, con el recomendado (antes de preguntar) y con la elección final (al lanzar).
+- Con el fallback a `general-purpose` (ver «Lanzamiento»), la traza nombra el tipo que realmente se lanza: `Subagente general-purpose: modelo <m> …`, con el mismo resto de la línea.
+- Al llegar la notificación del subagente, la sesión releva el PR y el reporte repitiendo modelo y effort.
+- Sin `--subagent`, `--model` ni `--effort`, nada de lo anterior aparece y el run corre como hoy.
+
 ## Fase 0 — Lanzador (solo con `/sdd-run` pelado)
 
-Dispara SOLO cuando los argumentos vienen vacíos. Si trajo spec, issue o flags, saltear.
+Dispara cuando no hay target. Si trajo spec o issue, saltear; flags sin target (`--subagent`, `--model`, `--effort`, `--assume`…) pasan por el lanzador igual para elegir la spec, y después se aplican sobre la spec elegida.
 
 Listar las specs de `.sdd/specs/` con su estado y verificabilidad (leer el header y la sección Verificabilidad de cada una):
 
@@ -78,7 +130,7 @@ con la evidencia. Specs disponibles:
   1. dark-mode-toggle.md      (aprobada · MIXTA: ALTA 4 / MEDIA 1 / NULA 1)
   2. issue-12-rate-limit.md   (draft · ALTA)
 
-Atajo: /sdd-run <spec|#NN> [--assume] [--no-pr] saltea este menu.
+Atajo: /sdd-run <spec|#NN> [--assume] [--no-pr] [--subagent] [--model M] [--effort E] saltea este menu.
 ```
 
 Si hay una sola spec candidata (estado `draft` o `aprobada`), usarla directo informando cuál. Con varias, usar `AskUserQuestion` — "¿Cuál spec corremos?": una opción por spec (máximo 3, las más recientes; el resto vía custom) + `Ninguna, hay que especificar primero` → ofrecer `/sdd-spec`.
@@ -126,7 +178,8 @@ Planificar contra el código real, no contra la idea del código (explorar lo qu
 
 ### Ownership y tareas
 
-- El agente que corre el run (la sesión principal, o el `implementer` lanzado por `sdd-run con subagente`) conserva ownership hasta cerrar la spec y emitir el reporte final. Puede delegar exploración o unidades independientes con la tool `Agent` (`Explore` u otro subagente) cuando la tiene disponible, pero NO delegar "completar toda la spec" ni transferir el ownership del cierre.
+- El agente que corre el run (la sesión principal, o el `implementer` lanzado por `--subagent` o por `sdd-run con subagente` de `sdd-spec`) conserva ownership hasta cerrar la spec y emitir el reporte final. Puede delegar exploración o unidades independientes con la tool `Agent` (`Explore` u otro subagente) cuando la tiene disponible, pero NO delegar "completar toda la spec" ni transferir el ownership del cierre.
+- La sesión que lanza con `--subagent` no es el agente que corre: delega el run completo por diseño y no abre worktree; la prohibición de delegar "completar toda la spec" aplica al agente que corre.
 - Toda tarea delegada bloqueante debe ser esperada y reconciliada antes de responder al usuario: revisar su resultado, inspeccionar el worktree y ejecutar la verificación relevante. Un subagente `running` no constituye progreso terminado.
 - La tool `Agent` puede correr en background: una delegación bloqueante se espera hasta recibir su notificación de fin, sin responder antes de ella.
 - Si un subagente expira, se interrumpe o no devuelve resultado, el agente principal inspecciona los cambios parciales, recupera el trabajo y continúa directamente. Nunca termina la sesión dejando una tarea bloqueante en `running`.
