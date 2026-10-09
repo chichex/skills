@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design System"
+  short_description: "Generá el DESIGN_SYSTEM.md de una superficie UI sin sistema"
+  default_prompt: "Usá $design-system para definir la dirección visual y escribir el DESIGN_SYSTEM.md de esta superficie."
