@@ -1395,6 +1395,15 @@ test("issue #82 CA-7: Ownership y tareas nombra al implementer lanzado por --sub
 	assert.deepEqual(problems, [], problems.join("\n"));
 });
 
+// Review #83 (h9): la funcion compuesta que validan los autotests corre tambien
+// sobre el SKILL.md real, asi una lista sumada a checkSddRunSubagentDoctrine y
+// no a un test por CA sigue gateando el archivo real.
+test("issue #82 CA-10: checkSddRunSubagentDoctrine corre sobre el claude/sdd-run/SKILL.md real sin hallazgos", async () => {
+	const markdown = await readRepoFile(SDD_RUN_SKILL);
+	const problems = checkSddRunSubagentDoctrine(SDD_RUN_SKILL, markdown);
+	assert.deepEqual(problems, [], problems.join("\n"));
+});
+
 test("issue #82 CA-8: el párrafo Claude de sdd-spec reusa la sección Run con subagente de sdd-run fuera de sdd-spec-flow", async () => {
 	const markdown = await readRepoFile(SDD_SPEC_SKILL);
 	const flowEnd = markdown.indexOf("<!-- sdd-spec-flow:end -->");
@@ -1431,17 +1440,15 @@ test("issue #82 CA-11: READMEs y contrato documentan --subagent, modelo/effort c
 	for (const pattern of [/--subagent/, /modelo[^|]*effort/i, /umbrales/i]) {
 		assert.match(gateRow, pattern, `.sdd/project.md fila del gate de agentes: falta ${pattern}`);
 	}
-	// El conteo de la fila coincide con los tests reales de este archivo
-	// (todos son `test(` de nivel superior; ninguno se skipea).
-	const declared = gateRow.match(/^\|(?:[^|]*\|){5} (\d+)\/(\d+);/);
+	// El total de la fila coincide con los tests declarados en este archivo
+	// (todos son `test(` de nivel superior; ninguno se skipea). El numerador
+	// («N pasando») no se compara con un conteo estático, porque contar `test(`
+	// no observa que pasen: eso lo valida la corrida de CI de este mismo gate.
+	const declared = gateRow.match(/^\|(?:[^|]*\|){5} \d+\/(\d+);/);
 	assert.ok(declared, ".sdd/project.md fila del gate de agentes: conteo `N/N;` al inicio de las notas");
 	const self = await readRepoFile("pi-extensions/agents-gate/agents-gate.test.ts");
 	const actualTests = (self.match(/^test\(/gm) ?? []).length;
-	assert.equal(Number(declared?.[1]), actualTests, `.sdd/project.md declara ${declared?.[1]} tests pasando y el gate tiene ${actualTests}`);
-	assert.equal(Number(declared?.[2]), actualTests, `.sdd/project.md declara ${declared?.[2]} tests totales y el gate tiene ${actualTests}`);
-	// Literales que pi-package.test.ts assertea sobre el mismo archivo.
-	assert.match(contract, /## Politicas de generacion\nSin politicas activas\./);
-	assert.match(contract, /## Decisiones humanas\n/);
+	assert.equal(Number(declared?.[1]), actualTests, `.sdd/project.md declara ${declared?.[1]} tests totales y el gate tiene ${actualTests}`);
 });
 
 // --- Autotests del gate del run con subagente (CA-10) ------------------------
