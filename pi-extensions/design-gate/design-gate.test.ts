@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import { test } from "node:test";
 
+import { planGrillHandoff } from "../grill-tools/logic.ts";
 import type { Harness } from "../harness-gate/interaction.ts";
 import {
 	HARNESSES,
@@ -453,25 +454,35 @@ const GRILL_DESIGN_BRANCH: RegExp[] = [
 
 const GRILL_DESIGN_CAPTURES: RegExp[] = [
 	/Playwright MCP[^\n]*`browser_navigate`[^\n]*`browser_take_screenshot`/,
-	/navegador headless que el contrato declare/,
 	/mocks HTML[^\n]*bundle `design-sync\/`[^\n]*Claude Design[^\n]*Storybook/,
-	/que el usuario adjunte se guardan tal cual/,
 	/nunca se inventa una captura/,
-	/viven en el scratch hasta guardar, pausar o finalizar/,
+	/viven en el scratch[^\n]*hasta guardar, pausar o finalizar/,
 	/`\.sdd\/grills\/<nombre-real-del-handoff>\/`[^\n]*mismo nombre base que el `\.md`[^\n]*sufijo de colisión/,
 	/el handoff las referencia por ruta relativa/,
+	/navegador headless que `## Verificacion autonoma` del contrato declare/,
+	/Sin navegador disponible[^\n]*se le pide la captura al usuario[^\n]*o se registra la referencia por ruta, sin captura/,
+	/directorio temporal fuera del repo \(ej\. `mktemp -d`\)/,
+	/en Pi, incluido el sufijo de colisión que agrega la tool/,
+	/que el usuario adjunte como archivo o ruta se guardan tal cual/,
+	/`DesignSync` `get_file`[^\n]*`file:\/\/`/,
 ];
 
 const GRILL_DESIGN_HANDOFF: RegExp[] = [
 	/mientras la sesión está `paused`, las decisiones de diseño viven en `## Decisiones resueltas` con prefijo `Diseño:`/i,
 	/el contrato visible del cierre incluye el diseño/,
+	/la ruta de cada captura va en la decisión `Diseño:` que la usa/,
+	/no cuenta contra el tope de 20/,
+	/En el atajo liviano[^\n]*activación[^\n]*capturas/,
+	/más de un `## Diseño`[^\n]*el vigente es el último/,
 ];
 
 const GRILL_TEMPLATE_DESIGN: RegExp[] = [
 	/superficies/,
 	/pantallas, flujos y estados/,
 	/componentes a reusar o crear por nombre del inventario/,
-	/direccion visual/,
+	/dirección visual/,
+	/se activó/,
+	/esté paused/,
 	/webview, plataforma y accesibilidad/,
 	/capturas de referencia por ruta relativa/,
 	/Diseño:/,
@@ -486,7 +497,25 @@ test("CA-10: grill declara las capturas de referencia y dónde se guardan", asyn
 });
 
 test("CA-9 a CA-11: el bloque grill-design es idéntico entre harnesses", async () => {
-	assert.deepEqual(await identityProblems("grill", "grill-design", ), []);
+	assert.deepEqual(await identityProblems("grill", "grill-design"), []);
+});
+
+test("CA-11: en Pi, pause arma las cuatro secciones fijas y finalize escribe ## Diseño verbatim", () => {
+	const snapshot = {
+		id: "grill-2026-10-09-abc",
+		topic: "Filtro en Finanzas",
+		projectPath: "/tmp/proyecto",
+		createdAt: "2026-10-09T12:00:00.000Z",
+		summary: "Hechos",
+		decisions: [{ title: "Diseño: reusar Select", agreement: "sí, captura en 2026-10-09-filtro-en-finanzas/finanzas.png" }],
+		pendingBranches: [],
+	};
+	const paused = planGrillHandoff({ ...snapshot, status: "paused" }, null);
+	assert.deepEqual(headings(paused.content), ["## Hechos comprobados", "## Decisiones resueltas", "## Ramas pendientes", "## Handoff"]);
+	const handoffMarkdown = ["# Grill — Filtro en Finanzas", "", "## Hechos comprobados", "x", "", "## Decisiones resueltas", "1. x", "", "## Ramas pendientes", "Ninguna", "", "## Diseño", "- capturas: 2026-10-09-filtro-en-finanzas/finanzas.png", "", "## Handoff", "contrato"].join("\n");
+	const finalized = planGrillHandoff({ ...snapshot, status: "finalized", handoffMarkdown }, null);
+	assert.deepEqual(headings(finalized.content), ["## Hechos comprobados", "## Decisiones resueltas", "## Ramas pendientes", "## Diseño", "## Handoff"]);
+	assert.equal(finalized.fileName, paused.fileName, "pause y finalize escriben el mismo archivo, así que la ruta de pause sirve para las capturas");
 });
 
 test("CA-11: el template del handoff gana ## Diseño entre ## Ramas pendientes y ## Handoff, con un solo marker type=grill", async () => {
@@ -506,10 +535,8 @@ test("CA-11: el template del handoff gana ## Diseño entre ## Ramas pendientes y
 	}
 	const pi = await readRepoFile("pi/grill/SKILL.md");
 	if (!/`finalize` escribe el `handoffMarkdown` verbatim, con `## Diseño`/.test(pi)) problems.push("pi/grill: Formato del handoff no dice que finalize escribe ## Diseño verbatim");
-	const logicTest = await readRepoFile("pi-extensions/grill-tools/logic.test.ts");
-	for (const heading of ["## Hechos comprobados", "## Decisiones resueltas", "## Ramas pendientes", "## Handoff"]) {
-		if (!logicTest.includes(heading)) problems.push(`grill-tools/logic.test.ts ya no exige ${heading}`);
-	}
+	if (!/Si hay capturas, hacé `pause` antes de `finalize`/.test(pi)) problems.push("pi/grill: no pide pause antes de finalize para conocer la ruta real con capturas");
+	if (!/En una sesión importada[^\n]*`### Handoff de la revisión`/.test(pi)) problems.push("pi/grill: no acota el caso de sesiones importadas");
 	assert.deepEqual(problems, []);
 });
 
