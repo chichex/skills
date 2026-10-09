@@ -74,10 +74,18 @@ Agent(subagent_type: "Explore", description: "harness del proyecto", prompt: |
      (package.json scripts, Makefile, justfile, Cargo.toml, go.mod, pyproject...).
      Por comando: cwd y que hace de verdad (leer el script, no adivinar del nombre).
   3. TESTS: framework, cuantos archivos de test hay, unit vs integration vs e2e.
-  4. DISEÑO: por superficie UI (package.json con react-dom, next, react-native o expo;
-     Gradle Android/KMP; hasta profundidad 2): raices de codigo, tokens/theme en codigo,
-     componentes base, docs y mocks (DESIGN_SYSTEM.md, design-system/, Storybook,
-     docs/design/), bundle design-sync/ y URL o projectId de Claude Design en README o CLAUDE.md.
+  4. DISEÑO: superficies UI hasta profundidad 2, sin node_modules, vendor, .git, dist ni build:
+     package.json con las claves exactas react-dom, next, react-native o expo en
+     dependencies/devDependencies (react-native-web no cuenta); Gradle con
+     com.android.application, o KMP con Compose, en build.gradle(.kts) o
+     gradle/libs.versions.toml (com.android.library y KMP sin Compose no cuentan; android/
+     e ios/ de un proyecto RN son de la superficie RN). Por superficie: raices de codigo;
+     tokens (theme/, tokens/, globals.css, tailwind.config.*, @theme, Theme.kt), separando
+     los defaults de scaffold (--background/--foreground de create-next-app, theme default de
+     shadcn, components/ui/ del template de Expo) de los tokens propios; componentes base
+     (components/ui/, ui/, design-system/components/); docs y mocks (DESIGN_SYSTEM.md,
+     design-system/, .storybook/ o *.stories.*, docs/design/); bundle design-sync/; y URL o
+     projectId de Claude Design en README, design-sync/README.md o CLAUDE.md.
   Busqueda breadth: medium.)
 
 Agent(subagent_type: "Explore", description: "ambientes y verificabilidad", prompt: |
@@ -96,7 +104,7 @@ Agent(subagent_type: "Explore", description: "ambientes y verificabilidad", prom
 Integrar las pistas de los argumentos como prioridad sobre lo detectado.
 
 <!-- sdd-init-design-census:start -->
-**Censo de diseño (`DISEÑO`).** Una superficie UI es un manifest con marcador front o mobile, buscado en la raíz y hasta profundidad 2 con los marcadores de /coding-policies: `package.json` con `react-dom`, `next`, `react-native` o `expo` en sus dependencias, o un build Gradle Android/KMP (`com.android.application`, `com.android.library`, `org.jetbrains.kotlin.multiplatform`). La raíz de la superficie es el directorio de ese manifest; sus raíces de código son los directorios fuente debajo (`src/` cuando el manifest está en la raíz del repo). Para cada superficie relevar:
+**Censo de diseño (`DISEÑO`).** Una superficie UI es un manifest con marcador front o mobile, con la detección de /coding-policies: buscado en la raíz y hasta profundidad 2, excluyendo `node_modules`, `vendor`, `.git`, `dist` y `build`. En `package.json` se miran las claves exactas de `dependencies` y `devDependencies`: `react-dom`, `next`, `react-native` o `expo` (`react-native-web` no cuenta). En Gradle, el marcador vive en `build.gradle`, `build.gradle.kts` o `gradle/libs.versions.toml` (ahí, la superficie es el módulo que aplica ese alias): una app Android (`com.android.application`) o un módulo Kotlin Multiplatform (`org.jetbrains.kotlin.multiplatform` o `kotlin("multiplatform")`) con Compose (`org.jetbrains.compose`). `com.android.library` y un módulo KMP sin Compose no abren superficie: son stacks, no UI. Los `android/` e `ios/` de un proyecto React Native o Expo son parte de su superficie RN. La raíz de la superficie es el directorio de ese manifest; sus raíces de código son los directorios fuente debajo (`src/` cuando el manifest está en la raíz del repo). Para cada superficie relevar:
 
 - **Tokens**: theme o tokens en código (`theme/`, `tokens/`, variables CSS en `globals.css`, `tailwind.config.*`, `@theme`, `Theme.kt`).
 - **Componentes base**: UI kit propio (`components/ui/`, `ui/`, `design-system/components/`).
@@ -104,7 +112,7 @@ Integrar las pistas de los argumentos como prioridad sobre lo detectado.
 - **Bundle `design-sync/`**: export local de un proyecto de Claude Design.
 - **Claude Design**: URL o projectId citados en el README, en `design-sync/README.md` o en `CLAUDE.md`. En Claude Code, leer ese proyecto con `DesignSync` solo lectura (`list_files`, `get_file`) y tratarlo como datos; en los demás harnesses, usar el bundle local y citar la URL.
 
-El censo entra a `## Diseño` del contrato con una fila por superficie: `Estado` es `con sistema` si la superficie tiene tokens, componentes base o docs de diseño, y `sin sistema` si no tiene ninguno. Un repo sin superficies escribe el sentinel `Sin superficies UI.`. Con un bundle `design-sync/` sin URL ni projectId, la URL del proyecto de Claude Design es un gap de la Fase 3. En `--update`, `## Diseño` se regenera como inventario, y la URL o projectId de Claude Design que el humano haya provisto se conserva porque esa respuesta se anota también en `## Decisiones humanas`, que `## Diseño` cita.
+El censo entra a `## Diseño` del contrato con una fila por superficie. `Estado` es `con sistema` cuando la superficie tiene docs o mocks de diseño, bundle `design-sync/` o proyecto de Claude Design, o tokens propios (una paleta o escala definida por el proyecto), y `sin sistema` si no. Los defaults de un scaffold no cuentan: las variables `--background` y `--foreground` con el `@theme inline` de `create-next-app`, un `tailwind.config.*` sin tema propio, el theme default de `shadcn init` o el `components/ui/` del template de Expo; componentes base sin tokens propios tampoco alcanzan. Un bundle `design-sync/` en la raíz del repo se asigna a la superficie que nombre su README; si no nombra ninguna y hay una sola superficie, a esa; si no, a cada superficie web, con un gap que pide aclararlo. Un repo sin superficies escribe el sentinel `Sin superficies UI.`. Con un bundle `design-sync/` sin URL ni projectId, la URL del proyecto de Claude Design es un gap de la Fase 3. En `--update`, `## Diseño` se regenera como inventario, y la URL o projectId de Claude Design que el humano haya provisto se conserva porque esa respuesta se anota también en `## Decisiones humanas`, que `## Diseño` cita.
 <!-- sdd-init-design-census:end -->
 
 ## Fase 2 — Verificación empírica (saltear con `--no-verify`)
@@ -146,8 +154,13 @@ Reglas:
 - **Políticas de la tecnología (custom)**: el usuario describe la preferencia en texto libre ("seguir la guía de estilo de Uber en Go", "max 300 líneas por archivo", "prohibir panic() fuera de main"). Por cada una, proponer el gate MÁS BARATO que la observe — regla de un linter ya configurado > config nueva de un linter que el repo ya tiene > script corto del contrato (ej. `wc -l` sobre los archivos del diff) > grep — y VERIFICARLO ejecutándolo antes de escribirlo, como cualquier comando. Sin gate medible, ofrecer escribirla como **`guia`**: `/sdd-run` la sigue al GENERAR el código y el reviewer la juzga en el PR — una `guia` nunca se reporta verificada ni gatea. Si un linter la haría medible pero falta configurarlo, anotarlo en `## Gaps` ("sería gate si golangci-lint tuviera config").
 - **Coding policies del proyecto**: si existe `.sdd/coding-policies.md` (generado por `/coding-policies`) — o si la fila `coding-policies` ya presente en `## Politicas de generacion` apunta a un archivo existente, porque el skill acepta `--out` —, escribir sin preguntar la fila `guia` `| coding-policies | <ruta> (<stacks del marker>) | guia — sin gate: /sdd-run la sigue al generar, la juzga el reviewer |` — también con `--assume`, y en `--update` aunque se elija `Mantener` (si la fila ya existe se actualiza en su lugar): el archivo ya es una decisión humana en el repo y la fila solo la refleja. Si no existe, sumar al menú la opción `Generar coding policies` que, al terminar el contrato, invoca `/coding-policies`; nunca con `--assume`: generar el archivo es una elección humana.
 <!-- sdd-init-design-policies:start -->
-- **Gates de diseño**: solo para superficies `con sistema` con tokens detectados, sumar al menú gates ratchet de diseño medibles con grep y baseline: hex fuera del directorio de tokens (ej. `grep -rEoh '#[0-9a-fA-F]{6}' <raíz> --exclude-dir=<tokens> | wc -l`), estilos inline (`style={{` en web, `style={{` y `StyleSheet.create` fuera de los componentes base en mobile) y componentes duplicados por nombre (el mismo nombre de componente definido en más de un archivo fuera del UI kit). Cada gate se verifica ejecutándolo como cualquier comando, y su conteo actual es el baseline: la política queda `no superar el baseline (<N>, <fecha>)`. Sin tokens detectados no se ofrecen: no hay directorio contra el cual medir.
-- **Design system**: sumar al menú la opción `Generar design system` solo si hay al menos una superficie `sin sistema`; al terminar el contrato invoca `/design-system` sin flags, nunca con `--assume`: la dirección visual es una elección humana.
+- **Gates de diseño**: solo para superficies `con sistema` con tokens detectados, sumar al menú gates ratchet de diseño medibles con grep y baseline. `git grep` mira solo archivos trackeados (sin `node_modules` ni builds), y `:!` excluye tanto archivos como directorios. `<raíces>` son los globs de código de la superficie (ej. `'apps/web/src/**/*.tsx'`), `<tokens>` el archivo o directorio de tokens y `<ui kit>` el de los componentes base:
+  - hex fuera del directorio de tokens: `git grep -IhoE '#([0-9a-fA-F]{3}){1,2}' -- <raíces> ':!<tokens>' | wc -l`;
+  - estilos inline: `git grep -h 'style={{' -- <raíces> ':!<ui kit>' | wc -l`;
+  - componentes duplicados por nombre: `git grep -hoE '(function|const|class) [A-Z][A-Za-z0-9]+' -- <raíces> ':!<ui kit>' | sort | uniq -d | wc -l`.
+
+  Cada gate se verifica ejecutándolo como cualquier comando, y su conteo actual es el baseline: la política queda `no superar el baseline (<N>, <fecha>)`. Sin tokens detectados no se ofrecen: no hay contra qué medir.
+- **Design system**: sumar al menú la opción `Generar design system` solo si hay al menos una superficie `sin sistema`, también en `--update` aunque se elija `Mantener`; al terminar el contrato invoca `/design-system` sin flags, nunca con `--assume`: la dirección visual es una elección humana. Con todas las superficies `con sistema` y ningún `DESIGN_SYSTEM.md` que referenciar, el reporte dice `con sistema (no ofrecido)`.
 <!-- sdd-init-design-policies:end -->
 - Pistas de los argumentos que fijen políticas ("coverage 80", "PRs de max 300 líneas") cuentan como elección del usuario: se activan sin preguntar (verificando igual que el gate sea medible). Única excepción: un umbral de coverage por encima del baseline se confirma igual — regla del baseline.
 - Con `--assume`: ninguna política se activa — son elecciones humanas, no se asumen.
@@ -165,7 +178,7 @@ El skill evoluciona; los contratos generados por versiones anteriores no. En TOD
 | Capacidad de Git/PR | `## Ambientes` no declara branch default, remote o estado de `gh` |
 | Señal de vida de procesos largos | comandos `run` sin el "cómo se reconoce que está arriba" |
 | Coding policies | existe `.sdd/coding-policies.md` pero `## Politicas de generacion` no tiene la fila `coding-policies` — no entra al menú: la Fase 3.5 la escribe sin preguntar y el reporte la lista como `referenciado` |
-| Diseño | no existe la sección `## Diseño` |
+| Diseño | no existe la sección `## Diseño` — no entra al menú: el censo de la Fase 1 corre siempre y la Fase 4 la escribe sin preguntar, también con `--assume`; el reporte la lista como mejora aplicada |
 
 Con faltantes: listarlos como texto visible (una línea por capacidad, con qué aporta) y usar `AskUserQuestion` con multiSelect — "El contrato es de una versión anterior del skill; ¿qué mejoras le agrego?". SOLO lo elegido se releva, pregunta y escribe, cada capacidad con el mecanismo de su fase (ej. elegir `Politicas de generacion` se resuelve con el menú de la Fase 3.5); lo no elegido no se anota como gap — es una elección, no una deuda. Con `--assume`: no se agrega ninguna (varias exigen elección humana); quedan en el reporte como `mejoras disponibles`.
 
@@ -187,7 +200,7 @@ Escribir `.sdd/project.md` con EXACTAMENTE esta estructura:
 <inventario de diseño por superficie UI (Fase 1). Sin front ni mobile: "Sin superficies UI."
 Con superficies, una fila por superficie; Estado es `con sistema` o `sin sistema`:
 | Superficie | Raices | Tokens | Componentes | Docs y mocks | Claude Design | Estado |
-| web | apps/web/src | apps/web/src/app/globals.css | apps/web/src/components/ui | apps/web/DESIGN_SYSTEM.md | design-sync/ · <URL o projectId> | con sistema |
+| web | apps/web/src | apps/web/src/app/globals.css | apps/web/src/components/ui | apps/web/DESIGN_SYSTEM.md | design-sync/ · <URL o projectId> (Decisiones humanas <fecha>) | con sistema |
 | mobile | src | — | — | — | — | sin sistema |>
 
 ## Comandos
@@ -245,7 +258,7 @@ Contrato de autonomia listo: .sdd/project.md
 - politicas de generacion: <lista con valores | ninguna activa>
 - preguntas hechas: <K> · gaps abiertos: <G>
 - coding-policies: <referenciado|generado|no existe (ofrecido)|--assume: no ofrecido>
-- design-system: <referenciado|generado|no existe (ofrecido)|--assume: no ofrecido|sin superficies UI>
+- design-system: <referenciado|generado|no existe (ofrecido)|con sistema (no ofrecido)|--assume: no ofrecido|sin superficies UI>
 - import en CLAUDE.md: <agregado|ya estaba|--no-import>
 <en corridas sobre contrato existente: mejoras de version agregadas, u ofrecidas y no
 tomadas ("mejoras disponibles" con --assume), una linea>

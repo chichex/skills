@@ -289,11 +289,11 @@ test("CA-8: design-system queda cableado en pi-package, harness-gate, README y m
 		"README.md": { skills: /^## Skills fundacionales$/, sdd: /^## El workflow SDD$/ },
 		"README.en.md": { skills: /^## Foundational skills$/, sdd: /^## The SDD workflow$/ },
 	};
-	for (const [path, headings] of Object.entries(sections)) {
+	for (const [path, readmeHeadings] of Object.entries(sections)) {
 		const markdown = await readRepoFile(path);
-		const skills = section(markdown, headings.skills);
+		const skills = section(markdown, readmeHeadings.skills);
 		if (!/^\| \*\*`design-system`\*\*[^|]*\|.*DESIGN_SYSTEM\.md.*$/m.test(skills)) problems.push(`${path}: sin fila design-system en la tabla de skills fundacionales`);
-		if (!/design-system/.test(section(markdown, headings.sdd))) problems.push(`${path}: el workflow SDD no nombra design-system`);
+		if (!/design-system/.test(section(markdown, readmeHeadings.sdd))) problems.push(`${path}: el workflow SDD no nombra design-system`);
 	}
 
 	const plugin = JSON.parse(await readRepoFile(".claude-plugin/plugin.json")) as { description: string };
@@ -317,7 +317,7 @@ function projectTemplate(markdown: string): string | null {
 	return fences.length === 1 ? (fences[0]?.content ?? "") : null;
 }
 
-export function headings(markdown: string): string[] {
+function headings(markdown: string): string[] {
 	return markdown.split("\n").filter((line) => /^## /.test(line));
 }
 
@@ -334,12 +334,14 @@ test("CA-1: el template del contrato trae ## Diseño entre ## Stack y ## Comando
 		}
 		const list = headings(template);
 		const stack = list.indexOf("## Stack");
-		if (list[stack + 1] !== "## Diseño" || list[stack + 2] !== "## Comandos") problems.push(`${path}: orden de secciones ${list.join(" > ")}`);
+		if (stack === -1) problems.push(`${path}: el template no tiene ## Stack`);
+		else if (list[stack + 1] !== "## Diseño" || list[stack + 2] !== "## Comandos") problems.push(`${path}: orden de secciones ${list.join(" > ")}`);
 		if ((template.match(/type=project/g) ?? []).length !== 1) problems.push(`${path}: más de un marker type=project en el fence`);
 		const design = section(template, /^## Diseño$/);
 		if (!design.includes("Sin superficies UI.")) problems.push(`${path}: ## Diseño sin el sentinel «Sin superficies UI.»`);
 		if (!design.includes(CONTRACT_DESIGN_HEADER)) problems.push(`${path}: ## Diseño sin la cabecera ${CONTRACT_DESIGN_HEADER}`);
 		if (!/`con sistema`[^\n]*`sin sistema`/.test(design)) problems.push(`${path}: ## Diseño no declara los estados con sistema / sin sistema`);
+		if (!/<URL o projectId> \(Decisiones humanas <fecha>\)/.test(design)) problems.push(`${path}: ## Diseño no muestra cómo se cita la decisión de Claude Design`);
 		if (/coding-policies/.test(template)) problems.push(`${path}: el template del contrato nombra coding-policies`);
 		templates.set(harness, normalizeInvocations(template, table.prefixes[harness]));
 	}
@@ -352,6 +354,7 @@ const SDD_INIT_CENSUS: RegExp[] = [
 	/`con sistema`[\s\S]*`sin sistema`/,
 	/`Sin superficies UI\.`/,
 	/`--update`[^\n]*`## Diseño`[^\n]*inventario[^\n]*Claude Design[^\n]*`## Decisiones humanas`/,
+	/bundle `design-sync\/` en la raíz del repo se asigna/,
 ];
 
 const SDD_INIT_POLICIES: RegExp[] = [
@@ -360,7 +363,11 @@ const SDD_INIT_POLICIES: RegExp[] = [
 	/hex fuera del directorio de tokens/,
 	/estilos inline/,
 	/componentes duplicados por nombre/,
-	/grep/,
+	/`git grep -IhoE '#\(\[0-9a-fA-F\]\{3\}\)\{1,2\}' -- <raíces> ':!<tokens>' \| wc -l`/,
+	/`git grep -h 'style=\{\{' -- <raíces> ':!<ui kit>' \| wc -l`/,
+	/`git grep -hoE '\(function\|const\|class\) \[A-Z\]\[A-Za-z0-9\]\+' -- <raíces> ':!<ui kit>' \| sort \| uniq -d \| wc -l`/,
+	/^(?![\s\S]*--exclude-dir)(?![\s\S]*StyleSheet\.create)[\s\S]*$/,
+	/también en `--update` aunque se elija `Mantener`/,
 	/baseline/,
 	/`Generar design system`[^\n]*solo si hay al menos una superficie `sin sistema`/,
 	/invoca `\/design-system` sin flags/,
@@ -377,6 +384,9 @@ test("CA-2: la Fase 1 de sdd-init releva DISEÑO por superficie con el censo com
 		if (harness === "claude" || harness === "opencode") {
 			const prompt = phase1.match(/description: "harness del proyecto"[\s\S]*?Busqueda breadth/)?.[0] ?? "";
 			if (!/^ {2}4\. DISEÑO:/m.test(prompt)) problems.push(`${path}: el Explore «harness del proyecto» no pide DISEÑO`);
+			for (const pattern of ["node_modules", "react-native-web", "libs.versions.toml", "globals.css", "tailwind.config", "components/ui/", ".storybook/", "design-sync/README.md", "defaults de scaffold"]) {
+				if (!prompt.includes(pattern)) problems.push(`${path}: el Explore «harness del proyecto» no recibe «${pattern}» del censo`);
+			}
 		} else if (!/^1\. \*\*Harness\*\*:[^\n]*DISEÑO/m.test(phase1)) {
 			problems.push(`${path}: la lente **Harness** no pide DISEÑO`);
 		}
@@ -395,7 +405,7 @@ test("CA-3: la Fase 3.5 ofrece ratchets de diseño y Generar design system; el r
 		const path = `${harness}/sdd-init/SKILL.md`;
 		const markdown = await readRepoFile(path);
 		if (!section(markdown, /^## Fase 3\.5 — Políticas de generación$/).includes("<!-- sdd-init-design-policies:start -->")) problems.push(`${path}: los gates de diseño no están en la Fase 3.5`);
-		if (!section(markdown, /^## Reporte$/).includes("- design-system: <referenciado|generado|no existe (ofrecido)|--assume: no ofrecido|sin superficies UI>")) problems.push(`${path}: el reporte no tiene la línea design-system`);
+		if (!section(markdown, /^## Reporte$/).includes("- design-system: <referenciado|generado|no existe (ofrecido)|con sistema (no ofrecido)|--assume: no ofrecido|sin superficies UI>")) problems.push(`${path}: el reporte no tiene la línea design-system`);
 	}
 	assert.deepEqual(problems, []);
 });
@@ -404,15 +414,16 @@ test("CA-4: la tabla de Upgrade de contrato gana la fila Diseño", async () => {
 	const problems: string[] = [];
 	for (const harness of HARNESSES) {
 		const path = `${harness}/sdd-init/SKILL.md`;
-		if (!/^\| Diseño \| no existe la sección `## Diseño` \|$/m.test(await readRepoFile(path))) problems.push(`${path}: sin fila Diseño en Upgrade de contrato`);
+		if (!/^\| Diseño \| no existe la sección `## Diseño` — no entra al menú: [^\n]*\|$/m.test(await readRepoFile(path))) problems.push(`${path}: sin fila Diseño (fuera del menú) en Upgrade de contrato`);
 	}
 	assert.deepEqual(problems, []);
 });
 
 test("CA-5: el contrato de este repo gana ## Diseño sin superficies, la fila del gate y los conteos nuevos", async () => {
 	const contract = await readRepoFile(".sdd/project.md");
-	const list = headings(contract);
-	assert.equal(list[list.indexOf("## Stack") + 1], "## Diseño", "## Diseño va inmediatamente después de ## Stack");
+	const contractHeadings = headings(contract);
+	assert.notEqual(contractHeadings.indexOf("## Stack"), -1, "el contrato tiene ## Stack");
+	assert.equal(contractHeadings[contractHeadings.indexOf("## Stack") + 1], "## Diseño", "## Diseño va inmediatamente después de ## Stack");
 	assert.match(section(contract, /^## Diseño$/), /^## Diseño\nSin superficies UI\.\n/);
 	const commands = section(contract, /^## Comandos$/);
 	assert.match(commands, /^\| gate de doctrina de diseño \| `node --test pi-extensions\/design-gate\/design-gate\.test\.ts` \|/m);
