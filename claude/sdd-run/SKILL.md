@@ -24,6 +24,7 @@ Tres ideas fuerza:
 - `--model M` — modelo del subagente; `M` es un alias de la tool `Agent`: `sonnet`, `opus`, `fable` o `haiku`. Sin el flag se pregunta (o se deriva con `--assume`).
 - `--effort E` — effort del subagente; `E` es `low`, `medium`, `high`, `xhigh` o `max`. Sin el flag se pregunta (o se deriva con `--assume`).
 - `--model` o `--effort` sin `--subagent` implican `--subagent`.
+- `--model`/`--effort` con un valor fuera de su lista (`claude-opus-5-5`, `gpt`, `extreme`) o sin valor (no hay token siguiente, o el siguiente empieza con `--`): interactivo → se trata como ausente, se avisa y se pregunta; `--assume` → abortar con diagnóstico antes de preguntar y antes de lanzar. Un token que empieza con `--` nunca se lee como valor del flag anterior.
 
 <!-- sdd-run-flow:start -->
 ### Flujo sin fricción
