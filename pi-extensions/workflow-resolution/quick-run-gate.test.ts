@@ -125,7 +125,7 @@ const INTERRUPTED_TEMPLATE = `QUICK-RUN INTERRUMPIDO
 - checklist verificado: X/Y
 - cambios sin commit: <paths o ninguno>
 - tests rojos/no concluyentes: <detalle>
-- worktree: <ruta>
+- worktree: <ruta> (bloqueado: \`quick-run <slug>\`)
 - reanudar con: <instrucción exacta>`;
 
 test("quick-run is packaged only for Claude, Codex, and Pi with safe harness extras", async () => {

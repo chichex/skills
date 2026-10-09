@@ -44,7 +44,16 @@ El reporte y la preview exacta se muestran antes de cualquier escritura. Salvo q
 
 Una referencia inválida, un PR cerrado que no se pueda obtener, un head inconsistente o un diff vacío frenan la review con diagnóstico concreto. No improvisar otra base.
 
-Para leer el código completo en el estado del PR sin tocar el checkout, preferir un worktree temporal detached en `<head-sha>`. Eliminarlo al terminar. Si no se puede crear, usar `git show <head-sha>:<path>` y declarar la limitación.
+Para leer el código completo en el estado del PR sin tocar el checkout, usar `git show <head-sha>:<path>`. Los checks que necesitan el árbol del head corren en un worktree temporal detached que vive dentro de un solo comando de shell, porque cada llamada de shell puede ser un proceso nuevo: se crea, se usa y se limpia en el mismo comando, con un `trap` EXIT que lo desbloquea y lo remueve aunque los checks fallen o el comando se corte.
+
+```bash
+review_dir="$(mktemp -d "${TMPDIR:-/tmp}/<repo>-review-<PR>-XXXXXX")"
+trap 'git worktree unlock "$review_dir" 2>/dev/null; git worktree remove --force "$review_dir" 2>/dev/null; rmdir "$review_dir" 2>/dev/null' EXIT
+git worktree add --detach --lock --reason "code-review <PR>" "$review_dir" <head-sha> || exit 1
+( cd "$review_dir" && <checks> )
+```
+
+Si el worktree no se puede crear, los checks quedan sin correr y la review lo declara como limitación.
 
 ## Fase 2 — Fuentes autoritativas
 

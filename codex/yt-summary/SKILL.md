@@ -14,13 +14,16 @@ el texto — no hay ningún LLM en la cadena, el resumen lo escribís con lo que
    ~30k palabras y no querés volcarlas de una).
 
    ```bash
-   python3 "${CODEX_HOME:-$HOME/.codex}/skills/yt-summary/yt2txt.py" "<url>" -o /tmp/yt-<id>.txt
+   transcript="$(mktemp "${TMPDIR:-/tmp}/yt-<id>-XXXXXX")"
+   python3 "${CODEX_HOME:-$HOME/.codex}/skills/yt-summary/yt2txt.py" "<url>" -o "$transcript"
    ```
 
    Imprime título, duración, palabras y el path. Si el video es corto (< 5k palabras)
    podés correrlo sin `-o` y leer la salida directo.
 
 2. Leé el archivo por partes y resumilo.
+
+3. Al terminar, borrá el transcript con `trap 'rm -f -- "<transcript>"' EXIT` al principio del último comando de shell que lo usa (o de uno propio si lo leíste sin shell). Cada llamada de shell puede ser un proceso nuevo: el `trap` va en el comando que termina de usar el archivo, no en el que lo crea, y lo borra aunque ese comando falle.
 
 Flags: `--langs` es la preferencia de idioma **solo para los subtítulos del autor**
 (default `es,en`), `--force-lang <code>` baja un track exacto salteando la

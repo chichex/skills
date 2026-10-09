@@ -1037,3 +1037,114 @@ test("#84 review #86: en Codex, escribir en <git-common-dir>/sdd/ pide escalaci�
 	if (!/En Codex[^\n]*`codex sandbox -P :workspace`[^\n]*Codex 0\.146\.0[^\n]*`<git-common-dir>\/sdd\/`[^\n]*escalación[^\n]*`\.sdd\/` del cwd/.test(doc)) problems.push("docs/harness-interaction-differences.md: falta la diferencia de Codex con `.git/`");
 	assert.deepEqual(problems, []);
 });
+
+// Spec #84 (CA-17 a CA-20): worktrees con dueño, temporales con trap, quick-run
+// tolera la suciedad común y los skills del contrato cierran con Commit + PR.
+function unlockBeforeEveryRemove(markdown: string): boolean {
+	const removes = [...markdown.matchAll(/`git worktree remove[^`]*`/g)];
+	return removes.length > 0 && removes.every((match) => /`git worktree unlock[^`]*`/.test(markdown.slice(Math.max(0, (match.index ?? 0) - 160), match.index)));
+}
+
+test("#84 CA-17: sdd-run y quick-run crean su worktree con --lock --reason y lo desbloquean antes de removerlo", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const file = `${harness}/sdd-run/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		if (!/`git worktree add --lock --reason "sdd-run <slug>" \.\.\/<repo>-sdd-<slug> -b sdd\/<slug> <base-ref>`/.test(delimitedDoctrine(markdown, "sdd-run-dirty-checkout"))) problems.push(`${file}: el worktree del PR único no nace con --lock --reason "sdd-run <slug>"`);
+		if (!/`git worktree add --lock --reason "sdd-run <slug>" \.\.\/<repo>-sdd-<slug> -b sdd\/<slug>\/1-<etapa> <base-ref>`/.test(delimitedDoctrine(markdown, "sdd-run-stack"))) problems.push(`${file}: el worktree del stack no nace con --lock --reason "sdd-run <slug>"`);
+		if (!unlockBeforeEveryRemove(markdown)) problems.push(`${file}: algún git worktree remove no va precedido de git worktree unlock`);
+		if (!/retenerlo bloqueado para la Fase 6[^\n]*el reporte lo dice/.test(markdown)) problems.push(`${file}: el worktree retenido para la Fase 6 no queda bloqueado ni lo dice el reporte`);
+		if (!/- worktree: <removido \| conservado bloqueado \(`sdd-run <slug>`\) en <ruta>>/.test(markdown)) problems.push(`${file}: el reporte no dice si el worktree quedó bloqueado`);
+	}
+	for (const harness of ["claude", "codex", "pi"] as const) {
+		const file = `${harness}/quick-run/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		if (!/`git worktree add --lock --reason "quick-run <slug>" <ruta> -b quick\/issue-<N>-<slug> <base-ref>`/.test(markdown)) problems.push(`${file}: el worktree no nace con --lock --reason "quick-run <slug>"`);
+		if (!unlockBeforeEveryRemove(markdown)) problems.push(`${file}: algún git worktree remove no va precedido de git worktree unlock`);
+		if (!/preservalo bloqueado y reportá la ruta/.test(markdown)) problems.push(`${file}: el worktree preservado no queda bloqueado`);
+		if (!/- worktree: <ruta> \(bloqueado: `quick-run <slug>`\)/.test(markdown)) problems.push(`${file}: el reporte de interrupción no dice que el worktree quedó bloqueado`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 CA-18: code-review, grill y yt-summary limpian sus temporales con trap", async () => {
+	const problems: string[] = [];
+	for (const harness of ["codex", "opencode", "pi"] as const) {
+		const file = `${harness}/code-review/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		for (const pattern of [
+			/review_dir="\$\(mktemp -d "\$\{TMPDIR:-\/tmp\}\/<repo>-review-<PR>-XXXXXX"\)"/,
+			/trap 'git worktree unlock "\$review_dir"[^']*git worktree remove --force "\$review_dir"[^']*' EXIT/,
+			/git worktree add --detach --lock --reason "code-review <PR>" "\$review_dir" <head-sha>/,
+			/vive dentro de un solo comando de shell/,
+		]) {
+			if (!pattern.test(markdown)) problems.push(`${file}: falta ${pattern}`);
+		}
+	}
+	for (const harness of HARNESSES) {
+		const file = `${harness}/grill/SKILL.md`;
+		const design = delimitedDoctrine(await readRepoFile(file), "grill-design");
+		if (!/trap 'rm -rf -- "<scratch>"' EXIT/.test(design)) problems.push(`${file}: el scratch de capturas no se borra con trap`);
+	}
+	for (const harness of ["claude", "codex"] as const) {
+		const file = `${harness}/yt-summary/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		if (!/transcript="\$\(mktemp "\$\{TMPDIR:-\/tmp\}\/yt-<id>-XXXXXX"\)"/.test(markdown)) problems.push(`${file}: el transcript no nace con mktemp`);
+		if (!/trap 'rm -f -- "<transcript>"' EXIT/.test(markdown)) problems.push(`${file}: el transcript no se borra con trap`);
+		if (/-o \/tmp\/yt-<id>\.txt/.test(markdown)) problems.push(`${file}: todavía escribe /tmp/yt-<id>.txt fijo`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 CA-19: quick-run clasifica la suciedad como sdd-run y solo aborta ante bloqueos estructurales", async () => {
+	const problems: string[] = [];
+	for (const harness of ["claude", "codex", "pi"] as const) {
+		const file = `${harness}/quick-run/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		for (const pattern of [
+			/El checkout sucio no bloquea por sí solo/,
+			/`git status --porcelain=v1 -z`/,
+			/se listan como \*\*excluidos del run\*\*: no abortan, no se copian y no entran al PR/,
+			/Abortá solo ante bloqueos estructurales: no se puede resolver o actualizar el base, ya existe el branch o el path del worktree, o el estado Git compartido impide crear un worktree aislado/,
+		]) {
+			if (!pattern.test(markdown)) problems.push(`${file}: falta ${pattern}`);
+		}
+		if (/Ante cualquier estado raro o cambio local: \*\*abortá\*\*/.test(markdown)) problems.push(`${file}: todavía aborta ante cualquier cambio local`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 CA-20: sdd-init, coding-policies y design-system cierran con Commit + PR en los cuatro harnesses", async () => {
+	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
+	const problems: string[] = [];
+	let reference: string | null = null;
+	for (const skill of ["sdd-init", "coding-policies", "design-system"] as const) {
+		for (const harness of HARNESSES) {
+			const file = `${harness}/${skill}/SKILL.md`;
+			const markdown = await readRepoFile(file);
+			const block = delimitedDoctrine(markdown, "commit-pr-close");
+			for (const pattern of [
+				/`Commit \+ PR \(Recomendado\)` \/ `Dejar sin commitear`/,
+				new RegExp(`\`git worktree add --lock --reason "${skill} <YYYY-MM-DD>" \\.\\./<repo>-${skill}-<YYYY-MM-DD> -b chore/${skill}-<YYYY-MM-DD> origin/<default>\``),
+				/Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR/,
+				/`git worktree unlock` y después `git worktree remove`/,
+				/`ya aterrizado`/,
+				/Con `--assume` no se pregunta: el cierre queda en `Dejar sin commitear`/,
+			]) {
+				if (!pattern.test(block)) problems.push(`${file} (commit-pr-close): falta ${pattern}`);
+			}
+			// Solo los slots del nombre del skill; la regla de encadenado nombra sdd-init a propósito.
+			const normalized = normalizeInvocations(block, prefixes[harness])
+				.replaceAll(`"${skill} <YYYY-MM-DD>"`, `"<skill> <YYYY-MM-DD>"`)
+				.replaceAll(`<repo>-${skill}-`, "<repo>-<skill>-")
+				.replaceAll(`chore/${skill}-`, "chore/<skill>-");
+			if (reference === null) reference = normalized;
+			else if (normalized !== reference) problems.push(`${file}: commit-pr-close diverge — ${firstDifference(reference, normalized)}`);
+		}
+	}
+	for (const harness of HARNESSES) {
+		const file = `${harness}/sdd-init/SKILL.md`;
+		if (/^- No commitear nada\.$/m.test(await readRepoFile(file))) problems.push(`${file}: MUST NOT DO todavía prohíbe todo commit`);
+	}
+	assert.deepEqual(problems, []);
+});

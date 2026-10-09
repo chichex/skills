@@ -144,6 +144,20 @@ Design system: <raíz>/DESIGN_SYSTEM.md (<generado|regenerado>) | no generado: <
 - siguiente paso: el primer $sdd-run que toque UI materializa los tokens en código siguiendo el doc
 ```
 
+<!-- commit-pr-close:start -->
+## Cierre — Commit + PR
+
+Después del reporte, preguntar `Commit + PR (Recomendado)` / `Dejar sin commitear`. Este skill escribe en el checkout principal porque los demás skills leen de ahí lo que genera: es la excepción al principio de que el checkout principal es de solo lectura, y por eso cierra ofreciendo un PR.
+
+`Commit + PR`:
+
+1. `git fetch origin` y crear el worktree con lock, con el branch `chore/design-system-<YYYY-MM-DD>` nacido de `origin/<default>`: `git worktree add --lock --reason "design-system <YYYY-MM-DD>" ../<repo>-design-system-<YYYY-MM-DD> -b chore/design-system-<YYYY-MM-DD> origin/<default>`.
+2. Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR con `gh pr create --base <default>`.
+3. `git worktree unlock` y después `git worktree remove` del worktree.
+
+La copia idéntica que queda en el checkout principal no se toca: después del merge, `$sdd-land` la reconoce como `ya aterrizado` y la resuelve sin preguntar. Si el branch o el path ya existen, o no hay remote o `gh`, se reporta el motivo y el cierre queda en `Dejar sin commitear`, que no toca nada. El reporte suma la línea `- cierre: <PR #<n> <url> | sin commitear (<motivo>)>`. Con `--assume` no se pregunta: el cierre queda en `Dejar sin commitear`. Si este skill corre encadenado desde `$sdd-init`, el cierre lo ofrece una sola vez `$sdd-init`, con todos los paths escritos.
+<!-- commit-pr-close:end -->
+
 ## MUST DO
 
 - Censar superficies y elementos de diseño antes de preguntar nada; con sistema existente, registrar en vez de generar.
