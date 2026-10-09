@@ -59,6 +59,16 @@ test("Pi grill uses structured resume and finalize continuation instead of ad-ho
 	assert.doesNotMatch(skill, /le[eé] `~\/\.agents\/skills\/sdd-spec\/SKILL\.md`/i);
 });
 
+test("Pi grill delegates qualified GitHub issue targets and consumes the strict child launch envelope", async () => {
+	const skill = await readFile(new URL("../../pi/grill/SKILL.md", import.meta.url), "utf8");
+	assert.match(skill, /owner\/repo#NN/);
+	assert.match(skill, /https:\/\/github\.com\/owner\/repo\/issues\/NN/);
+	assert.match(skill, /launch_grill/);
+	assert.match(skill, /workflow-launch version="1"/);
+	assert.match(skill, /DirectGrillRequestV1/);
+	assert.match(skill, /no vuelvas a invocar `launch_grill`/i);
+});
+
 test("CA-11: Pi grill and sdd-spec document portable handoff-only recovery by physical path", async () => {
 	const [grill, spec] = await Promise.all([
 		readFile(new URL("../../pi/grill/SKILL.md", import.meta.url), "utf8"),
@@ -92,6 +102,14 @@ test("Pi sdd-spec exposes Ejecutar ahora only after persistence and delegates to
 	assert.match(skill.slice(executeIndex), /launch_sdd_run/);
 	assert.match(skill.slice(executeIndex), /cancel/i);
 	assert.doesNotMatch(skill.slice(executeIndex), /encontrar.*ejecut/i);
+});
+
+test("Pi sdd-run delegates qualified GitHub issue targets to the cross-project launcher", async () => {
+	const skill = await readFile(new URL("../../pi/sdd-run/SKILL.md", import.meta.url), "utf8");
+	assert.match(skill, /owner\/repo#NN/);
+	assert.match(skill, /https:\/\/github\.com\/owner\/repo\/issues\/NN/);
+	assert.match(skill, /sin.*workflow-launch[\s\S]*launch_sdd_run/is);
+	assert.match(skill, /no (?:explores|implementes|toques Git)/i);
 });
 
 test("Pi sdd-run recognizes direct and triage envelopes without weakening its own preconditions", async () => {

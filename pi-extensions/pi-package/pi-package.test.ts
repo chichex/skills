@@ -99,6 +99,7 @@ const EXPECTED_THEMES = ["./pi-themes/claude-code.json"];
 
 const EXPECTED_EXTENSION_COMMANDS = [
 	"__sdd-dispatch",
+	"grill",
 	"grills",
 	"issues",
 	"llama",

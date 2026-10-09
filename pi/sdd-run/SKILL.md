@@ -3,7 +3,7 @@ name: sdd-run
 description: Ejecuta una spec SDD de punta a punta — planifica contra el código real, implementa con tests primero, verifica cada criterio de aceptación con el mecanismo que la spec declara, y termina en un PR con la spec como body y la evidencia de verificación. El "terminado" lo define la spec, no la sensación. Usar SIEMPRE que el usuario quiera implementar una spec de .sdd/specs/, ejecutar/correr una spec, implementar un issue que ya tiene spec SDD, o diga "corre la spec de X", "implementa esto que ya especificamos", "dale para adelante con la spec". Exige spec (/skill:sdd-spec) y contrato (/skill:sdd-init); si faltan, hay que generarlos primero.
 ---
 
-Cierra el ciclo SDD: toma una spec de `/skill:sdd-spec` y la implementa hasta que cada criterio de aceptación (CA) esté verificado con SU mecanismo declarado, o quede honestamente reportado como FALLA o pendiente de prueba humana. Los argumentos pueden traer la ruta de la spec (`.sdd/specs/x.md`), un issue (`#NN` — busca la spec en su body), o flags.
+Cierra el ciclo SDD: toma una spec de `/skill:sdd-spec` y la implementa hasta que cada criterio de aceptación (CA) esté verificado con SU mecanismo declarado, o quede honestamente reportado como FALLA o pendiente de prueba humana. Los argumentos pueden traer la ruta de la spec (`.sdd/specs/x.md`), un issue local (`#NN`), una referencia calificada (`owner/repo#NN`), una URL canónica de issue de GitHub, o flags.
 
 Tres ideas fuerza:
 
@@ -14,9 +14,10 @@ Tres ideas fuerza:
 ## Argumentos
 
 ```text
-/skill:sdd-run [.sdd/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>]
+/skill:sdd-run [.sdd/specs/<spec>.md | #NN | owner/repo#NN | https://github.com/owner/repo/issues/NN] [--assume] [--no-pr] [--base <branch>]
 ```
 
+- Una referencia `owner/repo#NN` o URL de GitHub puede apuntar a otro checkout. Si llega sin un envelope `workflow-launch`, invocá inmediatamente `launch_sdd_run` con ese target exacto y terminá el turno. La tool resuelve un único proyecto conocido, valida contrato/spec y pide la autorización de ejecución antes de abrir la sesión hija. No explores, no implementes, no toques Git y nunca interpretes una URL como path en el cwd actual. Si la tool no está disponible, frená con el comando manual `/sdd-run <target>`; no continúes en el proyecto equivocado.
 - `--assume` — cero preguntas: encadena `/skill:sdd-spec --assume` (y este `/skill:sdd-init --assume`) si faltan precondiciones, no frena ni ante choques del plan con políticas, resuelve desviaciones con sesgo mínimo seguro y no ofrece nada post-PR. Para correr desatendido.
 - `--no-pr` — frena después del commit en el branch: no pushea ni crea PR. Para repos sin remote o cuando el PR lo arma el usuario.
 - `--base <branch>` — branch base para ramificar y para el PR (default: el branch default que declara el contrato — main/master/otro).

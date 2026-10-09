@@ -27,7 +27,7 @@ test("grill dispatch arguments contain only validated identity, never untrusted 
 	assert.equal(
 		grillDispatchArgs(17, "owner/repo", 14),
 		[
-			"#17",
+			"owner/repo#17",
 			"",
 			"Grillá el issue #17 en el repositorio owner/repo.",
 			"Fue seleccionado como prerrequisito del issue #14.",
