@@ -111,7 +111,8 @@ const SDD_SPEC_FLOW_DOCTRINE = [
 	/mecanismo[\s\S]*propuesto[\s\S]*alternativas[\s\S]*sin preguntar/i,
 	/`--out`[\s\S]*fuerza/i,
 	/SDD-Tracking in:body/,
-	/`\.sdd\/specs\/<slug>\.md`/,
+	// Spec #84, CA-14: el destino local es el common-dir, fuera del working tree.
+	/`<git-common-dir>\/sdd\/specs\/<slug>\.md`/,
 	/staging no-SDD/,
 	/`Llevar a issue`/,
 	/`Solicitar cambios`/,
@@ -888,4 +889,122 @@ test("autotest: la normalizacion reduce las tres sintaxis de invocacion al mismo
 		/«skill:coding-policies»/,
 		"la lista de skills normalizables incluye coding-policies",
 	);
+});
+
+// Spec #84 (CA-13 a CA-16): los borradores de planificación viven en
+// <git-common-dir>/sdd/, fuera del working tree, y el árbol trackeado `.sdd/`
+// sigue siendo el segundo lugar de lectura. Cada skill lleva un bloque
+// delimitado idéntico entre harnesses con esa doctrina.
+const COMMON_DIR_COMMAND = /`git rev-parse --path-format=absolute --git-common-dir`/;
+
+const GRILL_DRAFTS_DOCTRINE = [
+	/El handoff, el cuestionario y la carpeta de capturas se escriben en `<git-common-dir>\/sdd\/grills\/`, fuera del working tree/,
+	COMMON_DIR_COMMAND,
+	/Fuera de un repo git, en `\.sdd\/grills\/` del cwd/,
+	/se miran los dos lugares: `\.sdd\/grills\/` del árbol[^\n]*`<git-common-dir>\/sdd\/grills\/`; ante el mismo nombre gana el del árbol/,
+	/imprime su ruta absoluta/,
+];
+
+const SDD_SPEC_DRAFTS_DOCTRINE = [
+	/La spec local se escribe en `<git-common-dir>\/sdd\/specs\/<slug>\.md`, fuera del working tree/,
+	COMMON_DIR_COMMAND,
+	/fuera de un repo git, en `\.sdd\/specs\/` del cwd/,
+	/`\.sdd\/specs\/<slug>\.md` es su ruta lógica: se resuelve primero en el árbol trackeado[^\n]*y después en `<git-common-dir>\/sdd\/specs\/`/,
+	/Los handoffs de `--from-grill` y la Fase 0 se listan de los dos lugares, `\.sdd\/grills\/` del árbol y `<git-common-dir>\/sdd\/grills\/`/,
+	/La raíz operativa de un handoff sale de su campo `Proyecto`, no de dónde está guardado el archivo/,
+	/imprime la ruta absoluta de la spec local/,
+];
+
+const SDD_RUN_DRAFTS_DOCTRINE = [
+	/\*\*Borradores del common-dir\*\*: los artefactos de entrada se toman de `<git-common-dir>\/sdd\/`/,
+	COMMON_DIR_COMMAND,
+	/la spec target, el handoff canónico, su carpeta de capturas y las specs predecesoras/,
+	/Por compatibilidad, también los que sigan sin trackear en `\.sdd\/` del checkout original/,
+	/Se copian al worktree con el mismo nombre, bajo `\.sdd\/grills\/` y `\.sdd\/specs\/`, y entran en el PRIMER commit/,
+	/Después de verificar ese commit[^\n]*se borran las copias de `<git-common-dir>\/sdd\/`/,
+];
+
+const ISSUE_TRIAGE_DRAFTS_DOCTRINE = [
+	/`\.sdd\/grills\/` y `\.sdd\/specs\/` del árbol[^\n]*`<git-common-dir>\/sdd\/grills\/` y `<git-common-dir>\/sdd\/specs\/`/,
+	COMMON_DIR_COMMAND,
+	/El inventario y el linaje se resuelven en los dos lugares; ante el mismo nombre gana el del árbol/,
+	/`superseded-by=\.sdd\/specs\/<x>\.md` se busca primero en el árbol y después en `<git-common-dir>\/sdd\/specs\/`/,
+];
+
+async function draftsBlocks(skill: string, block: string, patterns: RegExp[], harnesses: readonly Harness[] = HARNESSES): Promise<string[]> {
+	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
+	const problems: string[] = [];
+	const byHarness = new Map<Harness, string[]>();
+	for (const harness of harnesses) {
+		const doctrine = delimitedDoctrine(await readRepoFile(`${harness}/${skill}/SKILL.md`), block);
+		for (const pattern of patterns) {
+			if (!pattern.test(doctrine)) problems.push(`${harness}/${skill}/SKILL.md (${block}) no declara ${pattern}`);
+		}
+		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
+	}
+	const [reference, ...rest] = harnesses;
+	for (const harness of rest) {
+		const left = byHarness.get(reference!)?.[0] ?? "";
+		const right = byHarness.get(harness)?.[0] ?? "";
+		if (left !== right) problems.push(`${skill} (${block}): ${reference} vs ${harness} — ${firstDifference(left, right)}`);
+	}
+	return problems;
+}
+
+test("#84 CA-13: grill escribe handoff, cuestionario y capturas en <git-common-dir>/sdd/grills en los cuatro harnesses", async () => {
+	const problems = await draftsBlocks("grill", "grill-drafts", GRILL_DRAFTS_DOCTRINE);
+	for (const harness of HARNESSES) {
+		const file = `${harness}/grill/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		if (!/`<git-common-dir>\/sdd\/grills\/<fecha>-<slug>\.md`/.test(markdown)) problems.push(`${file}: el handoff no se escribe en <git-common-dir>/sdd/grills/<fecha>-<slug>.md`);
+		if (!/`<git-common-dir>\/sdd\/grills\/<fecha>-<slug>-cuestionario\.md`/.test(markdown)) problems.push(`${file}: el cuestionario no se escribe en <git-common-dir>/sdd/grills/`);
+		if (/`\.sdd\/grills\/<fecha>-<slug>(?:-cuestionario)?\.md`/.test(markdown)) problems.push(`${file}: todavía escribe en .sdd/grills/<fecha>-<slug>.md`);
+		const design = delimitedDoctrine(markdown, "grill-design");
+		if (!/se copian a `<git-common-dir>\/sdd\/grills\/<nombre-real-del-handoff>\/`/.test(design)) problems.push(`${file}: las capturas no se copian a <git-common-dir>/sdd/grills/`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 CA-14: sdd-spec escribe la spec local en <git-common-dir>/sdd/specs y lista los dos lugares en los cuatro harnesses", async () => {
+	const problems = await draftsBlocks("sdd-spec", "sdd-spec-drafts", SDD_SPEC_DRAFTS_DOCTRINE);
+	for (const harness of HARNESSES) {
+		const file = `${harness}/sdd-spec/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		const flow = delimitedDoctrine(markdown, "sdd-spec-flow");
+		if (!/`<git-common-dir>\/sdd\/specs\/<slug>\.md`/.test(flow)) problems.push(`${file}: el destino local de sdd-spec-flow no es <git-common-dir>/sdd/specs/<slug>.md`);
+		if (/`local` = `\.sdd\/specs\/`/.test(markdown)) problems.push(`${file}: --out local todavía apunta a .sdd/specs/`);
+		if (/ra[ií]z operativa (?:sale )?de la ubicaci[oó]n f[ií]sica|deriva la ra[ií]z operativa de la ubicaci[oó]n f[ií]sica/.test(markdown)) {
+			problems.push(`${file}: la raíz operativa todavía sale de la ubicación física del handoff`);
+		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 CA-15: sdd-run toma los artefactos de entrada de <git-common-dir>/sdd/, los commitea en el worktree y borra las copias", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const doctrine = delimitedDoctrine(await readRepoFile(`${harness}/sdd-run/SKILL.md`), "sdd-run-dirty-checkout");
+		for (const pattern of [...SDD_RUN_DRAFTS_DOCTRINE, /checkout original queda intacto/i]) {
+			if (!pattern.test(doctrine)) problems.push(`${harness}/sdd-run/SKILL.md (sdd-run-dirty-checkout) no declara ${pattern}`);
+		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 CA-16: issue-triage resuelve el linaje en los dos lugares y los READMEs dicen dónde viven los borradores", async () => {
+	const triageHarnesses = HARNESSES.filter((harness) => harness !== "opencode");
+	const problems = await draftsBlocks("issue-triage", "issue-triage-drafts", ISSUE_TRIAGE_DRAFTS_DOCTRINE, triageHarnesses);
+	for (const harness of ["claude", "codex"] as const) {
+		const file = `${harness}/issue-triage/SKILL.md`;
+		if (!/ubicado directamente bajo `<cwd>\/\.sdd\/grills\/` o `<git-common-dir>\/sdd\/grills\/`/.test(await readRepoFile(file))) {
+			problems.push(`${file}: spec-from-grill no acepta el handoff de <git-common-dir>/sdd/grills/`);
+		}
+	}
+	for (const path of ["README.md", "README.en.md"]) {
+		const readme = await readRepoFile(path);
+		for (const literal of ["`<git-common-dir>/sdd/grills/`", "`<git-common-dir>/sdd/specs/`", "`git rev-parse --path-format=absolute --git-common-dir`"]) {
+			if (!readme.includes(literal)) problems.push(`${path}: no menciona ${literal}`);
+		}
+	}
+	assert.deepEqual(problems, []);
 });

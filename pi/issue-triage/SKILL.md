@@ -69,6 +69,10 @@ La selección múltiple es **todo-o-nada**. No propongas ni ejecutes grupos parc
 - La vigencia es exactamente `fresh|stale|unknown`. El adapter separa eventos materiales (`title`, `body`, `comments`) de administrativos (`labels`, `assignees`, `milestone`). Baseline local = revisión/mtime del archivo; baseline en issue = revisión del body que aloja la spec.
 - Un evento material demostrablemente posterior da `stale`; historia completa sin eventos posteriores da `fresh`; timestamps faltantes/incomparables o historia insuficiente dan `unknown`. El core no usa la hora actual y `unknown` nunca habilita run.
 
+<!-- issue-triage-drafts:start -->
+- Los artefactos locales viven en dos lugares: `.sdd/grills/` y `.sdd/specs/` del árbol, con lo que un PR ya commiteó, y `<git-common-dir>/sdd/grills/` y `<git-common-dir>/sdd/specs/`, los borradores fuera del working tree (`<git-common-dir>` es la salida de `git rev-parse --path-format=absolute --git-common-dir`). El inventario y el linaje se resuelven en los dos lugares; ante el mismo nombre gana el del árbol. Un `superseded-by=.sdd/specs/<x>.md` se busca primero en el árbol y después en `<git-common-dir>/sdd/specs/`, y los dos cuentan como dentro del proyecto.
+<!-- issue-triage-drafts:end -->
+
 ### Grills
 
 - El snapshot JSON manda para runtime `active`; el handoff Markdown manda para `paused|finalized`. Snapshot `active` + handoff previo `paused` del mismo grill es una sola sesión reanudada.

@@ -79,7 +79,9 @@ test("CA-11: Pi grill and sdd-spec document portable handoff-only recovery by ph
 	assert.match(grill, /handoff-only[\s\S]*pausado[\s\S]*Retomar[\s\S]*import/i);
 	assert.match(grill, /finalizado[\s\S]*ruta absoluta[\s\S]*sdd-spec/is);
 	assert.match(spec, /ruta absoluta[\s\S]*`\.sdd\/grills\/`[\s\S]*finalizado/is);
-	assert.match(spec, /ra[ií]z operativa[\s\S]*ubicaci[oó]n f[ií]sica/is);
+	// Spec #84, CA-14: la raíz operativa sale del campo `Proyecto`, no de la ubicación del archivo.
+	assert.match(spec, /ra[ií]z operativa sale del campo `Proyecto` del handoff[\s\S]*no de d[oó]nde est[aá] guardado el archivo/is);
+	assert.doesNotMatch(spec, /deriva la ra[ií]z operativa de la ubicaci[oó]n f[ií]sica/i);
 	assert.match(spec, /project.*hist[oó]ric[\s\S]*no bloque/is);
 	assert.match(spec, /sin (?:snapshot|JSON) hermano/i);
 	assert.match(spec, /grill.*marker[\s\S]*spec/is);

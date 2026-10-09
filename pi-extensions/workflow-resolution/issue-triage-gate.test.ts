@@ -64,9 +64,11 @@ export function normalizeArtifactAwareBlock(
 ): string {
 	const invocation = differences.invocation[harness];
 	const questionTool = differences.questionTool[harness];
+	// Mismo borde que normalizeInvocations de harness-gate/interaction.ts: una
+	// ruta como `.sdd/grills/` no es una invocación de `/grill`.
 	let normalized = block.replace(
-		new RegExp(`${escapeRegExp(invocation)}(issue-triage|quick-run|grill|sdd-spec|sdd-run)`, "g"),
-		(_match, name: string) => `«skill:${name}»`,
+		new RegExp(`(^|[^A-Za-z0-9.])${escapeRegExp(invocation)}(issue-triage|quick-run|grill|sdd-spec|sdd-run)(?![A-Za-z0-9-])`, "gm"),
+		(_match, before: string, name: string) => `${before}«skill:${name}»`,
 	);
 	if (questionTool && questionTool !== "—") {
 		normalized = normalized.replaceAll(questionTool, "«question-tool»");
@@ -270,4 +272,12 @@ test("stage-chain gate reports a route mapped to the wrong skill", () => {
 	].join("\n");
 	assert.equal(stageChainRoutes(block, "/").get("join-grill"), "sdd-spec");
 	assert.equal(stageChainRoutes(block, "$").get("grill"), "?/sdd-spec");
+});
+
+test("autotest: el normalizador de issue-triage no confunde una ruta .sdd/grills/ con la invocación /grill", async () => {
+	const interaction = parseInteractionDifferences(await readRepoFile("docs/harness-interaction-differences.md"));
+	assert.equal(
+		normalizeArtifactAwareBlock("`/grill` y `<git-common-dir>/sdd/grills/`", "claude", interaction),
+		"`«skill:grill»` y `<git-common-dir>/sdd/grills/`",
+	);
 });

@@ -11,7 +11,7 @@ Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. 
 
 - Toda elección pasa por `AskUserQuestion`: hasta 4 preguntas por llamada, 2 a 4 opciones por pregunta, la recomendada primera y marcada "(Recommended)", `multiSelect` solo cuando las respuestas pueden coexistir. "Other" es automático: siempre hay respuesta libre.
 - El diálogo de `AskUserQuestion` no arrastra contexto: cada pregunta tiene que poder responderse leyendo solo la pantalla actual. Lo que la pregunta referencia (mapa, propuesta, contrato) tiene que estar ya renderizado como mensaje visible en el chat — nunca pidas confirmar algo que todavía no escribiste.
-- Persistí sesiones únicamente como Markdown en `.sdd/grills/`, con ediciones normales de archivos. No crees el directorio hasta que el usuario guarde, pause o exporte.
+- Persistí sesiones únicamente como Markdown en `<git-common-dir>/sdd/grills/` (ver "Persistencia y reanudación"), con ediciones normales de archivos. No crees el directorio hasta que el usuario guarde, pause o exporte.
 
 ## Principios
 
@@ -27,7 +27,7 @@ Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. 
 Antes de entrevistar:
 
 1. Explorá el codebase cuando el tema dependa de él y resolvé todos los hechos comprobables relevantes. Los hechos los averigua el agente, nunca el usuario: si más adelante una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, se averigua sin frenar la ronda (ver "Entrevista por rondas").
-2. Buscá `CONTEXT-MAP.md`, `CONTEXT.md`, `docs/adr/` y handoffs previos en `.sdd/grills/`. Leé los relevantes para entender vocabulario y decisiones ya tomadas; son solo lectura, este skill nunca los escribe.
+2. Buscá `CONTEXT-MAP.md`, `CONTEXT.md`, `docs/adr/` y handoffs previos en `.sdd/grills/` y `<git-common-dir>/sdd/grills/`. Leé los relevantes para entender vocabulario y decisiones ya tomadas; son solo lectura, este skill nunca los escribe.
 3. Construí un árbol provisional de decisiones con secciones y dependencias explícitas: qué pregunta desbloquea a cuáles.
 4. Estimá preguntas mínimas, probables y máximas. La cifra operativa es la probable; presentala como estimación, no como promesa — una respuesta puede abrir o cerrar ramas.
 5. Diagnosticá la modalidad recomendada:
@@ -64,7 +64,7 @@ Si la estimación probable es de 1 a 3 preguntas, decilo en una línea (es el te
 
 Las ramas se preguntan únicamente cuando el inventario y el repo no las resuelven: una pantalla que ya existe en los mocks, o un componente que ya está en el UI kit, es un hecho, no una decisión. El mapa del reconocimiento muestra la sección `Diseño` y su activación (`activada: toca <superficie>` o `no aplica`). Los pedidos sin UI no ven ninguna pregunta nueva. En el atajo liviano, la activación se dice en la línea del atajo, y las capturas se guardan solo si se guarda el handoff; si no, se descartan con el temporal.
 
-**Capturas de referencia.** El agente renderiza con el navegador del harness las referencias renderizables del inventario —mocks HTML, bundle `design-sync/`, el Design de Claude Design, Storybook— para las pantallas que el tema toca: en Claude Code con Playwright MCP (`browser_navigate` a la ruta o URL, `browser_take_screenshot`); en los demás harnesses, con el navegador headless que `## Verificacion autonoma` del contrato declare. Un proyecto de Claude Design se materializa primero con `DesignSync` `get_file` en el temporal y se navega por `file://`. Sin navegador disponible, se le pide la captura al usuario o se registra la referencia por ruta, sin captura. Las capturas que el usuario adjunte como archivo o ruta se guardan tal cual. Sin referencia renderizable ni adjunta, nunca se inventa una captura: la rama lo registra como hecho. Las capturas viven en el scratch, un directorio temporal fuera del repo (ej. `mktemp -d`), hasta guardar, pausar o finalizar; recién ahí se copian a `.sdd/grills/<nombre-real-del-handoff>/`, con el mismo nombre base que el `.md` que quedó escrito (en Pi, incluido el sufijo de colisión que agrega la tool), y el handoff las referencia por ruta relativa (`<nombre-real-del-handoff>/<pantalla>.png`).
+**Capturas de referencia.** El agente renderiza con el navegador del harness las referencias renderizables del inventario —mocks HTML, bundle `design-sync/`, el Design de Claude Design, Storybook— para las pantallas que el tema toca: en Claude Code con Playwright MCP (`browser_navigate` a la ruta o URL, `browser_take_screenshot`); en los demás harnesses, con el navegador headless que `## Verificacion autonoma` del contrato declare. Un proyecto de Claude Design se materializa primero con `DesignSync` `get_file` en el temporal y se navega por `file://`. Sin navegador disponible, se le pide la captura al usuario o se registra la referencia por ruta, sin captura. Las capturas que el usuario adjunte como archivo o ruta se guardan tal cual. Sin referencia renderizable ni adjunta, nunca se inventa una captura: la rama lo registra como hecho. Las capturas viven en el scratch, un directorio temporal fuera del repo (ej. `mktemp -d`), hasta guardar, pausar o finalizar; recién ahí se copian a `<git-common-dir>/sdd/grills/<nombre-real-del-handoff>/`, con el mismo nombre base que el `.md` que quedó escrito (en Pi, incluido el sufijo de colisión que agrega la tool), y el handoff las referencia por ruta relativa (`<nombre-real-del-handoff>/<pantalla>.png`).
 
 **Handoff.** Mientras la sesión está `paused`, las decisiones de diseño viven en `## Decisiones resueltas` con prefijo `Diseño:`, y la ruta de cada captura va en la decisión `Diseño:` que la usa. Con la rama activada, el contrato visible del cierre incluye el diseño, y el handoff `finalized` lo persiste en `## Diseño`. Si un handoff trae más de un `## Diseño` (una revisión importada), el vigente es el último.
 <!-- grill-design:end -->
@@ -98,7 +98,11 @@ Mismo ciclo, pero con exactamente una pregunta por llamada a `AskUserQuestion`, 
 
 ## Persistencia y reanudación
 
-Para pausar o guardar, escribí `.sdd/grills/<fecha>-<slug>.md` con:
+<!-- grill-drafts:start -->
+**Dónde viven los borradores.** El handoff, el cuestionario y la carpeta de capturas se escriben en `<git-common-dir>/sdd/grills/`, fuera del working tree: `<git-common-dir>` es la salida de `git rev-parse --path-format=absolute --git-common-dir`, el mismo directorio para todos los worktrees del repo, así que `git status` queda limpio en cada uno. Fuera de un repo git, en `.sdd/grills/` del cwd. Para leer o retomar se miran los dos lugares: `.sdd/grills/` del árbol, con lo que un PR ya commiteó, y `<git-common-dir>/sdd/grills/`; ante el mismo nombre gana el del árbol. El borrador no se ve en el editor ni viaja con un clon nuevo, así que cada vez que se guarda, pausa o finaliza, el reporte imprime su ruta absoluta.
+<!-- grill-drafts:end -->
+
+Para pausar o guardar, escribí `<git-common-dir>/sdd/grills/<fecha>-<slug>.md` con:
 
 ```markdown
 # Grill — <tema>
@@ -127,7 +131,7 @@ Al pausar, informá la ruta y ofrecé exportar el cuestionario de pendientes (ve
 
 Para retomar:
 
-1. Si no se indicó una ruta, listá `.sdd/grills/*.md` por fecha.
+1. Si no se indicó una ruta, listá por fecha los handoffs de los dos lugares (`.sdd/grills/*.md` y `<git-common-dir>/sdd/grills/*.md`).
 2. Pedí elegir con `AskUserQuestion` solo si hay más de un candidato razonable; si hay más de 4, ofrecé los más recientes como opciones y el resto vía "Other".
 3. Leé el archivo completo y contrastá sus hechos con el estado actual del repo; si difieren, mostrá la contradicción y resolvela antes de avanzar. Los handoffs viejos pueden traer una sección `## Modo`: ignorala, ya no existe.
 4. Mostrá tema, decisiones resueltas, ramas pendientes y la próxima frontera.
@@ -139,11 +143,11 @@ Para retomar:
 
 Disponible al pausar y como acción del cierre. Sirve cuando las decisiones pendientes las tiene que responder un tercero sin agente (un PM, un cliente, otro equipo): el formato está pensado para copiar y pegar en un Google Doc.
 
-Escribí `.sdd/grills/<fecha>-<slug>-cuestionario.md`:
+Escribí `<git-common-dir>/sdd/grills/<fecha>-<slug>-cuestionario.md`:
 
 ```markdown
 # Cuestionario — <tema>
-<!-- Generado por grill. Sesión de origen: .sdd/grills/<fecha>-<slug>.md -->
+<!-- Generado por grill. Sesión de origen: <git-common-dir>/sdd/grills/<fecha>-<slug>.md -->
 
 Cómo responder: escribí tu respuesta debajo de cada "Respuesta:". Si una opción te
 sirve tal cual, alcanza con nombrarla; si no, respondé con tus palabras.
@@ -179,7 +183,7 @@ Cerrá solo cuando las ramas dentro del alcance elegido estén resueltas.
    - `Pausar o exportar cuestionario`: guarda el progreso sin finalizar; un follow-up pregunta si además genera el cuestionario para un tercero.
    Si elige ajustar: retomá solo la rama elegida con el ciclo de entrevista, recalculá las decisiones dependientes si el cambio las invalida, y volvé a renderizar el contrato actualizado antes de pedir confirmación otra vez.
 
-3. **Persistencia final.** Tras confirmar (con o sin encadenado), guardá el mismo contenido del contrato como handoff `finalized` en `.sdd/grills/<fecha>-<slug>.md` con el formato de "Persistencia y reanudación", e informá la ruta.
+3. **Persistencia final.** Tras confirmar (con o sin encadenado), guardá el mismo contenido del contrato como handoff `finalized` en `<git-common-dir>/sdd/grills/<fecha>-<slug>.md` con el formato de "Persistencia y reanudación", e informá la ruta absoluta.
 
 4. **Encadenar la spec.** Si eligió crear la spec, cargá el skill `sdd-spec` y continuá con `--from-grill <ruta-del-handoff>`. Este es el último paso del cierre. El handoff confirmado es fuente autoritativa: la spec no vuelve a preguntar decisiones ya cerradas, y sigue exigiendo `.sdd/project.md`.
 
