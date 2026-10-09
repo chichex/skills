@@ -142,17 +142,16 @@ const DOCTRINE: Record<string, RegExp[]> = {
 		/checkout principal no pudo sincronizarse[\s\S]*`git branch -d` puede negarse[\s\S]*se reporta con el comando, sin `-D`/,
 	],
 	"CA-20": [
-		/branches locales ya mergeados en `origin\/<default>`[\s\S]*excluyendo el default y el actual/,
-		/worktrees cuyo branch está mergeado o ya no existe/,
-		/`Borrar todo lo listado` \/ `Elegir cuáles` \(selección múltiple\) \/ `No borrar`/,
+		// #84 CA-5 reemplaza el barrido por ancestría y su pregunta (ver DOCTRINE_84).
+		/worktrees de los branches «mergeados con PR» que están limpios y sin lock/,
 		/Worktrees sucios y branches sin mergear solo se reportan con ruta y comando exacto/,
 	],
 	"CA-21": [
 		/`git merge --ff-only origin\/<default>`/,
-		/`git status --short --branch --untracked-files=all`[\s\S]*`git diff --stat`[\s\S]*`git clean -nd`/,
+		/`git status --short --branch --untracked-files=all`[\s\S]*`git diff --stat`[\s\S]*la lista exacta de paths sin dueño que `Descartar` tocaría/,
 		/`Conservar en wip\/<fecha>-<slug>, sin push \(Recomendado\)` \/ `Descartar` \/ `Tratar por path` \/ `Dejar como está`/,
 		/`git switch -c wip\/<YYYY-MM-DD>-<slug>`[\s\S]*sin secrets, sin `--no-verify`[\s\S]*fast-forward/,
-		/`git reset --hard HEAD`[\s\S]*`git clean -fd`[\s\S]*nunca `-x`/,
+		// #84 CA-4 reemplaza `reset --hard` + `clean -fd` por `git restore` + `rm` (ver DOCTRINE_84).
 		/una pregunta por path[\s\S]*`conservar \/ descartar \/ ignorar`[\s\S]*`ignorar` solo se ofrece para paths untracked[\s\S]*`\.git\/info\/exclude`[\s\S]*local, sin commit[\s\S]*solo se crea el branch `wip\/` si algún path eligió `conservar`/,
 		/^(?![\s\S]*\.gitignore)[\s\S]*$/,
 		/fast-forward a `origin\/<default>`[\s\S]*`Conservar`, `Descartar` y `Tratar por path`[\s\S]*`Dejar como está` es el único que no lo hace/,
@@ -171,11 +170,60 @@ const DOCTRINE: Record<string, RegExp[]> = {
 		/no bypass de protección ni `--admin`/i,
 		/no `git push --force\*`/i,
 		/no push al default/i,
-		/no reset, stash ni clean del checkout principal fuera del flujo de la Fase 5/i,
+		/no reset, stash ni clean del checkout principal: `Descartar` usa `git restore` y `rm` solo sobre los paths sin dueño de la preview/i,
 		/no borrar branches con PR abierto o sin mergear/i,
 		/no cambiar settings del repo \(`deleteBranchOnMerge`, protecciones\)/i,
 		/no polling en background/i,
 		/no mergear sin la confirmación de la Fase 2/i,
+	],
+};
+
+// Doctrina de la spec #84 (cero residuos), capa 1: sdd-land con stacks y
+// sesiones concurrentes. Mismas reglas que DOCTRINE: se exige en el bloque de
+// doctrina de los cuatro harnesses, con la sintaxis de Claude.
+const DOCTRINE_84: Record<string, RegExp[]> = {
+	"CA-1": [
+		/`statusCheckRollup` deduplicado y después aprobado por lista de inclusión/,
+		/identidad de un check es `workflowName` \+ `name` en un `CheckRun` y `context` en un `StatusContext`/,
+		/cuenta solo el más reciente, por `startedAt` \(fallback `completedAt`\)/,
+		/`gh pr view <n> --json statusCheckRollup --jq/,
+		/\n```jq\n[\s\S]+?\n```\n/,
+		/`\{"estado": "verde"\|"pendiente"\|"detenido", "detenidos": \[\.\.\.\], "supersedidos": N\}`/,
+	],
+	"CA-2": [
+		/Antes de preguntar, evalúa el gate de la Fase 3 en cada PR: checks deduplicados, `mergeable`, `reviewDecision`, threads y draft/,
+		/orden \| PR \| branch \| base \| método \| checks \| threads sin resolver \| draft \| gate/,
+		/algún PR en rojo no pendiente aparece en la tabla como `DETENIDO`, con el motivo, y la pregunta no le ofrece `Mergear`/,
+		/Si ningún target queda en verde ni pendiente, no hay pregunta: el run termina en `SDD-LAND DETENIDO`/,
+		/checks reemplazados por un run posterior como `N supersedidos`, sin bloquear/,
+	],
+	"CA-3": [
+		/merge atómico de stack se lista como `stack #<n> → <sha> \(#a, #b, …\)`[\s\S]*PR suelto como `#<n> → <sha>`/,
+		/\n {2}- stack #<n> → <sha> \(#a, #b, …\)\n {2}- #<n> → <sha>\n/,
+	],
+	"CA-4": [
+		/antes de preguntar, clasifica cada path/,
+		/\*\*ya aterrizado\*\*: un path sin trackear o modificado cuyo `git hash-object <path>` es igual a `git rev-parse origin\/<default>:<path>`[\s\S]*se resuelve sin preguntar antes del fast-forward[\s\S]*`ya aterrizados`/,
+		/\*\*en otro branch\*\*: el mismo blob, en el mismo path, existe en otro branch local o worktree[\s\S]*se conserva, se reporta y nunca entra en `Descartar`/,
+		/\*\*sin dueño\*\*: el resto[\s\S]*sigue la pregunta/,
+		/`Descartar` actúa solo sobre los paths sin dueño mostrados en la preview[\s\S]*`git restore --source=HEAD --staged --worktree -- <paths trackeados>`[\s\S]*`rm -- <paths sin trackear>`[\s\S]*sin `git reset --hard` ni `git clean`/,
+		/ya aterrizados: <paths \| ninguno>/,
+	],
+	"CA-5": [
+		/Borrar exige prueba, nunca ancestría/,
+		/\*\*mergeados con PR\*\*: su PR por `headRefName` está `MERGED`, no hay ningún PR abierto con ese head y el tip local es el `headRefOid` de ese PR o un ancestro/,
+		/\*\*sin PR, contenidos en `origin\/<default>`\*\*: nunca tuvieron PR, no tienen worktree y no tienen lock[\s\S]*sin preselección/,
+		/Nunca se ofrecen el default, el branch actual, un branch con worktree \(salvo que esté en el grupo «mergeados con PR» y su worktree esté limpio y sin lock\) ni los branches de un stack con capas abiertas/,
+		/`Borrar los mergeados \(Recomendado\)` \/ `Elegir cuáles` \(selección múltiple, incluye el grupo sin PR\) \/ `No borrar`/,
+	],
+	"CA-6": [
+		/Las Fases 6 y 7 nunca remueven un worktree bloqueado/,
+		/si el lock dice `sdd-run <slug>` o `quick-run <slug>` y su branch es del target recién mergeado, `git worktree unlock` y después `git worktree remove`, solo si el worktree está limpio/,
+		/Cualquier otro lock se reporta con su motivo y con el comando `git worktree unlock <ruta> && git worktree remove <ruta>`/,
+		/worktrees detached limpios y sin lock en un grupo propio, con su SHA y diciendo si algún branch lo alcanza/,
+	],
+	"CA-7": [
+		/PRs `MERGED` cuyo branch local o worktree sigue vivo[\s\S]*`Solo limpiar y sincronizar` va primera, marcada `\(Recomendado\)` y con el conteo/,
 	],
 };
 
@@ -366,6 +414,72 @@ test("conflictos cruzados: preflight predice con merge-tree, el plan pregunta ap
 		assert.match(section(markdown, /^## Fase 3 — Gate de merge/), /Antes del primer gate, `git fetch --prune`/, `${file}: fetch --prune al inicio de la Fase 3`);
 		assert.match(section(markdown, /^## MUST NOT DO$/), /^- No actualizar el branch de un PR sin la pregunta del plan, ni con rebase\.$/m, `${file}: MUST NOT DO de actualizar branches`);
 	}
+});
+
+for (const [ca, patterns] of Object.entries(DOCTRINE_84)) {
+	test(`#84 ${ca}: la doctrina de sdd-land está declarada en los cuatro harnesses`, async () => {
+		const problems: string[] = [];
+		const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
+		for (const harness of HARNESSES) {
+			const doctrine = normalizeInvocations(doctrineBlock(await readRepoFile(`${harness}/sdd-land/SKILL.md`)), prefixes[harness]).replace(/«skill:([a-z-]+)»/g, "/$1");
+			for (const problem of missing(doctrine, patterns)) problems.push(`${harness}/sdd-land/SKILL.md: ${problem}`);
+		}
+		assert.deepEqual(problems, []);
+	});
+}
+
+function jqFilter(doctrine: string): string {
+	const blocks = [...doctrine.matchAll(/\n```jq\n([\s\S]+?)\n```\n/g)].map((match) => match[1] ?? "");
+	assert.equal(blocks.length, 1, "un único bloque ```jq en la doctrina de sdd-land");
+	return blocks[0] ?? "";
+}
+
+const HAS_JQ = spawnSync("jq", ["--version"], { encoding: "utf8" }).status === 0;
+
+// Fixtures: brik-117.json es el statusCheckRollup real de pramaestudio/brik#117
+// (gh pr view 117 --json statusCheckRollup, leído el 2026-10-09): el run
+// CANCELLED de concurrency y el SUCCESS que lo reemplazó, sobre el mismo SHA.
+const JQ_CASES: Array<{ fixture: string; expected: { estado: string; detenidos: string[]; supersedidos: number } }> = [
+	{ fixture: "brik-117.json", expected: { estado: "verde", detenidos: [], supersedidos: 1 } },
+	{ fixture: "cancelled-ultimo.json", expected: { estado: "detenido", detenidos: ["CI - Android / android: CANCELLED"], supersedidos: 1 } },
+	{ fixture: "pendiente.json", expected: { estado: "pendiente", detenidos: [], supersedidos: 2 } },
+];
+
+test("#84 CA-1: el filtro jq canónico deduplica los checks de los fixtures y da verde, detenido y pendiente", { skip: HAS_JQ ? false : "jq no está en PATH: el test de fixtures se saltea" }, async () => {
+	const filter = jqFilter(doctrineBlock(await readRepoFile("claude/sdd-land/SKILL.md")));
+	for (const { fixture, expected } of JQ_CASES) {
+		const path = fileURLToPath(new URL(`./fixtures/${fixture}`, import.meta.url));
+		const run = spawnSync("jq", ["-c", filter, path], { encoding: "utf8" });
+		assert.equal(run.status, 0, `${fixture}: jq falló: ${run.stderr}`);
+		assert.deepEqual(JSON.parse(run.stdout), expected, fixture);
+	}
+});
+
+test("#84 CA-1: el filtro jq es idéntico byte a byte en los cuatro harnesses", async () => {
+	const filters = await Promise.all(HARNESSES.map(async (harness) => jqFilter(doctrineBlock(await readRepoFile(`${harness}/sdd-land/SKILL.md`)))));
+	for (const [index, filter] of filters.entries()) assert.equal(filter, filters[0], `${HARNESSES[index]} diverge del filtro de claude`);
+});
+
+test("#84 CA-4: la doctrina de sdd-land no ejecuta `git reset --hard` ni `git clean` en ninguna fase", async () => {
+	for (const harness of HARNESSES) {
+		const doctrine = doctrineBlock(await readRepoFile(`${harness}/sdd-land/SKILL.md`)).replaceAll("sin `git reset --hard` ni `git clean`", "");
+		assert.doesNotMatch(doctrine, /reset --hard|git clean/, `${harness}/sdd-land/SKILL.md`);
+	}
+});
+
+test("#84 CA-5: el barrido no decide «mergeado» por ancestría", async () => {
+	for (const harness of HARNESSES) {
+		const barrido = section(await readRepoFile(`${harness}/sdd-land/SKILL.md`), /^## Fase 7 — Barrido/);
+		assert.doesNotMatch(barrido, /Lista los branches locales ya mergeados en `origin\/<default>`/, `${harness}/sdd-land/SKILL.md`);
+		assert.doesNotMatch(barrido, /`Borrar todo lo listado`/, `${harness}/sdd-land/SKILL.md`);
+	}
+});
+
+test("#84 CA-8: el contrato dice que gh stack ya se ejecutó en vivo en pramaestudio/platform#59/#60", async () => {
+	const gaps = section(await readRepoFile(".sdd/project.md"), /^## Gaps$/);
+	assert.match(gaps, /`gh stack`[^\n]*ya se ejecut[oó] en vivo[^\n]*merge atómico[^\n]*`unstack --local`[^\n]*`branch -d`[^\n]*`pramaestudio\/platform#59\/#60`/);
+	assert.match(gaps, /`gh stack view --json` tenia un head viejo|`gh stack view --json` tenía un head viejo/);
+	assert.doesNotMatch(gaps, /no se instalo ni se ejecuto en ninguna corrida/);
 });
 
 test("autotest: un harness sin la doctrina de un CA se reporta con el patrón que falta", () => {
