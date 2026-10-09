@@ -550,7 +550,7 @@ const SPEC_TEMPLATE_DESIGN: RegExp[] = [
 	/pantallas y estados/,
 	/componentes reusados y nuevos/,
 	/wireframe ASCII por pantalla nueva/,
-	/capturas de referencia \(ruta relativa o URL raw\)/,
+	/capturas de referencia \(ruta desde la raíz del repo o URL raw\)/,
 ];
 
 const SDD_SPEC_DESIGN: RegExp[] = [
@@ -562,6 +562,8 @@ const SDD_SPEC_DESIGN: RegExp[] = [
 	/La Fase 4 gradúa la fidelidad: grep o test sobre componentes y tokens = ALTA; capturas de la implementación contra la referencia = MEDIA; mobile sin simulador declarado en el contrato = NULA, con protocolo humano/,
 	/La Fase 5 escribe en `## Plan de verificacion` el mecanismo de capturas: comando, pantalla y referencia a igualar/,
 	/`sin sistema`[^\n]*`## Riesgos y gaps`[^\n]*«sin sistema de diseño: `design-system` disponible, el run sigue con `\[ASSUMED\]`»/,
+	/reescribe las rutas de las capturas a rutas desde la raíz del repo/,
+	/más de un `## Diseño`[^\n]*el vigente es el último/,
 ];
 
 const SDD_RUN_DESIGN: RegExp[] = [
@@ -574,7 +576,13 @@ const SDD_RUN_DESIGN: RegExp[] = [
 	/En la Fase 3, cada CA de UI con mecanismo de captura produce la captura de la implementación con el comando que la spec declara/,
 	/la celda `Evidencia` cita el comando y la ruta de la captura; la cabecera `\| CA \| Capa \| Estado \| Evidencia \|` no cambia/,
 	/`## Fidelidad visual` con la tabla `\| Pantalla o estado \| Referencia \| Implementacion \| Diferencias declaradas \|`, ubicada antes de `## Riesgo de merge`, que sigue siendo la última sección/,
-	/se commitean en el branch bajo `\.sdd\/evidence\/<slug>\/` y se embeben por URL raw del branch/,
+	/se commitean en el branch bajo `\.sdd\/evidence\/<slug>\/` y se embeben por URL raw del sha del commit que las agrega/,
+	/`gh stack sync`[^\n]*reescriben las URLs/,
+	/`\.sdd\/grills\/<nombre-real-del-handoff>\/`[^\n]*artefactos de entrada de la Fase 1\.4/,
+	/`\.sdd\/evidence\/` queda fuera de los gates de tamaño de PR y de líneas por archivo/,
+	/resincronización del body[^\n]*conserva `## Fidelidad visual`/,
+	/un fix sobre un CA de UI rehace su captura/,
+	/En una capa superior[^\n]*al final de su sección de capa, antes de la línea de riesgo si la hay/,
 	/Con stack, la sección va en el PR de la capa que la produjo/,
 ];
 

@@ -105,7 +105,7 @@ Elegir con criterio = proponer el mecanismo MÁS BARATO que observe el comportam
 <!-- sdd-spec-design:start -->
 La Fase 1 lee `## Diseño` de `.sdd/project.md` junto con el resto del contrato. La Fase 2 clasifica el pedido cruzando las raíces de cada superficie con los paths que el pedido tocaría, igual que `/grill`; si queda ambiguo, la clasificación va a la tabla como inferencia `[ASSUMED]`, sin preguntar. Un pedido sin UI no lleva `## Diseño`.
 
-Si el pedido toca UI: con `--from-grill`, el `## Diseño` del handoff entra confirmado a `## Diseño` de la spec, con sus capturas; sin grill y con UI, las decisiones de diseño van a `## Diseño` y a la tabla de inferencias como `[ASSUMED]`, sin preguntar. Cada CA de UI cita el componente o token concreto del inventario (ej. «el filtro usa `Select` de `components/ui/select.tsx` y el color `--color-primary`»).
+Si el pedido toca UI: con `--from-grill`, el `## Diseño` del handoff entra confirmado a `## Diseño` de la spec, con sus capturas (si el handoff trae más de un `## Diseño`, el vigente es el último). Al copiarlo, reescribe las rutas de las capturas a rutas desde la raíz del repo (`.sdd/grills/<handoff>/<pantalla>.png`), o a URL raw si la spec vive en un issue y la captura ya está pusheada; sin grill y con UI, las decisiones de diseño van a `## Diseño` y a la tabla de inferencias como `[ASSUMED]`, sin preguntar. Cada CA de UI cita el componente o token concreto del inventario (ej. «el filtro usa `Select` de `components/ui/select.tsx` y el color `--color-primary`»).
 
 La Fase 4 gradúa la fidelidad: grep o test sobre componentes y tokens = ALTA; capturas de la implementación contra la referencia = MEDIA; mobile sin simulador declarado en el contrato = NULA, con protocolo humano. La Fase 5 escribe en `## Plan de verificacion` el mecanismo de capturas: comando, pantalla y referencia a igualar (ej. Playwright MCP sobre `/finanzas` contra `.sdd/grills/<handoff>/finanzas.png`).
 
@@ -128,7 +128,7 @@ Con EXACTAMENTE esta estructura:
 <solo si el pedido toca una superficie UI del contrato; si no, omitir la seccion. Con UI:
 inventario citado por superficie (rutas de tokens, componentes y docs), pantallas y
 estados, componentes reusados y nuevos, wireframe ASCII por pantalla nueva y capturas
-de referencia (ruta relativa o URL raw)>
+de referencia (ruta desde la raíz del repo o URL raw)>
 
 ## Comportamiento esperado
 <criterios de aceptacion CA-1..CA-n, cada uno observable (se puede decir paso/no paso
