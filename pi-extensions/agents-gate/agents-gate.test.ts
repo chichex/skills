@@ -1064,7 +1064,7 @@ const SDD_SPEC_SKILL = "claude/sdd-spec/SKILL.md";
 const SDD_RUN_SUBAGENT_SYNTAX =
 	"/sdd-run [.sdd/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>] [--subagent] [--model M] [--effort E]";
 const SDD_RUN_SUBAGENT_HEADING = "## Run con subagente (solo con --subagent, --model o --effort)";
-const SDD_RUN_SHARED_BLOCKS = ["sdd-run-flow", "sdd-run-stack", "sdd-run-dirty-checkout"];
+const SDD_RUN_SHARED_BLOCKS = ["sdd-run-flow", "sdd-run-stack", "sdd-run-design", "sdd-run-dirty-checkout"];
 
 function escapeRegExp(text: string): string {
 	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
