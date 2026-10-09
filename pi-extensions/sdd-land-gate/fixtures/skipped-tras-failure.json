@@ -1,0 +1,24 @@
+{
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-09T15:01:00Z",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/owner/repo/actions/runs/1/job/1",
+      "name": "test",
+      "startedAt": "2026-10-09T15:00:00Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-09T15:06:01Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/owner/repo/actions/runs/1/job/1",
+      "name": "test",
+      "startedAt": "2026-10-09T15:06:00Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ]
+}
