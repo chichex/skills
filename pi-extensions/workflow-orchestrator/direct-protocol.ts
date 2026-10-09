@@ -1,4 +1,4 @@
-import { basename, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import type { EvidenceRef, IssueRef } from "../workflow-resolution/index.ts";
 import { exactObject, isRecord } from "./validation.ts";
@@ -140,6 +140,18 @@ function relativeArtifactPath(root: string, path: string): string | null {
 	return relationship.split(sep).join("/");
 }
 
+// Un borrador de spec vive en <git-common-dir>/sdd/specs/ (spec #84, CA-12),
+// fuera del working tree de un worktree linkeado. Su referencia canónica es la
+// ruta lógica `.sdd/specs/<archivo>`; el resolver ya verificó con git que ese
+// directorio es el common-dir del repo de `cwd`.
+function draftArtifactPath(path: string): string | null {
+	if (!isAbsolute(path) || !path.endsWith(".md")) return null;
+	const directory = dirname(resolve(path));
+	return basename(directory) === "specs" && basename(dirname(directory)) === "sdd"
+		? `.sdd/specs/${basename(path)}`
+		: null;
+}
+
 export function validateDirectRunRequest(input: unknown): DirectRunValidation {
 	const diagnostics: DirectRunDiagnostic[] = [];
 	const object = exactObject(input, "$", REQUEST_FIELDS, (diagnostic) => diagnostics.push(diagnostic));
@@ -192,11 +204,15 @@ export function validateDirectRunRequest(input: unknown): DirectRunValidation {
 		if (issue && typeof object.repo === "string" && !sameRepository(issue.repository, object.repo)) {
 			diagnostics.push({ path: "$.target.issue.repository", code: "invalid-value", message: "Spec issue repository must match repo" });
 		}
-		const artifactPath = cwdOk && pathOk
+		const insidePath = cwdOk && pathOk
 			? relativeArtifactPath(object.cwd as string, targetObject.path as string)
 			: null;
+		const draftPath = pathOk ? draftArtifactPath(targetObject.path as string) : null;
+		const artifactPath = [insidePath, draftPath].find((candidate) => candidate !== null
+			&& typeof object.repo === "string"
+			&& targetObject.canonicalReference === `${object.repo}:${candidate}`) ?? insidePath ?? draftPath;
 		if (artifactPath === null && pathOk && cwdOk) {
-			diagnostics.push({ path: "$.target.path", code: "invalid-value", message: "Spec path must be inside cwd" });
+			diagnostics.push({ path: "$.target.path", code: "invalid-value", message: "Spec path must be inside cwd or under <git-common-dir>/sdd/specs" });
 		}
 		if (artifactPath && typeof object.repo === "string"
 			&& targetObject.canonicalReference !== `${object.repo}:${artifactPath}`) {

@@ -125,10 +125,12 @@ test("CA-9: el runner de git es inyectable y un fallo de git degrada a tracked",
 const CONSUMERS = [
 	"../grill-tools/index.ts",
 	"../github-issues.ts",
+	"../workflow-orchestrator/dispatch.ts",
+	"../workflow-orchestrator/direct-launch.ts",
 ] as const;
 
 for (const path of CONSUMERS) {
-	test(`CA-10 y CA-11: ${path} resuelve los borradores con lib/sdd-paths.ts y no arma .sdd/<kind> a mano`, async () => {
+	test(`CA-10 a CA-12: ${path} resuelve los borradores con lib/sdd-paths.ts y no arma .sdd/<kind> a mano`, async () => {
 		const source = await readFile(new URL(path, import.meta.url), "utf8");
 		assert.match(source, /lib\/sdd-paths\.ts"/, "importa lib/sdd-paths.ts");
 		assert.doesNotMatch(source, /(?:join|resolve)\([^)]*"\.sdd",\s*"(?:grills|specs)"/, "sin rutas .sdd/<kind> armadas a mano");
