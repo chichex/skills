@@ -306,6 +306,124 @@ test("CA-8: design-system queda cableado en pi-package, harness-gate, README y m
 	assert.deepEqual(problems, []);
 });
 
+// ---------------------------------------------------------------------------
+// A. Contrato — sdd-init (CA-1 a CA-5)
+// ---------------------------------------------------------------------------
+
+const CONTRACT_DESIGN_HEADER = "| Superficie | Raices | Tokens | Componentes | Docs y mocks | Claude Design | Estado |";
+
+function projectTemplate(markdown: string): string | null {
+	const fences = fencedBlocks(markdown).filter((fence) => fence.content.includes("type=project"));
+	return fences.length === 1 ? (fences[0]?.content ?? "") : null;
+}
+
+export function headings(markdown: string): string[] {
+	return markdown.split("\n").filter((line) => /^## /.test(line));
+}
+
+test("CA-1: el template del contrato trae ## Diseño entre ## Stack y ## Comandos, con sentinel y tabla por superficie, idéntico entre harnesses", async () => {
+	const table = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
+	const problems: string[] = [];
+	const templates = new Map<Harness, string>();
+	for (const harness of HARNESSES) {
+		const path = `${harness}/sdd-init/SKILL.md`;
+		const template = projectTemplate(await readRepoFile(path));
+		if (template === null) {
+			problems.push(`${path}: no hay exactamente un fence con marker type=project`);
+			continue;
+		}
+		const list = headings(template);
+		const stack = list.indexOf("## Stack");
+		if (list[stack + 1] !== "## Diseño" || list[stack + 2] !== "## Comandos") problems.push(`${path}: orden de secciones ${list.join(" > ")}`);
+		if ((template.match(/type=project/g) ?? []).length !== 1) problems.push(`${path}: más de un marker type=project en el fence`);
+		const design = section(template, /^## Diseño$/);
+		if (!design.includes("Sin superficies UI.")) problems.push(`${path}: ## Diseño sin el sentinel «Sin superficies UI.»`);
+		if (!design.includes(CONTRACT_DESIGN_HEADER)) problems.push(`${path}: ## Diseño sin la cabecera ${CONTRACT_DESIGN_HEADER}`);
+		if (!/`con sistema`[^\n]*`sin sistema`/.test(design)) problems.push(`${path}: ## Diseño no declara los estados con sistema / sin sistema`);
+		if (/coding-policies/.test(template)) problems.push(`${path}: el template del contrato nombra coding-policies`);
+		templates.set(harness, normalizeInvocations(template, table.prefixes[harness]));
+	}
+	assert.deepEqual([...problems, ...divergences(templates)], []);
+});
+
+const SDD_INIT_CENSUS: RegExp[] = [
+	...DESIGN_CENSUS,
+	/una fila por superficie/,
+	/`con sistema`[\s\S]*`sin sistema`/,
+	/`Sin superficies UI\.`/,
+	/`--update`[^\n]*`## Diseño`[^\n]*inventario[^\n]*Claude Design[^\n]*`## Decisiones humanas`/,
+];
+
+const SDD_INIT_POLICIES: RegExp[] = [
+	/ratchet/,
+	/solo para superficies `con sistema`[^\n]*tokens/,
+	/hex fuera del directorio de tokens/,
+	/estilos inline/,
+	/componentes duplicados por nombre/,
+	/grep/,
+	/baseline/,
+	/`Generar design system`[^\n]*solo si hay al menos una superficie `sin sistema`/,
+	/invoca `\/design-system` sin flags/,
+	/nunca con `--assume`/,
+];
+
+test("CA-2: la Fase 1 de sdd-init releva DISEÑO por superficie con el censo común", async () => {
+	const problems = await doctrineProblems("sdd-init", "sdd-init-design-census", SDD_INIT_CENSUS);
+	for (const harness of HARNESSES) {
+		const path = `${harness}/sdd-init/SKILL.md`;
+		const markdown = await readRepoFile(path);
+		const phase1 = section(markdown, /^## Fase 1 — Exploración$/);
+		if (!phase1.includes("<!-- sdd-init-design-census:start -->")) problems.push(`${path}: el censo de diseño no está en la Fase 1`);
+		if (harness === "claude" || harness === "opencode") {
+			const prompt = phase1.match(/description: "harness del proyecto"[\s\S]*?Busqueda breadth/)?.[0] ?? "";
+			if (!/^ {2}4\. DISEÑO:/m.test(prompt)) problems.push(`${path}: el Explore «harness del proyecto» no pide DISEÑO`);
+		} else if (!/^1\. \*\*Harness\*\*:[^\n]*DISEÑO/m.test(phase1)) {
+			problems.push(`${path}: la lente **Harness** no pide DISEÑO`);
+		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("CA-2, CA-4: el censo de diseño de sdd-init es idéntico entre harnesses", async () => {
+	assert.deepEqual(await identityProblems("sdd-init", "sdd-init-design-census"), []);
+});
+
+test("CA-3: la Fase 3.5 ofrece ratchets de diseño y Generar design system; el reporte gana la línea design-system", async () => {
+	const problems = await doctrineProblems("sdd-init", "sdd-init-design-policies", SDD_INIT_POLICIES);
+	problems.push(...(await identityProblems("sdd-init", "sdd-init-design-policies")));
+	for (const harness of HARNESSES) {
+		const path = `${harness}/sdd-init/SKILL.md`;
+		const markdown = await readRepoFile(path);
+		if (!section(markdown, /^## Fase 3\.5 — Políticas de generación$/).includes("<!-- sdd-init-design-policies:start -->")) problems.push(`${path}: los gates de diseño no están en la Fase 3.5`);
+		if (!section(markdown, /^## Reporte$/).includes("- design-system: <referenciado|generado|no existe (ofrecido)|--assume: no ofrecido|sin superficies UI>")) problems.push(`${path}: el reporte no tiene la línea design-system`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("CA-4: la tabla de Upgrade de contrato gana la fila Diseño", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const path = `${harness}/sdd-init/SKILL.md`;
+		if (!/^\| Diseño \| no existe la sección `## Diseño` \|$/m.test(await readRepoFile(path))) problems.push(`${path}: sin fila Diseño en Upgrade de contrato`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("CA-5: el contrato de este repo gana ## Diseño sin superficies, la fila del gate y los conteos nuevos", async () => {
+	const contract = await readRepoFile(".sdd/project.md");
+	const list = headings(contract);
+	assert.equal(list[list.indexOf("## Stack") + 1], "## Diseño", "## Diseño va inmediatamente después de ## Stack");
+	assert.match(section(contract, /^## Diseño$/), /^## Diseño\nSin superficies UI\.\n/);
+	const commands = section(contract, /^## Comandos$/);
+	assert.match(commands, /^\| gate de doctrina de diseño \| `node --test pi-extensions\/design-gate\/design-gate\.test\.ts` \|/m);
+	assert.match(commands, /^\| lint de frontmatter \|[^\n]*\| 50 skills OK;/m);
+	assert.match(contract, /13 skills de Pi/);
+	assert.doesNotMatch(contract, /12 skills de Pi/);
+	assert.match(contract, /RPC con 23 comandos[^\n]*`skill:design-system`/);
+	assert.match(contract, /## Politicas de generacion\nSin politicas activas\./);
+	assert.match(contract, /## Decisiones humanas\n/);
+});
+
 test("autotest: un bloque ausente o divergente se reporta con su diagnóstico", () => {
 	assert.equal(delimitedBlock("sin bloque", "design-system-doctrine"), null);
 	assert.equal(delimitedBlock("<!-- x:start -->\nhola\n<!-- x:end -->", "x"), "hola");
