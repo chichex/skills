@@ -72,7 +72,15 @@ Si la superficie está `sin sistema`, aplica la doctrina mínima de `/design-sys
 
 ## Run con subagente (solo con --subagent, --model o --effort)
 
-La sesión que recibe `--subagent` (o `--model`/`--effort`, que lo implican) es **lanzadora, no corredora**: resuelve el target (ruta local o `#NN`, leyendo el body con `gh issue view` cuando es issue), lee la spec para derivar el recomendado, pregunta lo que falte, lanza el subagente, imprime la traza y no ejecuta ninguna fase del run ni crea worktree ni branch. Las Fases 1 a 5 las corre el `implementer`, que conserva el ownership del run (ver «Ownership y tareas»). Con `--subagent` la sesión lanzadora no ofrece la Fase 6: el `implementer` corre con `--assume` y no hay oferta post-PR. `--no-pr` y `--base` recibidos junto con `--subagent` se propagan tal cual (con su branch) al prompt del subagente. `/sdd-run --subagent` sin target pasa por la Fase 0 como `/sdd-run` pelado: el lanzador elige la spec como siempre y después aplica esta sección.
+La sesión que recibe `--subagent` (o `--model`/`--effort`, que lo implican) es **lanzadora, no corredora**: resuelve el target (ruta local o `#NN`, leyendo el body con `gh issue view` cuando es issue), corre las precondiciones del lanzador (abajo), lee la spec para derivar el recomendado, imprime la traza con el recomendado, pregunta lo que falte, imprime la traza con la elección final y lanza el subagente; no ejecuta ninguna fase del run más allá de las precondiciones de la Fase 1 (pasos 1 a 3) y el preflight de stack, ni crea worktree ni branch. Las Fases 1 a 5 las corre el `implementer`, que conserva el ownership del run (ver «Ownership y tareas»). Con `--subagent` la sesión lanzadora no ofrece la Fase 6: el `implementer` corre con `--assume` y no hay oferta post-PR. `--no-pr` y `--base` recibidos junto con `--subagent` se propagan tal cual (con su branch) al prompt del subagente. `/sdd-run --subagent` sin target pasa por la Fase 0 como `/sdd-run` pelado: el lanzador elige la spec como siempre y después aplica esta sección.
+
+### Precondiciones del lanzador
+
+Antes de preguntar modelo y effort, el lanzador corre los pasos 1 a 3 de la Fase 1 y el preflight de stack de «Entrega por capas», con la misma doctrina interactiva o `--assume` que tendría el run inline. Sin este chequeo, el `implementer` (que corre con `--assume`) encadenaría en background `/sdd-init --assume` o `/sdd-spec --assume` sobre algo que nadie revisó, o frenaría por `gh-stack` recién visible en la notificación.
+
+1. **Contrato** (Fase 1, paso 1): leer `.sdd/project.md`. Si no existe: interactivo → ofrecer `/sdd-init` ahí mismo; `--assume` → correr `/sdd-init --assume` y seguir.
+2. **Spec** (Fase 1, pasos 2 y 3): el target tiene que resolver a una spec SDD (ruta existente, o issue cuyo body trae la spec de `/sdd-spec`). Si no: interactivo → frenar y ofrecer `/sdd-spec <target>`; `--assume` → encadenar `/sdd-spec <target> --assume` en esta sesión y lanzar sobre la spec resultante. Nunca lanzar sobre un target sin spec. Una spec en `draft` se acepta sin preguntar, como en el run inline.
+3. **Stack**: con 2 o más capas en `## Plan de entrega`, correr el preflight de stack (`gh` ≥ 2.90.0, `git` ≥ 2.36 y `github/gh-stack` en `gh extension list`). Si falta la extensión: interactivo → ofrecer `gh extension install github/gh-stack` ahí mismo y seguir si se instala; `--assume` → frenar antes de lanzar e imprimir el comando exacto. Una versión vieja de `gh` o de `git` frena en ambos modos, con el diagnóstico.
 
 ### Recomendado derivado de la spec
 
@@ -105,6 +113,7 @@ La sesión que recibe `--subagent` (o `--model`/`--effort`, que lo implican) es 
 ### Traza
 
 - Antes de preguntar o lanzar, la sesión imprime como texto visible una línea con este formato: `Subagente implementer: modelo <m> (<escalón>: <N> CAs · <k> capas) · effort <e> · verificabilidad: ALTA <a> · MEDIA/BAJA <b> · NULA <c>`, con el recomendado (antes de preguntar) y con la elección final (al lanzar).
+- Con el fallback a `general-purpose` (ver «Lanzamiento»), la traza nombra el tipo que realmente se lanza: `Subagente general-purpose: modelo <m> …`, con el mismo resto de la línea.
 - Al llegar la notificación del subagente, la sesión releva el PR y el reporte repitiendo modelo y effort.
 - Sin `--subagent`, `--model` ni `--effort`, nada de lo anterior aparece y el run corre como hoy.
 
