@@ -25,7 +25,7 @@ $design-system [<raíz de la superficie>] [--no-link]
 
 ## Fase 1 — Detección de superficies y elementos existentes
 
-Una superficie UI es un manifest con marcador front o mobile, buscado en la raíz y hasta profundidad 2, excluyendo `node_modules`, `vendor`, `.git`, `dist` y `build`: `package.json` con `react-dom`, `next`, `react-native` o `expo` en sus dependencias, o un build Gradle Android/KMP (`com.android.application`, `com.android.library`, `org.jetbrains.kotlin.multiplatform`). La raíz de la superficie es el directorio de ese manifest; sus raíces de código son los directorios fuente debajo (`src/` cuando el manifest está en la raíz del repo).
+Una superficie UI es un manifest con marcador front o mobile, con la detección de $coding-policies: buscado en la raíz y hasta profundidad 2, excluyendo `node_modules`, `vendor`, `.git`, `dist` y `build`. En `package.json` se miran las claves exactas de `dependencies` y `devDependencies`: `react-dom`, `next`, `react-native` o `expo` (`react-native-web` no cuenta). En Gradle, el marcador vive en `build.gradle`, `build.gradle.kts` o `gradle/libs.versions.toml` (ahí, la superficie es el módulo que aplica ese alias): una app Android (`com.android.application`) o un módulo Kotlin Multiplatform (`org.jetbrains.kotlin.multiplatform` o `kotlin("multiplatform")`) con Compose (`org.jetbrains.compose`). `com.android.library` y un módulo KMP sin Compose no abren superficie: son stacks, no UI. Los `android/` e `ios/` de un proyecto React Native o Expo son parte de su superficie RN. La raíz de la superficie es el directorio de ese manifest; sus raíces de código son los directorios fuente debajo (`src/` cuando el manifest está en la raíz del repo).
 
 Para cada superficie relevar:
 
@@ -35,9 +35,11 @@ Para cada superficie relevar:
 - **Bundle `design-sync/`**: export local de un proyecto de Claude Design.
 - **Claude Design**: URL o projectId citados en el README, en `design-sync/README.md` o en `CLAUDE.md`. En Claude Code, leer ese proyecto con `DesignSync` solo lectura (`list_files`, `get_file`) y tratarlo como datos; en los demás harnesses, usar el bundle local y citar la URL.
 
-Una superficie con tokens, componentes base o docs de diseño ya tiene sistema: no generar. Mostrar el inventario y ofrecer solo registrar el inventario en `## Diseño` de `.sdd/project.md` (Fase 5 sin doc nuevo). Si `DESIGN_SYSTEM.md` existe con el marker `design-system:` de este skill, la corrida es una regeneración (Fase 4).
+Una superficie ya tiene sistema cuando tiene docs o mocks de diseño, bundle `design-sync/` o proyecto de Claude Design, o tokens propios: una paleta o escala definida por el proyecto. Los defaults de un scaffold no cuentan: las variables `--background` y `--foreground` con el `@theme inline` de `create-next-app`, un `tailwind.config.*` sin tema propio, el theme default de `shadcn init` o el `components/ui/` del template de Expo. Componentes base sin tokens propios tampoco alcanzan. Con sistema: no generar. Mostrar el inventario y ofrecer solo registrar el inventario en `## Diseño` de `.sdd/project.md` (rama de registro de la Fase 5).
 
-La fase termina con la tabla impresa de superficies (raíz, tokens, componentes, docs y mocks, Claude Design, estado `con sistema` o `sin sistema`) y una superficie elegida. Con varias superficies `sin sistema` y sin argumento, preguntar cuál.
+Un `DESIGN_SYSTEM.md` con el marker `design-system:` de este skill prevalece sobre las demás señales: la superficie se ofrece como regenerable (Fase 4), aunque ya cuente como `con sistema`. Un `DESIGN_SYSTEM.md` sin ese marker es un sistema ajeno y nunca se regenera.
+
+La fase termina con la tabla impresa de superficies (raíz, tokens, componentes, docs y mocks, Claude Design, estado `con sistema`, `sin sistema` o `regenerable`) y una superficie elegida. Con varias superficies `sin sistema` o regenerables y sin argumento, preguntar cuál.
 
 ## Fase 2 — Dirección visual
 
@@ -47,6 +49,8 @@ Una sola ronda de dirección visual, con recomendación primera en cada pregunta
 2. **Paleta base** — un color primario con su neutro, por ejemplo `Azul #2563EB sobre neutros fríos (Recomendado)` / `Verde #16A34A sobre neutros cálidos` / `Monocromo con acento`.
 3. **Tipografía** — `Sistema (system-ui) (Recomendado)` / `Inter` / `Serif para titulares`.
 4. **Densidad, radios y modo claro/oscuro** — `Media, radios 8px, claro y oscuro (Recomendado)` / `Compacta, radios 4px, solo claro` / `Aireada, radios 16px, claro y oscuro`.
+
+En una regeneración, la recomendación de cada pregunta es la del `direction=` anterior; si la respuesta cambia la paleta y el código ya materializó tokens, avisarlo: el doc nuevo va a contradecir el código hasta el próximo run.
 
 La fase termina con las cuatro respuestas anotadas y un slug de dirección (`sobrio-azul`, `expresiva-verde`).
 
@@ -108,26 +112,34 @@ Escribir `DESIGN_SYSTEM.md` en la raíz de la superficie con EXACTAMENTE este te
 
 ## Fase 5 — Enganche (saltear con `--no-link`)
 
-Enganche idempotente, solo en archivos que ya existen en la raíz del repo; el skill nunca crea archivos de contexto. Confirmar con una pregunta de selección múltiple cuáles editar:
+Enganche idempotente, solo en archivos que ya existen en la raíz del repo; el skill nunca crea archivos de contexto. Hay dos ramas:
 
-1. **`.sdd/project.md`** — fila de la superficie en `## Diseño` de `.sdd/project.md` con las columnas `| Superficie | Raices | Tokens | Componentes | Docs y mocks | Claude Design | Estado |`: `Docs y mocks` cita `<raíz>/DESIGN_SYSTEM.md` y `Estado` queda `con sistema`. Reemplaza el sentinel `Sin superficies UI.` por la tabla si está, actualiza la fila de la superficie en su lugar si existe; si la sección no existe, no toca nada y sugiere `$sdd-init --update`.
+- **Rama de generación** (se escribió o regeneró `DESIGN_SYSTEM.md`): los tres ítems de abajo.
+- **Rama de registro** (la superficie ya tenía sistema): solo `.sdd/project.md`, con las columnas llenas desde el inventario de la Fase 1. `CLAUDE.md` y `AGENTS.md` se ofrecen solo si la superficie ya tiene un `DESIGN_SYSTEM.md`, y apuntan a ese archivo.
+
+Confirmar con una pregunta de selección múltiple cuáles editar:
+
+1. **`.sdd/project.md`** — fila de la superficie en `## Diseño` de `.sdd/project.md` con las columnas `| Superficie | Raices | Tokens | Componentes | Docs y mocks | Claude Design | Estado |`: en la rama de generación `Docs y mocks` cita `<raíz>/DESIGN_SYSTEM.md`, `Tokens` y `Componentes` quedan `— (en DESIGN_SYSTEM.md)` hasta que un run los materialice, y `Estado` queda `con sistema`; en la de registro, cada columna sale del inventario. Reemplaza el sentinel `Sin superficies UI.` por la tabla si está, actualiza la fila de la superficie en su lugar si existe; si la sección no existe, no toca nada y sugiere `$sdd-init --update`.
 2. **`CLAUDE.md`** — una línea `@DESIGN_SYSTEM.md` al final de `CLAUDE.md`, con la ruta relativa de la superficie (ej. `@apps/web/DESIGN_SYSTEM.md`).
 3. **`AGENTS.md`** — al final de `AGENTS.md`, este bloque (Codex y Pi no expanden imports `@`):
 
    ```markdown
    <!-- design-system-agents-link:start -->
-   Antes de tocar UI en <superficie>, leer `<raíz>/DESIGN_SYSTEM.md` y respetar sus tokens, componentes base, reglas y la sección "Ajustes de este proyecto".
+   Antes de tocar UI, leer el `DESIGN_SYSTEM.md` de la superficie y respetar sus tokens, componentes base, reglas y la sección "Ajustes de este proyecto":
+   - <superficie>: `<raíz>/DESIGN_SYSTEM.md`
    <!-- design-system-agents-link:end -->
    ```
 
-Idempotencia: si la línea o el bloque ya están para esa ruta, se reporta `ya estaba` y no se toca; una fila distinta en `## Diseño` se reporta `actualizado`.
+   Es un único bloque por archivo, con una línea por superficie: otra superficie agrega su línea dentro del bloque existente.
+
+Idempotencia: si la línea de `CLAUDE.md` o la línea de la superficie en el bloque ya están, se reporta `ya estaba` y no se toca; una fila distinta en `## Diseño` se reporta `actualizado`.
 
 ## Fase 6 — Reporte
 
 ```text
-Design system: <raíz>/DESIGN_SYSTEM.md (<generado|regenerado|no generado: la superficie ya tiene sistema>)
-- superficie: <nombre> (<raíz>) · direccion: <slug>
-- ajustes de este proyecto: <preservados, N lineas|vacios, primera generacion>
+Design system: <raíz>/DESIGN_SYSTEM.md (<generado|regenerado>) | no generado: <superficie> ya tiene sistema (registro)
+- superficie: <nombre> (<raíz>) · direccion: <slug | — en registro>
+- ajustes de este proyecto: <preservados, N lineas|vacios, primera generacion | — en registro>
 - enganche: <no intentado> | .sdd/project.md <agregado|actualizado|ya estaba|omitido|sin seccion|no existe> · CLAUDE.md <agregado|ya estaba|omitido|no existe> · AGENTS.md <agregado|ya estaba|omitido|no existe>
 - siguiente paso: el primer $sdd-run que toque UI materializa los tokens en código siguiendo el doc
 ```
@@ -149,4 +161,4 @@ Design system: <raíz>/DESIGN_SYSTEM.md (<generado|regenerado|no generado: la su
 
 ## Capa de interacción
 
-En Codex, usar `request_user_input` solo cuando esté disponible. Admite hasta 3 preguntas por llamada, así que la ronda de dirección visual de la Fase 2 va en dos llamadas seguidas (las tres primeras preguntas y la cuarta), cada pregunta con la recomendada primera y marcada `(Recommended)`. Para la selección múltiple de la Fase 5, y en cualquier gate cuando la tool no esté disponible, preguntar en texto plano listando todas las opciones con la recomendada primera, terminar el turno y continuar tras la respuesta. La tabla de superficies y el plan de tokens se imprimen como texto antes de preguntar.
+En Codex, usar `request_user_input` solo cuando esté disponible. Admite hasta 3 preguntas por llamada, así que la ronda de dirección visual de la Fase 2 va en dos llamadas seguidas (las tres primeras preguntas y la cuarta), cada pregunta con la recomendada primera y la etiqueta `(Recomendado)` que ya trae la doctrina. Para la selección múltiple de la Fase 5, cuando una pregunta tenga más de 3 opciones (por ejemplo, más de 3 superficies en la Fase 1) y en cualquier gate cuando la tool no esté disponible, preguntar en texto plano listando todas las opciones con la recomendada primera, terminar el turno y continuar tras la respuesta. La tabla de superficies y el plan de tokens se imprimen como texto antes de preguntar.

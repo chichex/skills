@@ -137,8 +137,14 @@ export const DESIGN_CENSUS: RegExp[] = [
 	/`expo`/,
 	/Gradle/,
 	/profundidad 2/,
-	/tokens/i,
+	/\*\*Tokens\*\*: theme o tokens en código/,
 	/componentes base/i,
+	/claves exactas de `dependencies` y `devDependencies`/,
+	/`react-native-web` no cuenta/,
+	/`gradle\/libs\.versions\.toml`/,
+	/`kotlin\("multiplatform"\)`/,
+	/`com\.android\.library` y un módulo KMP sin Compose no abren superficie/,
+	/Los defaults de un scaffold no cuentan/,
 	/`DESIGN_SYSTEM\.md`/,
 	/`design-system\/`/,
 	/Storybook/,
@@ -158,9 +164,10 @@ const DESIGN_SYSTEM_DOCTRINE: RegExp[] = [
 	/fila de la superficie en `## Diseño` de `\.sdd\/project\.md`[^\n]*si la sección no existe[^\n]*`\/sdd-init --update`/,
 	/`@DESIGN_SYSTEM\.md`[^\n]*`CLAUDE\.md`/,
 	/<!-- design-system-agents-link:start -->[\s\S]*<!-- design-system-agents-link:end -->[\s\S]*`AGENTS\.md`|`AGENTS\.md`[\s\S]*<!-- design-system-agents-link:start -->[\s\S]*<!-- design-system-agents-link:end -->/,
-	/^- No escribir código de la aplicación/m,
-	/tokens en código/,
-	/componentes/,
+	/^- No escribir código de la aplicación: ni tokens en código, ni componentes, ni temas\.$/m,
+	/`DESIGN_SYSTEM\.md` con el marker `design-system:` de este skill prevalece sobre las demás señales/,
+	/\*\*Rama de registro\*\*[^\n]*solo `\.sdd\/project\.md`/,
+	/un único bloque por archivo, con una línea por superficie/,
 	/No pisar `## Ajustes de este proyecto`/,
 ];
 
@@ -236,6 +243,24 @@ test("CA-7: cada design-system nombra su propia tool de preguntas y ninguna ajen
 		}
 	}
 	assert.deepEqual(problems, []);
+});
+
+test("CA-7: la capa de interacción de Codex y opencode usa la etiqueta de la doctrina y Codex cubre más de 3 opciones", async () => {
+	const problems: string[] = [];
+	for (const harness of ["codex", "opencode"]) {
+		const path = `${harness}/design-system/SKILL.md`;
+		if (/\(Recommended\)/.test(await readRepoFile(path))) problems.push(`${path}: usa (Recommended) en vez de la etiqueta (Recomendado) de la doctrina`);
+	}
+	if (!/más de 3 opciones/.test(await readRepoFile("codex/design-system/SKILL.md"))) problems.push("codex/design-system: no cubre preguntas con más de 3 opciones");
+	assert.deepEqual(problems, []);
+});
+
+test("autotest: recortar el MUST NOT de design-system o el censo de tokens se detecta", async () => {
+	const block = delimitedBlock(await readRepoFile("claude/design-system/SKILL.md"), "design-system-doctrine") ?? "";
+	const trimmed = block.replace(/^- No escribir código de la aplicación.*$/m, "- No escribir código de la aplicación.");
+	assert.ok(missing(trimmed, DESIGN_SYSTEM_DOCTRINE).some((problem) => /No escribir código de la aplicación/.test(problem)));
+	const noTokens = block.replace(/^- \*\*Tokens\*\*.*$/m, "");
+	assert.ok(missing(noTokens, DESIGN_SYSTEM_DOCTRINE).some((problem) => /Tokens/.test(problem)));
 });
 
 test("CA-7b: el template de DESIGN_SYSTEM.md trae H1, marker, secciones en orden, formato de reglas y ajustes preservados", async () => {
