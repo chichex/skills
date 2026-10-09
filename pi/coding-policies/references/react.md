@@ -2,7 +2,7 @@
 # Mantenimiento: editar solo shared/coding-policies/references/react.md y ejecutar `node scripts/sync-coding-policies-references.mjs`.
 stack: react
 name: React
-version: 2026-09-14
+version: 2026-10-09
 ---
 
 ### Pureza y Hooks
@@ -51,6 +51,15 @@ version: 2026-09-14
 - **MUST** Usar elementos y atributos semánticos para que teclado y tecnologías asistivas puedan operar los controles. Porqué: un handler de click sobre un elemento visual no hereda rol, foco ni activación de teclado. Gate: `linter de accesibilidad y tests por rol`
 - **MUST** No actualizar snapshots sin revisar su significado ni usarlos como única prueba de una interacción. Porqué: aceptar el diff mecánicamente no demuestra que el comportamiento sea correcto. Gate: `revisión de snapshots más assertions observables`
 
+### Web en celular y webview
+
+- **MUST** Mantener el viewport en `width=device-width, initial-scale=1`, sin `user-scalable=no` ni `maximum-scale=1`, y declararlo a mano con `<meta name="viewport">` solo si el framework no lo genera (Next.js lo emite solo). Porqué: bloquear el zoom impide ampliar el contenido a quien lo necesita y falla WCAG 1.4.4; un segundo `<meta>` duplica el tag. Gate: `grep de user-scalable y maximum-scale en el HTML base`
+- **MUST** Dar a inputs, selects y textareas un `font-size` computado de al menos 16px en mobile. Porqué: Safari en iOS hace zoom automático al enfocar un campo con texto menor a 16px y desarma el layout. Gate: `prueba en Safari iOS o WebKit con viewport mobile`
+- **MUST** Mantener visible el campo enfocado cuando aparece el teclado virtual, sin saltos de scroll al escribir: ajustar el layout con `interactive-widget=resizes-content` en Chromium y Android, y con la API `visualViewport` en Safari iOS, que no soporta `interactive-widget`; `scrollIntoView` queda solo como corrección puntual. Porqué: el teclado achica el viewport visual y un layout fijo puede tapar el input o saltar en cada tecla. Gate: `prueba manual o E2E con teclado virtual en Safari iOS y Chrome Android`
+- **MUST** Respetar las zonas seguras en barras fijas y contenido a pantalla completa con `viewport-fit=cover` y `env(safe-area-inset-*)`. Porqué: notch, isla dinámica y barra de gestos tapan los controles pegados a los bordes, y sin `viewport-fit=cover` los insets valen 0. Gate: `prueba visual en un dispositivo o simulador con notch`
+- **SHOULD** Dar a cada control táctil un área de al menos 44pt (44px CSS) con separación entre targets vecinos. Porqué: los targets chicos generan toques errados; 44pt es el mínimo de las guías de Apple y WCAG 2.5.8 exige al menos 24px. Gate: `auditoría de accesibilidad o medición en DevTools`
+- **MUST** Ofrecer un camino táctil y de teclado para todo lo que se revela con `:hover` o eventos de mouse. Porqué: en pantallas táctiles no hay hover y la acción o la información quedan inaccesibles. Gate: `prueba con emulación táctil y navegación por teclado`
+
 ### Verificación
 
 - **MUST** Ejecutar lint, typecheck, tests y build mediante los scripts existentes del repo. Porqué: Hooks, tipos, comportamiento y bundling fallan por mecanismos distintos. Gate: scripts de CI declarados en `package.json`
@@ -70,3 +79,9 @@ version: 2026-09-14
 - [Preserving and Resetting State](https://react.dev/learn/preserving-and-resetting-state) — posición, tipo y keys.
 - [React Compiler: Introduction](https://react.dev/learn/react-compiler/introduction) — memoización automática y alcance.
 - [useEffectEvent](https://react.dev/reference/react/useEffectEvent) — separar lógica no reactiva sin ocultar dependencias.
+- [MDN: viewport meta](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta/name/viewport) — `width`, `initial-scale`, `interactive-widget` y por qué no bloquear el zoom.
+- [MDN: env()](https://developer.mozilla.org/en-US/docs/Web/CSS/env) — `safe-area-inset-*` y `viewport-fit=cover`.
+- [MDN: VisualViewport](https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport) — viewport visual con teclado virtual.
+- [WebKit: Designing Websites for iPhone X](https://webkit.org/blog/7929/designing-websites-for-iphone-x/) — zonas seguras en Safari.
+- [Apple HIG: Accessibility](https://developer.apple.com/design/human-interface-guidelines/accessibility) — tamaño mínimo de 44pt para controles táctiles.
+- [WCAG 2.2: Target Size (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html) — mínimo de 24px y separación entre targets.

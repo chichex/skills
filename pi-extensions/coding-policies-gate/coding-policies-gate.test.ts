@@ -293,6 +293,7 @@ const REACT_SECTIONS = [
 	"Identidad y componentes",
 	"Memoización",
 	"Testing y accesibilidad",
+	"Web en celular y webview",
 	"Verificación",
 	"Lectura ampliada",
 ];
@@ -306,6 +307,12 @@ const REACT_LINKS = [
 	"https://react.dev/learn/preserving-and-resetting-state",
 	"https://react.dev/learn/react-compiler/introduction",
 	"https://react.dev/reference/react/useEffectEvent",
+	"https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta/name/viewport",
+	"https://developer.mozilla.org/en-US/docs/Web/CSS/env",
+	"https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport",
+	"https://webkit.org/blog/7929/designing-websites-for-iphone-x/",
+	"https://developer.apple.com/design/human-interface-guidelines/accessibility",
+	"https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html",
 ];
 const NEXT_SECTIONS = [
 	"Alcance y versión",
@@ -314,6 +321,7 @@ const NEXT_SECTIONS = [
 	"Caché y revalidación",
 	"Autenticación y límites",
 	"Entrega de interfaz",
+	"Web en celular y webview",
 	"Testing y producción",
 	"Verificación",
 	"Lectura ampliada",
@@ -329,6 +337,8 @@ const NEXT_LINKS = [
 	"https://nextjs.org/docs/app/getting-started/metadata-and-og-images",
 	"https://nextjs.org/docs/app/guides/production-checklist",
 	"https://nextjs.org/docs/app/guides/testing/playwright",
+	"https://nextjs.org/docs/app/api-reference/functions/generate-viewport",
+	"https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport",
 ];
 const REACT_NATIVE_SECTIONS = [
 	"Alcance y versiones",
@@ -340,6 +350,7 @@ const REACT_NATIVE_SECTIONS = [
 	"Seguridad y almacenamiento",
 	"Módulos nativos",
 	"Expo",
+	"WebView embebida",
 	"Verificación",
 	"Lectura ampliada",
 ];
@@ -356,6 +367,8 @@ const REACT_NATIVE_LINKS = [
 	"https://docs.expo.dev/develop/development-builds/introduction/",
 	"https://docs.expo.dev/workflow/continuous-native-generation/",
 	"https://docs.expo.dev/eas-update/runtime-versions/",
+	"https://github.com/react-native-webview/react-native-webview/blob/master/docs/Reference.md",
+	"https://developer.android.com/develop/ui/views/layout/sw-keyboard",
 ];
 const KOTLIN_MULTIPLATFORM_SECTIONS = [
 	"Alcance y estructura",
@@ -979,6 +992,11 @@ test(`${SKILL}: las secciones condicionales guardan cada regla`, async () => {
 	assert.ok(expoRules.length > 0, "React Native declara reglas Expo");
 	for (const rule of expoRules) {
 		assert.match(rule, /^- \*\*(MUST|SHOULD)\*\* Si el proyecto usa Expo,/, `regla Expo sin guarda: ${rule}`);
+	}
+	const webviewRules = ruleLinesInSection(reactNative, "WebView embebida");
+	assert.ok(webviewRules.length > 0 && webviewRules.length <= 4, "React Native declara de 1 a 4 reglas de WebView embebida");
+	for (const rule of webviewRules) {
+		assert.match(rule, /^- \*\*(MUST|SHOULD)\*\* Si el proyecto usa `react-native-webview`,/, `regla WebView sin guarda: ${rule}`);
 	}
 	const kotlin = await readRepoFile(`claude/${SKILL}/references/kotlin-multiplatform.md`);
 	const composeRules = ruleLinesInSection(kotlin, "Compose Multiplatform");

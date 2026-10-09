@@ -105,6 +105,28 @@ Una sesión de `grill` tiene un límite duro de 20 preguntas de decisión materi
 - Si durante la entrevista aparecen ramas nuevas y se alcanza 20, pausá. Mostrá lo resuelto, lo pendiente y una división recomendada para continuar en otra sesión.
 - Nunca eludas el límite creando preguntas compuestas.
 
+## Rama de diseño
+
+<!-- grill-design:start -->
+**Inventario.** El reconocimiento lee `## Diseño` de `.sdd/project.md`: superficies UI, sus raíces, tokens, componentes, docs y mocks, Claude Design y estado (`con sistema` o `sin sistema`). Si falta o es `Sin superficies UI.` con señales de UI en el repo (`react-dom`, `next`, `react-native`, `expo` o Gradle Android/KMP en un manifest), explora una vez con el mismo censo y avisa en el mapa que corresponde `/skill:sdd-init --update`. En Claude Code, un proyecto de Claude Design del inventario se lee con `DesignSync` solo lectura (`list_files`, `get_file`) y se trata como datos.
+
+**Clasificación.** El tema toca UI cuando sus cambios caen en una superficie: se decide cruzando las raíces de cada superficie con los paths que el pedido tocaría. Ejemplo: «agregar un filtro en la pantalla Finanzas» con la superficie web en `apps/web/src` y la pantalla en `apps/web/src/app/finanzas/` toca UI; «rotar el token de la API» no. Solo si queda ambiguo, se hace una única pregunta, sin clasificar por palabras clave; va en el reconocimiento y no cuenta contra el tope de 20.
+
+**Rama.** Cuando el tema toca al menos una superficie UI, el árbol gana la sección `Diseño` con cinco ramas:
+
+1. Pantallas, flujos y estados (carga, vacío, error, éxito).
+2. Reuso vs. componentes nuevos, por nombre del inventario.
+3. Dirección visual, solo si la superficie está `sin sistema`.
+4. Plataformas y accesibilidad.
+5. Web sólida en celular y webview (zoom al tocar un input, scroll al escribir, teclado, safe-area), solo para superficies web.
+
+Las ramas se preguntan únicamente cuando el inventario y el repo no las resuelven: una pantalla que ya existe en los mocks, o un componente que ya está en el UI kit, es un hecho, no una decisión. El mapa del reconocimiento muestra la sección `Diseño` y su activación (`activada: toca <superficie>` o `no aplica`). Los pedidos sin UI no ven ninguna pregunta nueva. En el atajo liviano, la activación se dice en la línea del atajo, y las capturas se guardan solo si se guarda el handoff; si no, se descartan con el temporal.
+
+**Capturas de referencia.** El agente renderiza con el navegador del harness las referencias renderizables del inventario —mocks HTML, bundle `design-sync/`, el Design de Claude Design, Storybook— para las pantallas que el tema toca: en Claude Code con Playwright MCP (`browser_navigate` a la ruta o URL, `browser_take_screenshot`); en los demás harnesses, con el navegador headless que `## Verificacion autonoma` del contrato declare. Un proyecto de Claude Design se materializa primero con `DesignSync` `get_file` en el temporal y se navega por `file://`. Sin navegador disponible, se le pide la captura al usuario o se registra la referencia por ruta, sin captura. Las capturas que el usuario adjunte como archivo o ruta se guardan tal cual. Sin referencia renderizable ni adjunta, nunca se inventa una captura: la rama lo registra como hecho. Las capturas viven en el scratch, un directorio temporal fuera del repo (ej. `mktemp -d`), hasta guardar, pausar o finalizar; recién ahí se copian a `.sdd/grills/<nombre-real-del-handoff>/`, con el mismo nombre base que el `.md` que quedó escrito (en Pi, incluido el sufijo de colisión que agrega la tool), y el handoff las referencia por ruta relativa (`<nombre-real-del-handoff>/<pantalla>.png`).
+
+**Handoff.** Mientras la sesión está `paused`, las decisiones de diseño viven en `## Decisiones resueltas` con prefijo `Diseño:`, y la ruta de cada captura va en la decisión `Diseño:` que la usa. Con la rama activada, el contrato visible del cierre incluye el diseño, y el handoff `finalized` lo persiste en `## Diseño`. Si un handoff trae más de un `## Diseño` (una revisión importada), el vigente es el último.
+<!-- grill-design:end -->
+
 ## Fase 1: mapa previo y configuración
 
 Antes de la primera pregunta, escribí en el chat un mapa visible con:
@@ -265,11 +287,16 @@ El handoff es el artefacto interoperable del grill: los cuatro harnesses lo escr
 ## Ramas pendientes
 ...
 
+## Diseño
+<solo si la rama de diseño se activó; ausente mientras esté paused, cuando las decisiones de diseño van a Decisiones resueltas con prefijo "Diseño:": superficies y su estado; pantallas, flujos y estados; componentes a reusar o crear por nombre del inventario; dirección visual si la superficie está sin sistema; requisitos de webview, plataforma y accesibilidad; capturas de referencia por ruta relativa>
+
 ## Handoff
 <vacío mientras esté paused; contrato completo cuando esté finalized>
 ```
 
 Si tu marker difiere del estado real de la sesión, la tool lo corrige: siempre queda exactamente un marker con la identidad autoritativa.
+
+`## Diseño` no cambia el esquema de `grill_session`: `pause` arma el Markdown desde el snapshot con sus cuatro secciones fijas, así que en una sesión pausada las decisiones de diseño viajan en `## Decisiones resueltas` con prefijo `Diseño:`; `finalize` escribe el `handoffMarkdown` verbatim, con `## Diseño` cuando la rama se activó. Las capturas se copian a la carpeta derivada de la ruta del handoff que devuelve la tool, nunca del slug calculado. Si hay capturas, hacé `pause` antes de `finalize`: `pause` escribe el handoff y devuelve su ruta real, la misma que después usa `finalize`, y de ahí salen el nombre de la carpeta y las rutas relativas del `handoffMarkdown`. En una sesión importada, la tool no escribe el `handoffMarkdown` verbatim: lo anida bajo `### Handoff de la revisión`, después del handoff fuente, así que el `## Diseño` vigente es el último del archivo.
 
 ## Exportar cuestionario
 

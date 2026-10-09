@@ -2,7 +2,7 @@
 # Mantenimiento: editar solo shared/coding-policies/references/react-native.md y ejecutar `node scripts/sync-coding-policies-references.mjs`.
 stack: react-native
 name: React Native
-version: 2026-09-14
+version: 2026-10-09
 ---
 
 ### Alcance y versiones
@@ -70,6 +70,13 @@ version: 2026-09-14
 - **MUST** Si el proyecto usa Expo, determinar si `android/` e `ios/` se mantienen a mano o se regeneran con CNG; no ejecutar `prebuild --clean` hasta demostrar que toda personalización está representada. Porqué: ese comando elimina y recrea ambos proyectos nativos. Gate: revisión de config plugins y `git diff -- android ios` después de una prueba descartable
 - **MUST** Si el proyecto usa Expo, mantener cada actualización remota compatible con el código nativo y `runtimeVersion` del binario receptor. Porqué: una OTA no instala capacidades nativas ausentes y compartir una runtime version incorrecta no crea compatibilidad. Gate: prueba de la actualización contra una build con el mismo `runtimeVersion`
 
+### WebView embebida
+
+- **MUST** Si el proyecto usa `react-native-webview`, resolver el área segura en un solo lado: el host envuelve la `WebView` en el área segura, o la página la resuelve con `viewport-fit=cover` y `env(safe-area-inset-*)` con la `WebView` extendida bajo las zonas no seguras; en Android preferir el host, porque el System WebView puede no recibir los insets y devolver 0. Porqué: el doble padding deja bandas vacías y el padding ausente tapa controles con el notch o la barra de gestos. Gate: `prueba en simulador o dispositivo con notch, en iOS y Android`
+- **MUST** Si el proyecto usa `react-native-webview`, dejar un solo responsable de compensar el teclado: el host, con los insets del IME de la versión instalada (con edge-to-edge, `adjustResize` ya no redimensiona la ventana), o la página, con la API `visualViewport`; en iOS, `WKWebView` ya desplaza el contenido hasta el input enfocado. Porqué: si host y página compensan los dos, el input enfocado salta o queda tapado al escribir. Gate: `prueba de un formulario web con teclado en iOS y Android`
+- **MUST** Si el proyecto usa `react-native-webview`, restringir la navegación con `originWhitelist` y `onShouldStartLoadWithRequest`, y validar cada mensaje de `onMessage` antes de actuar. Porqué: la página puede navegar a orígenes no confiables y el puente de mensajes es una superficie de ataque. Gate: `tests del handler de mensajes y revisión de la configuración`
+- **SHOULD** Si el proyecto usa `react-native-webview`, conservar el zoom y el texto escalable del contenido web salvo que la página ya sea responsive con texto del sistema grande. Porqué: desactivar el zoom en la WebView reproduce el problema de accesibilidad de la web bloqueada. Gate: `prueba con el tamaño de texto del sistema al máximo`
+
 ### Verificación
 
 - **MUST** Ejecutar lint, typecheck, tests JavaScript, build y pruebas nativas pertinentes según los scripts del repo. Porqué: cada capa detecta defectos distintos y ninguna reemplaza por sí sola la integración móvil. Gate: `scripts de CI y build de los targets afectados`
@@ -98,3 +105,5 @@ version: 2026-09-14
 - [Expo: SecureStore](https://docs.expo.dev/versions/latest/sdk/securestore/) — persistencia sensible y límites por plataforma.
 - [Expo: Permissions](https://docs.expo.dev/guides/permissions/) — configuración y solicitudes en runtime.
 - [Expo: Runtime versions](https://docs.expo.dev/eas-update/runtime-versions/) — compatibilidad entre OTA y binario.
+- [react-native-webview: Reference](https://github.com/react-native-webview/react-native-webview/blob/master/docs/Reference.md) — `originWhitelist`, `onShouldStartLoadWithRequest` y `onMessage`.
+- [Android: Handle the software keyboard](https://developer.android.com/develop/ui/views/layout/sw-keyboard) — insets del IME con edge-to-edge.

@@ -2,7 +2,7 @@
 # Mantenimiento: editar solo shared/coding-policies/references/next.md y ejecutar `node scripts/sync-coding-policies-references.mjs`.
 stack: next
 name: Next.js
-version: 2026-09-14
+version: 2026-10-09
 ---
 
 ### Alcance y versión
@@ -50,6 +50,12 @@ version: 2026-09-14
 - **MUST** Para imágenes responsivas, configurar dimensiones o `fill`, un `sizes` coherente con el layout y `remotePatterns` acotado. Porqué: esos datos evitan layout shift, descargas sobredimensionadas y orígenes no previstos. Gate: build y prueba responsive de `next/image`
 - **MUST** Escribir `alt` según el propósito de la imagen y no copiar configuración de imágenes deprecada de tutoriales viejos. Porqué: accesibilidad y seguridad del loader dependen del contrato actual, no de sintaxis histórica. Gate: `linter de accesibilidad y documentación de la versión`
 
+### Web en celular y webview
+
+- **MUST** En App Router, si se configura el viewport, hacerlo con `export const viewport` o `generateViewport` (nunca en `metadata`), sin `userScalable: false` ni `maximumScale: 1`; sin configuración, Next ya emite `width=device-width, initial-scale=1`. Porqué: bloquear el zoom falla WCAG 1.4.4, y el viewport dentro de `metadata` no es el contrato actual. Gate: `grep de userScalable y maximumScale en app/ y src/app/`
+- **SHOULD** En App Router, para el teclado virtual declarar `interactiveWidget: 'resizes-content'` en el viewport, que cubre Chromium y Android, y resolver Safari iOS con la API `visualViewport`. Porqué: Safari no soporta `interactive-widget` y el input enfocado queda tapado si el layout no reacciona al viewport visual. Gate: `prueba con teclado virtual en Safari iOS y Chrome Android`
+- **MUST** En App Router, para contenido bajo las zonas seguras declarar `viewportFit: 'cover'` en el viewport y compensar con `env(safe-area-inset-*)`. Porqué: sin `viewport-fit=cover` los insets valen 0 y el contenido queda bajo el notch o la barra de gestos. Gate: `prueba visual en un dispositivo o simulador con notch`
+
 ### Testing y producción
 
 - **MUST** Para E2E, probar contra build y servidor de producción cuando el flujo dependa de render, rutas o assets. Porqué: el dev server tiene compilación, errores y rendimiento distintos del artefacto desplegable. Gate: `next build` más servidor de producción y runner E2E
@@ -78,3 +84,7 @@ version: 2026-09-14
 - [Production checklist](https://nextjs.org/docs/app/guides/production-checklist) — controles antes de desplegar.
 - [Playwright](https://nextjs.org/docs/app/guides/testing/playwright) — E2E contra producción.
 - [Upgrading to Next 16](https://nextjs.org/docs/app/guides/upgrading/version-16) — lint, request APIs y proxy.
+- [generateViewport](https://nextjs.org/docs/app/api-reference/functions/generate-viewport) — `viewport`, `interactiveWidget` y `viewportFit` fuera de `metadata`.
+- [MDN: viewport meta](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta/name/viewport) — por qué no bloquear el zoom.
+- [MDN: env()](https://developer.mozilla.org/en-US/docs/Web/CSS/env) — `safe-area-inset-*`.
+- [MDN: VisualViewport](https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport) — teclado virtual en Safari iOS.
