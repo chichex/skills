@@ -16,6 +16,7 @@ export type Harness = (typeof HARNESSES)[number];
 export const SKILL_NAMES = [
 	"github-issue-selector",
 	"coding-policies",
+	"design-system",
 	"issue-triage",
 	"mini-grill",
 	"code-review",
