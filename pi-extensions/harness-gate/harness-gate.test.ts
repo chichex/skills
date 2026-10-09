@@ -896,6 +896,8 @@ test("autotest: la normalizacion reduce las tres sintaxis de invocacion al mismo
 // sigue siendo el segundo lugar de lectura. Cada skill lleva un bloque
 // delimitado idéntico entre harnesses con esa doctrina.
 const COMMON_DIR_COMMAND = /`git rev-parse --path-format=absolute --git-common-dir`/;
+// Decisión humana del review de #86: Codex no escribe en `.git/` con su sandbox por defecto.
+const CODEX_NEUTRAL_LINE = /Si el harness no puede escribir en `<git-common-dir>\/sdd\/`, su capa de interacción dice cómo pedir permiso o caer a `\.sdd\/` del cwd/;
 
 const GRILL_DRAFTS_DOCTRINE = [
 	/El handoff, el cuestionario y la carpeta de capturas se escriben en `<git-common-dir>\/sdd\/grills\/`, fuera del working tree/,
@@ -903,6 +905,7 @@ const GRILL_DRAFTS_DOCTRINE = [
 	/Fuera de un repo git, en `\.sdd\/grills\/` del cwd/,
 	/se miran los dos lugares: `\.sdd\/grills\/` del árbol[^\n]*`<git-common-dir>\/sdd\/grills\/`; ante el mismo nombre gana el del árbol/,
 	/imprime su ruta absoluta/,
+	CODEX_NEUTRAL_LINE,
 ];
 
 const SDD_SPEC_DRAFTS_DOCTRINE = [
@@ -911,7 +914,9 @@ const SDD_SPEC_DRAFTS_DOCTRINE = [
 	/fuera de un repo git, en `\.sdd\/specs\/` del cwd/,
 	/`\.sdd\/specs\/<slug>\.md` es su ruta lógica: se resuelve primero en el árbol trackeado[^\n]*y después en `<git-common-dir>\/sdd\/specs\/`/,
 	/Los handoffs de `--from-grill` y la Fase 0 se listan de los dos lugares, `\.sdd\/grills\/` del árbol y `<git-common-dir>\/sdd\/grills\/`/,
-	/La raíz operativa de un handoff sale de su campo `Proyecto`, no de dónde está guardado el archivo/,
+	// Review de #86: raíz física en el árbol; en el common-dir, `Proyecto` o el worktree principal.
+	/La raíz operativa de un handoff depende de dónde está: en `\.sdd\/grills\/` del árbol es la raíz física del checkout que lo contiene; en `<git-common-dir>\/sdd\/grills\/` es su campo `Proyecto` si nombra un worktree del mismo repo[^\n]*y, si no, el worktree principal de ese common-dir/,
+	CODEX_NEUTRAL_LINE,
 	/imprime la ruta absoluta de la spec local/,
 ];
 
@@ -921,7 +926,10 @@ const SDD_RUN_DRAFTS_DOCTRINE = [
 	/la spec target, el handoff canónico, su carpeta de capturas y las specs predecesoras/,
 	/Por compatibilidad, también los que sigan sin trackear en `\.sdd\/` del checkout original/,
 	/Se copian al worktree con el mismo nombre, bajo `\.sdd\/grills\/` y `\.sdd\/specs\/`, y entran en el PRIMER commit/,
-	/Después de verificar ese commit[^\n]*se borran las copias de `<git-common-dir>\/sdd\/`/,
+	// Review de #86: el borrado espera al push, así la única copia nunca queda en un branch local.
+	/las copias de `<git-common-dir>\/sdd\/` se borran recién después del push del branch \(o con el PR abierto\)/,
+	/Con `--no-pr`, o si el run termina antes del push, se conservan y el reporte las nombra/,
+	CODEX_NEUTRAL_LINE,
 ];
 
 const ISSUE_TRIAGE_DRAFTS_DOCTRINE = [
@@ -973,8 +981,8 @@ test("#84 CA-14: sdd-spec escribe la spec local en <git-common-dir>/sdd/specs y 
 		const flow = delimitedDoctrine(markdown, "sdd-spec-flow");
 		if (!/`<git-common-dir>\/sdd\/specs\/<slug>\.md`/.test(flow)) problems.push(`${file}: el destino local de sdd-spec-flow no es <git-common-dir>/sdd/specs/<slug>.md`);
 		if (/`local` = `\.sdd\/specs\/`/.test(markdown)) problems.push(`${file}: --out local todavía apunta a .sdd/specs/`);
-		if (/ra[ií]z operativa (?:sale )?de la ubicaci[oó]n f[ií]sica|deriva la ra[ií]z operativa de la ubicaci[oó]n f[ií]sica/.test(markdown)) {
-			problems.push(`${file}: la raíz operativa todavía sale de la ubicación física del handoff`);
+		if (/ra[ií]z operativa (?:de un handoff )?sale (?:de su|del) campo `Proyecto`[^\n]*no de d[oó]nde est[aá] guardado el archivo/.test(markdown)) {
+			problems.push(`${file}: la raíz operativa de un handoff del árbol todavía sale de Proyecto`);
 		}
 	}
 	assert.deepEqual(problems, []);
@@ -1006,5 +1014,26 @@ test("#84 CA-16: issue-triage resuelve el linaje en los dos lugares y los README
 			if (!readme.includes(literal)) problems.push(`${path}: no menciona ${literal}`);
 		}
 	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 review #86: en Codex, escribir en <git-common-dir>/sdd/ pide escalación o cae a .sdd/ del cwd", async () => {
+	const problems: string[] = [];
+	const shared = /En Codex, el sandbox por defecto deja `\.git\/` en solo lectura \(`mkdir: \.git\/sdd: Operation not permitted`\): pedir escalación para escribir en `<git-common-dir>\/sdd\/`/;
+	const fallback: Record<string, RegExp> = {
+		grill: /sin permiso, escribir en `\.sdd\/` del cwd y decirlo en el reporte[^\n]*`\$sdd-land`/,
+		"sdd-spec": /sin permiso, escribir en `\.sdd\/` del cwd y decirlo en el reporte[^\n]*`\$sdd-land`/,
+		"sdd-run": /sin permiso, dejarlas y decirlo en el reporte/,
+	};
+	for (const [skill, pattern] of Object.entries(fallback)) {
+		const codex = await readRepoFile(`codex/${skill}/SKILL.md`);
+		if (!shared.test(codex)) problems.push(`codex/${skill}/SKILL.md: falta la escalación de Codex`);
+		if (!pattern.test(codex)) problems.push(`codex/${skill}/SKILL.md: falta el fallback ${pattern}`);
+		for (const harness of ["claude", "opencode", "pi"] as const) {
+			if (/pedir escalación para escribir en `<git-common-dir>/.test(await readRepoFile(`${harness}/${skill}/SKILL.md`))) problems.push(`${harness}/${skill}/SKILL.md: la escalación es solo de Codex`);
+		}
+	}
+	const doc = await readRepoFile("docs/harness-interaction-differences.md");
+	if (!/En Codex[^\n]*`codex sandbox -P :workspace`[^\n]*Codex 0\.146\.0[^\n]*`<git-common-dir>\/sdd\/`[^\n]*escalación[^\n]*`\.sdd\/` del cwd/.test(doc)) problems.push("docs/harness-interaction-differences.md: falta la diferencia de Codex con `.git/`");
 	assert.deepEqual(problems, []);
 });

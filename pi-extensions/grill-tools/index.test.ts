@@ -1104,7 +1104,7 @@ test("#84 CA-11: /specs lista los dos lugares desde el principal y desde el work
 	assert.doesNotMatch(fromMain, /Compartida local/, "la trackeada gana ante el mismo nombre");
 });
 
-test("#84 CA-10: una revisión local no queda oculta detrás de un handoff trackeado con el mismo nombre", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+test("#84 CA-10 (review #86): una revisión local del mismo grill reemplaza al handoff trackeado y el grill sigue válido", { skip: !PI_PACKAGE_ROOT }, async (t) => {
 	const tool = tools.get("grill_session");
 	assert.ok(tool);
 	const { base, main, common } = repoWithLinkedWorktree("shadow");
@@ -1125,6 +1125,74 @@ test("#84 CA-10: una revisión local no queda oculta detrás de un handoff track
 	git(main, "commit", "-q", "-m", "handoff commiteado");
 	await tool.execute("configure-shadowed", { action: "configure", sessionId: snapshot.id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
 	const paused = await tool.execute("pause-shadowed", { action: "pause", sessionId: snapshot.id, summary: "Nueva revisión" }, undefined, undefined, { cwd: main });
-	assert.equal(paused.details.repoHandoffPath, join(common, "sdd", "grills", names.fallback));
+	assert.equal(paused.details.repoHandoffPath, join(common, "sdd", "grills", names.primary));
 	assert.equal(gitStatus(main), "");
+	const labels = (await selectLabels(main, { status: "all", scope: "current-project", query: snapshot.id })).filter((label) => label.includes("Handoff ya commiteado"));
+	assert.equal(labels.length, 1, labels.join(" | "));
+	assert.doesNotMatch(labels[0]!, /^!/, "el grill no queda BLOCKED por divergent-handoffs");
+});
+
+test("#84 CA-10 (review #86): un handoff trackeado de otro grill con el mismo nombre no oculta la revisión local", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("grill_session");
+	assert.ok(tool);
+	const { base, main, common } = repoWithLinkedWorktree("foreign");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const created = await tool.execute(
+		"create-foreign-shadow",
+		{ action: "create", topic: "Nombre compartido", projectPath: main, estimate: { min: 1, likely: 2, max: 3 } },
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	const snapshot = created.details.snapshot;
+	t.after(() => removeStoredSnapshot(snapshot.id));
+	const names = handoffFileNames(snapshot);
+	mkdirSync(join(main, ".sdd", "grills"), { recursive: true });
+	writeFileSync(join(main, ".sdd", "grills", names.primary), canonicalHandoff("otro-grill-ajeno", "paused", "Grill ajeno", main));
+	git(main, "add", ".sdd/grills");
+	git(main, "commit", "-q", "-m", "handoff ajeno");
+	await tool.execute("configure-foreign", { action: "configure", sessionId: snapshot.id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
+	const paused = await tool.execute("pause-foreign", { action: "pause", sessionId: snapshot.id, summary: "Pausa" }, undefined, undefined, { cwd: main });
+	assert.equal(paused.details.repoHandoffPath, join(common, "sdd", "grills", names.fallback));
+	const labels = await selectLabels(main, { status: "all", scope: "current-project", query: "" });
+	assert.equal(labels.filter((label) => label.includes("Nombre compartido") && !label.startsWith("!")).length, 1, labels.join(" | "));
+	assert.equal(labels.filter((label) => label.includes("Grill ajeno") && !label.startsWith("!")).length, 1, labels.join(" | "));
+});
+
+test("#84 CA-10 (review #86): un handoff del common-dir cuyo Proyecto no es un worktree del repo se atribuye al worktree principal", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const { base, main, linked, common } = repoWithLinkedWorktree("fallback-root");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	mkdirSync(join(common, "sdd", "grills"), { recursive: true });
+	writeFileSync(join(common, "sdd", "grills", "historico.md"), canonicalHandoff("cero-residuos-historico", "paused", "Handoff de otra maquina", "/old/project"));
+	const labels = await selectLabels(linked, { status: "all", scope: "all", query: "cero-residuos-historico" });
+	const label = labels.find((candidate) => candidate.includes("Handoff de otra maquina"));
+	assert.ok(label, labels.join(" | "));
+	assert.ok(label!.endsWith(`@ ${main}`), `${label} se atribuye a ${main}`);
+});
+
+test("#84 CA-11 (review #86): fuera de git, un .sdd/specs symlinkeado fuera del proyecto se rechaza", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("persist_sdd_spec");
+	assert.ok(tool);
+	const base = realpathSync(mkdtempSync(join(tmpdir(), "grill-tools-symlink-")));
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const project = join(base, "proyecto");
+	const outside = join(base, "fuera");
+	mkdirSync(join(project, ".sdd"), { recursive: true });
+	mkdirSync(outside);
+	symlinkSync(outside, join(project, ".sdd", "specs"), "dir");
+	const result = await tool.execute(
+		"persist-symlinked",
+		{
+			mode: "interactive",
+			repository: "local/proyecto",
+			projectPath: project,
+			documents: [{ id: "successor", role: "successor", markdown: canonicalSpec("Escapada"), destinations: [{ kind: "local", path: ".sdd/specs/escapada.md" }] }],
+		},
+		undefined,
+		undefined,
+		{ cwd: project },
+	);
+	assert.equal(result.details.ok, false, "la publicación queda bloqueada");
+	assert.match(JSON.stringify(result.details.diagnostics), /resolves outside the project/);
+	assert.deepEqual(readdirSync(outside), [], "no se escribe nada fuera del proyecto");
 });

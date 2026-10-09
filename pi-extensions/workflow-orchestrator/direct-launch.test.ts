@@ -536,3 +536,43 @@ test("#84 CA-12: el protocolo directo acepta un borrador del common-dir y sigue 
 		assert.equal(orchestrator.validateDirectRunRequest(request(path!, reference!)).ok, false, path);
 	}
 });
+
+function draftRequest(cwd: string, path: string, canonicalReference = "chichex/skills:.sdd/specs/borrador.md") {
+	return {
+		version: 1,
+		kind: "sdd-run",
+		repo: "chichex/skills",
+		cwd,
+		target: { type: "spec", canonicalReference, path, issue: null },
+		summary: "Run SDD spec Borrador.",
+		evidence: evidence(),
+	};
+}
+
+test("review #86: el protocolo directo solo acepta borradores bajo un directorio .git", () => {
+	assert.equal(orchestrator.validateDirectRunRequest(draftRequest("/workspace/skills-wt", "/workspace/skills/.git/sdd/specs/borrador.md")).ok, true);
+	assert.equal(orchestrator.validateDirectRunRequest(draftRequest("/workspace/skills-wt", "/srv/repos/skills.git/sdd/specs/borrador.md")).ok, true, "repo bare");
+	for (const [cwd, path, reference] of [
+		["/workspace/skills-wt", "/tmp/sdd/specs/borrador.md", undefined],
+		["/workspace/skills-wt", "/workspace/otro/vendor/sdd/specs/borrador.md", undefined],
+		["/workspace/skills-wt", "/workspace/skills-wt/vendor/sdd/specs/borrador.md", undefined],
+	] as const) {
+		assert.equal(orchestrator.validateDirectRunRequest(draftRequest(cwd, path, reference)).ok, false, path);
+	}
+});
+
+test("review #86: startFreshStage rechaza un borrador que no está en el common-dir del repo de cwd", async () => {
+	const launch = (path: string) => {
+		const request = draftRequest("/workspace/skills-wt", path);
+		const descriptor = orchestrator.describeDirectRun(request as never);
+		return orchestrator.startFreshStage({ direct: { request, ...descriptor.direct }, skill: descriptor.skill }, {} as never, {
+			commands: [],
+			resolveGitCommonDir: async (cwd: string) => (cwd === "/workspace/skills-wt" ? "/workspace/skills/.git" : null),
+		} as never);
+	};
+	const foreign = await launch("/workspace/otro/.git/sdd/specs/borrador.md");
+	assert.equal(foreign.ok, false);
+	if (!foreign.ok) assert.equal(foreign.code, "invalid-direct-request");
+	const own = await launch("/workspace/skills/.git/sdd/specs/borrador.md");
+	assert.ok(own.ok || own.code !== "invalid-direct-request", JSON.stringify(own));
+});

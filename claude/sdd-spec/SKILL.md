@@ -17,7 +17,7 @@ Dos ideas fuerza:
 /sdd-spec [pedido libre | #NN | URL de issue | ruta de spec] [--from-grill [ruta.md]] [--triage-route update-existing-spec|audit-existing-spec] [--out local|issue] [--assume]
 ```
 
-- `--from-grill [ruta.md]` — usa como fuente autoritativa un handoff finalizado en `.sdd/grills/` o `<git-common-dir>/sdd/grills/`, o en la ruta indicada: las decisiones que el handoff ya cierra entran a la spec como confirmadas y NO se vuelven a preguntar; solo se desambigua lo que el handoff deja abierto. Si no trae ruta, listar los handoffs `finalized` del proyecto y preguntar cuál con `AskUserQuestion` solo cuando haya más de uno. Usar la ruta `Proyecto` declarada en el handoff como raíz operativa.
+- `--from-grill [ruta.md]` — usa como fuente autoritativa un handoff finalizado en `.sdd/grills/` o `<git-common-dir>/sdd/grills/`, o en la ruta indicada: las decisiones que el handoff ya cierra entran a la spec como confirmadas y NO se vuelven a preguntar; solo se desambigua lo que el handoff deja abierto. Si no trae ruta, listar los handoffs `finalized` del proyecto y preguntar cuál con `AskUserQuestion` solo cuando haya más de uno. La raíz operativa es la que fija «Dónde viven los borradores».
 - `--out local|issue` — fuerza el destino de la spec por encima de la regla automática. `local` = `<git-common-dir>/sdd/specs/`, `issue` = actualizar el issue de origen (o crear uno nuevo si el pedido fue libre).
 - `--assume` — cero preguntas y sin menú final: además de lo que el flujo ya hace sin preguntar (inferencias `[ASSUMED]`, mecanismo propuesto, destino automático), si falta el contrato corre `/sdd-init --assume`, y el reporte termina en `Spec lista`. Para correr desatendido. Las decisiones ya confirmadas por grill nunca se degradan a supuestos.
 
@@ -31,7 +31,7 @@ Dos ideas fuerza:
 - Sin `--triage-route`, una `ruta de spec` se trata igual que `update-existing-spec`.
 
 <!-- sdd-spec-drafts:start -->
-**Dónde viven los borradores.** La spec local se escribe en `<git-common-dir>/sdd/specs/<slug>.md`, fuera del working tree: `<git-common-dir>` es la salida de `git rev-parse --path-format=absolute --git-common-dir`, el mismo directorio para todos los worktrees del repo; fuera de un repo git, en `.sdd/specs/` del cwd. `.sdd/specs/<slug>.md` es su ruta lógica: se resuelve primero en el árbol trackeado (si ya existe ahí, se actualiza en su lugar) y después en `<git-common-dir>/sdd/specs/`. Los handoffs de `--from-grill` y la Fase 0 se listan de los dos lugares, `.sdd/grills/` del árbol y `<git-common-dir>/sdd/grills/`; ante el mismo nombre gana el del árbol. La raíz operativa de un handoff sale de su campo `Proyecto`, no de dónde está guardado el archivo; si esa ruta no es un checkout de este repo en esta máquina, la raíz es el checkout desde el que se invoca. La spec local no se ve en el editor ni viaja con un clon nuevo, así que el reporte imprime la ruta absoluta de la spec local.
+**Dónde viven los borradores.** La spec local se escribe en `<git-common-dir>/sdd/specs/<slug>.md`, fuera del working tree: `<git-common-dir>` es la salida de `git rev-parse --path-format=absolute --git-common-dir`, el mismo directorio para todos los worktrees del repo; fuera de un repo git, en `.sdd/specs/` del cwd. `.sdd/specs/<slug>.md` es su ruta lógica: se resuelve primero en el árbol trackeado (si ya existe ahí, se actualiza en su lugar) y después en `<git-common-dir>/sdd/specs/`. Los handoffs de `--from-grill` y la Fase 0 se listan de los dos lugares, `.sdd/grills/` del árbol y `<git-common-dir>/sdd/grills/`; ante el mismo nombre gana el del árbol. La raíz operativa de un handoff depende de dónde está: en `.sdd/grills/` del árbol es la raíz física del checkout que lo contiene; en `<git-common-dir>/sdd/grills/` es su campo `Proyecto` si nombra un worktree del mismo repo (`git worktree list --porcelain`) y, si no, el worktree principal de ese common-dir (el primero de esa lista). Si el harness no puede escribir en `<git-common-dir>/sdd/`, su capa de interacción dice cómo pedir permiso o caer a `.sdd/` del cwd. La spec local no se ve en el editor ni viaja con un clon nuevo, así que el reporte imprime la ruta absoluta de la spec local.
 <!-- sdd-spec-drafts:end -->
 
 ## Fase 0 — Lanzador (solo con `/sdd-spec` pelado)
@@ -60,7 +60,7 @@ Luego usar `AskUserQuestion` — una pregunta, "¿De dónde sale la spec?":
 
 ## Fase 1 — Contrato primero (bloqueante)
 
-Si vino `--from-grill`, resolver primero la raíz operativa sin explorar código: la ruta `Proyecto` declarada en el handoff. Si el handoff pertenece a otro proyecto, avisar y operar bajo esa raíz (contrato, exploración y spec); nunca escribir la spec en el cwd equivocado.
+Si vino `--from-grill`, resolver primero la raíz operativa sin explorar código: la que fija «Dónde viven los borradores» (la raíz física para un handoff del árbol; `Proyecto` o el worktree principal para uno de `<git-common-dir>/sdd/grills/`). Si el handoff pertenece a otro proyecto, avisar y operar bajo esa raíz (contrato, exploración y spec); nunca escribir la spec en el cwd equivocado.
 
 Leer `.sdd/project.md` ANTES de cualquier otra cosa; interesan sobre todo `## Comandos`, `## Verificacion autonoma`, `## Limites` y `## Politicas de generacion` (los gates duros que `/sdd-run` va a aplicar — condicionan el veredicto y el tamaño sano de la spec).
 

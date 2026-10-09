@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { isSddArtifactPath, listSddArtifacts, resolveSddArtifactDirs } from "./sdd-paths.ts";
+import { isSddArtifactPath, listSddArtifacts, resolveRepoWorktrees, resolveSddArtifactDirs } from "./sdd-paths.ts";
 
 function git(cwd: string, ...args: string[]): string {
 	return execFileSync("git", ["-c", "user.name=sdd", "-c", "user.email=sdd@example.invalid", "-c", "commit.gpgsign=false", ...args], {
@@ -136,3 +136,11 @@ for (const path of CONSUMERS) {
 		assert.doesNotMatch(source, /(?:join|resolve)\([^)]*"\.sdd",\s*"(?:grills|specs)"/, "sin rutas .sdd/<kind> armadas a mano");
 	});
 }
+
+test("review #86: resolveRepoWorktrees lista los worktrees del repo con el principal primero, desde cualquiera de ellos", async (t) => {
+	const { base, main, linked } = repoWithLinkedWorktree();
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	assert.deepEqual(await resolveRepoWorktrees(linked), [main, linked]);
+	assert.deepEqual(await resolveRepoWorktrees(main), [main, linked]);
+	assert.deepEqual(await resolveRepoWorktrees(join(base, "no-existe")), []);
+});

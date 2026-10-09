@@ -91,3 +91,17 @@ export async function listSddArtifacts(dirs: SddArtifactDirs): Promise<SddArtifa
 	}
 	return [...byName.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
+
+/** Worktrees del repo de `root` según `git worktree list --porcelain`; el primero es el principal. */
+export async function resolveRepoWorktrees(root: string, runGit: GitRunner = defaultGitRunner): Promise<string[]> {
+	try {
+		const result = await runGit(["worktree", "list", "--porcelain"], root);
+		if (result.code !== 0) return [];
+		return result.stdout
+			.split("\n")
+			.filter((line) => line.startsWith("worktree "))
+			.map((line) => resolve(line.slice("worktree ".length)));
+	} catch {
+		return [];
+	}
+}

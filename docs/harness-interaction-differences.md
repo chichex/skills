@@ -25,6 +25,8 @@ En Pi, la misma extensión agrega además `ask_user_questions` como variante bat
 
 En opencode, `question` es una tool built-in registrada solo para los clientes `app`, `cli` y `desktop` (o con `OPENCODE_ENABLE_QUESTION_TOOL`); en cualquier otro cliente no existe y el gate se formula en texto plano. Acepta un array `questions` (cada una con `header`, `question`, `options` y `multiple` opcional) sin tope declarado de preguntas ni de opciones, agrega sola la respuesta libre y pide la recomendada primera con `(Recommended)`. En Codex, `request_user_input` acepta de 1 a 3 preguntas por llamada, de 2 a 3 opciones cada una, sin selección múltiple, y solo está disponible en algunos modos de colaboración.
 
+En Codex, el sandbox por defecto (`codex sandbox -P :workspace`, verificado en Codex 0.146.0) puede escribir en el working tree pero no en `.git/`: da `mkdir: .git/sdd: Operation not permitted`. Los skills que escriben borradores en `<git-common-dir>/sdd/` (`grill`, `sdd-spec`, y `sdd-run` al borrar las copias) piden escalación en Codex; sin permiso, escriben en `.sdd/` del cwd y lo dicen en el reporte, y esos borradores los resuelve `sdd-land` en su Fase 5. Es capa de interacción: la doctrina compartida solo dice que el harness que no puede escribir ahí sigue la suya.
+
 ## Qué normaliza el gate
 
 Sobre los templates de artefactos (bloques de código con marker

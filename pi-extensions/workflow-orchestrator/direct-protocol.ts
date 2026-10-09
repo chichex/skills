@@ -142,14 +142,22 @@ function relativeArtifactPath(root: string, path: string): string | null {
 
 // Un borrador de spec vive en <git-common-dir>/sdd/specs/ (spec #84, CA-12),
 // fuera del working tree de un worktree linkeado. Su referencia canónica es la
-// ruta lógica `.sdd/specs/<archivo>`; el resolver ya verificó con git que ese
-// directorio es el common-dir del repo de `cwd`.
+// ruta lógica `.sdd/specs/<archivo>`. Estructuralmente, el common-dir tiene que
+// ser un directorio git (`.git`, o `<nombre>.git` en un repo bare); que sea el
+// del repo de `cwd` lo comprueba con git `startFreshStage` antes de lanzar.
 function draftArtifactPath(path: string): string | null {
 	if (!isAbsolute(path) || !path.endsWith(".md")) return null;
 	const directory = dirname(resolve(path));
-	return basename(directory) === "specs" && basename(dirname(directory)) === "sdd"
+	const commonDir = dirname(dirname(directory));
+	return basename(directory) === "specs" && basename(dirname(directory)) === "sdd" && basename(commonDir).endsWith(".git")
 		? `.sdd/specs/${basename(path)}`
 		: null;
+}
+
+/** Ruta del borrador fuera de `cwd`, si el target es uno; `null` si la spec vive dentro de `cwd`. */
+export function directDraftCommonDir(cwd: string, path: string): string | null {
+	if (relativeArtifactPath(cwd, path) !== null || draftArtifactPath(path) === null) return null;
+	return dirname(dirname(dirname(resolve(path))));
 }
 
 export function validateDirectRunRequest(input: unknown): DirectRunValidation {

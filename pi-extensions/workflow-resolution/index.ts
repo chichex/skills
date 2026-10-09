@@ -399,7 +399,10 @@ export interface WorkflowResolutionInput {
 	/**
 	 * `<git-common-dir>/sdd/specs` del repo de `cwd` (spec #84, CA-12). Un
 	 * `superseded-by=.sdd/specs/<x>.md` se resuelve primero en el árbol
-	 * trackeado y, si no hay sucesor ahí, en este directorio.
+	 * trackeado y, si no hay sucesor ahí, en este directorio. `resolveWorkflow`
+	 * es el núcleo de referencia de la doctrina de `issue-triage`: en producción
+	 * el agente arma el `WorkflowResolutionV1` siguiendo esa doctrina y ningún
+	 * flujo de runtime llena todavía este campo.
 	 */
 	localSpecsDir?: string;
 	sources: IssueRef[];

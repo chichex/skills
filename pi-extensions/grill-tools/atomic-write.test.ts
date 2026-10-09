@@ -54,3 +54,20 @@ test("CA-10: writeFileAtomic escribe el destino sin dejar temporales", async (t)
 	assert.equal(readFileSync(target, "utf8"), "listo\n");
 	assert.deepEqual(readdirSync(directory), ["ok.md"]);
 });
+
+test("CA-10 (review #86): si también falla el borrado del .tmp, se propaga el error original", async (t) => {
+	const directory = scratch(t);
+	const target = join(directory, "handoff.md");
+	await assert.rejects(
+		writeFileAtomic(target, "contenido\n", {
+			writeFile: (path, content, encoding) => writeFile(path, content, encoding),
+			rename: async () => {
+				throw new Error("rename falló");
+			},
+			rm: async () => {
+				throw new Error("rm falló");
+			},
+		}),
+		/rename falló/,
+	);
+});
