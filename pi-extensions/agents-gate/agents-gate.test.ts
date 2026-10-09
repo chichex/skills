@@ -1045,3 +1045,434 @@ test("install.sh poda los skills administrados retirados y respeta los no admini
 		await rm(root, { recursive: true, force: true });
 	}
 });
+
+// =============================================================================
+// Issue #82: run con subagente — modelo y effort elegibles con recomendado
+// =============================================================================
+
+// Doctrina de claude/sdd-run/SKILL.md (CA-1 a CA-7 de la spec #82) y del
+// parrafo Claude de claude/sdd-spec/SKILL.md (CA-8). Vive FUERA de los bloques
+// compartidos entre harnesses (sdd-run-flow, sdd-run-stack,
+// sdd-run-dirty-checkout, sdd-spec-flow) y fuera de la Fase 2, que CA-12 de
+// este gate y harness-gate ya acotan. Cada lista se evalua sobre la porcion del
+// SKILL.md que le corresponde (ver sliceSddRunSkill); un patron ausente se
+// reporta como `<archivo>: falta <patron> en <seccion>`.
+
+const SDD_RUN_SKILL = "claude/sdd-run/SKILL.md";
+const SDD_SPEC_SKILL = "claude/sdd-spec/SKILL.md";
+
+const SDD_RUN_SUBAGENT_SYNTAX =
+	"/sdd-run [.sdd/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>] [--subagent] [--model M] [--effort E]";
+const SDD_RUN_SUBAGENT_HEADING = "## Run con subagente (solo con --subagent, --model o --effort)";
+const SDD_RUN_SHARED_BLOCKS = ["sdd-run-flow", "sdd-run-stack", "sdd-run-dirty-checkout"];
+
+function escapeRegExp(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// CA-1: flags en ## Argumentos (antes del bloque sdd-run-flow).
+const SUBAGENT_ARGUMENTS_DOCTRINE: RegExp[] = [
+	new RegExp(`^${escapeRegExp(SDD_RUN_SUBAGENT_SYNTAX)}$`, "m"),
+	/`--subagent`[^\n]*delega el run completo[^\n]*`implementer`[^\n]*background[^\n]*`\/sdd-run <target> --assume`/,
+	/`--model M`[^\n]*`sonnet`[^\n]*`opus`[^\n]*`fable`[^\n]*`haiku`/,
+	/`--effort E`[^\n]*`low`[^\n]*`medium`[^\n]*`high`[^\n]*`xhigh`[^\n]*`max`/,
+	/sin `--subagent` implican `--subagent`/,
+];
+
+// CA-1: atajo del lanzador de la Fase 0.
+const SUBAGENT_LAUNCHER_SHORTCUT =
+	/Atajo: \/sdd-run <spec\|#NN> \[--assume\] \[--no-pr\] \[--subagent\] \[--model M\] \[--effort E\] saltea este menu\./;
+
+// CA-2: la sesion que recibe --subagent es lanzadora, no corredora.
+const SUBAGENT_LAUNCHER_DOCTRINE: RegExp[] = [
+	/lanzadora, no corredora/,
+	/`gh issue view`/,
+	/no ejecuta ninguna fase/,
+	/ni crea worktree/,
+	/no ofrece la Fase 6/,
+	/`--no-pr`[^\n]*`--base`[^\n]*propagan/,
+];
+
+// CA-3: derivacion del recomendado. Las dos constantes sueltas son las que los
+// autotests mutan (umbral `hasta 9`, effort `high`).
+const SUBAGENT_THRESHOLD_ROW = /hasta 10 \| 11 a 16 \| 17 o más/;
+const SUBAGENT_EFFORT_ALWAYS = /`xhigh` siempre/;
+const SUBAGENT_RECOMMENDATION_DOCTRINE: RegExp[] = [
+	/ids únicos `CA-N`/,
+	/`## Comportamiento esperado`/,
+	/`## Plan de verificacion`/,
+	/no pude contar CAs/,
+	/`## Plan de entrega`/,
+	SUBAGENT_THRESHOLD_ROW,
+	/\| Capas \| 1 \| 2 o más \|/,
+	/el mayor que proponga cualquier señal/,
+	SUBAGENT_EFFORT_ALWAYS,
+	/solo avisa/,
+	/nunca mueve el escalón/,
+];
+
+// CA-4: pregunta de modelo y effort con AskUserQuestion.
+const SUBAGENT_QUESTION_DOCTRINE: RegExp[] = [
+	/una sola[^\n]*`AskUserQuestion`[^\n]*dos preguntas/i,
+	/`sonnet` \/ `opus` \/ `fable` \/ `Modelo de la sesión`/,
+	/`medium` \/ `high` \/ `xhigh` \/ `max`/,
+	/\(Recomendado\)/,
+	/«Other»[^\n]*`haiku`[^\n]*`low`/,
+	/`--model` presente saltea/,
+	/`--effort` presente saltea/,
+	/`--assume`[^\n]*nunca se pregunta/,
+	/no pasar `model`/,
+	/`CLAUDE_CODE_SUBAGENT_MODEL`/,
+	/`effort` se pasa siempre/,
+];
+
+// CA-5: lanzamiento de la tool Agent con model y effort.
+const SUBAGENT_LAUNCH_DOCTRINE: RegExp[] = [
+	/subagent_type: "implementer"/,
+	/run_in_background: true/,
+	/pide explícitamente pasar `effort`/,
+	/`\/sdd-run <target> --assume`/,
+	/subagente: <modelo> · <effort>/,
+	/subagente: modelo de la sesión · <effort>/,
+	/`general-purpose`[^\n]*anunciarlo/,
+	/no acepta `effort`[^\n]*lanzar sin él/,
+];
+
+// CA-6: traza visible al lanzar y al relevar.
+const SUBAGENT_TRACE_LINE =
+	/Subagente implementer: modelo <m> \(<escalón>: <N> CAs · <k> capas\) · effort <e> · verificabilidad: ALTA <a> · MEDIA\/BAJA <b> · NULA <c>/;
+const SUBAGENT_TRACE_DOCTRINE: RegExp[] = [
+	SUBAGENT_TRACE_LINE,
+	/al llegar la notificación[^\n]*modelo y effort/i,
+	/Sin `--subagent`, `--model` ni `--effort`[^\n]*como hoy/,
+];
+
+// CA-7: ownership coherente con la sesion lanzadora.
+const SUBAGENT_OWNERSHIP_DOCTRINE: RegExp[] = [
+	/`implementer` lanzado por `--subagent` o por `sdd-run con subagente`/,
+	/NO delegar "completar toda la spec"/,
+	/La sesión que lanza con `--subagent` no es el agente que corre/,
+];
+
+// CA-8: el parrafo Claude de sdd-spec (fuera de sdd-spec-flow) reusa la
+// doctrina y conserva los literales que harness-gate ya exige.
+const SDD_SPEC_SUBAGENT_DOCTRINE: RegExp[] = [
+	/sigue la sección «Run con subagente» de `sdd-run`/,
+	/dos preguntas/,
+	/subagent_type: "implementer"/,
+	/run_in_background/,
+	/`model` y `effort`/,
+	/`general-purpose`[\s\S]*(anunci|avis)/i,
+	/--assume/,
+];
+
+function sliceBetween(markdown: string, start: RegExp, end: RegExp): string | null {
+	const startMatch = start.exec(markdown);
+	if (!startMatch) return null;
+	const rest = markdown.slice(startMatch.index);
+	const endMatch = end.exec(rest.slice(startMatch[0].length));
+	if (!endMatch) return rest;
+	return rest.slice(0, startMatch[0].length + endMatch.index);
+}
+
+export interface SddRunSubagentSlices {
+	argumentos: string | null;
+	fase0: string | null;
+	section: string | null;
+	ownership: string | null;
+}
+
+export function sliceSddRunSkill(markdown: string): SddRunSubagentSlices {
+	return {
+		argumentos: sliceBetween(markdown, /^## Argumentos$/m, /\n(?:## |<!-- sdd-run-flow:start -->)/),
+		fase0: sliceBetween(markdown, /^## Fase 0 /m, /\n## /),
+		section: sliceBetween(markdown, /^## Run con subagente/m, /\n## /),
+		ownership: sliceBetween(markdown, /^### Ownership y tareas$/m, /\n##/),
+	};
+}
+
+export function missingPatterns(path: string, text: string | null, patterns: RegExp[], where: string): string[] {
+	if (text === null) return [`${path}: falta la sección ${where}`];
+	return patterns.filter((pattern) => !pattern.test(text)).map((pattern) => `${path}: falta ${pattern} en ${where}`);
+}
+
+// CA-2: la seccion vive entre `<!-- sdd-run-stack:end -->` y `## Fase 0`, fuera
+// de todo bloque compartido y sin contener markers de bloque.
+export function checkSubagentSectionPlacement(path: string, markdown: string): string[] {
+	const heading = markdown.search(/^## Run con subagente/m);
+	if (heading === -1) return [`${path}: falta la sección ${SDD_RUN_SUBAGENT_HEADING}`];
+	const problems: string[] = [];
+	if (!markdown.includes(SDD_RUN_SUBAGENT_HEADING)) {
+		problems.push(`${path}: el heading de Run con subagente no es literalmente '${SDD_RUN_SUBAGENT_HEADING}'`);
+	}
+	const fase0 = markdown.search(/^## Fase 0 /m);
+	if (fase0 === -1 || heading > fase0) problems.push(`${path}: ## Run con subagente debe ir antes de ## Fase 0`);
+	const stackEnd = markdown.indexOf("<!-- sdd-run-stack:end -->");
+	if (stackEnd === -1 || heading < stackEnd) {
+		problems.push(`${path}: ## Run con subagente debe ir después de ## Entrega por capas (marker sdd-run-stack:end)`);
+	}
+	for (const block of SDD_RUN_SHARED_BLOCKS) {
+		const start = markdown.indexOf(`<!-- ${block}:start -->`);
+		const end = markdown.indexOf(`<!-- ${block}:end -->`);
+		if (start !== -1 && end !== -1 && heading > start && heading < end) {
+			problems.push(`${path}: ## Run con subagente está dentro del bloque compartido ${block}`);
+		}
+	}
+	if (/<!-- sdd-run-/.test(sliceSddRunSkill(markdown).section ?? "")) {
+		problems.push(`${path}: ## Run con subagente contiene un marker de bloque compartido`);
+	}
+	return problems;
+}
+
+export function checkSddRunSubagentDoctrine(path: string, markdown: string): string[] {
+	const slices = sliceSddRunSkill(markdown);
+	const sectionDoctrine = [
+		...SUBAGENT_LAUNCHER_DOCTRINE,
+		...SUBAGENT_RECOMMENDATION_DOCTRINE,
+		...SUBAGENT_QUESTION_DOCTRINE,
+		...SUBAGENT_LAUNCH_DOCTRINE,
+		...SUBAGENT_TRACE_DOCTRINE,
+	];
+	return [
+		...missingPatterns(path, slices.argumentos, SUBAGENT_ARGUMENTS_DOCTRINE, "## Argumentos"),
+		...missingPatterns(path, slices.fase0, [SUBAGENT_LAUNCHER_SHORTCUT], "## Fase 0"),
+		...checkSubagentSectionPlacement(path, markdown),
+		...(slices.section === null ? [] : missingPatterns(path, slices.section, sectionDoctrine, "## Run con subagente")),
+		...missingPatterns(path, slices.ownership, SUBAGENT_OWNERSHIP_DOCTRINE, "### Ownership y tareas"),
+	];
+}
+
+// SKILL.md sintetico minimo que cumple toda la doctrina; los autotests lo
+// mutan (sin tabla, `hasta 9`, effort `high`, seccion mal ubicada).
+interface SyntheticSddRunOptions {
+	thresholds?: string | null;
+	effort?: string;
+	sectionAfterFase0?: boolean;
+}
+
+export function syntheticSddRunSkill({
+	thresholds = "| CAs | hasta 10 | 11 a 16 | 17 o más |\n  | Capas | 1 | 2 o más | — |",
+	effort = "xhigh",
+	sectionAfterFase0 = false,
+}: SyntheticSddRunOptions = {}): string {
+	const table =
+		thresholds === null
+			? ""
+			: [
+					"- **Tabla de umbrales** (escalón = el mayor que proponga cualquier señal):",
+					"",
+					"  | Señal | `sonnet` | `opus` | `fable` |",
+					"  |---|---|---|---|",
+					`  ${thresholds}`,
+					"",
+				].join("\n");
+	const section = [
+		SDD_RUN_SUBAGENT_HEADING,
+		"",
+		"La sesión que recibe `--subagent` es **lanzadora, no corredora**: resuelve el target (leyendo el body con `gh issue view` cuando es issue), no ejecuta ninguna fase del run ni crea worktree ni branch, y no ofrece la Fase 6. `--no-pr` y `--base` se propagan tal cual al prompt del subagente.",
+		"",
+		"- **Conteo de CAs**: ids únicos `CA-N` en los headings de `## Comportamiento esperado`; si da 0, las filas `| CA-N |` de `## Plan de verificacion`; si ambos dan 0, el recomendado es `opus` con el aviso «no pude contar CAs».",
+		"- **Capas**: filas numeradas de la tabla de `## Plan de entrega`; sin sección, 1 capa.",
+		table,
+		`- **Effort recomendado: \`${effort}\` siempre**, independiente del escalón.`,
+		"- **Verificabilidad solo avisa**: nunca mueve el escalón.",
+		"- Interactivo y sin flags: **una sola** llamada a `AskUserQuestion` con **dos preguntas**: modelo, con opciones `sonnet` / `opus` / `fable` / `Modelo de la sesión`, el recomendado primero y marcado `(Recomendado)`; y effort, con opciones `medium` / `high` / `xhigh` / `max`. «Other» cubre `haiku` y `low`.",
+		"- `--model` presente saltea la pregunta de modelo; `--effort` presente saltea la de effort.",
+		"- Con `--assume` nunca se pregunta.",
+		"- `Modelo de la sesión` significa no pasar `model` a la tool `Agent` (hereda el de la sesión o `CLAUDE_CODE_SUBAGENT_MODEL`); `effort` se pasa siempre.",
+		'- Lanzar la tool `Agent` con `subagent_type: "implementer"`, `run_in_background: true`, `model` y `effort`. Este skill pide explícitamente pasar `effort`.',
+		"- El prompt pide `/sdd-run <target> --assume` y la línea `subagente: <modelo> · <effort>` (con `Modelo de la sesión`, `subagente: modelo de la sesión · <effort>`).",
+		"- Si el tipo `implementer` no está disponible, usar `general-purpose` y anunciarlo. Si la tool no acepta `effort`, anunciarlo y lanzar sin él.",
+		"- Traza: `Subagente implementer: modelo <m> (<escalón>: <N> CAs · <k> capas) · effort <e> · verificabilidad: ALTA <a> · MEDIA/BAJA <b> · NULA <c>`.",
+		"- Al llegar la notificación del subagente, la sesión releva el PR y el reporte repitiendo modelo y effort.",
+		"- Sin `--subagent`, `--model` ni `--effort`, nada de lo anterior aparece y el run corre como hoy.",
+		"",
+	].join("\n");
+	const fase0 = [
+		"## Fase 0 — Lanzador (solo con `/sdd-run` pelado)",
+		"",
+		"```text",
+		"Atajo: /sdd-run <spec|#NN> [--assume] [--no-pr] [--subagent] [--model M] [--effort E] saltea este menu.",
+		"```",
+		"",
+	].join("\n");
+	return [
+		"---\nname: sdd-run\ndescription: sintético\n---",
+		"",
+		"## Argumentos",
+		"",
+		"```text",
+		SDD_RUN_SUBAGENT_SYNTAX,
+		"```",
+		"",
+		"- `--assume` — cero preguntas.",
+		"- `--subagent` — delega el run completo a un subagente `implementer` en background que corre `/sdd-run <target> --assume`; la sesión queda libre.",
+		"- `--model M` — modelo del subagente; `M` es un alias de la tool `Agent`: `sonnet`, `opus`, `fable` o `haiku`.",
+		"- `--effort E` — effort del subagente; `E` es `low`, `medium`, `high`, `xhigh` o `max`.",
+		"- `--model` o `--effort` sin `--subagent` implican `--subagent`.",
+		"",
+		"<!-- sdd-run-flow:start -->",
+		"### Flujo sin fricción",
+		"<!-- sdd-run-flow:end -->",
+		"",
+		"<!-- sdd-run-stack:start -->",
+		"## Entrega por capas",
+		"<!-- sdd-run-stack:end -->",
+		"",
+		sectionAfterFase0 ? fase0 + section : section + fase0,
+		"## Fase 3 — Implementar",
+		"",
+		"### Ownership y tareas",
+		"",
+		'- El agente que corre el run (la sesión principal, o el `implementer` lanzado por `--subagent` o por `sdd-run con subagente` de `sdd-spec`) conserva ownership. NO delegar "completar toda la spec".',
+		"- La sesión que lanza con `--subagent` no es el agente que corre.",
+		"",
+		"### Timeouts",
+		"",
+	].join("\n");
+}
+
+test("issue #82 CA-1: sdd-run declara --subagent, --model M y --effort E en ## Argumentos y en el atajo de la Fase 0", async () => {
+	const markdown = await readRepoFile(SDD_RUN_SKILL);
+	const slices = sliceSddRunSkill(markdown);
+	const problems = [
+		...missingPatterns(SDD_RUN_SKILL, slices.argumentos, SUBAGENT_ARGUMENTS_DOCTRINE, "## Argumentos"),
+		...missingPatterns(SDD_RUN_SKILL, slices.fase0, [SUBAGENT_LAUNCHER_SHORTCUT], "## Fase 0"),
+	];
+	assert.deepEqual(problems, [], problems.join("\n"));
+	// La frase que sigue al heading de la Fase 0 no cambia (CA-1).
+	assert.match(slices.fase0 ?? "", /Dispara SOLO cuando los argumentos vienen vacíos\. Si trajo spec, issue o flags, saltear\./);
+});
+
+test("issue #82 CA-2: la sección Run con subagente vive entre Entrega por capas y la Fase 0, fuera de los bloques compartidos, y declara a la sesión lanzadora", async () => {
+	const markdown = await readRepoFile(SDD_RUN_SKILL);
+	const problems = [
+		...checkSubagentSectionPlacement(SDD_RUN_SKILL, markdown),
+		...missingPatterns(SDD_RUN_SKILL, sliceSddRunSkill(markdown).section, SUBAGENT_LAUNCHER_DOCTRINE, "## Run con subagente"),
+	];
+	assert.deepEqual(problems, [], problems.join("\n"));
+	// CA-9: la Fase 2 sigue sin nombrar implementer/reviewer (lo gatea CA-12 de
+	// este archivo) y los bloques compartidos no ganan la doctrina nueva.
+	for (const block of SDD_RUN_SHARED_BLOCKS) {
+		const shared = markdown.match(new RegExp(`<!-- ${block}:start -->([\\s\\S]*?)<!-- ${block}:end -->`))?.[1] ?? "";
+		assert.ok(shared, `${SDD_RUN_SKILL}: bloque ${block} presente`);
+		assert.doesNotMatch(shared, /--subagent|--effort|`--model`/, `${SDD_RUN_SKILL}: el bloque compartido ${block} no debe ganar la doctrina del run con subagente`);
+	}
+});
+
+test("issue #82 CA-3: la sección deriva el recomendado por CAs y capas con la tabla de umbrales, xhigh siempre y verificabilidad que solo avisa", async () => {
+	const markdown = await readRepoFile(SDD_RUN_SKILL);
+	const problems = missingPatterns(SDD_RUN_SKILL, sliceSddRunSkill(markdown).section, SUBAGENT_RECOMMENDATION_DOCTRINE, "## Run con subagente");
+	assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("issue #82 CA-4: una sola AskUserQuestion con dos preguntas, Modelo de la sesión, (Recomendado), flags que saltean y --assume que no pregunta", async () => {
+	const markdown = await readRepoFile(SDD_RUN_SKILL);
+	const problems = missingPatterns(SDD_RUN_SKILL, sliceSddRunSkill(markdown).section, SUBAGENT_QUESTION_DOCTRINE, "## Run con subagente");
+	assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("issue #82 CA-5: lanza la tool Agent con implementer, background, model y effort explícito, y el fence Run completo no cambia", async () => {
+	const markdown = await readRepoFile(SDD_RUN_SKILL);
+	const problems = missingPatterns(SDD_RUN_SKILL, sliceSddRunSkill(markdown).section, SUBAGENT_LAUNCH_DOCTRINE, "## Run con subagente");
+	assert.deepEqual(problems, [], problems.join("\n"));
+	// La línea `subagente:` se pide por prompt: el bloque de código `Run completo`
+	// (compartido entre harnesses, lo compara harness-gate) no la incorpora.
+	const report = markdown.match(/```text\nRun completo:[\s\S]*?```/)?.[0] ?? "";
+	assert.ok(report, `${SDD_RUN_SKILL}: fence Run completo presente`);
+	assert.doesNotMatch(report, /subagente/, `${SDD_RUN_SKILL}: el fence Run completo no debe cambiar`);
+});
+
+test("issue #82 CA-6: la traza Subagente implementer se imprime al lanzar y al relevar, y sin flags el run corre como hoy", async () => {
+	const markdown = await readRepoFile(SDD_RUN_SKILL);
+	const problems = missingPatterns(SDD_RUN_SKILL, sliceSddRunSkill(markdown).section, SUBAGENT_TRACE_DOCTRINE, "## Run con subagente");
+	assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("issue #82 CA-7: Ownership y tareas nombra al implementer lanzado por --subagent y a la sesión lanzadora que no corre", async () => {
+	const markdown = await readRepoFile(SDD_RUN_SKILL);
+	const problems = missingPatterns(SDD_RUN_SKILL, sliceSddRunSkill(markdown).ownership, SUBAGENT_OWNERSHIP_DOCTRINE, "### Ownership y tareas");
+	assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("issue #82 CA-8: el párrafo Claude de sdd-spec reusa la sección Run con subagente de sdd-run fuera de sdd-spec-flow", async () => {
+	const markdown = await readRepoFile(SDD_SPEC_SKILL);
+	const flowEnd = markdown.indexOf("<!-- sdd-spec-flow:end -->");
+	const gateStart = markdown.indexOf("<!-- sdd-spec-publication-gate:start -->");
+	assert.ok(flowEnd !== -1 && gateStart !== -1 && flowEnd < gateStart, `${SDD_SPEC_SKILL}: markers sdd-spec-flow:end y sdd-spec-publication-gate:start`);
+	const claudeParagraph = markdown.slice(flowEnd, gateStart);
+	const problems = missingPatterns(SDD_SPEC_SKILL, claudeParagraph, SDD_SPEC_SUBAGENT_DOCTRINE, "párrafo Claude del menú final");
+	assert.deepEqual(problems, [], problems.join("\n"));
+	const flow = markdown.match(/<!-- sdd-spec-flow:start -->([\s\S]*?)<!-- sdd-spec-flow:end -->/)?.[1] ?? "";
+	assert.doesNotMatch(flow, /Run con subagente|`effort`|subagent_type/, `${SDD_SPEC_SKILL}: el bloque compartido sdd-spec-flow no debe ganar la doctrina Claude`);
+});
+
+test("issue #82 CA-11: READMEs y contrato documentan --subagent, modelo/effort con recomendado, y el contrato lleva el conteo real del gate", async () => {
+	const readmeEs = await readRepoFile("README.md");
+	const readmeEn = await readRepoFile("README.en.md");
+	const rowEs = readmeEs.match(/^\| \*\*`sdd-run`\*\* \|.*$/m)?.[0] ?? "";
+	const rowEn = readmeEn.match(/^\| \*\*`sdd-run`\*\* \|.*$/m)?.[0] ?? "";
+	assert.ok(rowEs, "README.md: fila sdd-run");
+	assert.ok(rowEn, "README.en.md: fila sdd-run");
+	for (const pattern of [/--subagent/, /modelo[^|]*effort/i, /recomendado/i, /`--model`\/`--effort`/, /`xhigh`/]) {
+		assert.match(rowEs, pattern, `README.md fila sdd-run: falta ${pattern}`);
+	}
+	for (const pattern of [/--subagent/, /model[^|]*effort/i, /recommended/i, /`--model`\/`--effort`/, /`xhigh`/]) {
+		assert.match(rowEn, pattern, `README.en.md fila sdd-run: falta ${pattern}`);
+	}
+	const specRowEs = readmeEs.match(/^\| \*\*`sdd-spec`\*\* \|.*$/m)?.[0] ?? "";
+	const specRowEn = readmeEn.match(/^\| \*\*`sdd-spec`\*\* \|.*$/m)?.[0] ?? "";
+	assert.match(specRowEs, /`sdd-run con subagente`[^|]*misma elección/i, "README.md fila sdd-spec: el menú de Claude usa la misma elección de modelo y effort");
+	assert.match(specRowEn, /`sdd-run con subagente`[^|]*same[^|]*(choice|selection)/i, "README.en.md fila sdd-spec: the Claude menu uses the same model/effort choice");
+
+	const contract = await readRepoFile(".sdd/project.md");
+	const gateRow = contract.match(/^\| gate anti-drift de agentes de plugin \|.*$/m)?.[0] ?? "";
+	assert.ok(gateRow, ".sdd/project.md: fila del gate de agentes");
+	for (const pattern of [/--subagent/, /modelo[^|]*effort/i, /umbrales/i]) {
+		assert.match(gateRow, pattern, `.sdd/project.md fila del gate de agentes: falta ${pattern}`);
+	}
+	// El conteo de la fila coincide con los tests reales de este archivo
+	// (todos son `test(` de nivel superior; ninguno se skipea).
+	const declared = gateRow.match(/^\|(?:[^|]*\|){5} (\d+)\/(\d+);/);
+	assert.ok(declared, ".sdd/project.md fila del gate de agentes: conteo `N/N;` al inicio de las notas");
+	const self = await readRepoFile("pi-extensions/agents-gate/agents-gate.test.ts");
+	const actualTests = (self.match(/^test\(/gm) ?? []).length;
+	assert.equal(Number(declared?.[1]), actualTests, `.sdd/project.md declara ${declared?.[1]} tests pasando y el gate tiene ${actualTests}`);
+	assert.equal(Number(declared?.[2]), actualTests, `.sdd/project.md declara ${declared?.[2]} tests totales y el gate tiene ${actualTests}`);
+	// Literales que pi-package.test.ts assertea sobre el mismo archivo.
+	assert.match(contract, /## Politicas de generacion\nSin politicas activas\./);
+	assert.match(contract, /## Decisiones humanas\n/);
+});
+
+// --- Autotests del gate del run con subagente (CA-10) ------------------------
+
+test("autotest (issue #82): el SKILL.md sintético completo pasa el gate del run con subagente", () => {
+	assert.deepEqual(checkSddRunSubagentDoctrine("sintetico/SKILL.md", syntheticSddRunSkill()), []);
+});
+
+test("autotest (issue #82): un SKILL.md sintético sin la tabla de umbrales falla nombrando el archivo y el patrón ausente", () => {
+	const problems = checkSddRunSubagentDoctrine("sintetico/SKILL.md", syntheticSddRunSkill({ thresholds: null }));
+	assert.notDeepEqual(problems, []);
+	for (const problem of problems) assert.match(problem, /^sintetico\/SKILL\.md: falta /);
+	assert.ok(problems.includes(`sintetico/SKILL.md: falta ${SUBAGENT_THRESHOLD_ROW} en ## Run con subagente`), problems.join("\n"));
+	assert.ok(problems.includes(`sintetico/SKILL.md: falta ${/\| Capas \| 1 \| 2 o más \|/} en ## Run con subagente`), problems.join("\n"));
+});
+
+test("autotest (issue #82): un umbral distinto (hasta 9) y un effort recomendado high fallan con el patrón exacto", () => {
+	const nine = checkSddRunSubagentDoctrine(
+		"sintetico/SKILL.md",
+		syntheticSddRunSkill({ thresholds: "| CAs | hasta 9 | 10 a 16 | 17 o más |\n  | Capas | 1 | 2 o más | — |" }),
+	);
+	assert.deepEqual(nine, [`sintetico/SKILL.md: falta ${SUBAGENT_THRESHOLD_ROW} en ## Run con subagente`]);
+	const high = checkSddRunSubagentDoctrine("sintetico/SKILL.md", syntheticSddRunSkill({ effort: "high" }));
+	assert.deepEqual(high, [`sintetico/SKILL.md: falta ${SUBAGENT_EFFORT_ALWAYS} en ## Run con subagente`]);
+});
+
+test("autotest (issue #82): la sección Run con subagente después de la Fase 0 o ausente falla con diagnóstico de ubicación", () => {
+	const misplaced = checkSubagentSectionPlacement("sintetico/SKILL.md", syntheticSddRunSkill({ sectionAfterFase0: true }));
+	assert.deepEqual(misplaced, ["sintetico/SKILL.md: ## Run con subagente debe ir antes de ## Fase 0"]);
+	const withoutSection = syntheticSddRunSkill().replace(/## Run con subagente[\s\S]*?(?=\n## Fase 0)/, "");
+	assert.deepEqual(checkSubagentSectionPlacement("sintetico/SKILL.md", withoutSection), [
+		`sintetico/SKILL.md: falta la sección ${SDD_RUN_SUBAGENT_HEADING}`,
+	]);
+});
