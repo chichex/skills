@@ -44,12 +44,12 @@ El reporte y la preview exacta se muestran antes de cualquier escritura. Salvo q
 
 Una referencia inválida, un PR cerrado que no se pueda obtener, un head inconsistente o un diff vacío frenan la review con diagnóstico concreto. No improvisar otra base.
 
-Para leer el código completo en el estado del PR sin tocar el checkout, usar `git show <head-sha>:<path>`. Los checks que necesitan el árbol del head corren en un worktree temporal detached que vive dentro de un solo comando de shell, porque cada llamada de shell puede ser un proceso nuevo: se crea, se usa y se limpia en el mismo comando, con un `trap` EXIT que lo desbloquea y lo remueve aunque los checks fallen o el comando se corte.
+Para leer el código completo en el estado del PR sin tocar el checkout, usar `git show <head-sha>:<path>`. Los checks que necesitan el árbol del head corren en un worktree temporal detached, sin lock, que vive dentro de un solo comando de shell en `$TMPDIR`, porque cada llamada de shell puede ser un proceso nuevo: se crea, se usa y se limpia en el mismo comando, con un `trap` EXIT que lo remueve aunque los checks fallen. Un `SIGKILL` no corre el `trap`: el worktree queda en `$TMPDIR` y, como no tiene lock, `git worktree prune` lo poda cuando el sistema vacía el temporal.
 
 ```bash
 review_dir="$(mktemp -d "${TMPDIR:-/tmp}/<repo>-review-<PR>-XXXXXX")"
-trap 'git worktree unlock "$review_dir" 2>/dev/null; git worktree remove --force "$review_dir" 2>/dev/null; rmdir "$review_dir" 2>/dev/null' EXIT
-git worktree add --detach --lock --reason "code-review <PR>" "$review_dir" <head-sha> || exit 1
+trap 'git worktree remove --force "$review_dir" 2>/dev/null; rmdir "$review_dir" 2>/dev/null' EXIT
+git worktree add --detach "$review_dir" <head-sha> || exit 1
 ( cd "$review_dir" && <checks> )
 ```
 

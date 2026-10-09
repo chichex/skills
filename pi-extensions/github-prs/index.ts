@@ -14,6 +14,7 @@ interface PullRequestListItem {
 	isDraft: boolean;
 	headRefName: string;
 	baseRefName: string;
+	isCrossRepository?: boolean;
 	reviewDecision: string;
 	updatedAt: string;
 	author?: { login?: string } | null;
@@ -227,7 +228,7 @@ export default function githubPrsExtension(pi: ExtensionAPI): void {
 					"--limit",
 					"100",
 					"--json",
-					"number,title,url,isDraft,headRefName,baseRefName,reviewDecision,updatedAt,author,statusCheckRollup",
+					"number,title,url,isDraft,headRefName,baseRefName,isCrossRepository,reviewDecision,updatedAt,author,statusCheckRollup",
 				],
 				ctx,
 				signal,
@@ -417,14 +418,16 @@ export default function githubPrsExtension(pi: ExtensionAPI): void {
 			"Verificando y cerrando issues asociados en GitHub…",
 			(signal) => closeIssuesStillOpen(issues, ctx, signal),
 		);
-		const localBranch = await pi.exec("git", ["for-each-ref", "--format=%(refname:short)", `refs/heads/${pr.headRefName}`], {
+		// show-ref exacto: un tag homónimo no confunde la búsqueda del branch local.
+		const localBranch = await pi.exec("git", ["show-ref", "--verify", "--quiet", `refs/heads/${pr.headRefName}`], {
 			cwd: ctx.cwd,
 			timeout: 10_000,
 		}).catch(() => ({ code: 1, stdout: "", stderr: "" }));
 		const cleanup = mergeCleanupNotice({
 			number: pr.number,
 			headRefName: pr.headRefName,
-			localBranchExists: localBranch.code === 0 && localBranch.stdout.trim() === pr.headRefName,
+			localBranchExists: localBranch.code === 0,
+			isCrossRepository: pr.isCrossRepository === true,
 		});
 		if (failures.length > 0) {
 			ctx.ui.notify(

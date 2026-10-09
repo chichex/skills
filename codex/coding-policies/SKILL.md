@@ -142,15 +142,17 @@ Coding policies listas: <ruta> (<generado|regenerado>)
 <!-- commit-pr-close:start -->
 ## Cierre — Commit + PR
 
-Después del reporte, preguntar `Commit + PR (Recomendado)` / `Dejar sin commitear`. Este skill escribe en el checkout principal porque los demás skills leen de ahí lo que genera: es la excepción al principio de que el checkout principal es de solo lectura, y por eso cierra ofreciendo un PR.
+Después del reporte, preguntar `Commit + PR (Recomendado)` / `Dejar sin commitear`. Este skill escribe en el checkout principal porque los demás skills leen de ahí lo que genera: es la excepción al principio de que el checkout principal es de solo lectura, y por eso cierra ofreciendo un PR. El cierre usa el `git status --porcelain=v1 -z` que la corrida tomó antes de escribir su primer archivo.
 
 `Commit + PR`:
 
-1. `git fetch origin` y crear el worktree con lock, con el branch `chore/coding-policies-<YYYY-MM-DD>` nacido de `origin/<default>`: `git worktree add --lock --reason "coding-policies <YYYY-MM-DD>" ../<repo>-coding-policies-<YYYY-MM-DD> -b chore/coding-policies-<YYYY-MM-DD> origin/<default>`.
-2. Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR con `gh pr create --base <default>`.
-3. `git worktree unlock` y después `git worktree remove` del worktree.
+1. Comprobar la aptitud igual que `$sdd-run`: hay remote y `gh` autenticado, y `## Limites` de `.sdd/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
+2. Revisar cada path que esta corrida escribió. Uno nuevo, ausente en `origin/<default>`, se copia. Uno que ya existía se copia solo si `HEAD:<path>` del checkout es igual a `origin/<default>:<path>` y el path no tenía cambios antes de la corrida; si no, el cierre queda en `Dejar sin commitear` con el motivo, para no meter cambios ajenos en el PR ni revertir lo que `origin/<default>` ya cambió.
+3. `git fetch origin` y crear el worktree con lock, con el branch `chore/coding-policies-<YYYY-MM-DD>` nacido de `origin/<default>`: `git worktree add --lock --reason "coding-policies <YYYY-MM-DD>" ../<repo>-coding-policies-<YYYY-MM-DD> -b chore/coding-policies-<YYYY-MM-DD> origin/<default>`. Si el branch o el path ya existen, usar en los dos el primer sufijo libre (`-2`, `-3`…).
+4. Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR con `gh pr create --base <default> --title "chore(coding-policies): <YYYY-MM-DD>" --body-file <archivo>`.
+5. `git worktree unlock` y después `git worktree remove` del worktree.
 
-La copia idéntica que queda en el checkout principal no se toca: después del merge, `$sdd-land` la reconoce como `ya aterrizado` y la resuelve sin preguntar. Si el branch o el path ya existen, o no hay remote o `gh`, se reporta el motivo y el cierre queda en `Dejar sin commitear`, que no toca nada. El reporte suma la línea `- cierre: <PR #<n> <url> | sin commitear (<motivo>)>`. Con `--assume` no se pregunta: el cierre queda en `Dejar sin commitear`. Si este skill corre encadenado desde `$sdd-init`, el cierre lo ofrece una sola vez `$sdd-init`, con todos los paths escritos.
+Si el push o `gh pr create` fallan después del commit, el cierre queda como commit local sin PR: el reporte nombra el branch, el motivo y el comando para seguir (`git push -u origin <branch>` y el `gh pr create` del paso 4). La copia idéntica que queda en el checkout principal no se toca: después del merge, `$sdd-land` la reconoce como `ya aterrizado` y la resuelve sin preguntar. `Dejar sin commitear` no toca nada. El reporte suma la línea `- cierre: <PR #<n> <url> | commit local sin PR en <branch> (<motivo>) · <comando> | sin commitear (<motivo>)>`. En modo desatendido, si el skill lo tiene, no se pregunta y el cierre queda en `Dejar sin commitear`. Si un skill encadena a otro (`$sdd-init` encadena `$coding-policies` y `$design-system`), el cierre lo ofrece una sola vez el que encadenó, con todos los paths escritos.
 <!-- commit-pr-close:end -->
 
 ## MUST DO
@@ -171,6 +173,10 @@ La copia idéntica que queda en el checkout principal no se toca: después del m
 - No interpretar, validar ni reformatear el contenido de "Ajustes de este proyecto".
 - No pisar un destino existente que no tenga los dos markers de ajustes.
 <!-- coding-policies-doctrine:end -->
+
+## Capa de interacción
+
+La pregunta del cierre `Commit + PR` tiene dos opciones y usa `request_user_input` si está disponible; si no, se formula en texto plano y se termina el turno.
 
 ## Referencias
 
