@@ -52,12 +52,9 @@ version: 2026-10-09
 
 ### Web en celular y webview
 
-- **MUST** Declarar el viewport con `export const viewport` o `generateViewport`, sin `userScalable: false` ni `maximumScale: 1`. Porqué: bloquear el zoom impide ampliar el contenido a quien lo necesita y falla WCAG 1.4.4; en Next el viewport no va en `metadata`. Gate: `grep de userScalable y maximumScale en app/`
-- **MUST** Dar a inputs, selects y textareas un `font-size` computado de al menos 16px en mobile. Porqué: Safari en iOS hace zoom automático al enfocar un campo con texto menor a 16px y desarma el layout. Gate: `prueba en Safari iOS o WebKit con viewport mobile`
-- **MUST** Mantener visible el campo enfocado cuando aparece el teclado virtual, sin saltos de scroll al escribir: ajustar el layout al viewport visual (`interactiveWidget: 'resizes-content'` en el viewport o la API `visualViewport`) y usar `scrollIntoView` solo como corrección puntual. Porqué: el teclado achica el viewport visual y un layout fijo puede tapar el input o saltar en cada tecla. Gate: `prueba manual o E2E con teclado virtual en iOS y Android`
-- **MUST** Respetar las zonas seguras en barras fijas y contenido a pantalla completa con `viewportFit: 'cover'` y `env(safe-area-inset-*)`. Porqué: notch, isla dinámica y barra de gestos tapan los controles pegados a los bordes. Gate: `prueba visual en un dispositivo o simulador con notch`
-- **SHOULD** Dar a cada control táctil un área de al menos 44pt (44px CSS) con separación entre targets vecinos. Porqué: los targets chicos generan toques errados; 44pt es el mínimo de las guías de Apple y WCAG 2.5.8 exige al menos 24px. Gate: `auditoría de accesibilidad o medición en DevTools`
-- **MUST** Ofrecer un camino táctil y de teclado para todo lo que se revela con `:hover` o eventos de mouse. Porqué: en pantallas táctiles no hay hover y la acción o la información quedan inaccesibles. Gate: `prueba con emulación táctil y navegación por teclado`
+- **MUST** En App Router, si se configura el viewport, hacerlo con `export const viewport` o `generateViewport` (nunca en `metadata`), sin `userScalable: false` ni `maximumScale: 1`; sin configuración, Next ya emite `width=device-width, initial-scale=1`. Porqué: bloquear el zoom falla WCAG 1.4.4, y el viewport dentro de `metadata` no es el contrato actual. Gate: `grep de userScalable y maximumScale en app/ y src/app/`
+- **SHOULD** En App Router, para el teclado virtual declarar `interactiveWidget: 'resizes-content'` en el viewport, que cubre Chromium y Android, y resolver Safari iOS con la API `visualViewport`. Porqué: Safari no soporta `interactive-widget` y el input enfocado queda tapado si el layout no reacciona al viewport visual. Gate: `prueba con teclado virtual en Safari iOS y Chrome Android`
+- **MUST** En App Router, para contenido bajo las zonas seguras declarar `viewportFit: 'cover'` en el viewport y compensar con `env(safe-area-inset-*)`. Porqué: sin `viewport-fit=cover` los insets valen 0 y el contenido queda bajo el notch o la barra de gestos. Gate: `prueba visual en un dispositivo o simulador con notch`
 
 ### Testing y producción
 
@@ -90,5 +87,4 @@ version: 2026-10-09
 - [generateViewport](https://nextjs.org/docs/app/api-reference/functions/generate-viewport) — `viewport`, `interactiveWidget` y `viewportFit` fuera de `metadata`.
 - [MDN: viewport meta](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta/name/viewport) — por qué no bloquear el zoom.
 - [MDN: env()](https://developer.mozilla.org/en-US/docs/Web/CSS/env) — `safe-area-inset-*`.
-- [Apple HIG: Accessibility](https://developer.apple.com/design/human-interface-guidelines/accessibility) — tamaño mínimo de 44pt para controles táctiles.
-- [WCAG 2.2: Target Size (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html) — mínimo de 24px y separación entre targets.
+- [MDN: VisualViewport](https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport) — teclado virtual en Safari iOS.

@@ -307,6 +307,12 @@ const REACT_LINKS = [
 	"https://react.dev/learn/preserving-and-resetting-state",
 	"https://react.dev/learn/react-compiler/introduction",
 	"https://react.dev/reference/react/useEffectEvent",
+	"https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta/name/viewport",
+	"https://developer.mozilla.org/en-US/docs/Web/CSS/env",
+	"https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport",
+	"https://webkit.org/blog/7929/designing-websites-for-iphone-x/",
+	"https://developer.apple.com/design/human-interface-guidelines/accessibility",
+	"https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html",
 ];
 const NEXT_SECTIONS = [
 	"Alcance y versión",
@@ -331,6 +337,8 @@ const NEXT_LINKS = [
 	"https://nextjs.org/docs/app/getting-started/metadata-and-og-images",
 	"https://nextjs.org/docs/app/guides/production-checklist",
 	"https://nextjs.org/docs/app/guides/testing/playwright",
+	"https://nextjs.org/docs/app/api-reference/functions/generate-viewport",
+	"https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport",
 ];
 const REACT_NATIVE_SECTIONS = [
 	"Alcance y versiones",
@@ -359,6 +367,8 @@ const REACT_NATIVE_LINKS = [
 	"https://docs.expo.dev/develop/development-builds/introduction/",
 	"https://docs.expo.dev/workflow/continuous-native-generation/",
 	"https://docs.expo.dev/eas-update/runtime-versions/",
+	"https://github.com/react-native-webview/react-native-webview/blob/master/docs/Reference.md",
+	"https://developer.android.com/develop/ui/views/layout/sw-keyboard",
 ];
 const KOTLIN_MULTIPLATFORM_SECTIONS = [
 	"Alcance y estructura",

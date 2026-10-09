@@ -165,9 +165,9 @@ Coding policies listas: <ruta> (<generado|regenerado>)
 - `references/go.md` — Go. Fuentes: prácticas del usuario observadas en sus repos, Uber Go Style Guide, Effective Go, Go Code Review Comments y Package Oriented Design.
 - `references/typescript.md` — TypeScript general y transversal al runtime o framework. Fuentes: criterios provistos por el usuario, documentación de TypeScript, typescript-eslint, Node.js, Zod y la guía de rendimiento del compilador.
 - `references/node.md` — Node.js. Fuentes: criterios provistos por el usuario y documentación oficial de Node.js y npm.
-- `references/react.md` — React web. Fuentes: criterios provistos por el usuario y documentación oficial de React.
-- `references/next.md` — Next.js, como capa adicional a React. Fuentes: criterios provistos por el usuario y documentación oficial de Next.js.
-- `references/react-native.md` — React Native, con React core y reglas condicionales para Expo. Fuentes: criterios provistos por el usuario y documentación oficial de React, React Native y Expo.
+- `references/react.md` — React web, con reglas de web en celular y webview. Fuentes: criterios provistos por el usuario, documentación oficial de React, MDN, WebKit, Apple HIG y W3C (WCAG).
+- `references/next.md` — Next.js, como capa adicional a React, con el viewport de App Router. Fuentes: criterios provistos por el usuario, documentación oficial de Next.js y MDN.
+- `references/react-native.md` — React Native, con React core y reglas condicionales para Expo y `react-native-webview`. Fuentes: criterios provistos por el usuario y documentación oficial de React, React Native, Expo, `react-native-webview` y Android.
 - `references/kotlin-multiplatform.md` — Kotlin Multiplatform, con reglas condicionales para Compose Multiplatform. Fuentes: criterios provistos por el usuario y documentación oficial de Kotlin y JetBrains.
 
 Las referencias bajo cada harness son mirrors generados: la única fuente editable vive en `shared/coding-policies/references/`. No modificar directamente `claude/coding-policies/references/`, `codex/coding-policies/references/`, `opencode/coding-policies/references/` ni `pi/coding-policies/references/`.
