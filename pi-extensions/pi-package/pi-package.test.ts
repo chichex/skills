@@ -79,11 +79,9 @@ const EXPECTED_SKILLS = [
 	"./pi/quick-run/SKILL.md",
 	"./pi/sdd-init/SKILL.md",
 	"./pi/sdd-land/SKILL.md",
-	"./pi/sdd-review-loop/SKILL.md",
 	"./pi/sdd-run/SKILL.md",
 	"./pi/sdd-spec/SKILL.md",
 	"./pi/tdd/SKILL.md",
-	"./pi/wait-pr/SKILL.md",
 ];
 
 const EXPECTED_THEMES = ["./pi-themes/claude-code.json"];
@@ -108,7 +106,6 @@ const EXPECTED_EXTENSION_COMMANDS = [
 	"specs",
 	"subagents",
 	"visual-footer",
-	"wait-pr",
 ];
 
 const EXPECTED_SKILL_COMMANDS = EXPECTED_SKILLS.map((path) => `skill:${path.split("/").at(-2)}`).sort();

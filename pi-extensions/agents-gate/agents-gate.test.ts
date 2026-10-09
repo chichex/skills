@@ -3,11 +3,10 @@
 //
 // Censa agents/*.md sobre archivos TRACKEADOS en git (no el working tree),
 // valida el frontmatter de cada agente y verifica los textos doctrinales que
-// las CA-1 a CA-6, CA-11 y CA-12 exigen en claude/sdd-review-loop/SKILL.md,
-// claude/sdd-run/SKILL.md, .claude-plugin/plugin.json, ambos READMEs,
-// harness-port y el contrato. Falla con diagnostico nombrando el archivo
+// las CA-1 a CA-3, CA-11 y CA-12 exigen en claude/sdd-run/SKILL.md,
+// .claude-plugin/plugin.json, ambos READMEs, harness-port y el contrato. Falla con diagnostico nombrando el archivo
 // ante cada forma de drift. No hay extension Pi en este directorio: es
-// solo-tests, igual que pi-extensions/sdd-review-loop.
+// solo-tests, igual que pi-extensions/sdd-land-gate.
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -335,24 +334,7 @@ export function validatePiAgentFrontmatter(
 	return { ok: problems.length === 0, problems };
 }
 
-// --- Doctrina de sdd-review-loop y plugin.json ------------------------------
-
-export function checkSubagentTypesDeclared(markdown: string): string[] {
-	const problems: string[] = [];
-	if (!/subagent_type:\s*"reviewer"/.test(markdown)) {
-		problems.push('subagent_type ausente en sdd-review-loop: falta subagent_type: "reviewer" para el revisor');
-	}
-	if (!/subagent_type:\s*"implementer"/.test(markdown)) {
-		problems.push('subagent_type ausente en sdd-review-loop: falta subagent_type: "implementer" para el corrector');
-	}
-	return problems;
-}
-
-export function checkDegradationLine(markdown: string): string[] {
-	const pattern =
-		/no est[aá] disponible[\s\S]{0,200}?agente por defecto[\s\S]{0,160}?anuncia|agente por defecto[\s\S]{0,160}?anuncia[\s\S]{0,160}?nunca aborta/i;
-	return pattern.test(markdown) ? [] : ["línea de degradación ausente en sdd-review-loop"];
-}
+// --- plugin.json --------------------------------------------------------------
 
 // Claude Code valida cada entrada de `agents` como ruta a un `.md` (un
 // directorio como "./agents" rompe la carga del plugin con
@@ -446,26 +428,6 @@ test("CA-3: plugin.json autodescubre agents/ junto a skills, con description ide
 	assert.equal(entry?.description, plugin.description, "descripciones byte a byte iguales");
 });
 
-test("CA-4, CA-5, CA-6: sdd-review-loop nombra subagent_type, degrada sin abortar y no fija model", async () => {
-	const markdown = await readRepoFile("claude/sdd-review-loop/SKILL.md");
-
-	assert.deepEqual(checkSubagentTypesDeclared(markdown), []);
-	assert.deepEqual(checkDegradationLine(markdown), []);
-
-	// Doctrina que CA-4 exige preservar intacta.
-	assert.match(markdown, /Nunca corren dos subagentes de la misma ronda en paralelo/);
-	assert.match(markdown, /no lee el diff/);
-	assert.match(markdown, /n[uú]mero o URL can[oó]nica/);
-
-	// El reporte final de Fase 4 lleva el dato de degradacion como linea propia.
-	const reportBlock = markdown.slice(markdown.indexOf("SDD-REVIEW-LOOP <TERMINADO|DETENIDO>"));
-	assert.match(reportBlock.slice(0, 800), /tipos de agente/i);
-
-	// CA-6: ningun agente custom fija model; el flag de invocacion sigue ganando.
-	assert.match(markdown, /gana sobre cualquier `model`|gana sobre[\s\S]{0,40}frontmatter/i);
-	assert.match(markdown, /--model M`[^\n]*ambos/);
-});
-
 test("CA-10: ningun agents/ bajo claude/, opencode/ o pi/; los sidecars de codex no disparan falso positivo", () => {
 	const tracked = spawnSync("git", ["ls-files"], { cwd: REPO_ROOT, encoding: "utf8" });
 	assert.equal(tracked.status, 0);
@@ -474,7 +436,7 @@ test("CA-10: ningun agents/ bajo claude/, opencode/ o pi/; los sidecars de codex
 	assert.deepEqual(forbidden, [], `agents/ prohibido fuera de la raiz: ${forbidden.join(", ")}`);
 
 	const codexSidecars = allPaths.filter((path) => /^codex\/[^/]+\/agents\/openai\.yaml$/.test(path));
-	assert.ok(codexSidecars.length >= 15, "los sidecars de codex siguen presentes y no los toca este gate");
+	assert.ok(codexSidecars.length >= 14, "los sidecars de codex siguen presentes y no los toca este gate");
 });
 
 test("CA-11: READMEs, harness-port y el contrato documentan el layer de agentes", async () => {
@@ -794,28 +756,6 @@ test("autotest: skills requeridas ausentes o distintas fallan con diagnostico", 
 	const verdict = validateAgentFrontmatter("implementer", markdown, ["chichex-skills:tdd"]);
 	assert.equal(verdict.ok, false);
 	assert.match(verdict.problems.join("\n"), /skills: esperado \[chichex-skills:tdd\], encontrado \[\]/);
-});
-
-test("autotest: subagent_type ausente en sdd-review-loop falla con diagnostico por rol", () => {
-	assert.deepEqual(checkSubagentTypesDeclared("sin ninguna mencion"), [
-		'subagent_type ausente en sdd-review-loop: falta subagent_type: "reviewer" para el revisor',
-		'subagent_type ausente en sdd-review-loop: falta subagent_type: "implementer" para el corrector',
-	]);
-	assert.deepEqual(checkSubagentTypesDeclared('subagent_type: "reviewer" nada mas'), [
-		'subagent_type ausente en sdd-review-loop: falta subagent_type: "implementer" para el corrector',
-	]);
-});
-
-test("autotest: linea de degradacion ausente falla con diagnostico", () => {
-	assert.deepEqual(checkDegradationLine("doctrina sin mencionar que pasa si el tipo no existe"), [
-		"línea de degradación ausente en sdd-review-loop",
-	]);
-	assert.deepEqual(
-		checkDegradationLine(
-			"si el tipo no está disponible en la instalación, la ronda sigue con el agente por defecto de la sesión y lo anuncia en el reporte",
-		),
-		[],
-	);
 });
 
 test("autotest: declarar agents en plugin.json falla con diagnostico", () => {
