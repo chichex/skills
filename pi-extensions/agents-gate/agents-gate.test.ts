@@ -1077,20 +1077,37 @@ const SUBAGENT_ARGUMENTS_DOCTRINE: RegExp[] = [
 	/`--model M`[^\n]*`sonnet`[^\n]*`opus`[^\n]*`fable`[^\n]*`haiku`/,
 	/`--effort E`[^\n]*`low`[^\n]*`medium`[^\n]*`high`[^\n]*`xhigh`[^\n]*`max`/,
 	/sin `--subagent` implican `--subagent`/,
+	// Review #83 (h6): valores fuera del enum o flag sin valor, en una sola linea.
+	/`--model`\/`--effort` con un valor fuera de su lista[^\n]*sin valor[^\n]*se trata como ausente[^\n]*`--assume`[^\n]*abortar con diagnóstico antes de preguntar y antes de lanzar/,
 ];
 
 // CA-1: atajo del lanzador de la Fase 0.
 const SUBAGENT_LAUNCHER_SHORTCUT =
 	/Atajo: \/sdd-run <spec\|#NN> \[--assume\] \[--no-pr\] \[--subagent\] \[--model M\] \[--effort E\] saltea este menu\./;
 
-// CA-2: la sesion que recibe --subagent es lanzadora, no corredora.
+// Review #83 (h3): la Fase 0 dispara sin target; los flags sin target pasan por
+// el lanzador (antes decia «Si trajo spec, issue o flags, saltear», que
+// contradecia a «/sdd-run --subagent sin target pasa por la Fase 0»).
+const SUBAGENT_LAUNCHER_PHRASE =
+	/Dispara cuando no hay target\. Si trajo spec o issue, saltear; flags sin target \(`--subagent`, `--model`, `--effort`, `--assume`…\) pasan por el lanzador igual para elegir la spec/;
+
+// CA-2: la sesion que recibe --subagent es lanzadora, no corredora. Review #83
+// (h2, h4): corre las precondiciones de la Fase 1 (pasos 1 a 3) y el preflight
+// de stack antes de preguntar, y la enumeracion sigue el orden real de la traza.
 const SUBAGENT_LAUNCHER_DOCTRINE: RegExp[] = [
 	/lanzadora, no corredora/,
 	/`gh issue view`/,
+	/imprime la traza con el recomendado[^\n]*pregunta lo que falte[^\n]*imprime la traza con la elección final[^\n]*lanza/,
 	/no ejecuta ninguna fase/,
+	/precondiciones de la Fase 1 \(pasos 1 a 3\)/,
+	/preflight de stack/,
 	/ni crea worktree/,
 	/no ofrece la Fase 6/,
 	/`--no-pr`[^\n]*`--base`[^\n]*propagan/,
+	/`\/sdd-init --assume`/,
+	/ofrecer `\/sdd-spec <target>`/,
+	/`\/sdd-spec <target> --assume`/,
+	/gh extension install github\/gh-stack/,
 ];
 
 // CA-3: derivacion del recomendado. Las dos constantes sueltas son las que los
@@ -1124,6 +1141,10 @@ const SUBAGENT_QUESTION_DOCTRINE: RegExp[] = [
 	/no pasar `model`/,
 	/`CLAUDE_CODE_SUBAGENT_MODEL`/,
 	/`effort` se pasa siempre/,
+	// Review #83 (h5): con la variable definida el hijo no hereda el modelo de la
+	// sesion, y la opcion, la traza y la linea `subagente:` lo dicen.
+	/printenv CLAUDE_CODE_SUBAGENT_MODEL/,
+	/modelo heredado \(CLAUDE_CODE_SUBAGENT_MODEL=<valor>\)[^\n]*en vez de `modelo de la sesión`/,
 ];
 
 // CA-5: lanzamiento de la tool Agent con model y effort.
@@ -1143,6 +1164,8 @@ const SUBAGENT_TRACE_LINE =
 	/Subagente implementer: modelo <m> \(<escalón>: <N> CAs · <k> capas\) · effort <e> · verificabilidad: ALTA <a> · MEDIA\/BAJA <b> · NULA <c>/;
 const SUBAGENT_TRACE_DOCTRINE: RegExp[] = [
 	SUBAGENT_TRACE_LINE,
+	// Review #83 (h4): con el fallback la traza nombra el tipo real.
+	/fallback[^\n]*`Subagente general-purpose: modelo <m>/,
 	/al llegar la notificación[^\n]*modelo y effort/i,
 	/Sin `--subagent`, `--model` ni `--effort`[^\n]*como hoy/,
 ];
@@ -1157,6 +1180,9 @@ const SUBAGENT_OWNERSHIP_DOCTRINE: RegExp[] = [
 // CA-8: el parrafo Claude de sdd-spec (fuera de sdd-spec-flow) reusa la
 // doctrina y conserva los literales que harness-gate ya exige.
 const SDD_SPEC_SUBAGENT_DOCTRINE: RegExp[] = [
+	// Review #83 (h1): la opcion dice como se llega a la seccion: cargando
+	// sdd-run con --subagent en esta sesion (sin el flag correria inline).
+	/carga el skill `sdd-run` sobre el target con `--subagent` \(`\/sdd-run <target> --subagent`\)/,
 	/sigue la sección «Run con subagente» de `sdd-run`/,
 	/dos preguntas/,
 	/subagent_type: "implementer"/,
@@ -1269,7 +1295,11 @@ export function syntheticSddRunSkill({
 	const section = [
 		SDD_RUN_SUBAGENT_HEADING,
 		"",
-		"La sesión que recibe `--subagent` es **lanzadora, no corredora**: resuelve el target (leyendo el body con `gh issue view` cuando es issue), no ejecuta ninguna fase del run ni crea worktree ni branch, y no ofrece la Fase 6. `--no-pr` y `--base` se propagan tal cual al prompt del subagente.",
+		"La sesión que recibe `--subagent` es **lanzadora, no corredora**: resuelve el target (leyendo el body con `gh issue view` cuando es issue), imprime la traza con el recomendado, pregunta lo que falte, imprime la traza con la elección final y lanza el subagente; no ejecuta ninguna fase del run más allá de las precondiciones de la Fase 1 (pasos 1 a 3) y el preflight de stack, ni crea worktree ni branch, y no ofrece la Fase 6. `--no-pr` y `--base` se propagan tal cual al prompt del subagente.",
+		"",
+		"- Contrato: si falta, interactivo → ofrecer `/sdd-init`; `--assume` → correr `/sdd-init --assume`.",
+		"- Spec: si el target no resuelve a una spec SDD, interactivo → frenar y ofrecer `/sdd-spec <target>`; `--assume` → encadenar `/sdd-spec <target> --assume`.",
+		"- Stack: con 2 o más capas, preflight de stack; interactivo → ofrecer `gh extension install github/gh-stack`; `--assume` → frenar con el comando exacto.",
 		"",
 		"- **Conteo de CAs**: ids únicos `CA-N` en los headings de `## Comportamiento esperado`; si da 0, las filas `| CA-N |` de `## Plan de verificacion`; si ambos dan 0, el recomendado es `opus` con el aviso «no pude contar CAs».",
 		"- **Capas**: filas numeradas de la tabla de `## Plan de entrega`; sin sección, 1 capa.",
@@ -1279,11 +1309,12 @@ export function syntheticSddRunSkill({
 		"- Interactivo y sin flags: **una sola** llamada a `AskUserQuestion` con **dos preguntas**: modelo, con opciones `sonnet` / `opus` / `fable` / `Modelo de la sesión`, el recomendado primero y marcado `(Recomendado)`; y effort, con opciones `medium` / `high` / `xhigh` / `max`. «Other» cubre `haiku` y `low`.",
 		"- `--model` presente saltea la pregunta de modelo; `--effort` presente saltea la de effort.",
 		"- Con `--assume` nunca se pregunta.",
-		"- `Modelo de la sesión` significa no pasar `model` a la tool `Agent` (hereda el de la sesión o `CLAUDE_CODE_SUBAGENT_MODEL`); `effort` se pasa siempre.",
+		"- `Modelo de la sesión` significa no pasar `model` a la tool `Agent` (hereda el de la sesión o `CLAUDE_CODE_SUBAGENT_MODEL`); `effort` se pasa siempre. Antes de preguntar, chequear `printenv CLAUDE_CODE_SUBAGENT_MODEL`: si está definida, la opción, la traza y la línea `subagente:` dicen `modelo heredado (CLAUDE_CODE_SUBAGENT_MODEL=<valor>)` en vez de `modelo de la sesión`.",
 		'- Lanzar la tool `Agent` con `subagent_type: "implementer"`, `run_in_background: true`, `model` y `effort`. Este skill pide explícitamente pasar `effort`.',
 		"- El prompt pide `/sdd-run <target> --assume` y la línea `subagente: <modelo> · <effort>` (con `Modelo de la sesión`, `subagente: modelo de la sesión · <effort>`).",
 		"- Si el tipo `implementer` no está disponible, usar `general-purpose` y anunciarlo. Si la tool no acepta `effort`, anunciarlo y lanzar sin él.",
 		"- Traza: `Subagente implementer: modelo <m> (<escalón>: <N> CAs · <k> capas) · effort <e> · verificabilidad: ALTA <a> · MEDIA/BAJA <b> · NULA <c>`.",
+		"- Con el fallback la traza nombra el tipo real: `Subagente general-purpose: modelo <m> …`.",
 		"- Al llegar la notificación del subagente, la sesión releva el PR y el reporte repitiendo modelo y effort.",
 		"- Sin `--subagent`, `--model` ni `--effort`, nada de lo anterior aparece y el run corre como hoy.",
 		"",
@@ -1310,6 +1341,7 @@ export function syntheticSddRunSkill({
 		"- `--model M` — modelo del subagente; `M` es un alias de la tool `Agent`: `sonnet`, `opus`, `fable` o `haiku`.",
 		"- `--effort E` — effort del subagente; `E` es `low`, `medium`, `high`, `xhigh` o `max`.",
 		"- `--model` o `--effort` sin `--subagent` implican `--subagent`.",
+		"- `--model`/`--effort` con un valor fuera de su lista o sin valor: interactivo → se trata como ausente, se avisa y se pregunta; `--assume` → abortar con diagnóstico antes de preguntar y antes de lanzar.",
 		"",
 		"<!-- sdd-run-flow:start -->",
 		"### Flujo sin fricción",
@@ -1340,8 +1372,10 @@ test("issue #82 CA-1: sdd-run declara --subagent, --model M y --effort E en ## A
 		...missingPatterns(SDD_RUN_SKILL, slices.fase0, [SUBAGENT_LAUNCHER_SHORTCUT], "## Fase 0"),
 	];
 	assert.deepEqual(problems, [], problems.join("\n"));
-	// La frase que sigue al heading de la Fase 0 no cambia (CA-1).
-	assert.match(slices.fase0 ?? "", /Dispara SOLO cuando los argumentos vienen vacíos\. Si trajo spec, issue o flags, saltear\./);
+	// La frase que sigue al heading de la Fase 0 (CA-1, [DEVIATION] 2026-10-09
+	// por el review #83 h3): sin target dispara aunque haya flags.
+	assert.match(slices.fase0 ?? "", SUBAGENT_LAUNCHER_PHRASE, `${SDD_RUN_SKILL}: la Fase 0 debe disparar sin target y dejar pasar los flags sin target`);
+	assert.doesNotMatch(slices.fase0 ?? "", /Si trajo spec, issue o flags, saltear/, `${SDD_RUN_SKILL}: la Fase 0 no debe saltearse por flags sin target`);
 });
 
 test("issue #82 CA-2: la sección Run con subagente vive entre Entrega por capas y la Fase 0, fuera de los bloques compartidos, y declara a la sesión lanzadora", async () => {
