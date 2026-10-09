@@ -54,19 +54,20 @@ En Pi, `grill` es el único entry point de entrevista: solo desambigua y produce
 
 #### Riel orquestado y fronteras de sesión
 
-Los entrypoints públicos son `/issues` para triage, `/grills` para retomar entrevistas, `/specs` para buscar/inspeccionar specs, `/sdd-run <ruta|#NN>` para autorizar directamente una ejecución y `/wait-pr` para monitorear PRs nuevos y encadenar `code-review`.
+Los entrypoints públicos son `/issues` para triage, `/grill <#NN|owner/repo#NN|URL de issue>` para iniciar una entrevista en el checkout correcto, `/grills` para retomar entrevistas, `/specs` para buscar/inspeccionar specs, `/sdd-run <ruta|#NN|owner/repo#NN|URL de issue>` para autorizar directamente una ejecución y `/wait-pr` para monitorear PRs nuevos y encadenar `code-review`.
 
 `/grills` y `select_grill_session` comparten un inventario que reconcilia snapshots runtime globales con handoffs portables bajo `.sdd/grills/` en cada root conocido. Abre en el proyecto actual; «Ver todos» incorpora sólo proyectos conocidos por Pi, sin escanear el disco. Un handoff pausado sin snapshot se importa únicamente al confirmar **Retomar** y conserva el Markdown completo. Si el marker declara otra ruta histórica, se muestra como advertencia y manda la raíz física. Para un handoff finalizado sin snapshot, Grill → Spec pasa la ruta absoluta validada a `sdd-spec --from-grill "<ruta>"`; con snapshot compatible conserva el flujo por ID. Listar, inspeccionar o importar no reescribe el handoff fuente.
 
 | Transición | Frontera de sesión |
 |---|---|
 | `/issues` → Grill/Spec/Quick-run/Run confirmado | **Sesión hija** fresca, ligada mediante `parentSession`; stop, error, rechazo o cancelación conservan la sesión de triage. |
+| `/grill` o `/skill:grill` con issue calificado → Grill | **Sesión hija** en el único checkout local conocido que coincide con `owner/repo`; ausencia o ambigüedad falla antes del switch. |
 | Grill activo/pausado → resume | **Misma sesión**; el snapshot autoritativo reconstruye el progreso. |
 | Grill finalizado → Spec | **Misma sesión**; primero se persiste el handoff y después se materializa `sdd-spec --from-grill`. |
 | Spec → Run | **Sesión hija**, sólo después de autorización explícita mediante **Ejecutar ahora**, `/sdd-run` o **Ejecutar** en `/specs`. |
 | Triage → Quick-run | **Sesión hija** limpia; `quick-run` conserva su propio preflight, worktree, TDD, presupuesto y PR sin merge. |
 
-En cross-project, el request usa la raíz, repo y artefacto del proyecto destino: la hija se almacena allí, carga sus recursos project-scoped y vuelve a materializar el skill desde el recurso ganador del destino —incluidos overrides del proyecto—, sin copiar el transcript de origen. Encontrar una spec no la ejecuta, inspeccionar/cancelar no cambia sesión y ningún flujo mergea PRs.
+En cross-project, `#NN` conserva el repo actual; `owner/repo#NN` y las URLs canónicas de issues buscan un checkout entre las raíces conocidas por sesiones Pi/Grill y colapsan worktrees de una misma identidad Git. Debe existir una única coincidencia por identidad del remote: si falta o hay más de un clon independiente, el launcher falla con las rutas candidatas. El request usa la raíz, repo y artefacto del proyecto destino: la hija se almacena allí, carga sus recursos project-scoped y vuelve a materializar el skill desde el recurso ganador del destino —incluidos overrides del proyecto—, sin copiar el transcript de origen. Encontrar una spec no la ejecuta, inspeccionar/cancelar no cambia sesión y ningún flujo mergea PRs.
 
 Los errores son fail-closed antes del switch. Si el reemplazo ya ocurrió y falla el kickoff o la carga de recursos, se informa honestamente como error `post-switch`, con referencia a la hija y sin fingir rollback del origen.
 
@@ -77,7 +78,7 @@ El repo también conserva todas las extensiones globales de Pi usadas por este w
 | **`ask-user-question`** | Herramientas `ask_user_question` para una decisión y `ask_user_questions` para rondas de 2 a 4 decisiones independientes, ambas con selección simple/múltiple, recomendaciones, respuesta libre y envío vacío opcional. |
 | **`claude-tool-renderer.ts`** | Presenta las ediciones con encabezado y diff compacto al estilo Claude Code. |
 | **`grill-tools`** | Persistencia con `grill_session`, publicación canónica de specs con `persist_sdd_spec`, selector `select_grill_session` y comandos `/grills` y `/specs`; resume Grill y Grill → Spec conservan la conversación. |
-| **`workflow-orchestrator`** | Consume `WorkflowResolutionV1`, materializa skills canónicos, administra receipts one-shot acotados y abre sesiones hijas same/cross-project. También registra `/sdd-run`; el gate `launch_sdd_run` sólo queda activo cuando la raíz tiene un `.sdd/project.md` canónico. |
+| **`workflow-orchestrator`** | Consume `WorkflowResolutionV1`, materializa skills canónicos, administra receipts one-shot acotados y abre sesiones hijas same/cross-project. También registra `/sdd-run`, `/grill`, `launch_sdd_run` y `launch_grill`; el gate de ejecución `launch_sdd_run` sólo queda activo cuando la raíz tiene un `.sdd/project.md` canónico. |
 | **`inline-skill-autocomplete`** | Abre el autocomplete de skills al escribir `/` o `/skill:…` en cualquier punto del borrador. Al enviar, antepone la invocación para que Pi la expanda correctamente. |
 | **`github-issue-selector.ts`** + **`github-issues.ts`** | Herramienta `select_github_issue` y comando `/issues` con selección múltiple. El menú unificado permite analizar mediante `issue-triage`, cerrar en bulk o eliminar en bulk. |
 | **`github-prs`** | Comando `/prs`; su acción de review invoca `/skill:code-review`. |

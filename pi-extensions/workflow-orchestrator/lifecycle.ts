@@ -9,7 +9,7 @@ import {
 import { isAbsolute, relative, resolve } from "node:path";
 
 import type { WorkflowResolutionV1 } from "../workflow-resolution/index.ts";
-import { describeDirectRun, validateDirectRunRequest } from "./direct-protocol.ts";
+import { describeDirectWorkflow, validateDirectWorkflowRequest } from "./direct-protocol.ts";
 import {
 	materializeSkill,
 	type MaterializeSkillErrorCode,
@@ -475,7 +475,7 @@ export async function startFreshStage(
 	let resolution: WorkflowResolutionV1 | undefined;
 	if ("direct" in request) {
 		const direct = request.direct;
-		const directValidation = validateDirectRunRequest(direct.request);
+		const directValidation = validateDirectWorkflowRequest(direct.request);
 		if (!directValidation.ok) {
 			return errorResult(
 				"invalid-direct-request",
@@ -484,7 +484,7 @@ export async function startFreshStage(
 			);
 		}
 		const validated = directValidation.value;
-		const expected = describeDirectRun(validated);
+		const expected = describeDirectWorkflow(validated);
 		if (direct.cwd !== expected.direct.cwd
 			|| direct.repository !== expected.direct.repository
 			|| direct.canonicalReference !== expected.direct.canonicalReference

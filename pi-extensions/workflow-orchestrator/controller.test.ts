@@ -37,6 +37,22 @@ function directRunRequest() {
 	};
 }
 
+function directGrillRequest() {
+	return {
+		version: 1,
+		kind: "grill",
+		repo: "pramaestudio/brik",
+		cwd: "/workspace/brik",
+		target: {
+			type: "issue",
+			canonicalReference: "pramaestudio/brik#114",
+			issue: { repository: "pramaestudio/brik", number: 114 },
+		},
+		summary: "Grill pramaestudio/brik#114 before specification.",
+		evidence: [{ kind: "issue", reference: "pramaestudio/brik#114", detail: "Canonical GitHub issue (OPEN)" }],
+	};
+}
+
 function workflowResolution(overrides: Record<string, unknown> = {}) {
 	const issue = { repository: "chichex/skills", number: 14 };
 	return {
@@ -85,10 +101,10 @@ test("workflow orchestrator exposes a controller without globally activating the
 
 	assert.deepEqual(
 		(tools as Array<{ name?: string }>).map((tool) => tool.name),
-		["launch_sdd_run"],
-		"only the explicitly confirmed direct-run tool is global; terminal triage remains lazy",
+		["launch_sdd_run", "launch_grill"],
+		"only explicitly confirmed direct launch tools are global; terminal triage remains lazy",
 	);
-	assert.deepEqual(commands, ["__sdd-dispatch", "sdd-run"]);
+	assert.deepEqual(commands, ["__sdd-dispatch", "sdd-run", "grill"]);
 	assert.ok(events.includes("agent_settled"));
 	assert.ok(events.includes("before_agent_start"));
 	assert.ok(events.includes("resources_discover"));
@@ -604,6 +620,49 @@ test("/sdd-run validates its target and calls the shared direct launcher from a 
 	assert.deepEqual(notifications, []);
 });
 
+test("/grill resolves a GitHub issue URL and starts Grill from a fresh command context", async () => {
+	const commands = new Map<string, { handler: (args: string, context: unknown) => Promise<void> }>();
+	const resolved: Array<{ target: string; cwd: string }> = [];
+	const starts: unknown[] = [];
+	const notifications: string[] = [];
+	const pi = {
+		events: createEventBus(),
+		registerTool() {},
+		registerCommand(name: string, command: { handler: (args: string, context: unknown) => Promise<void> }) {
+			commands.set(name, command);
+		},
+		on() {},
+		getCommands: () => [],
+		getActiveTools: () => ["read"],
+		setActiveTools() {},
+		sendUserMessage() {},
+	};
+	orchestrator.createWorkflowController(pi as never, {
+		resolveDirectGrillRequest: async (target: string, cwd: string) => {
+			resolved.push({ target, cwd });
+			return { ok: true, request: directGrillRequest() };
+		},
+		startDirectGrill: async (request: unknown) => {
+			starts.push(request);
+			return { ok: true, code: "started" } as never;
+		},
+	} as never);
+	let waited = 0;
+	const context = {
+		cwd: "/workspace/skills",
+		sessionManager: { getSessionId: () => "origin-session" },
+		async waitForIdle() { waited += 1; },
+		ui: { notify(message: string) { notifications.push(message); } },
+	};
+	const url = "https://github.com/pramaestudio/brik/issues/114";
+
+	await commands.get("grill")!.handler(`  ${url}  `, context);
+	assert.equal(waited, 1);
+	assert.deepEqual(resolved, [{ target: url, cwd: "/workspace/skills" }]);
+	assert.deepEqual(starts, [directGrillRequest()]);
+	assert.deepEqual(notifications, []);
+});
+
 test("/specs-style consumers call the same direct launcher through the shared event bus", async () => {
 	assert.equal(typeof (orchestrator as Record<string, unknown>).requestSddRun, "function");
 	const events = createEventBus();
@@ -701,4 +760,64 @@ test("launch_sdd_run asks explicit authorization and bridges its direct request 
 	};
 	await commands.get("__sdd-dispatch")!.handler("direct-receipt", commandContext);
 	assert.deepEqual(starts, [directRunRequest()]);
+});
+
+test("launch_grill authorizes a qualified issue target and dispatches it through a one-shot receipt", async () => {
+	const tools = new Map<string, { execute: (...args: unknown[]) => Promise<unknown> }>();
+	const commands = new Map<string, { handler: (args: string, context: unknown) => Promise<void> }>();
+	const sent: Array<{ content: string; options?: unknown }> = [];
+	const starts: unknown[] = [];
+	const pi = {
+		events: createEventBus(),
+		registerTool(tool: { name: string; execute: (...args: unknown[]) => Promise<unknown> }) { tools.set(tool.name, tool); },
+		registerCommand(name: string, command: { handler: (args: string, context: unknown) => Promise<void> }) { commands.set(name, command); },
+		on() {},
+		getCommands: () => [],
+		getActiveTools: () => ["read", "launch_grill"],
+		setActiveTools() {},
+		sendUserMessage(content: string, options?: unknown) { sent.push({ content, options }); },
+	};
+	orchestrator.createWorkflowController(pi as never, {
+		createReceipt: () => "grill-receipt",
+		resolveDirectGrillRequest: async () => ({ ok: true, request: directGrillRequest() }),
+		startDirectGrill: async (request: unknown) => {
+			starts.push(request);
+			return { ok: true, code: "started" } as never;
+		},
+	} as never);
+	const toolContext = {
+		hasUI: true,
+		cwd: "/workspace/skills",
+		sessionManager: { getSessionId: () => "origin-session" },
+		ui: {
+			async confirm(title: string) {
+				assert.equal(title, "Iniciar Grill");
+				return true;
+			},
+		},
+	};
+	const url = "https://github.com/pramaestudio/brik/issues/114";
+
+	const result = await tools.get("launch_grill")!.execute(
+		"launch-grill-1",
+		{ target: url },
+		undefined,
+		undefined,
+		toolContext,
+	) as { terminate?: boolean; details?: { authorized?: boolean } };
+	assert.equal(result.terminate, true);
+	assert.equal(result.details?.authorized, true);
+	assert.deepEqual(sent, [{
+		content: "/__sdd-dispatch grill-receipt",
+		options: { deliverAs: "followUp", expandPromptTemplates: true },
+	}]);
+	assert.deepEqual(starts, []);
+
+	await commands.get("__sdd-dispatch")!.handler("grill-receipt", {
+		cwd: "/workspace/skills",
+		sessionManager: { getSessionId: () => "origin-session" },
+		async waitForIdle() {},
+		ui: { notify() {} },
+	});
+	assert.deepEqual(starts, [directGrillRequest()]);
 });

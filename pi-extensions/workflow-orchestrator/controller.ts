@@ -6,13 +6,18 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 
 import {
+	resolveDirectGrillRequest as resolveDirectGrillRequestDefault,
+	startDirectGrill as startDirectGrillDefault,
+	type ResolveDirectGrillResult,
+} from "./direct-grill.ts";
+import {
 	isSddProject as isSddProjectDefault,
 	resolveDirectRunRequest as resolveDirectRunRequestDefault,
 	startDirectRun as startDirectRunDefault,
-	type DirectRunRequestV1,
 	type ResolveDirectRunDependencies,
 	type ResolveDirectRunResult,
 } from "./direct-launch.ts";
+import type { DirectGrillRequestV1, DirectRunRequestV1 } from "./direct-protocol.ts";
 import { resolveWorkflowDispatch } from "./dispatch.ts";
 import {
 	startFreshStage as startFreshStageDefault,
@@ -25,6 +30,7 @@ import { createSubmitWorkflowResolutionTool } from "./protocol.ts";
 export const INTERNAL_DISPATCH_COMMAND = "__sdd-dispatch" as const;
 export const SUBMIT_WORKFLOW_RESOLUTION_TOOL = "submit_workflow_resolution" as const;
 export const LAUNCH_SDD_RUN_TOOL = "launch_sdd_run" as const;
+export const LAUNCH_GRILL_TOOL = "launch_grill" as const;
 export const ISSUE_TRIAGE_REQUEST_EVENT = "sdd:issue-triage-request" as const;
 export const SDD_RUN_REQUEST_EVENT = "sdd:run-request" as const;
 
@@ -51,8 +57,22 @@ export interface WorkflowControllerDependencies {
 		cwd: string,
 		dependencies?: ResolveDirectRunDependencies,
 	) => Promise<ResolveDirectRunResult>;
+	resolveDirectGrillRequest?: (
+		target: string,
+		cwd: string,
+		dependencies?: ResolveDirectRunDependencies,
+	) => Promise<ResolveDirectGrillResult>;
 	startDirectRun?: (
 		request: DirectRunRequestV1,
+		context: ExtensionCommandContext,
+		dependencies: {
+			commands: readonly SkillCommandInfo[];
+			readSkillFile?: (path: string, encoding: "utf8") => Promise<string>;
+			stripSkillFrontmatter?: (content: string) => string | Promise<string>;
+		},
+	) => Promise<StartFreshStageResult>;
+	startDirectGrill?: (
+		request: DirectGrillRequestV1,
 		context: ExtensionCommandContext,
 		dependencies: {
 			commands: readonly SkillCommandInfo[];
@@ -77,6 +97,7 @@ export interface WorkflowController {
 		context: Pick<ExtensionCommandContext, "cwd" | "sessionManager">,
 	): Promise<BeginIssueTriageResult>;
 	launchSddRun(target: string, context: ExtensionCommandContext): Promise<ResolveDirectRunResult | StartFreshStageResult>;
+	launchGrill(target: string, context: ExtensionCommandContext): Promise<ResolveDirectGrillResult | StartFreshStageResult>;
 }
 
 interface IssueTriageEventRequest {
@@ -153,7 +174,8 @@ interface ActiveTriageAttempt {
 
 type DispatchReceipt =
 	| { kind: "workflow"; originSessionId: string; request: StartFreshStageRequest }
-	| { kind: "direct"; originSessionId: string; request: DirectRunRequestV1 };
+	| { kind: "direct-run"; originSessionId: string; request: DirectRunRequestV1 }
+	| { kind: "direct-grill"; originSessionId: string; request: DirectGrillRequestV1 };
 
 interface PendingDispatchReceipt {
 	value: DispatchReceipt;
@@ -199,7 +221,9 @@ export function createWorkflowController(
 	const receipts = new Map<string, PendingDispatchReceipt>();
 	const startFreshStage = dependencies.startFreshStage ?? startFreshStageDefault;
 	const resolveDirectRunRequest = dependencies.resolveDirectRunRequest ?? resolveDirectRunRequestDefault;
+	const resolveDirectGrillRequest = dependencies.resolveDirectGrillRequest ?? resolveDirectGrillRequestDefault;
 	const startDirectRun = dependencies.startDirectRun ?? startDirectRunDefault;
+	const startDirectGrill = dependencies.startDirectGrill ?? startDirectGrillDefault;
 	const isSddProject = dependencies.isSddProject ?? isSddProjectDefault;
 	const createReceipt = dependencies.createReceipt ?? randomUUID;
 	const now = dependencies.now ?? Date.now;
@@ -298,7 +322,7 @@ export function createWorkflowController(
 		async execute(_toolCallId, params, _signal, _onUpdate, context) {
 			if (!context.hasUI) throw new Error("launch_sdd_run requires interactive or RPC mode");
 			if (!params || typeof params !== "object" || typeof (params as { target?: unknown }).target !== "string") {
-				throw new Error("launch_sdd_run requires target=<ruta|#NN>");
+				throw new Error("launch_sdd_run requires target=<ruta|#NN|owner/repo#NN|GitHub issue URL>");
 			}
 			const target = (params as { target: string }).target.trim();
 			const resolved = await resolveDirectRunRequest(target, context.cwd, dependencies.directRunDependencies);
@@ -315,9 +339,48 @@ export function createWorkflowController(
 			}
 			const sessionId = contextSessionId(context);
 			if (!sessionId) throw new Error("Cannot authorize SDD execution from an unbound session");
-			queueReceipt({ kind: "direct", originSessionId: sessionId, request: resolved.request });
+			queueReceipt({ kind: "direct-run", originSessionId: sessionId, request: resolved.request });
 			return {
 				content: [{ type: "text", text: "SDD execution authorized; queued a fresh-session launch." }],
+				details: { authorized: true, target: resolved.request.target },
+				terminate: true,
+			};
+		},
+	} as never);
+
+	pi.registerTool({
+		name: LAUNCH_GRILL_TOOL,
+		label: "Launch Grill",
+		description: "Resolve a GitHub issue target to its known local checkout, ask for authorization, and launch Grill in a fresh session.",
+		parameters: {
+			type: "object",
+			required: ["target"],
+			properties: { target: { type: "string" } },
+			additionalProperties: false,
+		},
+		async execute(_toolCallId, params, _signal, _onUpdate, context) {
+			if (!context.hasUI) throw new Error("launch_grill requires interactive or RPC mode");
+			if (!params || typeof params !== "object" || typeof (params as { target?: unknown }).target !== "string") {
+				throw new Error("launch_grill requires target=<#NN|owner/repo#NN|GitHub issue URL>");
+			}
+			const target = (params as { target: string }).target.trim();
+			const resolved = await resolveDirectGrillRequest(target, context.cwd, dependencies.directRunDependencies);
+			if (!resolved.ok) throw new Error(`${resolved.code}: ${resolved.message}`);
+			const authorized = await context.ui.confirm(
+				"Iniciar Grill",
+				`${resolved.request.summary}\n\nSe abrirá una sesión hija ligada a la actual.`,
+			);
+			if (!authorized) {
+				return {
+					content: [{ type: "text", text: "The user cancelled Grill; the current session is unchanged." }],
+					details: { authorized: false, target: resolved.request.target },
+				};
+			}
+			const sessionId = contextSessionId(context);
+			if (!sessionId) throw new Error("Cannot authorize Grill from an unbound session");
+			queueReceipt({ kind: "direct-grill", originSessionId: sessionId, request: resolved.request });
+			return {
+				content: [{ type: "text", text: "Grill authorized; queued a fresh-session launch." }],
 				details: { authorized: true, target: resolved.request.target },
 				terminate: true,
 			};
@@ -405,19 +468,31 @@ export function createWorkflowController(
 			};
 			const result = pending.value.kind === "workflow"
 				? await startFreshStage(pending.value.request, context, launchDependencies)
-				: await startDirectRun(pending.value.request, context, launchDependencies);
+				: pending.value.kind === "direct-run"
+					? await startDirectRun(pending.value.request, context, launchDependencies)
+					: await startDirectGrill(pending.value.request, context, launchDependencies);
 			if (!result.ok && result.originPreserved) {
-				notify(context, `SDD dispatch failed before switch (${result.code}): ${result.message}`);
+				notify(context, `Workflow dispatch failed before switch (${result.code}): ${result.message}`);
 			}
 		},
 	});
 	pi.registerCommand("sdd-run", {
-		description: "Run an SDD spec target in a fresh linked session: /sdd-run <ruta|#NN>",
+		description: "Run an SDD spec target in a fresh linked session: /sdd-run <ruta|#NN|owner/repo#NN|GitHub issue URL>",
 		async handler(args, context) {
 			await context.waitForIdle();
 			const result = await controller.launchSddRun(args, context);
 			if (!result.ok && !("originPreserved" in result && !result.originPreserved)) {
 				notify(context, `SDD run launch failed (${result.code}): ${result.message}`);
+			}
+		},
+	});
+	pi.registerCommand("grill", {
+		description: "Grill a GitHub issue in its local project: /grill <#NN|owner/repo#NN|GitHub issue URL>",
+		async handler(args, context) {
+			await context.waitForIdle();
+			const result = await controller.launchGrill(args, context);
+			if (!result.ok && !("originPreserved" in result && !result.originPreserved)) {
+				notify(context, `Grill launch failed (${result.code}): ${result.message}`);
 			}
 		},
 	});
@@ -448,6 +523,15 @@ export function createWorkflowController(
 			const resolved = await resolveDirectRunRequest(target.trim(), context.cwd, dependencies.directRunDependencies);
 			if (!resolved.ok) return resolved;
 			return startDirectRun(resolved.request, context, {
+				commands: pi.getCommands() as readonly SkillCommandInfo[],
+				readSkillFile: dependencies.readSkillFile,
+				stripSkillFrontmatter: dependencies.stripSkillFrontmatter,
+			});
+		},
+		async launchGrill(target, context) {
+			const resolved = await resolveDirectGrillRequest(target.trim(), context.cwd, dependencies.directRunDependencies);
+			if (!resolved.ok) return resolved;
+			return startDirectGrill(resolved.request, context, {
 				commands: pi.getCommands() as readonly SkillCommandInfo[],
 				readSkillFile: dependencies.readSkillFile,
 				stripSkillFrontmatter: dependencies.stripSkillFrontmatter,

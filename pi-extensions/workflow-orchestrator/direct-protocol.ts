@@ -26,6 +26,18 @@ export interface DirectRunRequestV1 {
 	evidence: EvidenceRef[];
 }
 
+export interface DirectGrillRequestV1 {
+	version: 1;
+	kind: "grill";
+	repo: string;
+	cwd: string;
+	target: DirectIssueTargetV1;
+	summary: string;
+	evidence: EvidenceRef[];
+}
+
+export type DirectWorkflowRequestV1 = DirectRunRequestV1 | DirectGrillRequestV1;
+
 export interface DirectRunDiagnostic {
 	path: string;
 	code: "missing-field" | "extra-field" | "invalid-type" | "invalid-value";
@@ -50,6 +62,22 @@ export interface DirectRunLaunchDescriptor {
 		args: string;
 	};
 }
+
+export interface DirectGrillLaunchDescriptor {
+	direct: {
+		cwd: string;
+		name: string;
+		repository: string;
+		canonicalReference: string;
+		issueNumber: number;
+	};
+	skill: {
+		name: "grill";
+		args: string;
+	};
+}
+
+export type DirectWorkflowLaunchDescriptor = DirectRunLaunchDescriptor | DirectGrillLaunchDescriptor;
 
 const REQUEST_FIELDS = ["version", "kind", "repo", "cwd", "target", "summary", "evidence"] as const;
 const ISSUE_TARGET_FIELDS = ["type", "canonicalReference", "issue"] as const;
@@ -201,6 +229,47 @@ export function validateDirectRunRequest(input: unknown): DirectRunValidation {
 	};
 }
 
+export function validateDirectGrillRequest(input: unknown):
+	| { ok: true; value: DirectGrillRequestV1 }
+	| { ok: false; diagnostics: DirectRunDiagnostic[] } {
+	if (!isRecord(input)) {
+		const invalid = validateDirectRunRequest(input);
+		return invalid.ok
+			? { ok: false, diagnostics: [{ path: "$", code: "invalid-value", message: "Expected kind=grill" }] }
+			: invalid;
+	}
+	const runValidation = validateDirectRunRequest({ ...input, kind: "sdd-run" });
+	if (!runValidation.ok) return runValidation;
+	if (input.kind !== "grill") {
+		return {
+			ok: false,
+			diagnostics: [{ path: "$.kind", code: "invalid-value", message: "Expected kind=grill" }],
+		};
+	}
+	if (runValidation.value.target.type !== "issue") {
+		return {
+			ok: false,
+			diagnostics: [{ path: "$.target.type", code: "invalid-value", message: "Grill requires an issue target" }],
+		};
+	}
+	return {
+		ok: true,
+		value: {
+			...runValidation.value,
+			kind: "grill",
+			target: runValidation.value.target,
+		},
+	};
+}
+
+export function validateDirectWorkflowRequest(input: unknown):
+	| { ok: true; value: DirectWorkflowRequestV1 }
+	| { ok: false; diagnostics: DirectRunDiagnostic[] } {
+	return isRecord(input) && input.kind === "grill"
+		? validateDirectGrillRequest(input)
+		: validateDirectRunRequest(input);
+}
+
 export function describeDirectRun(request: DirectRunRequestV1): DirectRunLaunchDescriptor {
 	const target = request.target;
 	const source = target.type === "issue"
@@ -223,4 +292,25 @@ export function describeDirectRun(request: DirectRunRequestV1): DirectRunLaunchD
 			args: target.type === "issue" ? `#${target.issue.number}` : target.path,
 		},
 	};
+}
+
+export function describeDirectGrill(request: DirectGrillRequestV1): DirectGrillLaunchDescriptor {
+	const issue = request.target.issue;
+	return {
+		direct: {
+			cwd: request.cwd,
+			name: `Grill · ${request.repo}#${issue.number}`,
+			repository: request.repo,
+			canonicalReference: request.target.canonicalReference,
+			issueNumber: issue.number,
+		},
+		skill: {
+			name: "grill",
+			args: `#${issue.number}`,
+		},
+	};
+}
+
+export function describeDirectWorkflow(request: DirectWorkflowRequestV1): DirectWorkflowLaunchDescriptor {
+	return request.kind === "grill" ? describeDirectGrill(request) : describeDirectRun(request);
 }

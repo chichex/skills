@@ -20,7 +20,7 @@ export function grillDispatchArgs(
 		throw new Error("Grill repository must use owner/repo");
 	}
 	return [
-		`#${issueNumber}`,
+		repo ? `${repo}#${issueNumber}` : `#${issueNumber}`,
 		"",
 		`Grillá el issue #${issueNumber}${repo ? ` en el repositorio ${repo}` : ""}.`,
 		...(prerequisiteOf === undefined

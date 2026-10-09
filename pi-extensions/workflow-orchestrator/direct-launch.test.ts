@@ -86,15 +86,19 @@ test("issue targets require an SDD-aware project and reject unsafe integers befo
 	const temporary = await mkdtemp(join(tmpdir(), "direct-sdd-contract-"));
 	try {
 		const root = await realpath(temporary);
+		let issueLookups = 0;
 		const dependencies = {
 			resolveGitRoot: async () => root,
 			resolveRepository: async () => "chichex/skills",
-			resolveIssue: async (_root: string, _repo: string, number: number) => ({
-				number,
-				url: `https://github.com/chichex/skills/issues/${number}`,
-				state: "OPEN",
-				body: canonicalIssueSpec(number),
-			}),
+			resolveIssue: async (_root: string, _repo: string, number: number) => {
+				issueLookups += 1;
+				return {
+					number,
+					url: `https://github.com/chichex/skills/issues/${number}`,
+					state: "OPEN",
+					body: canonicalIssueSpec(number),
+				};
+			},
 		};
 		const withoutContract = await orchestrator.resolveDirectRunRequest("#14", root, dependencies);
 		assert.deepEqual(withoutContract, {
@@ -102,6 +106,7 @@ test("issue targets require an SDD-aware project and reject unsafe integers befo
 			code: "missing-contract",
 			message: `Create a canonical .sdd/project.md in ${root} before launching sdd-run`,
 		});
+		assert.equal(issueLookups, 0, "the contract gate runs before any GitHub issue lookup");
 
 		await mkdir(join(root, ".sdd"), { recursive: true });
 		await writeFile(join(root, ".sdd", "project.md"), [
@@ -191,6 +196,11 @@ test("direct target resolution normalizes #NN and local/cross-project canonical 
 			async resolveRepository(root: string) {
 				return root === projectB ? "owner/project-b" : "chichex/skills";
 			},
+			async resolveRepositoryRoot(_originRoot: string, repository: string) {
+				return repository === "owner/project-b"
+					? { ok: true as const, root: projectB }
+					: { ok: false as const, code: "project-not-found", roots: [] };
+			},
 			async resolveIssue(_root: string, repo: string, number: number) {
 				return {
 					number,
@@ -208,6 +218,29 @@ test("direct target resolution normalizes #NN and local/cross-project canonical 
 				canonicalReference: "chichex/skills#14",
 				issue: { repository: "chichex/skills", number: 14 },
 			});
+		}
+
+		const crossIssueUrl = await orchestrator.resolveDirectRunRequest(
+			"https://github.com/owner/project-b/issues/7",
+			projectA,
+			dependencies,
+		);
+		assert.equal(crossIssueUrl.ok, true, "a GitHub issue URL resolves against its known local checkout");
+		if (crossIssueUrl.ok) {
+			assert.equal(crossIssueUrl.request.cwd, projectB);
+			assert.equal(crossIssueUrl.request.repo, "owner/project-b");
+			assert.deepEqual(crossIssueUrl.request.target, {
+				type: "issue",
+				canonicalReference: "owner/project-b#7",
+				issue: { repository: "owner/project-b", number: 7 },
+			});
+		}
+
+		const crossIssueRef = await orchestrator.resolveDirectRunRequest("owner/project-b#7", projectA, dependencies);
+		assert.equal(crossIssueRef.ok, true, "a qualified issue reference resolves against its known local checkout");
+		if (crossIssueRef.ok) {
+			assert.equal(crossIssueRef.request.cwd, projectB);
+			assert.equal(crossIssueRef.request.target.canonicalReference, "owner/project-b#7");
 		}
 
 		const originSubdirectory = join(projectA, "packages", "api");
@@ -239,6 +272,28 @@ test("direct target resolution normalizes #NN and local/cross-project canonical 
 	} finally {
 		await rm(temporary, { recursive: true, force: true });
 	}
+});
+
+test("URL-like non-issue targets fail clearly instead of becoming fabricated local paths", async () => {
+	let pathReads = 0;
+	const result = await orchestrator.resolveDirectRunRequest(
+		"https://github.com/pramaestudio/brik/pull/114",
+		"/workspace/skills",
+		{
+			resolveGitRoot: async () => "/workspace/skills",
+			realpath: async (path: string) => {
+				if (!path.includes("https:")) return path;
+				pathReads += 1;
+				throw new Error("must not resolve an HTTP URL as a local path");
+			},
+		},
+	);
+	assert.deepEqual(result, {
+		ok: false,
+		code: "invalid-target",
+		message: "Issue targets must use #NN, owner/repo#NN, or https://github.com/owner/repo/issues/NN",
+	});
+	assert.equal(pathReads, 0);
 });
 
 test("startDirectRun creates a fresh linked child whose first message is materialized sdd-run plus request v1", async () => {

@@ -1,7 +1,7 @@
 ---
 name: grill
 description: Entrevista rigurosa y pragmática para desambiguar las decisiones materiales de un tema, plan o diseño y producir un contrato de handoff antes de escribir un spec. Avanza con supuestos explícitos cuando equivocarse es barato y reversible. Usar cuando el usuario quiere stress-testear, aclarar o alinear una idea, pide "grill", "grillame", "entrevistame sobre esto", o quiere retomar una sesión de grilling. No implementa ni escribe el spec definitivo.
-compatibility: Requiere las tools ask_user_question, ask_user_questions, grill_session y select_grill_session de las extensiones Pi de este repo.
+compatibility: Requiere las tools ask_user_question, ask_user_questions, grill_session, select_grill_session y launch_grill de las extensiones Pi de este repo.
 ---
 
 # Grill
@@ -15,11 +15,24 @@ Usá `ask_user_question` para una sola decisión, `ask_user_questions` para rond
 ## Argumentos Pi
 
 ```text
-/skill:grill [#NN | --resume <sessionId>]
+/skill:grill [#NN | owner/repo#NN | https://github.com/owner/repo/issues/NN | --resume <sessionId>]
 ```
 
-- `#NN` inicia el reconocimiento desde ese issue.
+- `#NN` inicia el reconocimiento desde ese issue del repositorio actual.
+- `owner/repo#NN` o una URL canónica `https://github.com/owner/repo/issues/NN` pueden apuntar a otro proyecto. Si NO recibiste un envelope `workflow-launch`, invocá inmediatamente `launch_grill` usando sólo esa referencia calificada como target exacto y terminá el turno: la tool localiza un único checkout entre los proyectos conocidos por Pi, pide autorización y abre allí una sesión hija. No explores, no crees una sesión de grill y no interpretes la URL como path. Si la tool no está disponible, frená con el comando manual `/grill <target>`; no continúes en el cwd equivocado.
 - `--resume <sessionId>` viene de un selector o del orquestador: cargá directamente el snapshot autoritativo con `grill_session` (`action: "get"`), sin volver a abrir `select_grill_session`, y continuá en esta misma conversación.
+
+### Lanzamiento orquestado de Pi
+
+El launcher de Pi entrega, después del skill materializado, este envelope terminal:
+
+```xml
+<workflow-launch version="1">
+<DirectGrillRequestV1 JSON estricto>
+</workflow-launch>
+```
+
+Validá que sea versión 1, exacto y serializable; que `kind=grill`; que `repo`, `cwd`, `target.type=issue`, `target.canonicalReference` e `issue` sean coherentes; que el argumento materializado `#NN` coincida con el issue; y que el cwd actual sea el checkout resuelto. Un envelope ausente para `#NN` local sigue siendo válido. Un envelope malformado, doble, conflictivo o de otro proyecto falla cerrado antes de crear `grill_session`. Con un envelope válido ya estás en la sesión hija correcta: **no vuelvas a invocar `launch_grill`** y seguí con la Fase 0 usando su issue como origen estructurado.
 
 ## Principios
 
