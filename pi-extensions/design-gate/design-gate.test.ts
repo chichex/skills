@@ -435,6 +435,84 @@ test("CA-5: el contrato de este repo gana ## Diseño sin superficies, la fila de
 	assert.match(contract, /## Decisiones humanas\n/);
 });
 
+// ---------------------------------------------------------------------------
+// C. Grill (CA-9 a CA-11)
+// ---------------------------------------------------------------------------
+
+const GRILL_DESIGN_BRANCH: RegExp[] = [
+	/lee `## Diseño` de `\.sdd\/project\.md`/,
+	/si falta o es `Sin superficies UI\.` con señales de UI en el repo[^\n]*explora una vez[^\n]*`\/sdd-init --update`/i,
+	/cruzando las raíces de cada superficie con los paths que el pedido tocaría/,
+	/solo si queda ambiguo[^\n]*una única pregunta/i,
+	/toca al menos una superficie UI[^\n]*sección `Diseño`[^\n]*cinco ramas/,
+	/pantallas, flujos y estados \(carga, vacío, error, éxito\)[\s\S]*reuso vs\. componentes nuevos[\s\S]*dirección visual, solo si la superficie está `sin sistema`[\s\S]*plataformas y accesibilidad[\s\S]*web sólida en celular y webview[^\n]*solo para superficies web/i,
+	/se preguntan únicamente cuando el inventario y el repo no las resuelven/,
+	/el mapa del reconocimiento muestra la sección `Diseño` y su activación/i,
+	/Los pedidos sin UI no ven ninguna pregunta nueva/,
+];
+
+const GRILL_DESIGN_CAPTURES: RegExp[] = [
+	/Playwright MCP[^\n]*`browser_navigate`[^\n]*`browser_take_screenshot`/,
+	/navegador headless que el contrato declare/,
+	/mocks HTML[^\n]*bundle `design-sync\/`[^\n]*Claude Design[^\n]*Storybook/,
+	/que el usuario adjunte se guardan tal cual/,
+	/nunca se inventa una captura/,
+	/viven en el scratch hasta guardar, pausar o finalizar/,
+	/`\.sdd\/grills\/<nombre-real-del-handoff>\/`[^\n]*mismo nombre base que el `\.md`[^\n]*sufijo de colisión/,
+	/el handoff las referencia por ruta relativa/,
+];
+
+const GRILL_DESIGN_HANDOFF: RegExp[] = [
+	/mientras la sesión está `paused`, las decisiones de diseño viven en `## Decisiones resueltas` con prefijo `Diseño:`/i,
+	/el contrato visible del cierre incluye el diseño/,
+];
+
+const GRILL_TEMPLATE_DESIGN: RegExp[] = [
+	/superficies/,
+	/pantallas, flujos y estados/,
+	/componentes a reusar o crear por nombre del inventario/,
+	/direccion visual/,
+	/webview, plataforma y accesibilidad/,
+	/capturas de referencia por ruta relativa/,
+	/Diseño:/,
+];
+
+test("CA-9: grill declara la rama de diseño en los cuatro harnesses", async () => {
+	assert.deepEqual(await doctrineProblems("grill", "grill-design", GRILL_DESIGN_BRANCH), []);
+});
+
+test("CA-10: grill declara las capturas de referencia y dónde se guardan", async () => {
+	assert.deepEqual(await doctrineProblems("grill", "grill-design", GRILL_DESIGN_CAPTURES), []);
+});
+
+test("CA-9 a CA-11: el bloque grill-design es idéntico entre harnesses", async () => {
+	assert.deepEqual(await identityProblems("grill", "grill-design", ), []);
+});
+
+test("CA-11: el template del handoff gana ## Diseño entre ## Ramas pendientes y ## Handoff, con un solo marker type=grill", async () => {
+	const problems = await doctrineProblems("grill", "grill-design", GRILL_DESIGN_HANDOFF);
+	for (const harness of HARNESSES) {
+		const path = `${harness}/grill/SKILL.md`;
+		const fences = fencedBlocks(await readRepoFile(path)).filter((fence) => fence.content.includes("type=grill"));
+		if (fences.length !== 1) {
+			problems.push(`${path}: ${fences.length} fences con marker type=grill`);
+			continue;
+		}
+		const template = fences[0]?.content ?? "";
+		const list = headings(template);
+		const pending = list.indexOf("## Ramas pendientes");
+		if (list[pending + 1] !== "## Diseño" || list[pending + 2] !== "## Handoff") problems.push(`${path}: orden ${list.join(" > ")}`);
+		for (const problem of missing(section(template, /^## Diseño$/), GRILL_TEMPLATE_DESIGN)) problems.push(`${path} template ## Diseño: ${problem}`);
+	}
+	const pi = await readRepoFile("pi/grill/SKILL.md");
+	if (!/`finalize` escribe el `handoffMarkdown` verbatim, con `## Diseño`/.test(pi)) problems.push("pi/grill: Formato del handoff no dice que finalize escribe ## Diseño verbatim");
+	const logicTest = await readRepoFile("pi-extensions/grill-tools/logic.test.ts");
+	for (const heading of ["## Hechos comprobados", "## Decisiones resueltas", "## Ramas pendientes", "## Handoff"]) {
+		if (!logicTest.includes(heading)) problems.push(`grill-tools/logic.test.ts ya no exige ${heading}`);
+	}
+	assert.deepEqual(problems, []);
+});
+
 test("autotest: un bloque ausente o divergente se reporta con su diagnóstico", () => {
 	assert.equal(delimitedBlock("sin bloque", "design-system-doctrine"), null);
 	assert.equal(delimitedBlock("<!-- x:start -->\nhola\n<!-- x:end -->", "x"), "hola");
