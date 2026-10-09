@@ -2,7 +2,7 @@
 # Mantenimiento: editar solo shared/coding-policies/references/next.md y ejecutar `node scripts/sync-coding-policies-references.mjs`.
 stack: next
 name: Next.js
-version: 2026-09-14
+version: 2026-10-09
 ---
 
 ### Alcance y versión
@@ -50,6 +50,15 @@ version: 2026-09-14
 - **MUST** Para imágenes responsivas, configurar dimensiones o `fill`, un `sizes` coherente con el layout y `remotePatterns` acotado. Porqué: esos datos evitan layout shift, descargas sobredimensionadas y orígenes no previstos. Gate: build y prueba responsive de `next/image`
 - **MUST** Escribir `alt` según el propósito de la imagen y no copiar configuración de imágenes deprecada de tutoriales viejos. Porqué: accesibilidad y seguridad del loader dependen del contrato actual, no de sintaxis histórica. Gate: `linter de accesibilidad y documentación de la versión`
 
+### Web en celular y webview
+
+- **MUST** Declarar el viewport con `export const viewport` o `generateViewport`, sin `userScalable: false` ni `maximumScale: 1`. Porqué: bloquear el zoom impide ampliar el contenido a quien lo necesita y falla WCAG 1.4.4; en Next el viewport no va en `metadata`. Gate: `grep de userScalable y maximumScale en app/`
+- **MUST** Dar a inputs, selects y textareas un `font-size` computado de al menos 16px en mobile. Porqué: Safari en iOS hace zoom automático al enfocar un campo con texto menor a 16px y desarma el layout. Gate: `prueba en Safari iOS o WebKit con viewport mobile`
+- **MUST** Mantener visible el campo enfocado cuando aparece el teclado virtual, sin saltos de scroll al escribir: ajustar el layout al viewport visual (`interactiveWidget: 'resizes-content'` en el viewport o la API `visualViewport`) y usar `scrollIntoView` solo como corrección puntual. Porqué: el teclado achica el viewport visual y un layout fijo puede tapar el input o saltar en cada tecla. Gate: `prueba manual o E2E con teclado virtual en iOS y Android`
+- **MUST** Respetar las zonas seguras en barras fijas y contenido a pantalla completa con `viewportFit: 'cover'` y `env(safe-area-inset-*)`. Porqué: notch, isla dinámica y barra de gestos tapan los controles pegados a los bordes. Gate: `prueba visual en un dispositivo o simulador con notch`
+- **SHOULD** Dar a cada control táctil un área de al menos 44pt (44px CSS) con separación entre targets vecinos. Porqué: los targets chicos generan toques errados; 44pt es el mínimo de las guías de Apple y WCAG 2.5.8 exige al menos 24px. Gate: `auditoría de accesibilidad o medición en DevTools`
+- **MUST** Ofrecer un camino táctil y de teclado para todo lo que se revela con `:hover` o eventos de mouse. Porqué: en pantallas táctiles no hay hover y la acción o la información quedan inaccesibles. Gate: `prueba con emulación táctil y navegación por teclado`
+
 ### Testing y producción
 
 - **MUST** Para E2E, probar contra build y servidor de producción cuando el flujo dependa de render, rutas o assets. Porqué: el dev server tiene compilación, errores y rendimiento distintos del artefacto desplegable. Gate: `next build` más servidor de producción y runner E2E
@@ -78,3 +87,8 @@ version: 2026-09-14
 - [Production checklist](https://nextjs.org/docs/app/guides/production-checklist) — controles antes de desplegar.
 - [Playwright](https://nextjs.org/docs/app/guides/testing/playwright) — E2E contra producción.
 - [Upgrading to Next 16](https://nextjs.org/docs/app/guides/upgrading/version-16) — lint, request APIs y proxy.
+- [generateViewport](https://nextjs.org/docs/app/api-reference/functions/generate-viewport) — `viewport`, `interactiveWidget` y `viewportFit` fuera de `metadata`.
+- [MDN: viewport meta](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta/name/viewport) — por qué no bloquear el zoom.
+- [MDN: env()](https://developer.mozilla.org/en-US/docs/Web/CSS/env) — `safe-area-inset-*`.
+- [Apple HIG: Accessibility](https://developer.apple.com/design/human-interface-guidelines/accessibility) — tamaño mínimo de 44pt para controles táctiles.
+- [WCAG 2.2: Target Size (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html) — mínimo de 24px y separación entre targets.

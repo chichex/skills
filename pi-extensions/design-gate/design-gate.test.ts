@@ -10,7 +10,9 @@
 // un agente siguiendo la doctrina (CA-18) es prueba humana y no se verifica acá.
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 import { planGrillHandoff } from "../grill-tools/logic.ts";
@@ -623,6 +625,63 @@ test("CA-15: el template de Riesgo de merge sigue siendo la última sección y e
 		if (!/^\| CA \| Capa \| Estado \| Evidencia \|$/m.test(markdown)) problems.push(`${path}: cabecera del Resultado de ejecucion cambiada`);
 		if (!/La última sección del body, antes de la firma, es `## Riesgo de merge`/.test(markdown)) problems.push(`${path}: Riesgo de merge ya no es la última sección`);
 	}
+	assert.deepEqual(problems, []);
+});
+
+// ---------------------------------------------------------------------------
+// F. Coding policies — webview (CA-16)
+// ---------------------------------------------------------------------------
+
+function ruleLines(markdown: string, heading: string): string[] {
+	const lines = markdown.split("\n");
+	const start = lines.indexOf(`### ${heading}`);
+	if (start === -1) return [];
+	const rules: string[] = [];
+	for (const line of lines.slice(start + 1)) {
+		if (line.startsWith("### ")) break;
+		if (line.startsWith("- **")) rules.push(line);
+	}
+	return rules;
+}
+
+const WEB_MOBILE_RULES: Array<[string, RegExp]> = [
+	["viewport sin bloquear el zoom", /viewport[^\n]*(user-scalable=no|userScalable: false)[^\n]*(maximum-scale=1|maximumScale: 1)/],
+	["inputs de 16px en iOS", /16px[^\n]*iOS|iOS[^\n]*16px/],
+	["teclado virtual y scroll estable", /teclado virtual[^\n]*scroll/],
+	["safe-area", /env\(safe-area-inset-\*\)/],
+	["targets táctiles de 44pt", /44pt/],
+	["nada solo-hover", /hover/],
+];
+
+test("CA-16: react.md y next.md ganan Web en celular y webview; react-native.md gana WebView embebida con guarda", async () => {
+	const problems: string[] = [];
+	for (const id of ["react", "next"]) {
+		const path = `shared/coding-policies/references/${id}.md`;
+		const markdown = await readRepoFile(path);
+		const rules = ruleLines(markdown, "Web en celular y webview");
+		if (rules.length === 0) problems.push(`${path}: sin ### Web en celular y webview`);
+		const text = rules.join("\n");
+		for (const [name, pattern] of WEB_MOBILE_RULES) if (!pattern.test(text)) problems.push(`${path}: falta la regla de ${name}`);
+		if (!/^version: 2026-10-09$/m.test(markdown)) problems.push(`${path}: version sin subir`);
+		const reading = markdown.split("### Lectura ampliada")[1] ?? "";
+		if (!/developer\.mozilla\.org[^\n]*viewport/.test(reading)) problems.push(`${path}: Lectura ampliada sin MDN viewport`);
+		if (!/developer\.apple\.com\/design\/human-interface-guidelines/.test(reading)) problems.push(`${path}: Lectura ampliada sin Apple HIG`);
+	}
+	const rnPath = "shared/coding-policies/references/react-native.md";
+	const rn = await readRepoFile(rnPath);
+	const webview = ruleLines(rn, "WebView embebida");
+	if (webview.length < 1 || webview.length > 4) problems.push(`${rnPath}: ### WebView embebida con ${webview.length} reglas (1 a 4)`);
+	for (const rule of webview) {
+		if (!/^- \*\*(MUST|SHOULD)\*\* Si el proyecto usa `react-native-webview`,/.test(rule)) problems.push(`${rnPath}: regla WebView sin guarda: ${rule.slice(0, 60)}`);
+	}
+	if (!/^version: 2026-10-09$/m.test(rn)) problems.push(`${rnPath}: version sin subir`);
+	if (!/react-native-webview/.test(rn.split("### Lectura ampliada")[1] ?? "")) problems.push(`${rnPath}: Lectura ampliada sin react-native-webview`);
+	const gate = await readRepoFile("pi-extensions/coding-policies-gate/coding-policies-gate.test.ts");
+	if (!/const REACT_SECTIONS = \[[^\]]*"Web en celular y webview"/.test(gate)) problems.push("coding-policies-gate: REACT_SECTIONS sin la sección nueva");
+	if (!/const NEXT_SECTIONS = \[[^\]]*"Web en celular y webview"/.test(gate)) problems.push("coding-policies-gate: NEXT_SECTIONS sin la sección nueva");
+	if (!/const REACT_NATIVE_SECTIONS = \[[^\]]*"WebView embebida"/.test(gate)) problems.push("coding-policies-gate: REACT_NATIVE_SECTIONS sin la sección nueva");
+	const sync = spawnSync(process.execPath, ["scripts/sync-coding-policies-references.mjs", "--check"], { cwd: fileURLToPath(repoFile("")), encoding: "utf8" });
+	if (sync.status !== 0) problems.push(`sync-coding-policies-references --check: ${sync.stdout}${sync.stderr}`);
 	assert.deepEqual(problems, []);
 });
 

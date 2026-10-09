@@ -293,6 +293,7 @@ const REACT_SECTIONS = [
 	"Identidad y componentes",
 	"Memoización",
 	"Testing y accesibilidad",
+	"Web en celular y webview",
 	"Verificación",
 	"Lectura ampliada",
 ];
@@ -314,6 +315,7 @@ const NEXT_SECTIONS = [
 	"Caché y revalidación",
 	"Autenticación y límites",
 	"Entrega de interfaz",
+	"Web en celular y webview",
 	"Testing y producción",
 	"Verificación",
 	"Lectura ampliada",
@@ -340,6 +342,7 @@ const REACT_NATIVE_SECTIONS = [
 	"Seguridad y almacenamiento",
 	"Módulos nativos",
 	"Expo",
+	"WebView embebida",
 	"Verificación",
 	"Lectura ampliada",
 ];
@@ -979,6 +982,11 @@ test(`${SKILL}: las secciones condicionales guardan cada regla`, async () => {
 	assert.ok(expoRules.length > 0, "React Native declara reglas Expo");
 	for (const rule of expoRules) {
 		assert.match(rule, /^- \*\*(MUST|SHOULD)\*\* Si el proyecto usa Expo,/, `regla Expo sin guarda: ${rule}`);
+	}
+	const webviewRules = ruleLinesInSection(reactNative, "WebView embebida");
+	assert.ok(webviewRules.length > 0 && webviewRules.length <= 4, "React Native declara de 1 a 4 reglas de WebView embebida");
+	for (const rule of webviewRules) {
+		assert.match(rule, /^- \*\*(MUST|SHOULD)\*\* Si el proyecto usa `react-native-webview`,/, `regla WebView sin guarda: ${rule}`);
 	}
 	const kotlin = await readRepoFile(`claude/${SKILL}/references/kotlin-multiplatform.md`);
 	const composeRules = ruleLinesInSection(kotlin, "Compose Multiplatform");
