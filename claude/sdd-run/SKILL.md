@@ -102,7 +102,7 @@ Antes de preguntar modelo y effort, el lanzador corre los pasos 1 a 3 de la Fase
 - Cada pregunta se autocontiene: su texto o sus descripciones nombran el escalón derivado, el conteo de CAs y capas, y el aviso de verificabilidad, además de la traza impresa como texto visible en el mismo mensaje (ver «Traza»).
 - `--model` presente saltea la pregunta de modelo; `--effort` presente saltea la de effort; con ambos no hay `AskUserQuestion`.
 - Con `--assume` nunca se pregunta: se usa el recomendado derivado para lo que falte.
-- `Modelo de la sesión` significa no pasar `model` a la tool `Agent` (hereda el de la sesión o `CLAUDE_CODE_SUBAGENT_MODEL`); `effort` se pasa siempre.
+- `Modelo de la sesión` significa no pasar `model` a la tool `Agent` (hereda el de la sesión o `CLAUDE_CODE_SUBAGENT_MODEL`); `effort` se pasa siempre. Antes de preguntar, chequear `printenv CLAUDE_CODE_SUBAGENT_MODEL`: si la variable está definida en el entorno de la sesión, el hijo hereda ese modelo y no el de la sesión, así que la descripción de la opción, la traza y la línea `subagente:` del reporte dicen `modelo heredado (CLAUDE_CODE_SUBAGENT_MODEL=<valor>)` en vez de `modelo de la sesión`.
 
 ### Lanzamiento
 
