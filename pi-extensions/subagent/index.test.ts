@@ -495,7 +495,7 @@ test("CA-3: un agente con model fija --model sin --thinking; el parametro `model
 	h.calls[0]!.child.close(0);
 	await pinned;
 
-	// [DEVIATION] issue #44: `model` por llamada para que sdd-review-loop pueda
+	// [DEVIATION] issue #44: `model` por llamada para que un orquestador pueda
 	// aplicar --model/--review-model/--fix-model por rol (CA-11).
 	const overridden = h.execute("call-2", { agent: "implementer", task: "t", model: "google/gemini-x" }, undefined, undefined, h.ctx);
 	await until(() => h.calls.length === 2, "spawn con model override");
