@@ -8,6 +8,7 @@ import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 import type { IssueListItem } from "./github-issue-selector";
 import { issueTriageFailureMessage } from "./github-consumer-logic.ts";
 import { selectManyMenu, selectMenu, type MenuItem } from "./lib/menu";
+import { listSddArtifacts, resolveSddArtifactDirs } from "./lib/sdd-paths.ts";
 import { requestIssueTriage } from "./workflow-orchestrator/controller.ts";
 import { inspectMarkdownArtifact, type ArtifactRef } from "./workflow-resolution/index.ts";
 
@@ -164,15 +165,10 @@ async function collectWorkflowAssociations(
 		}
 	}));
 
-	const specsDirectory = join(projectPath, ".sdd", "specs");
-	let specFiles: string[] = [];
-	try {
-		specFiles = (await readdir(specsDirectory)).filter((file) => file.endsWith(".md"));
-	} catch {
-		// The project has no local specs yet.
-	}
-	await Promise.all(specFiles.map(async (file) => {
-		const path = join(specsDirectory, file);
+	// Specs locales: `.sdd/specs/` trackeado y `<git-common-dir>/sdd/specs/`
+	// (spec #84); ante el mismo nombre gana la trackeada.
+	const specFiles = await listSddArtifacts(await resolveSddArtifactDirs(projectPath, "specs"));
+	await Promise.all(specFiles.map(async ({ path }) => {
 		try {
 			const [markdown, fileStat] = await Promise.all([readFile(path, "utf8"), stat(path)]);
 			const artifact = inspectMarkdownArtifact({
