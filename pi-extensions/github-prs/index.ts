@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 import type { SelectItem } from "@earendil-works/pi-tui";
 import { selectMenu } from "../lib/menu";
+import { mergeCleanupNotice } from "./merge-notice.ts";
 
 type PrAction = "open-web" | "comments-fix" | "review" | "merge" | "close";
 type MergeStrategy = "merge" | "squash" | "rebase";
@@ -416,21 +417,31 @@ export default function githubPrsExtension(pi: ExtensionAPI): void {
 			"Verificando y cerrando issues asociados en GitHub…",
 			(signal) => closeIssuesStillOpen(issues, ctx, signal),
 		);
+		const localBranch = await pi.exec("git", ["for-each-ref", "--format=%(refname:short)", `refs/heads/${pr.headRefName}`], {
+			cwd: ctx.cwd,
+			timeout: 10_000,
+		}).catch(() => ({ code: 1, stdout: "", stderr: "" }));
+		const cleanup = mergeCleanupNotice({
+			number: pr.number,
+			headRefName: pr.headRefName,
+			localBranchExists: localBranch.code === 0 && localBranch.stdout.trim() === pr.headRefName,
+		});
 		if (failures.length > 0) {
 			ctx.ui.notify(
 				[
 					`PR #${pr.number} mergeado, pero no se pudieron cerrar algunos issues:`,
 					...failures.map(({ issue, error }) => `${issue.repo}#${issue.number}: ${error}`),
+					cleanup,
 				].join("\n"),
 				"warning",
 			);
 		} else if (issues.length === 0) {
-			ctx.ui.notify(`PR #${pr.number} mergeado; no tenía issues asociados`, "info");
+			ctx.ui.notify(`PR #${pr.number} mergeado; no tenía issues asociados\n${cleanup}`, "info");
 		} else if (manuallyClosed.length === 0) {
-			ctx.ui.notify(`PR #${pr.number} mergeado; GitHub cerró sus ${issues.length} issue(s) asociado(s)`, "info");
+			ctx.ui.notify(`PR #${pr.number} mergeado; GitHub cerró sus ${issues.length} issue(s) asociado(s)\n${cleanup}`, "info");
 		} else {
 			ctx.ui.notify(
-				`PR #${pr.number} mergeado; se cerraron ${manuallyClosed.map((issue) => `${issue.repo}#${issue.number}`).join(", ")}`,
+				`PR #${pr.number} mergeado; se cerraron ${manuallyClosed.map((issue) => `${issue.repo}#${issue.number}`).join(", ")}\n${cleanup}`,
 				"info",
 			);
 		}
