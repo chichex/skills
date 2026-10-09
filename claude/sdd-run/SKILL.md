@@ -110,7 +110,7 @@ La sesión que recibe `--subagent` (o `--model`/`--effort`, que lo implican) es 
 
 ## Fase 0 — Lanzador (solo con `/sdd-run` pelado)
 
-Dispara SOLO cuando los argumentos vienen vacíos. Si trajo spec, issue o flags, saltear.
+Dispara cuando no hay target. Si trajo spec o issue, saltear; flags sin target (`--subagent`, `--model`, `--effort`, `--assume`…) pasan por el lanzador igual para elegir la spec, y después se aplican sobre la spec elegida.
 
 Listar las specs de `.sdd/specs/` con su estado y verificabilidad (leer el header y la sección Verificabilidad de cada una):
 
