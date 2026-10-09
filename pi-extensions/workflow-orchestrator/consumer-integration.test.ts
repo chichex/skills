@@ -79,7 +79,9 @@ test("CA-11: Pi grill and sdd-spec document portable handoff-only recovery by ph
 	assert.match(grill, /handoff-only[\s\S]*pausado[\s\S]*Retomar[\s\S]*import/i);
 	assert.match(grill, /finalizado[\s\S]*ruta absoluta[\s\S]*sdd-spec/is);
 	assert.match(spec, /ruta absoluta[\s\S]*`\.sdd\/grills\/`[\s\S]*finalizado/is);
-	assert.match(spec, /ra[ií]z operativa[\s\S]*ubicaci[oó]n f[ií]sica/is);
+	// Review de #86: raíz física para un handoff del árbol; en el common-dir, `Proyecto` o el worktree principal.
+	assert.match(spec, /ra[ií]z f[ií]sica para un handoff de `<root>\/\.sdd\/grills\/`/i);
+	assert.match(spec, /`<git-common-dir>\/sdd\/grills\/`, su `Proyecto` si nombra un worktree del mismo repo o, si no, el worktree principal de ese common-dir/i);
 	assert.match(spec, /project.*hist[oó]ric[\s\S]*no bloque/is);
 	assert.match(spec, /sin (?:snapshot|JSON) hermano/i);
 	assert.match(spec, /grill.*marker[\s\S]*spec/is);

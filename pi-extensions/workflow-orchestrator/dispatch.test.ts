@@ -237,3 +237,80 @@ test("CA-9: spec-from-grill rejects unsafe, non-finalized, and diagnosed handoff
 		if (!result.ok) assert.equal(result.code, "invalid-grill-reference");
 	}
 });
+
+// Spec #84, CA-12: __sdd-dispatch acepta borradores en <git-common-dir>/sdd/
+// cuando recibe los dos lugares del repo; sin ellos, solo el árbol trackeado.
+const DRAFT_DIRS = {
+	grills: { tracked: "/workspace/skills-wt/.sdd/grills", local: "/workspace/skills/.git/sdd/grills" },
+	specs: { tracked: "/workspace/skills-wt/.sdd/specs", local: "/workspace/skills/.git/sdd/specs" },
+};
+
+function draftResolution(route: "spec-from-grill" | "run-existing-spec", path: string) {
+	const draft = route === "spec-from-grill"
+		? artifact("grill", {
+			location: "handoff",
+			path,
+			state: "finalized",
+			format: "canonical",
+			provenance: "canonical",
+			identityProvenance: "canonical",
+			project: "/workspace/skills-wt",
+		})
+		: artifact("spec", { path });
+	return resolution({
+		cwd: "/workspace/skills-wt",
+		code: route,
+		recommendedRoute: route,
+		selectedRoute: route,
+		stage: route === "spec-from-grill" ? "spec" : "run-existing-spec",
+		mode: route === "spec-from-grill" ? "from-grill" : null,
+		artifacts: [draft],
+	});
+}
+
+test("#84 CA-12: run-existing-spec y spec-from-grill aceptan borradores del common-dir con los dirs del repo", () => {
+	const spec = "/workspace/skills/.git/sdd/specs/issue-14.md";
+	const handoff = "/workspace/skills/.git/sdd/grills/final.md";
+	const run = orchestrator.resolveWorkflowDispatch(draftResolution("run-existing-spec", spec), DRAFT_DIRS);
+	assert.equal(run.ok, true, JSON.stringify(run));
+	if (run.ok) assert.deepEqual(run.request.skill, { name: "sdd-run", args: spec });
+	const fromGrill = orchestrator.resolveWorkflowDispatch(draftResolution("spec-from-grill", handoff), DRAFT_DIRS);
+	assert.equal(fromGrill.ok, true, JSON.stringify(fromGrill));
+	if (fromGrill.ok) assert.equal(fromGrill.request.skill.args, `--from-grill ${JSON.stringify(handoff)}`);
+
+	assert.equal(orchestrator.resolveWorkflowDispatch(draftResolution("run-existing-spec", spec)).ok, false, "sin dirs, el common-dir queda afuera");
+	for (const outside of ["/workspace/skills/.git/sdd/specs/nested/x.md", "/workspace/otro/.git/sdd/specs/x.md"]) {
+		assert.equal(orchestrator.resolveWorkflowDispatch(draftResolution("run-existing-spec", outside), DRAFT_DIRS).ok, false, outside);
+	}
+	assert.equal(orchestrator.resolveWorkflowDispatch(draftResolution("spec-from-grill", "/workspace/skills/.git/sdd/specs/final.md"), DRAFT_DIRS).ok, false);
+});
+
+test("#84 CA-12: resolveWorkflowDispatchForCwd resuelve el common-dir con git desde el principal y desde un worktree linkeado", async () => {
+	const { execFileSync } = await import("node:child_process");
+	const { mkdtemp, realpath, rm, writeFile } = await import("node:fs/promises");
+	const { tmpdir } = await import("node:os");
+	const { join } = await import("node:path");
+	const git = (cwd: string, ...args: string[]) => execFileSync("git", [
+		"-c", "user.name=sdd", "-c", "user.email=sdd@example.invalid", "-c", "commit.gpgsign=false", ...args,
+	], { cwd, encoding: "utf8" });
+	const base = await realpath(await mkdtemp(join(tmpdir(), "dispatch-draft-")));
+	try {
+		const main = join(base, "repo");
+		execFileSync("mkdir", ["-p", main]);
+		git(main, "init", "-q", "-b", "main");
+		await writeFile(join(main, "README.md"), "repo\n");
+		git(main, "add", "README.md");
+		git(main, "commit", "-q", "-m", "init");
+		const linked = join(base, "repo-wt");
+		git(main, "worktree", "add", "-q", "-b", "feature", linked);
+		const spec = join(main, ".git", "sdd", "specs", "issue-14.md");
+		for (const cwd of [main, linked]) {
+			const input = { ...draftResolution("run-existing-spec", spec), cwd };
+			const result = await orchestrator.resolveWorkflowDispatchForCwd(input);
+			assert.equal(result.ok, true, `${cwd}: ${JSON.stringify(result)}`);
+			if (result.ok) assert.equal(result.request.skill.args, spec);
+		}
+	} finally {
+		await rm(base, { recursive: true, force: true });
+	}
+});

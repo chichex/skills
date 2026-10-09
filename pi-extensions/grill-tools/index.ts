@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { link, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
@@ -13,6 +13,15 @@ import {
 import { Markdown, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { menuItems, selectMenu, type MenuItem } from "../lib/menu.ts";
+import {
+	isSddArtifactPath,
+	listSddArtifacts,
+	resolveRepoWorktrees,
+	resolveSddArtifactDirs,
+	trackedSddArtifactDirs,
+	type SddArtifactDirs,
+	type SddArtifactKind,
+} from "../lib/sdd-paths.ts";
 import {
 	persistSpecPublication,
 	SDD_SPEC_ISSUE_STAGING_BODY,
@@ -50,6 +59,7 @@ import {
 	type HandoffFileCandidate,
 	type SnapshotFileCandidate,
 } from "./inventory.ts";
+import { writeFileAtomic } from "./atomic-write.ts";
 import {
 	handoffFileNames,
 	planGrillHandoff,
@@ -217,36 +227,39 @@ async function ensureStore(): Promise<void> {
 	await mkdir(STORE_DIR, { recursive: true });
 }
 
-async function writeFileAtomic(path: string, content: string): Promise<void> {
-	const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
-	await writeFile(temporary, content, "utf8");
-	await rename(temporary, path);
-}
-
 async function writeAtomic(path: string, content: string): Promise<void> {
 	await ensureStore();
 	await writeFileAtomic(path, content);
 }
 
-// Escribe (o actualiza) el handoff interoperable en `.sdd/grills/` del
-// proyecto de la sesion. El snapshot JSON global sigue siendo la fuente de
-// verdad runtime; este archivo es el artefacto SDD que consumen los otros
-// harnesses y el handoff materializado de sdd-spec --from-grill. Nunca rompe la accion que lo
+async function fileExists(path: string): Promise<boolean> {
+	return stat(path).then((entry) => entry.isFile(), () => false);
+}
+
+// Escribe (o actualiza) el handoff interoperable en `<git-common-dir>/sdd/grills/`
+// del proyecto de la sesion (spec #84, CA-10): fuera del working tree y
+// compartido por todos sus worktrees; fuera de un repo git, en `.sdd/grills/`.
+// El snapshot JSON global sigue siendo la fuente de verdad runtime; este
+// archivo es el artefacto SDD que consumen los otros harnesses y el handoff
+// materializado de sdd-spec --from-grill. Nunca rompe la accion que lo
 // invoca: ante un proyecto inexistente devuelve el error como texto.
 async function writeRepoHandoff(
 	snapshot: GrillSnapshot,
 ): Promise<{ path: string; diagnostics: string[] } | { error: string }> {
 	try {
-		const directory = join(snapshot.projectPath, ".sdd", "grills");
-		await mkdir(directory, { recursive: true });
+		const dirs = await resolveSddArtifactDirs(snapshot.projectPath, "grills");
+		await mkdir(dirs.local, { recursive: true });
+		const names = handoffFileNames(snapshot);
+		// El primario existente decide el nombre: el local y, si no hay, el del árbol.
+		// Si es de otra sesión, planGrillHandoff usa el fallback; si es de esta, la
+		// revisión local lo reemplaza en el inventario (readHandoffCandidates).
 		let existing: string | null = null;
-		try {
-			existing = await readFile(join(directory, handoffFileNames(snapshot).primary), "utf8");
-		} catch {
-			existing = null;
+		for (const directory of resolve(dirs.local) === resolve(dirs.tracked) ? [dirs.local] : [dirs.local, dirs.tracked]) {
+			existing = await readFile(join(directory, names.primary), "utf8").catch(() => null);
+			if (existing !== null) break;
 		}
 		const plan = planGrillHandoff(snapshot, existing);
-		const path = join(directory, plan.fileName);
+		const path = join(dirs.local, plan.fileName);
 		await writeFileAtomic(path, plan.content);
 		return { path, diagnostics: plan.diagnostics };
 	} catch (error) {
@@ -362,14 +375,21 @@ function isInside(parent: string, candidate: string): boolean {
 	return fromParent === "" || (!fromParent.startsWith("..") && !isAbsolute(fromParent));
 }
 
-function confinedSpecPath(projectPath: string, requestedPath: string): string {
+// Destino local de una spec (spec #84, CA-11). Una ruta relativa es la ruta
+// lógica `.sdd/specs/<x>.md`: se resuelve primero en el árbol trackeado (si
+// ya existe ahí, se actualiza en su lugar) y si no en
+// `<git-common-dir>/sdd/specs/`. Una ruta absoluta tiene que caer directamente
+// bajo uno de esos dos directorios.
+async function confinedSpecPath(projectPath: string, dirs: SddArtifactDirs, requestedPath: string): Promise<string> {
 	const cleaned = requestedPath.trim().replace(/^@/, "");
 	if (!cleaned) throw new Error("Local destination path is required");
-	const directory = resolve(projectPath, ".sdd", "specs");
-	const candidate = isAbsolute(cleaned) ? resolve(cleaned) : resolve(projectPath, cleaned);
-	if (!isInside(directory, candidate) || dirname(candidate) !== directory || !candidate.endsWith(".md")) {
-		throw new Error(`Local spec destination must be one Markdown file directly under ${directory}`);
+	const refuse = () => new Error(`Local spec destination must be one Markdown file directly under ${dirs.tracked} or ${dirs.local}`);
+	let candidate = resolve(isAbsolute(cleaned) ? cleaned : resolve(projectPath, cleaned));
+	if (!isAbsolute(cleaned)) {
+		if (dirname(candidate) !== resolve(dirs.tracked)) throw refuse();
+		if (resolve(dirs.local) !== resolve(dirs.tracked) && !await fileExists(candidate)) candidate = join(dirs.local, basename(candidate));
 	}
+	if (!isSddArtifactPath(dirs, candidate) || !candidate.endsWith(".md")) throw refuse();
 	return candidate;
 }
 
@@ -404,12 +424,14 @@ function issueBodyForPublication(markdown: string, currentBody: string, reposito
 	return `${markdown.replace(/\r\n?/g, "\n").replace(/\n*$/, "")}\n\n<details><summary>Body original</summary>\n\n${original}\n\n</details>\n`;
 }
 
-async function ensureSafeSpecDestination(projectPath: string, path: string): Promise<void> {
-	const projectCanonical = await realpath(projectPath);
-	const directory = resolve(projectPath, ".sdd", "specs");
+async function ensureSafeSpecDestination(projectPath: string, dirs: SddArtifactDirs, path: string): Promise<void> {
+	const directory = dirname(resolve(path));
+	if (directory !== resolve(dirs.tracked) && directory !== resolve(dirs.local)) {
+		throw new Error("Refusing a spec destination outside .sdd/specs and <git-common-dir>/sdd/specs");
+	}
 	await mkdir(directory, { recursive: true });
 	const directoryCanonical = await realpath(directory);
-	if (!isInside(projectCanonical, directoryCanonical)) {
+	if (directory === resolve(dirs.tracked) && !isInside(await realpath(projectPath), directoryCanonical)) {
 		throw new Error("Refusing a .sdd/specs directory that resolves outside the project");
 	}
 	try {
@@ -616,32 +638,36 @@ function specInspectionMarkdown(spec: SpecDocument): string {
 	return `${spec.markdown.trim()}\n\n---\n\n**Ruta:** \`${spec.path}\`  \n**Normalizado:** ${spec.state} · ${spec.format}/${spec.provenance} · issue ${identity}  \n**Diagnósticos:**\n${diagnostics}`;
 }
 
+// Lista `.sdd/specs/` de cada proyecto y `<git-common-dir>/sdd/specs/` una
+// sola vez por repo (spec #84, CA-11): las specs locales se atribuyen al primer
+// proyecto de la lista que comparte ese common-dir, y ante el mismo nombre gana
+// la trackeada.
 async function listSpecs(projects: SpecProject[]): Promise<SpecDocument[]> {
 	const byRoot = new Map<string, SpecProject>();
 	for (const project of projects) byRoot.set(resolve(project.projectPath), { ...project, projectPath: resolve(project.projectPath) });
-	const specs = (await Promise.all([...byRoot.values()].map(async (project) => {
-		const directory = join(project.projectPath, ".sdd", "specs");
-		let files: string[];
-		try {
-			files = (await readdir(directory, { withFileTypes: true }))
-				.filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-				.map((entry) => entry.name);
-		} catch {
-			return [];
+	const seenLocal = new Set<string>();
+	const sources: Array<{ path: string; project: SpecProject }> = [];
+	const projectsInOrder = [...byRoot.values()];
+	const dirsByRoot = await artifactDirsByRoot(projectsInOrder.map(({ projectPath }) => projectPath), "specs");
+	for (const project of projectsInOrder) {
+		const dirs = dirsByRoot.get(project.projectPath)!;
+		const localSeen = seenLocal.has(resolve(dirs.local));
+		seenLocal.add(resolve(dirs.local));
+		for (const entry of await listSddArtifacts(dirs)) {
+			if (entry.location === "local" && localSeen) continue;
+			sources.push({ path: entry.path, project });
 		}
-
-		return Promise.all(files.map(async (file) => {
-			const path = join(directory, file);
-			const [markdown, fileStat] = await Promise.all([readFile(path, "utf8"), stat(path)]);
-			return {
-				path,
-				projectPath: project.projectPath,
-				...inspectSpecDocument(markdown, path, project),
-				updatedAt: fileStat.mtime.toISOString(),
-				markdown,
-			};
-		}));
-	}))).flat();
+	}
+	const specs = await Promise.all(sources.map(async ({ path, project }) => {
+		const [markdown, fileStat] = await Promise.all([readFile(path, "utf8"), stat(path)]);
+		return {
+			path,
+			projectPath: project.projectPath,
+			...inspectSpecDocument(markdown, path, project),
+			updatedAt: fileStat.mtime.toISOString(),
+			markdown,
+		};
+	}));
 
 	return specs.sort(compareSpecListEntries);
 }
@@ -741,39 +767,99 @@ async function knownProjectRoots(
 	return [...new Set(roots.map((root) => resolve(root)))];
 }
 
+async function handoffFiles(directory: string): Promise<string[]> {
+	try {
+		return (await readdir(directory, { withFileTypes: true }))
+			.filter((entry) => entry.isFile() && isGrillHandoffCandidatePath(entry.name))
+			.map((entry) => entry.name)
+			.sort();
+	} catch {
+		return [];
+	}
+}
+
+async function artifactDirsByRoot(roots: string[], kind: SddArtifactKind): Promise<Map<string, SddArtifactDirs>> {
+	const dirs = new Map<string, SddArtifactDirs>();
+	for (let index = 0; index < roots.length; index += 4) {
+		const batch = roots.slice(index, index + 4);
+		const resolved = await Promise.all(batch.map((root) => resolveSddArtifactDirs(root, kind)));
+		batch.forEach((root, offset) => dirs.set(root, resolved[offset]!));
+	}
+	return dirs;
+}
+
+function handoffIdentity(path: string, markdown: string, repository: string, projectRoot: string): { grill: string | null; project: string | null } {
+	const artifact = inspectMarkdownArtifact({
+		kind: "markdown",
+		id: path,
+		expectedType: "grill",
+		location: "handoff",
+		path,
+		markdown,
+	}, { repository, projectRoot });
+	return { grill: artifact.grill ?? null, project: artifact.project ? resolve(artifact.project) : null };
+}
+
+// Lee `.sdd/grills/` de cada root conocido y `<git-common-dir>/sdd/grills/`
+// una sola vez por repo (spec #84, CA-10): un handoff local no se duplica entre
+// los worktrees que comparten el common-dir. Raíz operativa de un handoff local:
+// su campo `Proyecto` cuando nombra un worktree del mismo repo; si no, el
+// worktree principal de ese common-dir. En `.sdd/grills/` del árbol manda la
+// raíz física. Ante el mismo nombre de otro grill gana el trackeado; la revisión
+// local del mismo grill reemplaza a la trackeada (review de #86), así el grill
+// no queda con dos handoffs divergentes.
 async function readHandoffCandidates(
 	pi: ExtensionAPI,
 	projectRoots: string[],
 	projects: ProjectLookup = createProjectLookup(pi),
 ): Promise<HandoffFileCandidate[]> {
-	const candidates: HandoffFileCandidate[] = [];
-	for (const projectPath of [...new Set(projectRoots.map((root) => resolve(root)))].sort()) {
-		const directory = join(projectPath, ".sdd", "grills");
-		let files;
-		try {
-			files = (await readdir(directory, { withFileTypes: true }))
-				.filter((entry) => entry.isFile() && isGrillHandoffCandidatePath(entry.name))
-				.map((entry) => entry.name)
-				.sort();
-		} catch {
-			continue;
-		}
+	const roots = [...new Set(projectRoots.map((root) => resolve(root)))].sort();
+	const dirsByRoot = await artifactDirsByRoot(roots, "grills");
+	async function read(path: string, projectPath: string, markdown?: string): Promise<HandoffFileCandidate> {
 		const repository = await projects.repository(projectPath);
-		for (const file of files) {
-			const path = join(directory, file);
-			try {
-				candidates.push({ path, projectPath, repository, markdown: await readFile(path, "utf8") });
-			} catch (error) {
-				candidates.push({
-					path,
-					projectPath,
-					repository,
-					readError: error instanceof Error ? error.message : String(error),
-				});
-			}
+		try {
+			return { path, projectPath, repository, markdown: markdown ?? await readFile(path, "utf8") };
+		} catch (error) {
+			return { path, projectPath, repository, readError: error instanceof Error ? error.message : String(error) };
 		}
 	}
-	return candidates;
+	const tracked: Array<{ candidate: HandoffFileCandidate; grill: string | null; superseded: boolean }> = [];
+	const sharing = new Map<string, string[]>();
+	for (const projectPath of roots) {
+		const dirs = dirsByRoot.get(projectPath)!;
+		for (const file of await handoffFiles(dirs.tracked)) {
+			const candidate = await read(join(dirs.tracked, file), projectPath);
+			const grill = candidate.markdown === undefined ? null : handoffIdentity(candidate.path, candidate.markdown, candidate.repository, projectPath).grill;
+			tracked.push({ candidate, grill, superseded: false });
+		}
+		if (resolve(dirs.local) !== resolve(dirs.tracked)) sharing.set(resolve(dirs.local), [...sharing.get(resolve(dirs.local)) ?? [], projectPath]);
+	}
+	const local: HandoffFileCandidate[] = [];
+	for (const [localDirectory, sharingRoots] of sharing) {
+		const worktrees = await resolveRepoWorktrees(sharingRoots[0]!);
+		const mainWorktree = worktrees[0] ?? sharingRoots[0]!;
+		for (const file of await handoffFiles(localDirectory)) {
+			const path = join(localDirectory, file);
+			const markdown = await readFile(path, "utf8").catch(() => undefined);
+			if (markdown === undefined) {
+				local.push(await read(path, mainWorktree));
+				continue;
+			}
+			const identity = handoffIdentity(path, markdown, await projects.repository(mainWorktree), mainWorktree);
+			const projectPath = identity.project && worktrees.includes(identity.project) ? identity.project : mainWorktree;
+			const sameName = join(trackedSddArtifactDirs(projectPath, "grills").tracked, file);
+			const sameNameMarkdown = await readFile(sameName, "utf8").catch(() => undefined);
+			if (sameNameMarkdown !== undefined) {
+				const sameNameGrill = handoffIdentity(sameName, sameNameMarkdown, await projects.repository(projectPath), projectPath).grill;
+				if (identity.grill === null || sameNameGrill !== identity.grill) continue;
+			}
+			for (const entry of tracked) {
+				if (identity.grill !== null && entry.grill === identity.grill && entry.candidate.projectPath === projectPath) entry.superseded = true;
+			}
+			local.push(await read(path, projectPath, markdown));
+		}
+	}
+	return [...tracked.filter((entry) => !entry.superseded).map((entry) => entry.candidate), ...local];
 }
 
 async function loadGrillInventory(pi: ExtensionAPI, currentProject: string): Promise<GrillInventory> {
@@ -830,11 +916,12 @@ async function rereadHandoffOnly(
 	if (!entry.projectPath || !entry.grillId || entry.handoffPaths.length === 0) {
 		throw new Error("The handoff path, operational root, and grill identity are required");
 	}
-	const directory = resolve(entry.projectPath, ".sdd", "grills");
+	const dirs = await resolveSddArtifactDirs(entry.projectPath, "grills");
 	const requestedPath = resolve(entry.handoffPaths[0]!);
-	if (dirname(requestedPath) !== directory || !isGrillHandoffCandidatePath(requestedPath)) {
-		throw new Error(`Handoff source must be one Markdown file directly under ${directory}`);
+	if (!isSddArtifactPath(dirs, requestedPath) || !isGrillHandoffCandidatePath(requestedPath)) {
+		throw new Error(`Handoff source must be one Markdown file directly under ${dirs.tracked} or ${dirs.local}`);
 	}
+	const directory = dirname(requestedPath);
 	const [canonicalDirectory, canonicalPath] = await Promise.all([realpath(directory), realpath(requestedPath)]);
 	if (dirname(canonicalPath) !== canonicalDirectory) {
 		throw new Error("Refusing a handoff source that resolves outside .sdd/grills");
@@ -1210,15 +1297,16 @@ export default function grillTools(pi: ExtensionAPI) {
 				throw new Error(`Repository identity mismatch: expected ${actualRepository}, got ${repository}`);
 			}
 
+			const specDirs = await resolveSddArtifactDirs(root, "specs");
 			const localPaths: string[] = [];
-			const documents = params.documents.map((document) => {
+			const documents = await Promise.all(params.documents.map(async (document) => {
 				if (document.role === "successor" && document.supersededBy !== undefined) {
 					throw new Error(`Successor ${document.id} cannot declare supersededBy`);
 				}
-				const destinations: SpecPublicationDestination[] = document.destinations.map((destination) => {
+				const destinations: SpecPublicationDestination[] = await Promise.all(document.destinations.map(async (destination) => {
 					if (destination.kind === "local") {
 						if (!destination.path) throw new Error(`Local destination path is required for ${document.id}`);
-						const path = confinedSpecPath(root, destination.path);
+						const path = await confinedSpecPath(root, specDirs, destination.path);
 						localPaths.push(path);
 						return { kind: "local", path };
 					}
@@ -1228,7 +1316,7 @@ export default function grillTools(pi: ExtensionAPI) {
 					}
 					if (!destination.title?.trim()) throw new Error(`New issue title is required for ${document.id}`);
 					return { kind: "new-issue", repository, title: destination.title.trim() };
-				});
+				}));
 				return {
 					id: document.id,
 					role: document.role,
@@ -1247,7 +1335,7 @@ export default function grillTools(pi: ExtensionAPI) {
 					},
 					destinations,
 				};
-			});
+			}));
 			const allowedPaths = new Set(localPaths);
 			function assertAllowedPath(path: string): void {
 				if (!allowedPaths.has(path)) throw new Error(`Unexpected local publication path: ${path}`);
@@ -1275,7 +1363,7 @@ export default function grillTools(pi: ExtensionAPI) {
 			const ports: SpecPublicationPorts = {
 				async writeLocal(path, markdown) {
 					assertAllowedPath(path);
-					await ensureSafeSpecDestination(root, path);
+					await ensureSafeSpecDestination(root, specDirs, path);
 					await writeFileAtomic(path, markdown);
 				},
 				async readLocal(path) {

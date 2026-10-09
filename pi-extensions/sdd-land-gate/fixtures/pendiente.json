@@ -1,0 +1,44 @@
+{
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-09T15:01:52Z",
+      "conclusion": "CANCELLED",
+      "detailsUrl": "https://github.com/pramaestudio/brik/actions/runs/37948627777/job/113881330927",
+      "name": "android",
+      "startedAt": "2026-10-09T15:01:51Z",
+      "status": "COMPLETED",
+      "workflowName": "CI - Android"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "0001-01-01T00:00:00Z",
+      "conclusion": "",
+      "detailsUrl": "https://github.com/pramaestudio/brik/actions/runs/37948628758/job/113881340928",
+      "name": "android",
+      "startedAt": "2026-10-09T15:01:55Z",
+      "status": "IN_PROGRESS",
+      "workflowName": "CI - Android"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-09T15:00:30Z",
+      "conclusion": "CANCELLED",
+      "detailsUrl": "https://github.com/pramaestudio/brik/actions/runs/2/job/2",
+      "name": "lint",
+      "startedAt": "2026-10-09T15:00:00Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "0001-01-01T00:00:00Z",
+      "conclusion": "",
+      "detailsUrl": "https://github.com/pramaestudio/brik/actions/runs/3/job/3",
+      "name": "lint",
+      "startedAt": "0001-01-01T00:00:00Z",
+      "status": "QUEUED",
+      "workflowName": "CI"
+    }
+  ]
+}

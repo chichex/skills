@@ -18,7 +18,7 @@ import {
 	type ResolveDirectRunResult,
 } from "./direct-launch.ts";
 import type { DirectGrillRequestV1, DirectRunRequestV1 } from "./direct-protocol.ts";
-import { resolveWorkflowDispatch } from "./dispatch.ts";
+import { resolveWorkflowDispatchForCwd } from "./dispatch.ts";
 import {
 	startFreshStage as startFreshStageDefault,
 	type StartFreshStageRequest,
@@ -417,7 +417,7 @@ export function createWorkflowController(
 					const resolution = terminalResult.details;
 					if (activeAttempt !== attempt) throw new Error("submit_workflow_resolution attempt expired during validation");
 					if (resolution.outcome === "start" && resolution.selectedRoute !== null) {
-						const dispatch = resolveWorkflowDispatch(resolution);
+						const dispatch = await resolveWorkflowDispatchForCwd(resolution);
 						if (!dispatch.ok) throw new Error(`${dispatch.code}: ${dispatch.message}`);
 						queueReceipt({
 							kind: "workflow",

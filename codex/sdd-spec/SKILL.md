@@ -19,8 +19,8 @@ Dos ideas fuerza:
 $sdd-spec [pedido libre | #NN | URL de issue | ruta de spec] [--from-grill [ruta.md]] [--triage-route update-existing-spec|audit-existing-spec] [--out local|issue] [--assume]
 ```
 
-- `--from-grill [ruta.md]` — usa como fuente autoritativa un handoff finalizado en `.sdd/grills/` o en la ruta indicada. Si no trae referencia, listar los handoffs `finalized` del proyecto y pedir elegir solo cuando haya más de uno. Usar la ruta `Proyecto` declarada en el handoff como raíz operativa.
-- `--out local|issue` — fuerza el destino de la spec por encima de la regla automática. `local` = `.sdd/specs/`; `issue` = actualizar el issue de origen (o crear uno nuevo si el pedido fue libre) **sin crear una copia en `.sdd/specs/`** (salvo `Llevar a issue` desde el menú, que publica una spec local y conserva el `.md`).
+- `--from-grill [ruta.md]` — usa como fuente autoritativa un handoff finalizado en `.sdd/grills/` o `<git-common-dir>/sdd/grills/`, o en la ruta indicada. Si no trae referencia, listar los handoffs `finalized` del proyecto y pedir elegir solo cuando haya más de uno. La raíz operativa es la que fija «Dónde viven los borradores».
+- `--out local|issue` — fuerza el destino de la spec por encima de la regla automática. `local` = `<git-common-dir>/sdd/specs/`; `issue` = actualizar el issue de origen (o crear uno nuevo si el pedido fue libre) **sin crear una copia en `.sdd/specs/`** (salvo `Llevar a issue` desde el menú, que publica una spec local y conserva el `.md`).
 - `--assume` — cero preguntas y sin menú final: además de lo que el flujo ya hace sin preguntar (inferencias `[ASSUMED]`, mecanismo propuesto, destino automático), si falta el contrato corre `$sdd-init --assume`, y el reporte termina en `Spec lista`. Las decisiones ya confirmadas por grill nunca se degradan a supuestos.
 
 ### Entrada encadenada desde issue-triage
@@ -31,6 +31,12 @@ $sdd-spec [pedido libre | #NN | URL de issue | ruta de spec] [--from-grill [ruta
 - `update-existing-spec`: la spec es `draft`; incorporá lo que cambió en la fuente y republicá.
 - `audit-existing-spec`: la spec está `approved`/`implemented` con vigencia `stale|unknown`, o su estado es desconocido. Releé el issue y el código, listá en el reporte qué cambió desde la spec y qué CA quedan afectados, y republicá en `draft`; nunca la marques `implemented` ni lances un run.
 - Sin `--triage-route`, una `ruta de spec` se trata igual que `update-existing-spec`.
+
+<!-- sdd-spec-drafts:start -->
+**Dónde viven los borradores.** La spec local se escribe en `<git-common-dir>/sdd/specs/<slug>.md`, fuera del working tree: `<git-common-dir>` es la salida de `git rev-parse --path-format=absolute --git-common-dir`, el mismo directorio para todos los worktrees del repo; fuera de un repo git, en `.sdd/specs/` del cwd. `.sdd/specs/<slug>.md` es su ruta lógica: se resuelve primero en el árbol trackeado (si ya existe ahí, se actualiza en su lugar) y después en `<git-common-dir>/sdd/specs/`. Los handoffs de `--from-grill` y la Fase 0 se listan de los dos lugares, `.sdd/grills/` del árbol y `<git-common-dir>/sdd/grills/`; ante el mismo nombre gana el del árbol. La raíz operativa de un handoff depende de dónde está: en `.sdd/grills/` del árbol es la raíz física del checkout que lo contiene; en `<git-common-dir>/sdd/grills/` es su campo `Proyecto` si nombra un worktree del mismo repo (`git worktree list --porcelain`) y, si no, el worktree principal de ese common-dir (el primero de esa lista). Si el harness no puede escribir en `<git-common-dir>/sdd/`, su capa de interacción dice cómo pedir permiso o caer a `.sdd/` del cwd. La spec local no se ve en el editor ni viaja con un clon nuevo, así que el reporte imprime la ruta absoluta de la spec local.
+<!-- sdd-spec-drafts:end -->
+
+En Codex, el sandbox por defecto deja `.git/` en solo lectura (`mkdir: .git/sdd: Operation not permitted`): pedir escalación para escribir en `<git-common-dir>/sdd/`; sin permiso, escribir en `.sdd/` del cwd y decirlo en el reporte. Esos borradores los resuelve `$sdd-land` en su Fase 5.
 
 ## Fase 0 — Lanzador (solo con `$sdd-spec` pelado)
 
@@ -52,11 +58,11 @@ Luego usar `request_user_input` — una pregunta, "¿De dónde sale la spec?":
 
 1. `De una descripcion (Recomendado)` — el usuario escribe el pedido (vía Other o en el mensaje siguiente).
 2. `De un issue abierto` — invocar `github-issue-selector`; sus detalles completos son la fuente.
-3. `De un grill cerrado` — listar `.sdd/grills/*.md`, filtrar los que declaren `Estado: finalized` y elegir el handoff sin mutarlo.
+3. `De un grill cerrado` — listar `.sdd/grills/*.md` y `<git-common-dir>/sdd/grills/*.md`, filtrar los que declaren `Estado: finalized` y elegir el handoff sin mutarlo.
 
 ## Fase 1 — Raíz y contrato primero (bloqueante)
 
-1. Resolver la raíz del proyecto sin explorar código: cwd para pedido/issue; campo `Proyecto` del handoff para `--from-grill`. Si el handoff pertenece a otro proyecto, avisar y ejecutar todas las tools con ese `cwd`; nunca escribir la spec en el cwd equivocado.
+1. Resolver la raíz del proyecto sin explorar código: cwd para pedido/issue; para `--from-grill`, la que fija «Dónde viven los borradores». Si el handoff pertenece a otro proyecto, avisar y ejecutar todas las tools con ese `cwd`; nunca escribir la spec en el cwd equivocado.
 2. Leer `<raiz>/.sdd/project.md` ANTES de explorar el código; interesan sobre todo `## Comandos`, `## Verificacion autonoma`, `## Limites` y `## Politicas de generacion` (los gates duros que `$sdd-run` va a aplicar — condicionan el veredicto y el tamaño sano de la spec).
 
 - **Si NO existe**: frenar. Explicar en una línea por qué (sin contrato el veredicto de verificabilidad es inventado) y usar `request_user_input`: 1. `Correr $sdd-init ahora (Recomendado)` — cargar y ejecutar ese skill en la raíz resuelta, esperar el contrato y seguir; 2. `Abortar`. NO generar spec "provisoria" sin contrato, ni siquiera si el usuario insiste con que es una feature chica: ofrecer `$sdd-init --assume` como vía rápida.
@@ -68,7 +74,7 @@ Luego usar `request_user_input` — una pregunta, "¿De dónde sale la spec?":
 1. Si el pedido es `#NN` o URL: `gh issue view NN --json title,body,comments,labels` (usar la URL con `-R` si es de otro repo). Guardar el número: importa para el destino en Fase 6. Los comments cuentan como fuente — a veces desambiguan el body.
 2. Si la fuente es grill: leer el Markdown finalizado completo. Tratar hechos comprobados y decisiones resueltas como fuente confirmada; conservar restricciones, no-objetivos, supuestos, riesgos, pendientes y contexto recomendado. Si el archivo no declara `Estado: finalized` o no tiene `## Handoff`, frenar y pedir que se cierre el grill. No re-preguntar decisiones confirmadas. Si el encabezado `Fuente` referencia un issue, heredarlo como issue de origen de la spec.
 3. Explorar el código con lectura de archivos y shell y llamadas paralelas solo cuando sean independientes: relevar qué existe hoy, archivos potenciales, convenciones, tests previos, dependencias y blast radius. La spec se escribe contra el código real, no contra la idea del código.
-4. Revisar `.sdd/specs/`: si ya hay una spec para este mismo pedido, issue o ruta de handoff, avisar y tratar la corrida como actualización, no crear otra.
+4. Revisar `.sdd/specs/` y `<git-common-dir>/sdd/specs/`: si ya hay una spec para este mismo pedido, issue o ruta de handoff, avisar y tratar la corrida como actualización, no crear otra.
 
 ## Fase 3 — Inferencias sobre la mesa
 
@@ -206,7 +212,7 @@ $sdd-spec no frena a validar lo que ya puede escribir: las inferencias nuevas va
 
 1. El pedido vino de un issue → actualizar ese issue, archivando el body original al final dentro de un `<details><summary>Body original</summary>`.
 2. Si no, y el repo ya usa issues como specs — `gh issue list --state all --limit 50 --search "SDD-Tracking in:body"` devuelve al menos uno → crear issue: primero un staging no-SDD; con el número devuelto, reemplazar `issue=none` y recién entonces publicar la spec canónica.
-3. Si no, o si `gh` no está disponible o falla → `.sdd/specs/<slug>.md` (o `.sdd/specs/issue-NN-<slug>.md` si hay issue de origen).
+3. Si no, o si `gh` no está disponible o falla → `<git-common-dir>/sdd/specs/<slug>.md` (o `<git-common-dir>/sdd/specs/issue-NN-<slug>.md` si hay issue de origen), con su ruta absoluta en el reporte.
 
 **Menú final.** Después del reporte `Spec lista`, mostrar el link del issue o la ruta del `.md` y ofrecer, con la tool de preguntas del harness (o en texto plano donde no la hay):
 

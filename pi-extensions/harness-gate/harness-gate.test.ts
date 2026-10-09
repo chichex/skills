@@ -111,7 +111,8 @@ const SDD_SPEC_FLOW_DOCTRINE = [
 	/mecanismo[\s\S]*propuesto[\s\S]*alternativas[\s\S]*sin preguntar/i,
 	/`--out`[\s\S]*fuerza/i,
 	/SDD-Tracking in:body/,
-	/`\.sdd\/specs\/<slug>\.md`/,
+	// Spec #84, CA-14: el destino local es el common-dir, fuera del working tree.
+	/`<git-common-dir>\/sdd\/specs\/<slug>\.md`/,
 	/staging no-SDD/,
 	/`Llevar a issue`/,
 	/`Solicitar cambios`/,
@@ -888,4 +889,295 @@ test("autotest: la normalizacion reduce las tres sintaxis de invocacion al mismo
 		/«skill:coding-policies»/,
 		"la lista de skills normalizables incluye coding-policies",
 	);
+});
+
+// Spec #84 (CA-13 a CA-16): los borradores de planificación viven en
+// <git-common-dir>/sdd/, fuera del working tree, y el árbol trackeado `.sdd/`
+// sigue siendo el segundo lugar de lectura. Cada skill lleva un bloque
+// delimitado idéntico entre harnesses con esa doctrina.
+const COMMON_DIR_COMMAND = /`git rev-parse --path-format=absolute --git-common-dir`/;
+// Decisión humana del review de #86: Codex no escribe en `.git/` con su sandbox por defecto.
+const CODEX_NEUTRAL_LINE = /Si el harness no puede escribir en `<git-common-dir>\/sdd\/`, su capa de interacción dice cómo pedir permiso o caer a `\.sdd\/` del cwd/;
+
+const GRILL_DRAFTS_DOCTRINE = [
+	/El handoff, el cuestionario y la carpeta de capturas se escriben en `<git-common-dir>\/sdd\/grills\/`, fuera del working tree/,
+	COMMON_DIR_COMMAND,
+	/Fuera de un repo git, en `\.sdd\/grills\/` del cwd/,
+	/se miran los dos lugares: `\.sdd\/grills\/` del árbol[^\n]*`<git-common-dir>\/sdd\/grills\/`; ante el mismo nombre gana el del árbol/,
+	/imprime su ruta absoluta/,
+	CODEX_NEUTRAL_LINE,
+];
+
+const SDD_SPEC_DRAFTS_DOCTRINE = [
+	/La spec local se escribe en `<git-common-dir>\/sdd\/specs\/<slug>\.md`, fuera del working tree/,
+	COMMON_DIR_COMMAND,
+	/fuera de un repo git, en `\.sdd\/specs\/` del cwd/,
+	/`\.sdd\/specs\/<slug>\.md` es su ruta lógica: se resuelve primero en el árbol trackeado[^\n]*y después en `<git-common-dir>\/sdd\/specs\/`/,
+	/Los handoffs de `--from-grill` y la Fase 0 se listan de los dos lugares, `\.sdd\/grills\/` del árbol y `<git-common-dir>\/sdd\/grills\/`/,
+	// Review de #86: raíz física en el árbol; en el common-dir, `Proyecto` o el worktree principal.
+	/La raíz operativa de un handoff depende de dónde está: en `\.sdd\/grills\/` del árbol es la raíz física del checkout que lo contiene; en `<git-common-dir>\/sdd\/grills\/` es su campo `Proyecto` si nombra un worktree del mismo repo[^\n]*y, si no, el worktree principal de ese common-dir/,
+	CODEX_NEUTRAL_LINE,
+	/imprime la ruta absoluta de la spec local/,
+];
+
+const SDD_RUN_DRAFTS_DOCTRINE = [
+	/\*\*Borradores del common-dir\*\*: los artefactos de entrada se toman de `<git-common-dir>\/sdd\/`/,
+	COMMON_DIR_COMMAND,
+	/la spec target, el handoff canónico, su carpeta de capturas y las specs predecesoras/,
+	/Por compatibilidad, también los que sigan sin trackear en `\.sdd\/` del checkout original/,
+	/Se copian al worktree con el mismo nombre, bajo `\.sdd\/grills\/` y `\.sdd\/specs\/`, y entran en el PRIMER commit/,
+	// Review de #86: el borrado espera al push, así la única copia nunca queda en un branch local.
+	/las copias de `<git-common-dir>\/sdd\/` se borran recién después del push del branch \(o con el PR abierto\)/,
+	/Con `--no-pr`, o si el run termina antes del push, se conservan y el reporte las nombra/,
+	CODEX_NEUTRAL_LINE,
+];
+
+const ISSUE_TRIAGE_DRAFTS_DOCTRINE = [
+	/`\.sdd\/grills\/` y `\.sdd\/specs\/` del árbol[^\n]*`<git-common-dir>\/sdd\/grills\/` y `<git-common-dir>\/sdd\/specs\/`/,
+	COMMON_DIR_COMMAND,
+	/El inventario y el linaje se resuelven en los dos lugares; ante el mismo nombre gana el del árbol/,
+	/`superseded-by=\.sdd\/specs\/<x>\.md` se busca primero en el árbol y después en `<git-common-dir>\/sdd\/specs\/`/,
+];
+
+async function draftsBlocks(skill: string, block: string, patterns: RegExp[], harnesses: readonly Harness[] = HARNESSES): Promise<string[]> {
+	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
+	const problems: string[] = [];
+	const byHarness = new Map<Harness, string[]>();
+	for (const harness of harnesses) {
+		const doctrine = delimitedDoctrine(await readRepoFile(`${harness}/${skill}/SKILL.md`), block);
+		for (const pattern of patterns) {
+			if (!pattern.test(doctrine)) problems.push(`${harness}/${skill}/SKILL.md (${block}) no declara ${pattern}`);
+		}
+		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
+	}
+	const [reference, ...rest] = harnesses;
+	for (const harness of rest) {
+		const left = byHarness.get(reference!)?.[0] ?? "";
+		const right = byHarness.get(harness)?.[0] ?? "";
+		if (left !== right) problems.push(`${skill} (${block}): ${reference} vs ${harness} — ${firstDifference(left, right)}`);
+	}
+	return problems;
+}
+
+test("#84 CA-13: grill escribe handoff, cuestionario y capturas en <git-common-dir>/sdd/grills en los cuatro harnesses", async () => {
+	const problems = await draftsBlocks("grill", "grill-drafts", GRILL_DRAFTS_DOCTRINE);
+	for (const harness of HARNESSES) {
+		const file = `${harness}/grill/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		if (!/`<git-common-dir>\/sdd\/grills\/<fecha>-<slug>\.md`/.test(markdown)) problems.push(`${file}: el handoff no se escribe en <git-common-dir>/sdd/grills/<fecha>-<slug>.md`);
+		if (!/`<git-common-dir>\/sdd\/grills\/<fecha>-<slug>-cuestionario\.md`/.test(markdown)) problems.push(`${file}: el cuestionario no se escribe en <git-common-dir>/sdd/grills/`);
+		if (/`\.sdd\/grills\/<fecha>-<slug>(?:-cuestionario)?\.md`/.test(markdown)) problems.push(`${file}: todavía escribe en .sdd/grills/<fecha>-<slug>.md`);
+		const design = delimitedDoctrine(markdown, "grill-design");
+		if (!/se copian a `<git-common-dir>\/sdd\/grills\/<nombre-real-del-handoff>\/`/.test(design)) problems.push(`${file}: las capturas no se copian a <git-common-dir>/sdd/grills/`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 CA-14: sdd-spec escribe la spec local en <git-common-dir>/sdd/specs y lista los dos lugares en los cuatro harnesses", async () => {
+	const problems = await draftsBlocks("sdd-spec", "sdd-spec-drafts", SDD_SPEC_DRAFTS_DOCTRINE);
+	for (const harness of HARNESSES) {
+		const file = `${harness}/sdd-spec/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		const flow = delimitedDoctrine(markdown, "sdd-spec-flow");
+		if (!/`<git-common-dir>\/sdd\/specs\/<slug>\.md`/.test(flow)) problems.push(`${file}: el destino local de sdd-spec-flow no es <git-common-dir>/sdd/specs/<slug>.md`);
+		if (/`local` = `\.sdd\/specs\/`/.test(markdown)) problems.push(`${file}: --out local todavía apunta a .sdd/specs/`);
+		if (/ra[ií]z operativa (?:de un handoff )?sale (?:de su|del) campo `Proyecto`[^\n]*no de d[oó]nde est[aá] guardado el archivo/.test(markdown)) {
+			problems.push(`${file}: la raíz operativa de un handoff del árbol todavía sale de Proyecto`);
+		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 CA-15: sdd-run toma los artefactos de entrada de <git-common-dir>/sdd/, los commitea en el worktree y borra las copias", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const doctrine = delimitedDoctrine(await readRepoFile(`${harness}/sdd-run/SKILL.md`), "sdd-run-dirty-checkout");
+		for (const pattern of [...SDD_RUN_DRAFTS_DOCTRINE, /checkout original queda intacto/i]) {
+			if (!pattern.test(doctrine)) problems.push(`${harness}/sdd-run/SKILL.md (sdd-run-dirty-checkout) no declara ${pattern}`);
+		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 CA-16: issue-triage resuelve el linaje en los dos lugares y los READMEs dicen dónde viven los borradores", async () => {
+	const triageHarnesses = HARNESSES.filter((harness) => harness !== "opencode");
+	const problems = await draftsBlocks("issue-triage", "issue-triage-drafts", ISSUE_TRIAGE_DRAFTS_DOCTRINE, triageHarnesses);
+	for (const harness of ["claude", "codex"] as const) {
+		const file = `${harness}/issue-triage/SKILL.md`;
+		if (!/ubicado directamente bajo `<cwd>\/\.sdd\/grills\/` o `<git-common-dir>\/sdd\/grills\/`/.test(await readRepoFile(file))) {
+			problems.push(`${file}: spec-from-grill no acepta el handoff de <git-common-dir>/sdd/grills/`);
+		}
+	}
+	for (const path of ["README.md", "README.en.md"]) {
+		const readme = await readRepoFile(path);
+		for (const literal of ["`<git-common-dir>/sdd/grills/`", "`<git-common-dir>/sdd/specs/`", "`git rev-parse --path-format=absolute --git-common-dir`"]) {
+			if (!readme.includes(literal)) problems.push(`${path}: no menciona ${literal}`);
+		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 review #86: en Codex, escribir en <git-common-dir>/sdd/ pide escalación o cae a .sdd/ del cwd", async () => {
+	const problems: string[] = [];
+	const shared = /En Codex, el sandbox por defecto deja `\.git\/` en solo lectura \(`mkdir: \.git\/sdd: Operation not permitted`\): pedir escalación para escribir en `<git-common-dir>\/sdd\/`/;
+	const fallback: Record<string, RegExp> = {
+		grill: /sin permiso, escribir en `\.sdd\/` del cwd y decirlo en el reporte[^\n]*`\$sdd-land`/,
+		"sdd-spec": /sin permiso, escribir en `\.sdd\/` del cwd y decirlo en el reporte[^\n]*`\$sdd-land`/,
+		"sdd-run": /sin permiso, dejarlas y decirlo en el reporte/,
+	};
+	for (const [skill, pattern] of Object.entries(fallback)) {
+		const codex = await readRepoFile(`codex/${skill}/SKILL.md`);
+		if (!shared.test(codex)) problems.push(`codex/${skill}/SKILL.md: falta la escalación de Codex`);
+		if (!pattern.test(codex)) problems.push(`codex/${skill}/SKILL.md: falta el fallback ${pattern}`);
+		for (const harness of ["claude", "opencode", "pi"] as const) {
+			if (/pedir escalación para escribir en `<git-common-dir>/.test(await readRepoFile(`${harness}/${skill}/SKILL.md`))) problems.push(`${harness}/${skill}/SKILL.md: la escalación es solo de Codex`);
+		}
+	}
+	const doc = await readRepoFile("docs/harness-interaction-differences.md");
+	if (!/En Codex[^\n]*`codex sandbox -P :workspace`[^\n]*Codex 0\.146\.0[^\n]*`<git-common-dir>\/sdd\/`[^\n]*escalación[^\n]*`\.sdd\/` del cwd/.test(doc)) problems.push("docs/harness-interaction-differences.md: falta la diferencia de Codex con `.git/`");
+	assert.deepEqual(problems, []);
+});
+
+// Spec #84 (CA-17 a CA-20): worktrees con dueño, temporales con trap, quick-run
+// tolera la suciedad común y los skills del contrato cierran con Commit + PR.
+// Review de #87: todo `git worktree remove` (con o sin backticks) va en el
+// patrón literal de la doctrina, no alcanza con un unlock cercano.
+function unlockBeforeEveryRemove(markdown: string): boolean {
+	const removes = (markdown.match(/git worktree remove/g) ?? []).length;
+	const paired = (markdown.match(/`git worktree unlock` y después `git worktree remove`/g) ?? []).length;
+	return removes > 0 && removes === paired;
+}
+
+test("autotest: unlockBeforeEveryRemove rechaza un unlock ajeno cerca y un remove en prosa", () => {
+	assert.equal(unlockBeforeEveryRemove("nunca `git worktree unlock` ajeno; `git worktree remove` de lo propio"), false);
+	assert.equal(unlockBeforeEveryRemove("con `git worktree unlock` y después `git worktree remove`; si no, removerlo con git worktree remove"), false);
+	assert.equal(unlockBeforeEveryRemove("con `git worktree unlock` y después `git worktree remove`."), true);
+});
+
+test("#84 CA-17: sdd-run y quick-run crean su worktree con --lock --reason y lo desbloquean antes de removerlo", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const file = `${harness}/sdd-run/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		if (!/`git worktree add --lock --reason "sdd-run <slug>" \.\.\/<repo>-sdd-<slug> -b sdd\/<slug> <base-ref>`/.test(delimitedDoctrine(markdown, "sdd-run-dirty-checkout"))) problems.push(`${file}: el worktree del PR único no nace con --lock --reason "sdd-run <slug>"`);
+		if (!/`git worktree add --lock --reason "sdd-run <slug>" \.\.\/<repo>-sdd-<slug> -b sdd\/<slug>\/1-<etapa> <base-ref>`/.test(delimitedDoctrine(markdown, "sdd-run-stack"))) problems.push(`${file}: el worktree del stack no nace con --lock --reason "sdd-run <slug>"`);
+		if (!unlockBeforeEveryRemove(markdown)) problems.push(`${file}: algún git worktree remove no va precedido de git worktree unlock`);
+		if (!/retenerlo bloqueado para la Fase 6[^\n]*el reporte lo dice/.test(markdown)) problems.push(`${file}: el worktree retenido para la Fase 6 no queda bloqueado ni lo dice el reporte`);
+		if (!/- worktree: <removido \| conservado bloqueado \(`sdd-run <slug>`\) en <ruta>>/.test(markdown)) problems.push(`${file}: el reporte no dice si el worktree quedó bloqueado`);
+		if (!/`[/$](?:skill:)?sdd-land` solo lo remueve, limpio, cuando su branch ya se mergeó/.test(markdown)) problems.push(`${file}: contradice la excepción de sdd-land para el lock de sdd-run`);
+		if (!/Si el worktree ya no existe porque `[/$](?:skill:)?sdd-land` lo removió tras el merge, es una salida normal y no se reintenta/.test(markdown)) problems.push(`${file}: la Fase 6 no tolera el worktree removido por sdd-land`);
+	}
+	for (const harness of ["claude", "codex", "pi"] as const) {
+		const file = `${harness}/quick-run/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		if (!/`git worktree add --lock --reason "quick-run <slug>" <ruta> -b quick\/issue-<N>-<slug> <base-ref>`/.test(markdown)) problems.push(`${file}: el worktree no nace con --lock --reason "quick-run <slug>"`);
+		if (!unlockBeforeEveryRemove(markdown)) problems.push(`${file}: algún git worktree remove no va precedido de git worktree unlock`);
+		if (!/preservalo bloqueado y reportá la ruta/.test(markdown)) problems.push(`${file}: el worktree preservado no queda bloqueado`);
+		if (!/Remové el worktree tras un PR exitoso o al terminar en branch \+ commit local, con `git worktree unlock` y después `git worktree remove`/.test(markdown)) problems.push(`${file}: la salida sin PR no define el destino del worktree`);
+		if (!/- worktree: <removido \| conservado bloqueado en <ruta> \(motivo\)>/.test(markdown)) problems.push(`${file}: el reporte de éxito no dice qué pasó con el worktree`);
+		if (!/- worktree: <ruta> \(bloqueado: `quick-run <slug>`\)/.test(markdown)) problems.push(`${file}: el reporte de interrupción no dice que el worktree quedó bloqueado`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 CA-18: code-review, grill y yt-summary limpian sus temporales con trap", async () => {
+	const problems: string[] = [];
+	for (const harness of ["codex", "opencode", "pi"] as const) {
+		const file = `${harness}/code-review/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		if (/--lock/.test(markdown)) problems.push(`${file}: el worktree de review no lleva lock`);
+		for (const pattern of [
+			/review_dir="\$\(mktemp -d "\$\{TMPDIR:-\/tmp\}\/<repo>-review-<PR>-XXXXXX"\)"/,
+			// Review de #87: sin lock; un SIGKILL deja el worktree en $TMPDIR y `git worktree prune` lo poda.
+			/trap 'git worktree remove --force "\$review_dir"[^']*' EXIT/,
+			/git worktree add --detach "\$review_dir" <head-sha>/,
+			/[Uu]n `SIGKILL` no corre el `trap`[^\n]*`git worktree prune` lo poda/,
+			/vive dentro de un solo comando de shell/,
+		]) {
+			if (!pattern.test(markdown)) problems.push(`${file}: falta ${pattern}`);
+		}
+	}
+	for (const harness of HARNESSES) {
+		const file = `${harness}/grill/SKILL.md`;
+		const design = delimitedDoctrine(await readRepoFile(file), "grill-design");
+		if (!/trap 'rm -rf -- "<scratch>"' EXIT/.test(design)) problems.push(`${file}: el scratch de capturas no se borra con trap`);
+		if (!/`cp -R -- "<scratch>\/\." "<destino>\/" && rm -rf -- "<scratch>"`/.test(design)) problems.push(`${file}: el scratch se borra aunque la copia falle`);
+		if (!/si la copia falla, se conserva y el reporte nombra su ruta y las capturas que no se copiaron/.test(design)) problems.push(`${file}: la copia fallida no conserva el scratch`);
+	}
+	for (const harness of ["claude", "codex"] as const) {
+		const file = `${harness}/yt-summary/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		if (!/transcript="\$\(mktemp "\$\{TMPDIR:-\/tmp\}\/yt-<id>-XXXXXX"\)"/.test(markdown)) problems.push(`${file}: el transcript no nace con mktemp`);
+		if (!/trap 'rm -f -- "<transcript>"' EXIT/.test(markdown)) problems.push(`${file}: el transcript no se borra con trap`);
+		if (/-o \/tmp\/yt-<id>\.txt/.test(markdown)) problems.push(`${file}: todavía escribe /tmp/yt-<id>.txt fijo`);
+		if (!/-o "\$transcript" \|\| \{ rm -f -- "\$transcript"; exit 1; \}/.test(markdown)) problems.push(`${file}: un fallo del script deja el transcript vacío`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 CA-19: quick-run clasifica la suciedad como sdd-run y solo aborta ante bloqueos estructurales", async () => {
+	const problems: string[] = [];
+	for (const harness of ["claude", "codex", "pi"] as const) {
+		const file = `${harness}/quick-run/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		for (const pattern of [
+			/El checkout sucio no bloquea por sí solo/,
+			/`git status --porcelain=v1 -z`/,
+			/se listan como \*\*excluidos del run\*\*: no abortan, no se copian y no entran al PR/,
+			/Abortá solo ante bloqueos estructurales: no se puede resolver o actualizar el base, ya existe el branch o el path del worktree, o el estado Git compartido impide crear un worktree aislado/,
+			/Resolvé `<base-ref>` como en sdd-run: con remote-tracking, hacé `git fetch` antes de ramificar y usá `<remote>\/<default>` recién actualizado; la branch local no es autoridad/,
+			/antes de cada commit, comprobá que ningún path del snapshot[^\n]*aparece en `git status --porcelain` del worktree/,
+		]) {
+			if (!pattern.test(markdown)) problems.push(`${file}: falta ${pattern}`);
+		}
+		if (/Ante cualquier estado raro o cambio local: \*\*abortá\*\*/.test(markdown)) problems.push(`${file}: todavía aborta ante cualquier cambio local`);
+		if ((markdown.match(/^- excluidos del run: <paths \| ninguno>$/gm) ?? []).length !== 2) problems.push(`${file}: los dos reportes no listan los excluidos del run`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#84 CA-20: sdd-init, coding-policies y design-system cierran con Commit + PR en los cuatro harnesses", async () => {
+	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
+	const problems: string[] = [];
+	let reference: string | null = null;
+	for (const skill of ["sdd-init", "coding-policies", "design-system"] as const) {
+		for (const harness of HARNESSES) {
+			const file = `${harness}/${skill}/SKILL.md`;
+			const markdown = await readRepoFile(file);
+			const block = delimitedDoctrine(markdown, "commit-pr-close");
+			for (const pattern of [
+				/`Commit \+ PR \(Recomendado\)` \/ `Dejar sin commitear`/,
+				new RegExp(`\`git worktree add --lock --reason "${skill} <YYYY-MM-DD>" \\.\\./<repo>-${skill}-<YYYY-MM-DD> -b chore/${skill}-<YYYY-MM-DD> origin/<default>\``),
+				/Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR/,
+				/`git worktree unlock` y después `git worktree remove`/,
+				/`ya aterrizado`/,
+				// Review de #87.
+				/`## Limites` de `\.sdd\/project\.md` permite pushear un branch nuevo/,
+				/se copia solo si `HEAD:<path>` del checkout es igual a `origin\/<default>:<path>` y el path no tenía cambios antes de la corrida/,
+				/`git status --porcelain=v1 -z` que la corrida tomó antes de escribir su primer archivo/,
+				/el primer sufijo libre \(`-2`, `-3`…\)/,
+				new RegExp(`\`gh pr create --base <default> --title "chore\\(${skill}\\): <YYYY-MM-DD>" --body-file <archivo>\``),
+				/el cierre queda como commit local sin PR: el reporte nombra el branch, el motivo y el comando para seguir/,
+				/En modo desatendido, si el skill lo tiene, no se pregunta y el cierre queda en `Dejar sin commitear`/,
+				/Si un skill encadena a otro \(`[/$](?:skill:)?sdd-init` encadena `[/$](?:skill:)?coding-policies` y `[/$](?:skill:)?design-system`\), el cierre lo ofrece una sola vez el que encadenó/,
+			]) {
+				if (!pattern.test(block)) problems.push(`${file} (commit-pr-close): falta ${pattern}`);
+			}
+			// Solo los slots del nombre del skill; la regla de encadenado nombra sdd-init a propósito.
+			const normalized = normalizeInvocations(block, prefixes[harness])
+				.replaceAll(`"${skill} <YYYY-MM-DD>"`, `"<skill> <YYYY-MM-DD>"`)
+				.replaceAll(`<repo>-${skill}-`, "<repo>-<skill>-")
+				.replaceAll(`chore/${skill}-`, "chore/<skill>-")
+				.replaceAll(`chore(${skill})`, "chore(<skill>)");
+			const outside = markdown.replace(/<!-- commit-pr-close:start -->[\s\S]*?<!-- commit-pr-close:end -->/, "");
+			if (!/pregunta del cierre `Commit \+ PR`/.test(outside)) problems.push(`${file}: la capa de interacción no nombra la pregunta del cierre`);
+			if (reference === null) reference = normalized;
+			else if (normalized !== reference) problems.push(`${file}: commit-pr-close diverge — ${firstDifference(reference, normalized)}`);
+		}
+	}
+	for (const harness of HARNESSES) {
+		const file = `${harness}/sdd-init/SKILL.md`;
+		if (/^- No commitear nada\.$/m.test(await readRepoFile(file))) problems.push(`${file}: MUST NOT DO todavía prohíbe todo commit`);
+	}
+	assert.deepEqual(problems, []);
 });

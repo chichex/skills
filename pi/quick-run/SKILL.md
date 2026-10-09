@@ -51,13 +51,13 @@ La confirmación registrada por triage y el checklist visible reemplazan un gate
 ### Preflight bloqueante
 
 1. Determiná el branch default desde remote/contrato; nunca asumas `main`.
-2. Inspeccioná `git status --porcelain`, rebase/merge, detached HEAD y divergencias del base respecto de su remote.
-3. Ante cualquier estado raro o cambio local: **abortá**. No hagas stash, reset, checkout forzado ni “limpieza”.
-4. Si hay remote, hacé `git fetch` antes de ramificar y volvé a comprobar que el base actualizado sea utilizable.
-5. Derivá un slug corto del issue canónico y creá un worktree hermano desde el base actualizado con branch exacta `quick/issue-<N>-<slug>`.
+2. Capturá un snapshot del checkout original con `git status --porcelain=v1 -z`. No hagas stash, reset, checkout forzado ni “limpieza” sobre ese checkout.
+3. El checkout sucio no bloquea por sí solo, igual que en sdd-run: los cambios locales se listan como **excluidos del run**: no abortan, no se copian y no entran al PR. Un rebase/merge a medias, un detached HEAD o divergencias del base local respecto de su remote tampoco bloquean mientras el worktree pueda nacer del base actualizado. Abortá solo ante bloqueos estructurales: no se puede resolver o actualizar el base, ya existe el branch o el path del worktree, o el estado Git compartido impide crear un worktree aislado.
+4. Resolvé `<base-ref>` como en sdd-run: con remote-tracking, hacé `git fetch` antes de ramificar y usá `<remote>/<default>` recién actualizado; la branch local no es autoridad, así que sus commits sin pushear no entran al PR. Sin remote, usá el ref local explícito y anotalo en el reporte. Volvé a comprobar que `<base-ref>` sea utilizable.
+5. Derivá un slug corto del issue canónico y creá un worktree hermano desde el base actualizado con branch exacta `quick/issue-<N>-<slug>`: `git worktree add --lock --reason "quick-run <slug>" <ruta> -b quick/issue-<N>-<slug> <base-ref>`. El lock dice que el worktree tiene dueño mientras dure el run.
 6. Todo el quick-run ocurre dentro del worktree; nunca edites el checkout original.
 
-Si el branch o path de worktree ya existe, si el base diverge o si no podés aislar el trabajo de forma segura, frená con diagnóstico concreto. No recicles ni borres estado previo.
+Si el branch o path de worktree ya existe, si el base actualizado no se puede resolver o si no podés aislar el trabajo de forma segura, frená con diagnóstico concreto. No recicles ni borres estado previo.
 
 ### Implementación y verificación
 
@@ -89,12 +89,12 @@ Aplica cuando el checklist describe algo roto (un error, un resultado incorrecto
 
 El éxito exige checklist completo, verificaciones requeridas concluyentes, ningún proceso ni tarea pendiente, commits coherentes y worktree sin cambios sin commit.
 
-1. Commiteá pasos coherentes; no dejes cambios sin commit al declarar éxito.
+1. Commiteá pasos coherentes; antes de cada commit, comprobá que ningún path del snapshot del paso 2 del preflight aparece en `git status --porcelain` del worktree; no dejes cambios sin commit al declarar éxito.
 2. Si remote, `gh` y límites lo permiten, pusheá sólo la branch quick y creá un PR contra el branch default. Nunca publiques el checkout o branch default.
 3. El body del PR contiene, en este orden lógico: fuente canónica y `Closes #N`; checklist observable; evidencia exacta de comandos ejecutados; limitaciones/no ejecutado; sección final `## Riesgo de merge` (ver abajo); y firma estándar del repo si existe.
 4. No merges el PR, no hagas force-push y no cierres manualmente la fuente.
 5. Si publicar no es posible, terminá en branch + commit local e informá el comando siguiente exacto para pushear o crear el PR.
-6. Remové el worktree tras un PR exitoso. Ante interrupción o rojo, preservalo y reportá la ruta.
+6. Remové el worktree tras un PR exitoso o al terminar en branch + commit local, con `git worktree unlock` y después `git worktree remove`: el branch conserva el commit. Ante interrupción o rojo, preservalo bloqueado y reportá la ruta.
 
 Sección final del body, antes de la firma: `## Riesgo de merge`, con este template:
 
@@ -119,6 +119,8 @@ Quick-run completo: PR #N <url> | branch <name> en <commit>
 - tests: <comandos y resultados exactos>
 - no ejecutado: <suite/build/etc.>
 - cambios: <resumen>
+- excluidos del run: <paths | ninguno>
+- worktree: <removido | conservado bloqueado en <ruta> (motivo)>
 - pendiente humano: <revisar PR o acción concreta>
 ```
 
@@ -130,7 +132,8 @@ QUICK-RUN INTERRUMPIDO
 - checklist verificado: X/Y
 - cambios sin commit: <paths o ninguno>
 - tests rojos/no concluyentes: <detalle>
-- worktree: <ruta>
+- excluidos del run: <paths | ninguno>
+- worktree: <ruta> (bloqueado: `quick-run <slug>`)
 - reanudar con: <instrucción exacta>
 ```
 

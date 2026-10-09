@@ -1,4 +1,6 @@
-import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+
+import { trackedSddArtifactDirs } from "../lib/sdd-paths.ts";
 
 import {
 	parseSddArtifact,
@@ -394,6 +396,15 @@ export interface EvidenceRef {
 export interface WorkflowResolutionInput {
 	repository: string;
 	cwd: string;
+	/**
+	 * `<git-common-dir>/sdd/specs` del repo de `cwd` (spec #84, CA-12). Un
+	 * `superseded-by=.sdd/specs/<x>.md` se resuelve primero en el árbol
+	 * trackeado y, si no hay sucesor ahí, en este directorio. `resolveWorkflow`
+	 * es el núcleo de referencia de la doctrina de `issue-triage`: en producción
+	 * el agente arma el `WorkflowResolutionV1` siguiendo esa doctrina y ningún
+	 * flujo de runtime llena todavía este campo.
+	 */
+	localSpecsDir?: string;
 	sources: IssueRef[];
 	canonicalIssue: IssueRef | null;
 	canonicalIssueUsable: boolean;
@@ -589,20 +600,15 @@ function candidateMatchesSuccessor(
 	}
 	if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(reference)) return false;
 
-	const projectRoot = resolve(input.cwd);
-	const paths = new Set<string>();
-	if (isAbsolute(reference)) {
-		paths.add(resolve(reference));
-	} else {
-		paths.add(resolve(projectRoot, reference));
-		if (source.candidate.kind === "markdown" && source.candidate.location === "local") {
-			paths.add(resolve(dirname(source.candidate.path), reference));
-		}
-	}
-	if ([...paths].some((path) => !pathInsideProject(path, projectRoot))) return false;
+	const sourcePaths = source.candidate.kind === "markdown" && source.candidate.location === "local"
+		? [source.candidate.path]
+		: [];
+	const paths = successorPaths(reference, sourcePaths, input);
+	if (paths === null) return false;
 	if (candidate.candidate.kind !== "markdown" || candidate.candidate.location !== "local") return false;
 	if (candidate.artifact.issue && issueIsOriginalSource(candidate.artifact.issue, input, target)) return false;
-	return paths.has(resolve(candidate.candidate.path));
+	const path = resolve(candidate.candidate.path);
+	return paths.tracked.has(path) || paths.local.has(path);
 }
 
 function relevantArtifactEntries(
@@ -762,6 +768,40 @@ function pathInsideProject(path: string, projectRoot: string): boolean {
 	return relation === "" || (!relation.startsWith("..") && !isAbsolute(relation));
 }
 
+// Candidatos de un sucesor local, en dos niveles (spec #84, CA-12): `tracked`
+// son las rutas dentro del proyecto (la referencia contra la raíz y contra el
+// directorio de la spec fuente) y `local` es la misma ruta lógica
+// `.sdd/specs/<x>.md` en `<git-common-dir>/sdd/specs`. Una referencia que
+// escapa de los dos lugares no tiene candidatos (null).
+function successorPaths(
+	reference: string,
+	sourcePaths: string[],
+	input: WorkflowResolutionInput,
+): { tracked: Set<string>; local: Set<string> } | null {
+	const projectRoot = resolve(input.cwd);
+	const localDir = input.localSpecsDir ? resolve(input.localSpecsDir) : null;
+	const allowed = (path: string) => pathInsideProject(path, projectRoot)
+		|| (localDir !== null && dirname(path) === localDir);
+	const tracked = new Set<string>();
+	const local = new Set<string>();
+	if (isAbsolute(reference)) {
+		const path = resolve(reference);
+		(localDir !== null && dirname(path) === localDir ? local : tracked).add(path);
+	} else {
+		const logical = resolve(projectRoot, reference);
+		tracked.add(logical);
+		for (const sourcePath of sourcePaths) {
+			// Un borrador del common-dir referencia a otro por su ruta lógica.
+			if (localDir !== null && dirname(resolve(sourcePath)) === localDir) continue;
+			tracked.add(resolve(dirname(sourcePath), reference));
+		}
+		if (localDir !== null && dirname(logical) === trackedSddArtifactDirs(projectRoot, "specs").tracked) {
+			local.add(join(localDir, basename(logical)));
+		}
+	}
+	return [...tracked, ...local].every(allowed) ? { tracked, local } : null;
+}
+
 function issueReferenceFromSuccessor(reference: string, repository: string): IssueRef | null {
 	const direct = normalizeIssueRef(reference, repository);
 	if (direct) return direct;
@@ -797,26 +837,22 @@ function resolveSuccessor(
 	}
 	if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(reference)) return { kind: "unusable" };
 
-	const projectRoot = resolve(input.cwd);
-	const candidates = new Set<string>();
-	if (isAbsolute(reference)) {
-		candidates.add(resolve(reference));
-	} else {
-		candidates.add(resolve(projectRoot, reference));
-		for (const entry of source.entries) {
-			if (entry.candidate.location === "local") {
-				candidates.add(resolve(dirname(entry.candidate.path), reference));
-			}
-		}
+	const sourcePaths = source.entries
+		.filter((entry) => entry.candidate.location === "local")
+		.map((entry) => entry.candidate.path);
+	const paths = successorPaths(reference, sourcePaths, input);
+	if (paths === null) return { kind: "unusable" };
+	for (const candidates of [paths.tracked, paths.local]) {
+		if (candidates.size === 0) continue;
+		const matches = nodes
+			.map((node, index) => ({ node, index }))
+			.filter(({ node }) => node.entries.some(({ candidate }) =>
+				candidate.location === "local" && candidates.has(resolve(candidate.path))))
+			.map(({ index }) => index);
+		if (matches.length === 1) return { kind: "resolved", index: matches[0]! };
+		if (matches.length > 1) return { kind: "ambiguous", indexes: matches };
 	}
-	if ([...candidates].some((candidate) => !pathInsideProject(candidate, projectRoot))) return { kind: "unusable" };
-	const matches = nodes
-		.map((node, index) => ({ node, index }))
-		.filter(({ node }) => node.entries.some(({ candidate }) =>
-			candidate.location === "local" && candidates.has(resolve(candidate.path))))
-		.map(({ index }) => index);
-	if (matches.length === 1) return { kind: "resolved", index: matches[0]! };
-	return matches.length > 1 ? { kind: "ambiguous", indexes: matches } : { kind: "unusable" };
+	return { kind: "unusable" };
 }
 
 function routeSpecGraph(

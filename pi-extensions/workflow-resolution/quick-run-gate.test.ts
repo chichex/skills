@@ -118,6 +118,8 @@ const SUCCESS_TEMPLATE = `Quick-run completo: PR #N <url> | branch <name> en <co
 - tests: <comandos y resultados exactos>
 - no ejecutado: <suite/build/etc.>
 - cambios: <resumen>
+- excluidos del run: <paths | ninguno>
+- worktree: <removido | conservado bloqueado en <ruta> (motivo)>
 - pendiente humano: <revisar PR o acción concreta>`;
 
 const INTERRUPTED_TEMPLATE = `QUICK-RUN INTERRUMPIDO
@@ -125,7 +127,8 @@ const INTERRUPTED_TEMPLATE = `QUICK-RUN INTERRUMPIDO
 - checklist verificado: X/Y
 - cambios sin commit: <paths o ninguno>
 - tests rojos/no concluyentes: <detalle>
-- worktree: <ruta>
+- excluidos del run: <paths | ninguno>
+- worktree: <ruta> (bloqueado: \`quick-run <slug>\`)
 - reanudar con: <instrucción exacta>`;
 
 test("quick-run is packaged only for Claude, Codex, and Pi with safe harness extras", async () => {

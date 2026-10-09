@@ -8,8 +8,9 @@ import {
 } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
+import { resolveGitCommonDir as resolveGitCommonDirDefault } from "../lib/sdd-paths.ts";
 import type { WorkflowResolutionV1 } from "../workflow-resolution/index.ts";
-import { describeDirectWorkflow, validateDirectWorkflowRequest } from "./direct-protocol.ts";
+import { describeDirectWorkflow, directDraftCommonDir, validateDirectWorkflowRequest } from "./direct-protocol.ts";
 import {
 	materializeSkill,
 	type MaterializeSkillErrorCode,
@@ -165,6 +166,8 @@ export interface StartFreshStageDependencies {
 	realpath?: (path: string) => Promise<string>;
 	stat?: (path: string) => Promise<Pick<Stats, "isDirectory">>;
 	resolveGitRoot?: (cwd: string) => Promise<string>;
+	/** `<git-common-dir>` absoluto de `cwd`, o `null`; valida los borradores de spec fuera de `cwd`. */
+	resolveGitCommonDir?: (cwd: string) => Promise<string | null>;
 	stageCrossProjectSession?: (input: {
 		cwd: string;
 		parentSession: string;
@@ -494,6 +497,17 @@ export async function startFreshStage(
 			|| request.skill.name !== expected.skill.name
 			|| request.skill.args !== expected.skill.args) {
 			return errorResult("invalid-direct-request", "validation", "Direct launch descriptor conflicts with its strict request");
+		}
+		// Review de #86: un borrador fuera de `cwd` tiene que estar en el common-dir del repo de `cwd`.
+		const draftCommonDir = validated.target.type === "spec"
+			? directDraftCommonDir(validated.cwd, validated.target.path)
+			: null;
+		if (draftCommonDir !== null) {
+			const canonical = (path: string) => (dependencies.realpath ?? realpathDefault)(path).catch(() => resolve(path));
+			const commonDir = await (dependencies.resolveGitCommonDir ?? resolveGitCommonDirDefault)(validated.cwd).catch(() => null);
+			if (commonDir === null || await canonical(commonDir) !== await canonical(draftCommonDir)) {
+				return errorResult("invalid-direct-request", "validation", "Draft spec is not in the git common dir of cwd");
+			}
 		}
 		launchCwd = expected.direct.cwd;
 		name = expected.direct.name;

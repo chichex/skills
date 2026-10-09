@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 import type { SelectItem } from "@earendil-works/pi-tui";
 import { selectMenu } from "../lib/menu";
+import { mergeCleanupNotice } from "./merge-notice.ts";
 
 type PrAction = "open-web" | "comments-fix" | "review" | "merge" | "close";
 type MergeStrategy = "merge" | "squash" | "rebase";
@@ -13,6 +14,7 @@ interface PullRequestListItem {
 	isDraft: boolean;
 	headRefName: string;
 	baseRefName: string;
+	isCrossRepository?: boolean;
 	reviewDecision: string;
 	updatedAt: string;
 	author?: { login?: string } | null;
@@ -226,7 +228,7 @@ export default function githubPrsExtension(pi: ExtensionAPI): void {
 					"--limit",
 					"100",
 					"--json",
-					"number,title,url,isDraft,headRefName,baseRefName,reviewDecision,updatedAt,author,statusCheckRollup",
+					"number,title,url,isDraft,headRefName,baseRefName,isCrossRepository,reviewDecision,updatedAt,author,statusCheckRollup",
 				],
 				ctx,
 				signal,
@@ -416,21 +418,33 @@ export default function githubPrsExtension(pi: ExtensionAPI): void {
 			"Verificando y cerrando issues asociados en GitHub…",
 			(signal) => closeIssuesStillOpen(issues, ctx, signal),
 		);
+		// show-ref exacto: un tag homónimo no confunde la búsqueda del branch local.
+		const localBranch = await pi.exec("git", ["show-ref", "--verify", "--quiet", `refs/heads/${pr.headRefName}`], {
+			cwd: ctx.cwd,
+			timeout: 10_000,
+		}).catch(() => ({ code: 1, stdout: "", stderr: "" }));
+		const cleanup = mergeCleanupNotice({
+			number: pr.number,
+			headRefName: pr.headRefName,
+			localBranchExists: localBranch.code === 0,
+			isCrossRepository: pr.isCrossRepository === true,
+		});
 		if (failures.length > 0) {
 			ctx.ui.notify(
 				[
 					`PR #${pr.number} mergeado, pero no se pudieron cerrar algunos issues:`,
 					...failures.map(({ issue, error }) => `${issue.repo}#${issue.number}: ${error}`),
+					cleanup,
 				].join("\n"),
 				"warning",
 			);
 		} else if (issues.length === 0) {
-			ctx.ui.notify(`PR #${pr.number} mergeado; no tenía issues asociados`, "info");
+			ctx.ui.notify(`PR #${pr.number} mergeado; no tenía issues asociados\n${cleanup}`, "info");
 		} else if (manuallyClosed.length === 0) {
-			ctx.ui.notify(`PR #${pr.number} mergeado; GitHub cerró sus ${issues.length} issue(s) asociado(s)`, "info");
+			ctx.ui.notify(`PR #${pr.number} mergeado; GitHub cerró sus ${issues.length} issue(s) asociado(s)\n${cleanup}`, "info");
 		} else {
 			ctx.ui.notify(
-				`PR #${pr.number} mergeado; se cerraron ${manuallyClosed.map((issue) => `${issue.repo}#${issue.number}`).join(", ")}`,
+				`PR #${pr.number} mergeado; se cerraron ${manuallyClosed.map((issue) => `${issue.repo}#${issue.number}`).join(", ")}\n${cleanup}`,
 				"info",
 			);
 		}

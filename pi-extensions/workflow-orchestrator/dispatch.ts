@@ -1,6 +1,12 @@
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 
 import { isGrillHandoffCandidatePath } from "../grill-tools/inventory.ts";
+import {
+	isSddArtifactPath,
+	resolveSddArtifactDirs,
+	trackedSddArtifactDirs,
+	type SddArtifactDirs,
+} from "../lib/sdd-paths.ts";
 import type {
 	ArtifactRef,
 	WorkflowResolutionV1,
@@ -8,6 +14,12 @@ import type {
 import type { StartFreshStageRequest } from "./lifecycle.ts";
 import { validateWorkflowResolution } from "./protocol.ts";
 import { isConfirmedCoherentStart } from "./route-contract.ts";
+
+/** Los dos lugares de borradores del repo de `resolution.cwd` (spec #84, CA-12). */
+export interface WorkflowDispatchDirs {
+	grills: SddArtifactDirs;
+	specs: SddArtifactDirs;
+}
 
 export type WorkflowDispatchResult =
 	| { ok: true; request: StartFreshStageRequest }
@@ -65,14 +77,15 @@ function validatedGrill(
 	return canonicalArtifact(grill) ? grill : null;
 }
 
-function directHandoffPath(cwd: string, path: string): boolean {
+function directHandoffPath(dirs: SddArtifactDirs, path: string): boolean {
 	if (!isAbsolute(path) || !isGrillHandoffCandidatePath(path)) return false;
-	return dirname(resolve(path)) === resolve(cwd, ".sdd", "grills");
+	return isSddArtifactPath(dirs, path);
 }
 
 function validatedFinalizedGrillSource(
 	resolution: WorkflowResolutionV1,
 	issue: { repository: string; number: number },
+	dirs: WorkflowDispatchDirs,
 ): { kind: "id" | "path"; value: string } | null {
 	const handoff = primaryArtifact(resolution, "grill");
 	if (!handoff
@@ -82,7 +95,7 @@ function validatedFinalizedGrillSource(
 		|| !handoff.issue
 		|| !sameIssue(handoff.issue, issue)
 		|| !canonicalArtifact(handoff)
-		|| !directHandoffPath(resolution.cwd, handoff.path)) {
+		|| !directHandoffPath(dirs.grills, handoff.path)) {
 		return null;
 	}
 	const snapshots = resolution.artifacts.filter((artifact) =>
@@ -110,12 +123,15 @@ function validatedFinalizedGrillSource(
 function validatedSpec(
 	resolution: WorkflowResolutionV1,
 	issue: { repository: string; number: number },
+	dirs: WorkflowDispatchDirs,
 ): ArtifactRef | null {
 	const spec = primaryArtifact(resolution, "spec");
 	if (!spec || !canonicalArtifact(spec) || !spec.issue || !sameIssue(spec.issue, issue)) return null;
 	if (spec.location === "local") {
-		if (!isAbsolute(spec.path) || !pathInside(resolution.cwd, spec.path)) return null;
-		return spec;
+		if (!isAbsolute(spec.path)) return null;
+		const inProject = pathInside(resolution.cwd, spec.path);
+		const draft = resolve(dirs.specs.local) !== resolve(dirs.specs.tracked) && isSddArtifactPath(dirs.specs, spec.path);
+		return inProject || draft ? spec : null;
 	}
 	return spec.location === "issue" ? spec : null;
 }
@@ -132,7 +148,7 @@ function request(
 	return { ok: true, request: { resolution, skill: { name, args } } };
 }
 
-export function resolveWorkflowDispatch(input: unknown): WorkflowDispatchResult {
+export function resolveWorkflowDispatch(input: unknown, sddDirs?: WorkflowDispatchDirs): WorkflowDispatchResult {
 	const validation = validateWorkflowResolution(input);
 	if (!validation.ok) {
 		return failure(
@@ -144,6 +160,10 @@ export function resolveWorkflowDispatch(input: unknown): WorkflowDispatchResult 
 	if (!isConfirmedCoherentStart(resolution)) {
 		return failure("not-actionable", "Resolution is not a confirmed coherent start");
 	}
+	const dirs = sddDirs ?? {
+		grills: trackedSddArtifactDirs(resolution.cwd, "grills"),
+		specs: trackedSddArtifactDirs(resolution.cwd, "specs"),
+	};
 
 	const issue = effectiveIssue(resolution);
 	if (!issue || !sameRepository(issue.repository, resolution.repo)) {
@@ -174,7 +194,7 @@ export function resolveWorkflowDispatch(input: unknown): WorkflowDispatchResult 
 				: failure("invalid-grill-reference", "resume-grill requires one canonical in-project grill leaf");
 		}
 		case "spec-from-grill": {
-			const source = validatedFinalizedGrillSource(resolution, issue);
+			const source = validatedFinalizedGrillSource(resolution, issue, dirs);
 			return source
 				? request(
 					resolution,
@@ -186,7 +206,7 @@ export function resolveWorkflowDispatch(input: unknown): WorkflowDispatchResult 
 		case "update-existing-spec":
 		case "audit-existing-spec":
 		case "run-existing-spec": {
-			const spec = validatedSpec(resolution, issue);
+			const spec = validatedSpec(resolution, issue, dirs);
 			if (!spec) return failure("invalid-spec-reference", `${route} requires one canonical in-project primary spec`);
 			return request(
 				resolution,
@@ -197,4 +217,22 @@ export function resolveWorkflowDispatch(input: unknown): WorkflowDispatchResult 
 	}
 	const exhaustive: never = route;
 	return exhaustive;
+}
+
+/**
+ * Igual que resolveWorkflowDispatch, pero resuelve con git los dos lugares de
+ * borradores del repo de `cwd` (spec #84, CA-12): así una spec o un handoff en
+ * <git-common-dir>/sdd/ se aceptan desde el checkout principal y desde un
+ * worktree linkeado.
+ */
+export async function resolveWorkflowDispatchForCwd(input: unknown): Promise<WorkflowDispatchResult> {
+	const cwd = typeof input === "object" && input !== null && typeof (input as { cwd?: unknown }).cwd === "string"
+		? (input as { cwd: string }).cwd
+		: null;
+	if (cwd === null || !isAbsolute(cwd)) return resolveWorkflowDispatch(input);
+	const [grills, specs] = await Promise.all([
+		resolveSddArtifactDirs(cwd, "grills"),
+		resolveSddArtifactDirs(cwd, "specs"),
+	]);
+	return resolveWorkflowDispatch(input, { grills, specs });
 }

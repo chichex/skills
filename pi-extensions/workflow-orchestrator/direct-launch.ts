@@ -7,6 +7,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
+import { localSddArtifactDir, resolveGitCommonDir, trackedSddArtifactDirs } from "../lib/sdd-paths.ts";
 import { parseSddArtifact } from "../sdd-artifacts/index.ts";
 import { inspectMarkdownArtifact } from "../workflow-resolution/index.ts";
 import {
@@ -57,6 +58,8 @@ export interface ResolvedIssueDocument {
 
 export interface ResolveDirectRunDependencies {
 	resolveGitRoot?: (path: string) => Promise<string>;
+	/** `<git-common-dir>` absoluto de un root, o `null` fuera de un repo git. */
+	resolveGitCommonDir?: (root: string) => Promise<string | null>;
 	resolveRepository?: (root: string) => Promise<string>;
 	resolveRepositoryRoot?: (originRoot: string, repository: string) => Promise<ResolveRepositoryRootResult>;
 	resolveIssue?: (root: string, repository: string, number: number) => Promise<ResolvedIssueDocument>;
@@ -342,22 +345,47 @@ export async function resolveDirectRunRequest(
 	}
 
 	// CA-7 defines relative spec targets against the project root, regardless of
-	// the subdirectory from which the Pi session was opened.
-	const candidate = isAbsolute(target) ? resolve(target) : resolve(originRoot, target);
+	// the subdirectory from which the Pi session was opened. Spec #84 (CA-12):
+	// a borrador lives in <git-common-dir>/sdd/specs/, shared by every worktree
+	// of the repo; the logical path `.sdd/specs/<x>.md` resolves first in the
+	// tracked tree and then there.
+	const commonDirPort = dependencies.resolveGitCommonDir ?? ((root: string) => resolveGitCommonDir(root));
+	let draftDirectory: string | null = null;
+	try {
+		const commonDir = await commonDirPort(originRoot);
+		if (commonDir) {
+			const directory = localSddArtifactDir(commonDir, "specs");
+			draftDirectory = await realpathPort(directory).catch(() => directory);
+		}
+	} catch {
+		draftDirectory = null;
+	}
+	let candidate = isAbsolute(target) ? resolve(target) : resolve(originRoot, target);
+	if (!isAbsolute(target) && draftDirectory && dirname(candidate) === trackedSddArtifactDirs(originRoot, "specs").tracked) {
+		const tracked = await statPort(candidate).then((entry) => entry.isFile(), () => false);
+		if (!tracked) candidate = join(draftDirectory, basename(candidate));
+	}
 	let path: string;
 	let root: string;
+	let artifactPath: string;
 	let markdown: string;
 	try {
 		path = await realpathPort(candidate);
 		const fileStats = await statPort(path);
 		if (!fileStats.isFile()) throw new Error("target is not a regular file");
-		root = await realpathPort(await gitRootPort(dirname(path)));
-		const relationship = relative(root, path);
-		if (relationship === "" || relationship.startsWith("..") || isAbsolute(relationship)) {
-			throw new Error("target is outside its Git root");
-		}
-		if (!isAbsolute(target) && root !== originRoot) {
-			throw new Error("relative target resolves outside the current Git root");
+		if (draftDirectory && dirname(path) === draftDirectory && path.endsWith(".md")) {
+			root = originRoot;
+			artifactPath = `.sdd/specs/${basename(path)}`;
+		} else {
+			root = await realpathPort(await gitRootPort(dirname(path)));
+			const relationship = relative(root, path);
+			if (relationship === "" || relationship.startsWith("..") || isAbsolute(relationship)) {
+				throw new Error("target is outside its Git root");
+			}
+			if (!isAbsolute(target) && root !== originRoot) {
+				throw new Error("relative target resolves outside the current Git root");
+			}
+			artifactPath = relationship.split(sep).join("/");
 		}
 		markdown = await readPort(path, "utf8");
 	} catch (error) {
@@ -395,7 +423,6 @@ export async function resolveDirectRunRequest(
 	if (inspected.issue && inspected.issue.repository.toLowerCase() !== repo.toLowerCase()) {
 		return resolverFailure("conflicting-spec", `Repair the spec issue metadata to match ${repo}`);
 	}
-	const artifactPath = relative(root, path).split(sep).join("/");
 	const request: DirectRunRequestV1 = {
 		version: 1,
 		kind: "sdd-run",
