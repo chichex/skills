@@ -1076,6 +1076,56 @@ test("#84 CA-10: grill_session pause y finalize escriben el handoff en <git-comm
 	assert.equal(gitStatus(linked), "", "worktree linkeado limpio después de finalize");
 });
 
+test("review #90: grill_session pause escribe el handoff con decisiones y ramas pendientes prefijadas por su bloque", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("grill_session");
+	assert.ok(tool);
+	const { base, main } = repoWithLinkedWorktree("block-prefix");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const sections = [
+		{ id: "alcance", title: "Alcance", estimatedQuestions: 1, status: "active" as const },
+		{ id: "permisos", title: "Permisos", estimatedQuestions: 1, status: "pending" as const },
+	];
+	const created = await tool.execute(
+		"create-block-prefix",
+		{ action: "create", topic: "Export con bloques", projectPath: main, estimate: { min: 1, likely: 2, max: 3 }, sections },
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	const id = created.details.snapshot.id;
+	t.after(() => removeStoredSnapshot(id));
+	await tool.execute("configure-block-prefix", { action: "configure", sessionId: id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
+	await tool.execute(
+		"checkpoint-block-prefix",
+		{
+			action: "checkpoint",
+			sessionId: id,
+			interaction: { id: "q1", question: "¿Formato?", answers: ["CSV"], section: "alcance" },
+			decision: { id: "d1", title: "Formato", agreement: "CSV con cabecera", section: "alcance" },
+			sections: [{ ...sections[0], status: "resolved" }, { ...sections[1], status: "active" }],
+		},
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+
+	const paused = await tool.execute(
+		"pause-block-prefix",
+		{
+			action: "pause",
+			sessionId: id,
+			summary: "Pausa en el bloque Permisos",
+			pendingBranches: [{ id: "b1", title: "Roles", description: "quién exporta", section: "permisos" }],
+		},
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	const handoff = readFileSync(paused.details.repoHandoffPath, "utf8");
+	assert.match(handoff, /^1\. Alcance: Formato — CSV con cabecera$/m);
+	assert.match(handoff, /^- Permisos: Roles — quién exporta$/m);
+});
+
 test("#84 CA-10: /grills y select_grill_session listan los dos lugares y no duplican el handoff local entre worktrees", { skip: !PI_PACKAGE_ROOT }, async (t) => {
 	const { base, main, linked, common } = repoWithLinkedWorktree("listing");
 	t.after(() => rmSync(base, { recursive: true, force: true }));

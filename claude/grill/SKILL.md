@@ -34,7 +34,7 @@ Antes de entrevistar:
    - **Por rondas** (default) cuando el árbol es razonablemente estable, hay ramas independientes que se pueden preguntar en paralelo y corregir un rumbo es barato.
    - **Pregunta a pregunta** cuando las dependencias son densas (casi cada respuesta reformula la siguiente pregunta), hay contradicciones por resolver, decisiones costosas de revertir o alta probabilidad de que las respuestas abran ramas nuevas.
    - La cantidad de preguntas no es el criterio: lo que importa es cuánta adaptación exige el árbol.
-6. Mostrá un mapa breve como mensaje visible: objetivo de desambiguación, hechos ya comprobados, docs de dominio existentes (solo lectura), supuestos, los bloques del árbol con sus dependencias, en el orden en que se recorren y cada uno con su estimación, estimación mínima/probable/máxima total, alcance de la sesión, y modalidad recomendada con sus señales.
+6. Mostrá un mapa breve como mensaje visible: objetivo de desambiguación, hechos ya comprobados, docs de dominio existentes (solo lectura), supuestos, los bloques del árbol con sus dependencias, en el orden en que se recorren y cada uno con su estimación, estimación mínima/probable/máxima total, y modalidad recomendada con sus señales.
 
 ### Atajo liviano (1 a 3 preguntas)
 
@@ -51,6 +51,7 @@ Un bloque es una sección coherente del árbol de decisiones. La entrevista va p
 - **Recorrido.** Una sesión recorre todos los bloques, uno tras otro.
 - **Frontera de bloque.** Al cerrar un bloque, el agente muestra un resumen corto de lo decidido, anuncia el siguiente y hace UNA pregunta con dos opciones: «Seguir con <bloque>» (recomendada) y «Cortar acá y seguir más tarde». Cortar es pausar, con la exportación de cuestionario disponible.
 - **Último bloque.** Después del último bloque no hay frontera: se pasa al cierre.
+- **Handoff pausado.** Mientras la sesión está `paused`, cada decisión de `## Decisiones resueltas` va con el prefijo de su bloque (`<Bloque>: ...`, como `Diseño:`) y cada entrada de `## Ramas pendientes` lleva el encabezado de su bloque, para reconstruir los bloques al retomar.
 - **Conteo.** La pregunta de frontera de bloque, la configuración y la confirmación final no son preguntas de decisión y no entran en la estimación.
 <!-- grill-blocks:end -->
 
@@ -141,7 +142,7 @@ Para retomar:
 1. Si no se indicó una ruta, listá por fecha los handoffs de los dos lugares (`.sdd/grills/*.md` y `<git-common-dir>/sdd/grills/*.md`).
 2. Pedí elegir con `AskUserQuestion` solo si hay más de un candidato razonable; si hay más de 4, ofrecé los más recientes como opciones y el resto vía "Other".
 3. Leé el archivo completo y contrastá sus hechos con el estado actual del repo; si difieren, mostrá la contradicción y resolvela antes de avanzar. Los handoffs viejos pueden traer una sección `## Modo`: ignorala, ya no existe.
-4. Mostrá el tema, los bloques cerrados con sus decisiones resueltas, el bloque en curso y los bloques pendientes, y seguí por el bloque en curso con su próxima frontera.
+4. Mostrá el tema, los bloques cerrados con sus decisiones resueltas (agrupadas por su prefijo de bloque), el bloque en curso y los bloques pendientes, y seguí por el bloque en curso con su próxima frontera.
 5. Reevaluá la modalidad para lo pendiente si cambió el panorama; no repitas decisiones ya resueltas salvo que el usuario quiera revisarlas.
 6. No modifiques un handoff `finalized`; para revisarlo creá un archivo nuevo con sufijo `-rev-N`.
 7. Si lo que llega es un cuestionario respondido (archivo `-cuestionario.md` editado, o su texto pegado en el chat): localizá la sesión de origen por el encabezado, registrá cada respuesta como decisión resuelta, mostrá qué quedó cerrado y qué sigue abierto, recalculá el árbol (una respuesta libre puede invalidar ramas) y continuá la entrevista o pasá al cierre.
@@ -181,7 +182,7 @@ Reglas:
 
 Cerrá solo cuando todos los bloques estén resueltos.
 
-1. **Contrato visible.** Escribí en el chat el entendimiento compartido completo como mensaje propio: tema y alcance; hechos comprobados; decisiones resueltas agrupadas por bloque y enumeradas una por una con lo acordado en cada una; restricciones y no-objetivos; supuestos explícitos; riesgos y preguntas deliberadamente diferidas; bloques pendientes para futuras sesiones; contexto recomendado para la sesión que escriba la spec. Este texto es el contrato de handoff: tiene que estar renderizado en el chat, no vivir solo en tu razonamiento ni en un archivo.
+1. **Contrato visible.** Escribí en el chat el entendimiento compartido completo como mensaje propio: tema y alcance; hechos comprobados; decisiones resueltas agrupadas por bloque y enumeradas una por una con lo acordado en cada una; restricciones y no-objetivos; supuestos explícitos; riesgos y preguntas deliberadamente diferidas; contexto recomendado para la sesión que escriba la spec. Este texto es el contrato de handoff: tiene que estar renderizado en el chat, no vivir solo en tu razonamiento ni en un archivo.
 
 2. **Confirmación autocontenida.** Recién después del contrato, UNA llamada a `AskUserQuestion` con estas opciones (sin acciones de implementar o construir):
    - `Confirmar`: finaliza y congela el handoff.

@@ -51,7 +51,7 @@ Antes de entrevistar:
    - **Rápido** cuando el árbol sea estable, las decisiones sean reversibles e independientes y cada una tenga una recomendación respaldada que se pueda aprobar colectivamente. Ante la duda entre Rápido y Por rondas, Por rondas.
    - **Pregunta a pregunta** cuando las dependencias son densas (casi cada respuesta reformula la siguiente pregunta), hay contradicciones por resolver, decisiones costosas de revertir o alta probabilidad de que las respuestas abran ramas nuevas.
    - La cantidad de preguntas no es el criterio: lo que importa es cuánta adaptación exige el árbol.
-6. Mostrá un mapa breve como mensaje visible: objetivo de desambiguación, hechos ya comprobados, docs de dominio existentes (solo lectura), supuestos, los bloques del árbol con sus dependencias, en el orden en que se recorren y cada uno con su estimación, estimación mínima/probable/máxima total, alcance de la sesión, y modalidad recomendada con sus señales.
+6. Mostrá un mapa breve como mensaje visible: objetivo de desambiguación, hechos ya comprobados, docs de dominio existentes (solo lectura), supuestos, los bloques del árbol con sus dependencias, en el orden en que se recorren y cada uno con su estimación, estimación mínima/probable/máxima total, y modalidad recomendada con sus señales.
 
 ### Atajo liviano (1 a 3 preguntas)
 
@@ -68,6 +68,7 @@ Un bloque es una sección coherente del árbol de decisiones. La entrevista va p
 - **Recorrido.** Una sesión recorre todos los bloques, uno tras otro.
 - **Frontera de bloque.** Al cerrar un bloque, el agente muestra un resumen corto de lo decidido, anuncia el siguiente y hace UNA pregunta con dos opciones: «Seguir con <bloque>» (recomendada) y «Cortar acá y seguir más tarde». Cortar es pausar, con la exportación de cuestionario disponible.
 - **Último bloque.** Después del último bloque no hay frontera: se pasa al cierre.
+- **Handoff pausado.** Mientras la sesión está `paused`, cada decisión de `## Decisiones resueltas` va con el prefijo de su bloque (`<Bloque>: ...`, como `Diseño:`) y cada entrada de `## Ramas pendientes` lleva el encabezado de su bloque, para reconstruir los bloques al retomar.
 - **Conteo.** La pregunta de frontera de bloque, la configuración y la confirmación final no son preguntas de decisión y no entran en la estimación.
 <!-- grill-blocks:end -->
 
@@ -176,7 +177,7 @@ Para retomar:
 2. Pedir elegir solo si hay más de un candidato razonable; si hay más de los que entran como opciones, los más recientes van como opciones y el resto vía "Other".
 3. Leer el archivo completo y contrastar sus hechos con el estado actual del repo. Los handoffs viejos pueden traer una sección `## Modo`: ignorarla, ya no existe.
 4. Si existe un `<fecha>-<slug>-cuestionario.md` con respuestas completadas, leerlo e incorporar cada respuesta como decisión resuelta; repreguntar solo lo ambiguo.
-5. Mostrar los bloques cerrados con sus decisiones resueltas, el bloque en curso y los bloques pendientes, y seguir por el bloque en curso con su próxima pregunta.
+5. Mostrar los bloques cerrados con sus decisiones resueltas (agrupadas por su prefijo de bloque), el bloque en curso y los bloques pendientes, y seguir por el bloque en curso con su próxima pregunta.
 6. No modificar un handoff `finalized`; para revisarlo crear un archivo nuevo con sufijo `-rev-N`.
 
 ## Exportar cuestionario
@@ -196,7 +197,7 @@ No usar jerga interna de la sesión ni referencias que el tercero no pueda resol
 
 Cuando todos los bloques estén resueltos:
 
-1. Mostrar en el chat un contrato autocontenido con tema, alcance, hechos, decisiones agrupadas por bloque y enumeradas, restricciones, no-objetivos, supuestos, riesgos, pendientes y contexto recomendado para la spec.
+1. Mostrar en el chat un contrato autocontenido con tema, alcance, hechos, decisiones agrupadas por bloque y enumeradas, restricciones, no-objetivos, supuestos, riesgos, preguntas deliberadamente diferidas y contexto recomendado para la spec.
 2. Pedir una confirmación explícita y autocontenida: confirmar, ajustar una decisión, pausar, exportar cuestionario para un stakeholder (ver **Exportar cuestionario**) o confirmar y crear spec SDD.
 3. Tras confirmar, guardar el mismo contenido como handoff `finalized` en `<git-common-dir>/sdd/grills/<fecha>-<slug>.md` e informar la ruta absoluta.
 4. Si pidió crear spec, cargar `sdd-spec` y continuar con `--from-grill <ruta-del-handoff>`.

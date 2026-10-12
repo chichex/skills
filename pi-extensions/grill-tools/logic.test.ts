@@ -97,6 +97,64 @@ test("composeHandoffMarkdown emite el template interoperable y es determinista",
 	assert.equal(markdown, composeHandoffMarkdown(snapshot));
 });
 
+test("review #90: una sesión pausada prefija decisiones y ramas pendientes con el título de su bloque", () => {
+	const snapshot = makeSnapshot({
+		sections: [
+			{ id: "alcance", title: "Alcance" },
+			{ id: "permisos", title: "Permisos" },
+		],
+		decisions: [
+			{ title: "Formato", agreement: "CSV con cabecera", section: "alcance" },
+			{ title: "Roles", agreement: "solo administradores", section: "permisos" },
+			{ title: "Sin bloque", agreement: "queda igual" },
+		],
+		pendingBranches: [
+			{ title: "Auditoría", description: "quién exportó qué", section: "permisos" },
+			{ title: "Sin bloque", description: "queda igual" },
+		],
+	});
+	const markdown = composeHandoffMarkdown(snapshot);
+	assert.ok(markdown.includes("1. Alcance: Formato — CSV con cabecera"), markdown);
+	assert.ok(markdown.includes("2. Permisos: Roles — solo administradores"), markdown);
+	assert.ok(markdown.includes("3. Sin bloque — queda igual"), "una decisión sin section no cambia");
+	assert.ok(markdown.includes("- Permisos: Auditoría — quién exportó qué"), markdown);
+	assert.ok(markdown.includes("- Sin bloque — queda igual"), "una rama sin section no cambia");
+	assert.equal(markdown, composeHandoffMarkdown(snapshot), "determinista");
+});
+
+test("review #90: el prefijo de bloque usa el id si la sección no está en el mapa y no se duplica", () => {
+	const markdown = composeHandoffMarkdown(makeSnapshot({
+		sections: [{ id: "diseno", title: "Diseño" }],
+		decisions: [
+			{ title: "Diseño: reusar Select", agreement: "sí", section: "diseno" },
+			{ title: "Huérfana", agreement: "id desconocido", section: "bloque-viejo" },
+		],
+		pendingBranches: [],
+	}));
+	assert.ok(markdown.includes("1. Diseño: reusar Select — sí"), "el prefijo no se duplica si el título ya lo trae");
+	assert.ok(!markdown.includes("Diseño: Diseño:"));
+	assert.ok(markdown.includes("2. bloque-viejo: Huérfana — id desconocido"), markdown);
+});
+
+test("review #90: la continuidad de una sesión importada también prefija por bloque", () => {
+	const sourceMarkdown = "# Grill — Imported\n\n## Hechos comprobados\nFact.\n";
+	const plan = planGrillHandoff(makeSnapshot({
+		id: "portable-sections",
+		sections: [{ id: "alcance", title: "Alcance" }],
+		decisions: [{ title: "Formato", agreement: "CSV", section: "alcance" }],
+		pendingBranches: [{ title: "Auditoría", section: "alcance" }],
+		importedHandoff: {
+			kind: "handoff-only",
+			sourcePath: "/workspace/demo/.sdd/grills/source.md",
+			markdown: sourceMarkdown,
+			importedAt: "2026-09-29T12:00:00.000Z",
+			hadRuntimeSnapshot: false,
+		},
+	}), sourceMarkdown);
+	assert.match(plan.content, /1\. Alcance: Formato — CSV/);
+	assert.match(plan.content, /- Alcance: Auditoría/);
+});
+
 test("composeHandoffMarkdown usa el issue como Fuente cuando existe", () => {
 	const markdown = composeHandoffMarkdown(makeSnapshot({ sourceIssue: { number: 9, repository: "owner/repo" } }));
 	assert.ok(markdown.includes("Fuente: issue owner/repo#9."));

@@ -67,7 +67,7 @@ Cuando el usuario quiera ver, inspeccionar o retomar sesiones de grilling:
 2. Si el snapshot o selector devuelve `resume` o `duplicate`, tratá la selección como estado autoritativo.
 3. Los handoffs viejos pueden traer una sección `## Modo`: ignorala, ya no existe.
 4. Si existe un cuestionario exportado con respuestas completadas (ver **Exportar cuestionario**), leelo e incorporá cada respuesta como decisión resuelta con su checkpoint; repreguntá solo lo materialmente ambiguo.
-5. Mostrá brevemente el tema, la política de supuestos persistida, los supuestos `[ASSUMED]`, los bloques cerrados con sus decisiones resueltas, el bloque en curso y los bloques pendientes, y seguí por el bloque en curso.
+5. Mostrá brevemente el tema, la política de supuestos persistida, los supuestos `[ASSUMED]`, los bloques cerrados con sus decisiones resueltas (agrupadas por su prefijo de bloque), el bloque en curso y los bloques pendientes, y seguí por el bloque en curso.
 6. Reevaluá las ramas pendientes usando los criterios de la Fase 0. Si el `summary` conserva `explicit-only`, no hagas ninguna poda; en otro caso podá los puntos que ahora puedan asumirse. Elegí **Grillado rápido**, **Por rondas** o **Grillado pregunta a pregunta**. Conservá una preferencia explícita del usuario; de lo contrario informá el modo elegido en una línea, sin abrir otro gate.
 7. Persistí inmediatamente el modo con `grill_session` (`action: "configure"`, `interviewMode: "fast" | "rounds" | "adaptive"`) antes de la primera pregunta. Continuá por el bloque en curso, desde la siguiente decisión material pendiente; no repitas decisiones ni supuestos aceptados salvo que el usuario quiera revisarlos.
 
@@ -106,10 +106,11 @@ Un bloque es una sección coherente del árbol de decisiones. La entrevista va p
 - **Recorrido.** Una sesión recorre todos los bloques, uno tras otro.
 - **Frontera de bloque.** Al cerrar un bloque, el agente muestra un resumen corto de lo decidido, anuncia el siguiente y hace UNA pregunta con dos opciones: «Seguir con <bloque>» (recomendada) y «Cortar acá y seguir más tarde». Cortar es pausar, con la exportación de cuestionario disponible.
 - **Último bloque.** Después del último bloque no hay frontera: se pasa al cierre.
+- **Handoff pausado.** Mientras la sesión está `paused`, cada decisión de `## Decisiones resueltas` va con el prefijo de su bloque (`<Bloque>: ...`, como `Diseño:`) y cada entrada de `## Ramas pendientes` lleva el encabezado de su bloque, para reconstruir los bloques al retomar.
 - **Conteo.** La pregunta de frontera de bloque, la configuración y la confirmación final no son preguntas de decisión y no entran en la estimación.
 <!-- grill-blocks:end -->
 
-En Pi, los bloques se persisten como `sections` de `grill_session`, cada una con `status` (`pending`, `active`, `resolved`) que se actualiza en cada `checkpoint` y en cada frontera de bloque: el último `checkpoint` del bloque lo marca `resolved` y marca `active` al siguiente. La pregunta de frontera de bloque va por `ask_user_question` con `grill: { sessionId, phase: "configuration" }`, sin `frontierSize`; «Cortar acá y seguir más tarde» sigue el procedimiento de **Cancelación o pausa**. El Grillado rápido va bloque a bloque: propuesta y revisión colectiva del bloque en curso, y frontera de bloque entre bloques.
+En Pi, los bloques se persisten como `sections` de `grill_session`, cada una con `status` (`pending`, `active`, `resolved`) que se actualiza en cada `checkpoint` y en cada frontera de bloque: el último `checkpoint` del bloque lo marca `resolved` y marca `active` al siguiente. Si el bloque no tuvo `checkpoint` (todas sus elecciones quedaron `[ASSUMED]`), el `status` de las secciones se corrige en el primer `checkpoint` del bloque siguiente o en el `pause`. En cada `checkpoint`, `decision.section` lleva el id del bloque, y cada rama de `pendingBranches` también con `section`; al pausar, la tool escribe el título del bloque como prefijo de cada decisión y de cada rama. La pregunta de frontera de bloque va por `ask_user_question` con `grill: { sessionId, phase: "configuration" }`, sin `frontierSize`; «Cortar acá y seguir más tarde» sigue el procedimiento de **Cancelación o pausa**. El Grillado rápido va bloque a bloque: propuesta y revisión colectiva del bloque en curso, y frontera de bloque entre bloques.
 
 ## Rama de diseño
 
@@ -144,7 +145,6 @@ Antes de la primera pregunta, escribí en el chat un mapa visible con:
 - supuestos `[ASSUMED]`, cada uno con evidencia y motivo por el que es barato corregirlo; en `explicit-only`, la lista queda vacía;
 - decisiones materiales, bloques y dependencias, con los bloques en orden de dependencias y cada uno con su estimación;
 - estimación mínima, probable y máxima después de aplicar la política;
-- alcance de esta sesión;
 - orden recomendado y motivo;
 - diagnóstico de modalidad, con señales concretas para aprobación colectiva, adaptación entre rondas o adaptación después de cada respuesta, y modalidad elegida.
 
@@ -336,8 +336,7 @@ Primero escribí en el chat el entendimiento compartido completo. Debe incluir:
 5. dependencias y consecuencias importantes;
 6. supuestos `[ASSUMED]`, cada uno con su evidencia y el impacto si fuera incorrecto;
 7. riesgos o preguntas deliberadamente diferidas;
-8. bloques pendientes para futuras sesiones;
-9. contexto recomendado para la sesión que escribirá el spec.
+8. contexto recomendado para la sesión que escribirá el spec.
 
 Este texto es el contrato de handoff. Tiene que estar renderizado en el chat; no puede vivir solamente en una tool o archivo. La confirmación final aprueba tanto las decisiones como los `[ASSUMED]` enumerados, sin un gate separado por cada supuesto.
 
