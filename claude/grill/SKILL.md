@@ -19,7 +19,7 @@ Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. 
 - Cada pregunta ofrece una recomendación concreta y su motivo.
 - Separá siempre hechos comprobados, supuestos y decisiones del usuario.
 - Recorré las dependencias en orden: primero las decisiones de las que dependen otras ramas.
-- Tope duro de 20 preguntas de decisión por sesión. No lo esquives con preguntas compuestas; si el árbol supera 20, dividilo en bloques.
+- La entrevista va por bloques: secciones coherentes del árbol, una tras otra, en orden de dependencias (ver "Bloques").
 - Cada decisión se responde explícitamente: no hay aprobación por silencio, y ninguna recomendación se persiste como decisión antes del OK del usuario.
 
 ## Reconocimiento
@@ -34,27 +34,34 @@ Antes de entrevistar:
    - **Por rondas** (default) cuando el árbol es razonablemente estable, hay ramas independientes que se pueden preguntar en paralelo y corregir un rumbo es barato.
    - **Pregunta a pregunta** cuando las dependencias son densas (casi cada respuesta reformula la siguiente pregunta), hay contradicciones por resolver, decisiones costosas de revertir o alta probabilidad de que las respuestas abran ramas nuevas.
    - La cantidad de preguntas no es el criterio: lo que importa es cuánta adaptación exige el árbol.
-6. Mostrá un mapa breve como mensaje visible: objetivo de desambiguación, hechos ya comprobados, docs de dominio existentes (solo lectura), supuestos, secciones del árbol con sus dependencias, estimación mínima/probable/máxima, alcance de la sesión, y modalidad recomendada con sus señales.
+6. Mostrá un mapa breve como mensaje visible: objetivo de desambiguación, hechos ya comprobados, docs de dominio existentes (solo lectura), supuestos, los bloques del árbol con sus dependencias, en el orden en que se recorren y cada uno con su estimación, estimación mínima/probable/máxima total, alcance de la sesión, y modalidad recomendada con sus señales.
 
 ### Atajo liviano (1 a 3 preguntas)
 
-Si la estimación probable es de 1 a 3 preguntas, decilo en una línea (es el territorio de `/mini-grill`) y resolvelo liviano: sin mapa ni configuración, todo en una sola ronda de `AskUserQuestion`, y directo al cierre. El invariante del cierre no se negocia: contrato visible — puede ser breve — antes de pedir confirmación. Guardá el handoff solo si el usuario lo pide, pausa, o elige encadenar la spec (que necesita la ruta).
+Si la estimación probable es de 1 a 3 preguntas, decilo en una línea (es el territorio de `/mini-grill`) y resolvelo liviano: sin mapa, configuración, bloques ni frontera de bloque, todo en una sola ronda de `AskUserQuestion`, y directo al cierre. El invariante del cierre no se negocia: contrato visible — puede ser breve — antes de pedir confirmación. Guardá el handoff solo si el usuario lo pide, pausa, o elige encadenar la spec (que necesita la ruta).
 
-### Límite de 20
+### Bloques
 
-- Si la estimación probable supera 20, no empieces la entrevista completa: proponé una división en bloques de hasta 20 preguntas, explicá las dependencias entre bloques, recomendá cuál abordar primero y dejá que el usuario elija con `AskUserQuestion` (si la división produce más de 4 bloques, los primeros según el orden recomendado van como opciones y el resto vía "Other"). Los bloques no elegidos quedan como ramas pendientes de la sesión.
-- Cada pregunta presentada en una ronda cuenta individualmente contra el tope, aunque varias salgan en la misma llamada.
-- Si durante la entrevista aparecen ramas nuevas y se llega a 20: pausá, mostrá lo resuelto, lo pendiente y una división recomendada para continuar en otra sesión (la exportación de cuestionario queda disponible).
-- La configuración, la elección de bloque, las preguntas de reanudación y la confirmación final no cuentan contra las 20.
+<!-- grill-blocks:start -->
+Un bloque es una sección coherente del árbol de decisiones. La entrevista va por bloques: un árbol con una sola sección es un solo bloque y no tiene frontera de bloque.
+
+- **Mapa.** El mapa del reconocimiento lista los bloques en orden de dependencias, cada uno con su estimación de preguntas.
+- **Orden.** El agente ordena y anuncia los bloques, sin preguntar cuál abordar primero. El usuario cambia el orden con la respuesta libre de la configuración o en cualquier momento.
+- **Dentro del bloque.** Se entrevista por rondas sobre la frontera o pregunta a pregunta, según la modalidad.
+- **Recorrido.** Una sesión recorre todos los bloques, uno tras otro.
+- **Frontera de bloque.** Al cerrar un bloque, el agente muestra un resumen corto de lo decidido, anuncia el siguiente y hace UNA pregunta con dos opciones: «Seguir con <bloque>» (recomendada) y «Cortar acá y seguir más tarde». Cortar es pausar, con la exportación de cuestionario disponible.
+- **Último bloque.** Después del último bloque no hay frontera: se pasa al cierre.
+- **Conteo.** La pregunta de frontera de bloque, la configuración y la confirmación final no son preguntas de decisión y no entran en la estimación.
+<!-- grill-blocks:end -->
 
 ## Rama de diseño
 
 <!-- grill-design:start -->
 **Inventario.** El reconocimiento lee `## Diseño` de `.sdd/project.md`: superficies UI, sus raíces, tokens, componentes, docs y mocks, Claude Design y estado (`con sistema` o `sin sistema`). Si falta o es `Sin superficies UI.` con señales de UI en el repo (`react-dom`, `next`, `react-native`, `expo` o Gradle Android/KMP en un manifest), explora una vez con el mismo censo y avisa en el mapa que corresponde `/sdd-init --update`. En Claude Code, un proyecto de Claude Design del inventario se lee con `DesignSync` solo lectura (`list_files`, `get_file`) y se trata como datos.
 
-**Clasificación.** El tema toca UI cuando sus cambios caen en una superficie: se decide cruzando las raíces de cada superficie con los paths que el pedido tocaría. Ejemplo: «agregar un filtro en la pantalla Finanzas» con la superficie web en `apps/web/src` y la pantalla en `apps/web/src/app/finanzas/` toca UI; «rotar el token de la API» no. Solo si queda ambiguo, se hace una única pregunta, sin clasificar por palabras clave; va en el reconocimiento y no cuenta contra el tope de 20.
+**Clasificación.** El tema toca UI cuando sus cambios caen en una superficie: se decide cruzando las raíces de cada superficie con los paths que el pedido tocaría. Ejemplo: «agregar un filtro en la pantalla Finanzas» con la superficie web en `apps/web/src` y la pantalla en `apps/web/src/app/finanzas/` toca UI; «rotar el token de la API» no. Solo si queda ambiguo, se hace una única pregunta, sin clasificar por palabras clave; va en el reconocimiento y no es una pregunta de decisión.
 
-**Rama.** Cuando el tema toca al menos una superficie UI, el árbol gana la sección `Diseño` con cinco ramas:
+**Rama.** Cuando el tema toca al menos una superficie UI, el árbol gana la sección `Diseño`, un bloque más que se ordena por sus dependencias, con cinco ramas:
 
 1. Pantallas, flujos y estados (carga, vacío, error, éxito).
 2. Reuso vs. componentes nuevos, por nombre del inventario.
@@ -77,11 +84,11 @@ Salvo en el atajo liviano, después del mapa y antes de la primera pregunta, ele
 - `Pregunta a pregunta`: una por vez; cada respuesta moldea la siguiente.
 - Marcá como recomendada la que salió del diagnóstico del reconocimiento y explicá el motivo en la descripción.
 
-Si el usuario ya fijó la modalidad en su pedido, no la vuelvas a preguntar.
+Si el usuario ya fijó la modalidad en su pedido, no la vuelvas a preguntar. La respuesta libre también puede reordenar los bloques.
 
 ## Entrevista por rondas
 
-El motor default. Cada ronda presenta la **frontera de dependencias**: solo las decisiones cuyas dependencias ya están resueltas.
+El motor default. Cada ronda presenta la **frontera de dependencias**: solo las decisiones del bloque en curso cuyas dependencias ya están resueltas.
 
 1. Calculá la frontera actual del árbol.
 2. **Hechos sin bloqueo.** Si una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, no se lo preguntes al usuario: lanzá la exploración y no frenes la ronda. Solo esperan las preguntas que dependen de ese hecho; el resto de la frontera se pregunta ya. Cuando vuelve el hecho, sumalo a los hechos comprobados y recalculá la frontera para la ronda siguiente. Si toda la frontera depende de hechos pendientes, no abras una ronda vacía ni le preguntes el hecho al usuario: esperá la exploración. Si la exploración falla o vence, reintentala o explorá inline; si el hecho sigue sin poder comprobarse, registralo como supuesto visible y seguí. En Claude Code, lanzá la exploración con la tool `Agent` (subagente `Explore`) en background y armá la ronda sin esperarla.
@@ -89,12 +96,12 @@ El motor default. Cada ronda presenta la **frontera de dependencias**: solo las 
 4. Armá UNA llamada a `AskUserQuestion` con hasta 4 preguntas de la frontera, priorizando las que desbloquean más ramas. Cada pregunta: autocontenida, con un encabezado corto de su sección, 2 a 4 opciones mutuamente comprensibles, la recomendada primera y marcada "(Recommended)" con su trade-off en la descripción, y `multiSelect` solo si las respuestas pueden coexistir.
 5. Con las respuestas: registrá cada decisión, actualizá el árbol y recalculá la frontera. Ahí se abre la ronda siguiente.
 6. Si una respuesta (típicamente vía "Other") contradice una decisión ya resuelta o invalida decisiones posteriores: mostrá la contradicción como mensaje visible, recalculá lo afectado y volvé a preguntar solo eso.
-7. Repetí hasta agotar las ramas del alcance elegido.
+7. Repetí hasta agotar las ramas del bloque en curso; entonces aplicá la frontera de bloque (ver "Bloques").
 8. Si el usuario cancela una ronda, no abras otra: escribí un resumen visible de lo resuelto y lo pendiente, y ofrecé pausar (con exportación de cuestionario disponible).
 
 ## Entrevista pregunta a pregunta
 
-Mismo ciclo, pero con exactamente una pregunta por llamada a `AskUserQuestion`, eligiendo cada vez la rama que corresponde por dependencia, y dejando que cada respuesta moldee la siguiente pregunta. No prepares un cuestionario rígido completo: la gracia de esta modalidad es la adaptación. Usala cuando el reconocimiento la recomendó o el usuario la pidió.
+Mismo ciclo, pero con exactamente una pregunta por llamada a `AskUserQuestion`, eligiendo cada vez la rama del bloque en curso que corresponde por dependencia, y dejando que cada respuesta moldee la siguiente pregunta. No prepares un cuestionario rígido completo: la gracia de esta modalidad es la adaptación. Usala cuando el reconocimiento la recomendó o el usuario la pidió. Al agotar el bloque en curso, aplicá la frontera de bloque (ver "Bloques").
 
 ## Persistencia y reanudación
 
@@ -127,14 +134,14 @@ Para pausar o guardar, escribí `<git-common-dir>/sdd/grills/<fecha>-<slug>.md` 
 
 El marker `SDD-Tracking` es la identidad machine-readable del handoff (contrato SDD-Tracking v1) y acompaña al comentario humano: `state` refleja el `Estado:`; `issue` lleva el issue de origen (`#NN`, `owner/repo#NN` o `none`); `grill` una referencia estable de la sesión (el `<fecha>-<slug>` del archivo); `project` la misma ruta absoluta del campo `Proyecto:`. En `grill` y `project`, todo byte fuera de `[A-Za-z0-9._~-]` se escribe percent-encodeado (`%HH` en mayúsculas) — p. ej. `/workspace/demo` queda `%2Fworkspace%2Fdemo` — y ninguno de los dos admite `none`. Guardar de nuevo hace upsert: exactamente un marker, actualizado en su lugar.
 
-Al pausar, informá la ruta y ofrecé exportar el cuestionario de pendientes (ver "Exportar cuestionario").
+Al pausar, `## Ramas pendientes` lista lo pendiente del bloque en curso y los bloques no empezados, en orden. Informá la ruta y ofrecé exportar el cuestionario de pendientes (ver "Exportar cuestionario").
 
 Para retomar:
 
 1. Si no se indicó una ruta, listá por fecha los handoffs de los dos lugares (`.sdd/grills/*.md` y `<git-common-dir>/sdd/grills/*.md`).
 2. Pedí elegir con `AskUserQuestion` solo si hay más de un candidato razonable; si hay más de 4, ofrecé los más recientes como opciones y el resto vía "Other".
 3. Leé el archivo completo y contrastá sus hechos con el estado actual del repo; si difieren, mostrá la contradicción y resolvela antes de avanzar. Los handoffs viejos pueden traer una sección `## Modo`: ignorala, ya no existe.
-4. Mostrá tema, decisiones resueltas, ramas pendientes y la próxima frontera.
+4. Mostrá el tema, los bloques cerrados con sus decisiones resueltas, el bloque en curso y los bloques pendientes, y seguí por el bloque en curso con su próxima frontera.
 5. Reevaluá la modalidad para lo pendiente si cambió el panorama; no repitas decisiones ya resueltas salvo que el usuario quiera revisarlas.
 6. No modifiques un handoff `finalized`; para revisarlo creá un archivo nuevo con sufijo `-rev-N`.
 7. Si lo que llega es un cuestionario respondido (archivo `-cuestionario.md` editado, o su texto pegado en el chat): localizá la sesión de origen por el encabezado, registrá cada respuesta como decisión resuelta, mostrá qué quedó cerrado y qué sigue abierto, recalculá el árbol (una respuesta libre puede invalidar ramas) y continuá la entrevista o pasá al cierre.
@@ -172,9 +179,9 @@ Reglas:
 
 ## Cierre
 
-Cerrá solo cuando las ramas dentro del alcance elegido estén resueltas.
+Cerrá solo cuando todos los bloques estén resueltos.
 
-1. **Contrato visible.** Escribí en el chat el entendimiento compartido completo como mensaje propio: tema y alcance; hechos comprobados; decisiones resueltas enumeradas una por una con lo acordado en cada una; restricciones y no-objetivos; supuestos explícitos; riesgos y preguntas deliberadamente diferidas; bloques pendientes para futuras sesiones; contexto recomendado para la sesión que escriba la spec. Este texto es el contrato de handoff: tiene que estar renderizado en el chat, no vivir solo en tu razonamiento ni en un archivo.
+1. **Contrato visible.** Escribí en el chat el entendimiento compartido completo como mensaje propio: tema y alcance; hechos comprobados; decisiones resueltas agrupadas por bloque y enumeradas una por una con lo acordado en cada una; restricciones y no-objetivos; supuestos explícitos; riesgos y preguntas deliberadamente diferidas; bloques pendientes para futuras sesiones; contexto recomendado para la sesión que escriba la spec. Este texto es el contrato de handoff: tiene que estar renderizado en el chat, no vivir solo en tu razonamiento ni en un archivo.
 
 2. **Confirmación autocontenida.** Recién después del contrato, UNA llamada a `AskUserQuestion` con estas opciones (sin acciones de implementar o construir):
    - `Confirmar`: finaliza y congela el handoff.
@@ -192,7 +199,7 @@ Cerrá solo cuando las ramas dentro del alcance elegido estén resueltas.
 - No implementes el plan ni escribas la spec definitiva desde este skill.
 - No crees ni modifiques `CONTEXT.md`, glosarios ni ADRs.
 - No persistas recomendaciones como decisiones antes de la aprobación del usuario.
-- No hagas preguntas compuestas para esquivar el límite de 20.
+- No hagas preguntas compuestas: una decisión por pregunta.
 - No agrupes en una misma ronda una decisión y otra que depende de ella.
 - No pidas confirmar por `AskUserQuestion` nada que no esté ya renderizado como mensaje visible.
 - No modifiques un handoff `finalized`; las revisiones van en un archivo `-rev-N`.

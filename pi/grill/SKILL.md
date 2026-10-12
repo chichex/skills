@@ -45,9 +45,11 @@ Validá que sea versión 1, exacto y serializable; que `kind=grill`; que `repo`,
 - Elegí el `interviewMode` a partir del diagnóstico y configuralo sin abrir una pregunta de preferencias. Respetá un modo pedido explícitamente; preguntá por el modo solo ante instrucciones contradictorias o si el usuario pidió elegirlo.
 - En **Grillado pregunta a pregunta**, hacé exactamente una pregunta material por vez y dejá que cada respuesta moldee la siguiente. No prepares un cuestionario rígido completo.
 - En **Por rondas**, presentá juntas hasta 4 preguntas sobre decisiones materiales de la frontera de dependencias que ya estén desbloqueadas y sean realmente independientes. Recalculá la frontera recién cuando vuelva la ronda completa.
-- En **Grillado rápido**, presentá juntas las decisiones materiales aplicables del alcance actual, con la opción recomendada marcada como propuesta. El usuario señala solamente cuáles quiere revisar.
+- En **Grillado rápido**, presentá juntas las decisiones materiales aplicables del bloque en curso, con la opción recomendada marcada como propuesta. El usuario señala solamente cuáles quiere revisar.
 - Persistí el modo antes de entrevistar: `fast` para Grillado rápido, `rounds` para Por rondas y `adaptive` para pregunta a pregunta. Nunca confíes solamente en recordar el historial.
 - Recorré las dependencias entre decisiones en orden; resolvé primero aquello de lo que dependen otras ramas.
+- Entrevistá por bloques: secciones coherentes del árbol, una tras otra, en orden de dependencias (ver **Bloques**).
+- Hacé una decisión por pregunta: no armes preguntas compuestas.
 - Para cada pregunta ofrecé una respuesta recomendada y una justificación breve.
 - Habilitá siempre respuesta libre con `allowOther: true`.
 - Si un hecho se puede averiguar explorando el codebase, buscándolo en documentación local o ejecutando una comprobación segura, hacelo en vez de preguntarlo.
@@ -65,9 +67,9 @@ Cuando el usuario quiera ver, inspeccionar o retomar sesiones de grilling:
 2. Si el snapshot o selector devuelve `resume` o `duplicate`, tratá la selección como estado autoritativo.
 3. Los handoffs viejos pueden traer una sección `## Modo`: ignorala, ya no existe.
 4. Si existe un cuestionario exportado con respuestas completadas (ver **Exportar cuestionario**), leelo e incorporá cada respuesta como decisión resuelta con su checkpoint; repreguntá solo lo materialmente ambiguo.
-5. Mostrá brevemente el tema, la política de supuestos persistida, las decisiones resueltas, los supuestos `[ASSUMED]`, lo pendiente y el próximo bloque recomendado.
+5. Mostrá brevemente el tema, la política de supuestos persistida, los supuestos `[ASSUMED]`, los bloques cerrados con sus decisiones resueltas, el bloque en curso y los bloques pendientes, y seguí por el bloque en curso.
 6. Reevaluá las ramas pendientes usando los criterios de la Fase 0. Si el `summary` conserva `explicit-only`, no hagas ninguna poda; en otro caso podá los puntos que ahora puedan asumirse. Elegí **Grillado rápido**, **Por rondas** o **Grillado pregunta a pregunta**. Conservá una preferencia explícita del usuario; de lo contrario informá el modo elegido en una línea, sin abrir otro gate.
-7. Persistí inmediatamente el modo con `grill_session` (`action: "configure"`, `interviewMode: "fast" | "rounds" | "adaptive"`) antes de la primera pregunta. Continuá desde la siguiente decisión material pendiente; no repitas decisiones ni supuestos aceptados salvo que el usuario quiera revisarlos.
+7. Persistí inmediatamente el modo con `grill_session` (`action: "configure"`, `interviewMode: "fast" | "rounds" | "adaptive"`) antes de la primera pregunta. Continuá por el bloque en curso, desde la siguiente decisión material pendiente; no repitas decisiones ni supuestos aceptados salvo que el usuario quiera revisarlos.
 
 Una sesión finalizada es inmutable. Para cambiarla, duplicala como nueva revisión mediante `select_grill_session`. Para convertirla en spec sin cambiarla, elegí la acción de crear spec SDD del selector: usa el ID si existe un snapshot válido y la ruta absoluta física si es un handoff-only; el handoff congelado se usa como fuente.
 
@@ -78,10 +80,10 @@ Antes de entrevistar:
 1. Explorá el codebase y resolvé todos los hechos comprobables relevantes. Los hechos los averigua el agente, nunca el usuario: si más adelante una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, se averigua sin frenar la ronda (ver **Modalidad B: Por rondas**).
 2. Buscá `CONTEXT-MAP.md`, los `CONTEXT.md` y `docs/adr/`; informá su existencia en el mapa. Leé los que sean relevantes para entender el vocabulario; nunca los modifiques.
 3. Separá explícitamente: hechos comprobados, instrucciones ya dadas por el usuario y elecciones todavía abiertas.
-4. Resolvé la política de supuestos antes de podar. Si el usuario pidió un grill exhaustivo o sin supuestos, usá `explicit-only`: no conviertas ningún punto en `[ASSUMED]` y tratá todas las elecciones abiertas como decisiones explícitas, también para la estimación y el límite. En otro caso usá `risk-pruned`: convertí cada elección respaldada, de bajo riesgo y reversible en `[ASSUMED]`; si corregirla durante la spec o implementación sería local y barato, no merece un gate.
+4. Resolvé la política de supuestos antes de podar. Si el usuario pidió un grill exhaustivo o sin supuestos, usá `explicit-only`: no conviertas ningún punto en `[ASSUMED]` y tratá todas las elecciones abiertas como decisiones explícitas, también para la estimación. En otro caso usá `risk-pruned`: convertí cada elección respaldada, de bajo riesgo y reversible en `[ASSUMED]`; si corregirla durante la spec o implementación sería local y barato, no merece un gate.
 5. Construí el árbol con las decisiones que sigan explícitas después de aplicar la política y sus dependencias. En `risk-pruned`, no lo infles con detalles de implementación ni preferencias hipotéticas.
 6. Estimá preguntas mínimas, probables y máximas después de aplicar la política. La cifra operativa es la estimación probable y puede ser cero.
-7. Agrupá las preguntas explícitas por secciones coherentes y asigná una estimación a cada sección.
+7. Agrupá las preguntas explícitas por secciones coherentes —los bloques— y asigná una estimación a cada una.
 8. Diagnosticá qué modalidad necesita el árbol resultante. Evaluá: contradicciones reales; costo de revertir; acoplamiento entre decisiones materiales; tamaño y estabilidad de la frontera; probabilidad de que una respuesta abra ramas materiales; novedad frente a patrones existentes; y riesgos de datos, seguridad, compliance, migraciones o integraciones externas.
 9. A partir de ese diagnóstico:
    - elegí **Grillado pregunta a pregunta** solo cuando una rama material necesite repreguntas adaptativas, tenga consecuencias difíciles de revertir, contradicciones o riesgos altos, o dependencias tan densas que una respuesta reformule la siguiente;
@@ -89,30 +91,34 @@ Antes de entrevistar:
    - elegí **Grillado rápido** como default cuando el árbol resultante sea estable, existan recomendaciones respaldadas y corregir el rumbo sea barato.
    Ante evidencia mixta, aislá la rama crítica en vez de volver quisquillosa toda la sesión. No uses la cantidad de preguntas como criterio decisivo.
 10. Si el tema proviene de un issue de GitHub, conservá su número como referencia estructurada y resolvé `owner/repo` con `gh repo view --json nameWithOwner` cuando esté disponible. Esta referencia es metadata local del workflow: no agregues labels ni comments al issue sólo para marcarlo.
-11. No cuentes como preguntas de entrevista los supuestos `[ASSUMED]`, la elección automática de configuración, la elección de bloque, la revisión colectiva del Grillado rápido ni la confirmación final. Cada decisión material incluida en una ronda sí cuenta por separado.
+11. No cuentes como preguntas de entrevista los supuestos `[ASSUMED]`, la elección automática de configuración, la frontera de bloque, la revisión colectiva del Grillado rápido ni la confirmación final. Cada decisión material incluida en una ronda sí cuenta por separado.
 
 El total puede cambiar porque una respuesta abre o cierra ramas. Presentalo como estimación, no como promesa exacta. Si quedan cero decisiones materiales, creá y configurá la sesión para dejar trazabilidad y pasá directo al cierre.
 
-### Límite de 20
+### Bloques
 
-Una sesión de `grill` tiene un límite duro de 20 preguntas de decisión material. Los supuestos `[ASSUMED]` no consumen el límite.
+<!-- grill-blocks:start -->
+Un bloque es una sección coherente del árbol de decisiones. La entrevista va por bloques: un árbol con una sola sección es un solo bloque y no tiene frontera de bloque.
 
-- Si la estimación probable de decisiones materiales supera 20, no comiences la entrevista completa.
-- Proponé una división en bloques de hasta 20 preguntas.
-- Explicá las dependencias y recomendá qué bloque abordar primero.
-- Permití que el usuario elija un bloque mediante una sola llamada a `ask_user_question`.
-- Conservá el bloque elegido para crear la sesión en la Fase 1 con ese alcance y dejá los demás bloques en `pendingBranches`.
-- Si durante la entrevista aparecen ramas nuevas y se alcanza 20, pausá. Mostrá lo resuelto, lo pendiente y una división recomendada para continuar en otra sesión.
-- Nunca eludas el límite creando preguntas compuestas.
+- **Mapa.** El mapa del reconocimiento lista los bloques en orden de dependencias, cada uno con su estimación de preguntas.
+- **Orden.** El agente ordena y anuncia los bloques, sin preguntar cuál abordar primero. El usuario cambia el orden con la respuesta libre de la configuración o en cualquier momento.
+- **Dentro del bloque.** Se entrevista por rondas sobre la frontera o pregunta a pregunta, según la modalidad.
+- **Recorrido.** Una sesión recorre todos los bloques, uno tras otro.
+- **Frontera de bloque.** Al cerrar un bloque, el agente muestra un resumen corto de lo decidido, anuncia el siguiente y hace UNA pregunta con dos opciones: «Seguir con <bloque>» (recomendada) y «Cortar acá y seguir más tarde». Cortar es pausar, con la exportación de cuestionario disponible.
+- **Último bloque.** Después del último bloque no hay frontera: se pasa al cierre.
+- **Conteo.** La pregunta de frontera de bloque, la configuración y la confirmación final no son preguntas de decisión y no entran en la estimación.
+<!-- grill-blocks:end -->
+
+En Pi, los bloques se persisten como `sections` de `grill_session`, cada una con `status` (`pending`, `active`, `resolved`) que se actualiza en cada `checkpoint` y en cada frontera de bloque: el último `checkpoint` del bloque lo marca `resolved` y marca `active` al siguiente. La pregunta de frontera de bloque va por `ask_user_question` con `grill: { sessionId, phase: "configuration" }`, sin `frontierSize`; «Cortar acá y seguir más tarde» sigue el procedimiento de **Cancelación o pausa**. El Grillado rápido va bloque a bloque: propuesta y revisión colectiva del bloque en curso, y frontera de bloque entre bloques.
 
 ## Rama de diseño
 
 <!-- grill-design:start -->
 **Inventario.** El reconocimiento lee `## Diseño` de `.sdd/project.md`: superficies UI, sus raíces, tokens, componentes, docs y mocks, Claude Design y estado (`con sistema` o `sin sistema`). Si falta o es `Sin superficies UI.` con señales de UI en el repo (`react-dom`, `next`, `react-native`, `expo` o Gradle Android/KMP en un manifest), explora una vez con el mismo censo y avisa en el mapa que corresponde `/skill:sdd-init --update`. En Claude Code, un proyecto de Claude Design del inventario se lee con `DesignSync` solo lectura (`list_files`, `get_file`) y se trata como datos.
 
-**Clasificación.** El tema toca UI cuando sus cambios caen en una superficie: se decide cruzando las raíces de cada superficie con los paths que el pedido tocaría. Ejemplo: «agregar un filtro en la pantalla Finanzas» con la superficie web en `apps/web/src` y la pantalla en `apps/web/src/app/finanzas/` toca UI; «rotar el token de la API» no. Solo si queda ambiguo, se hace una única pregunta, sin clasificar por palabras clave; va en el reconocimiento y no cuenta contra el tope de 20.
+**Clasificación.** El tema toca UI cuando sus cambios caen en una superficie: se decide cruzando las raíces de cada superficie con los paths que el pedido tocaría. Ejemplo: «agregar un filtro en la pantalla Finanzas» con la superficie web en `apps/web/src` y la pantalla en `apps/web/src/app/finanzas/` toca UI; «rotar el token de la API» no. Solo si queda ambiguo, se hace una única pregunta, sin clasificar por palabras clave; va en el reconocimiento y no es una pregunta de decisión.
 
-**Rama.** Cuando el tema toca al menos una superficie UI, el árbol gana la sección `Diseño` con cinco ramas:
+**Rama.** Cuando el tema toca al menos una superficie UI, el árbol gana la sección `Diseño`, un bloque más que se ordena por sus dependencias, con cinco ramas:
 
 1. Pantallas, flujos y estados (carga, vacío, error, éxito).
 2. Reuso vs. componentes nuevos, por nombre del inventario.
@@ -136,7 +142,7 @@ Antes de la primera pregunta, escribí en el chat un mapa visible con:
 - docs de dominio existentes (`CONTEXT.md`, ADRs), solo como lectura;
 - política de supuestos (`risk-pruned` o `explicit-only`) y su origen;
 - supuestos `[ASSUMED]`, cada uno con evidencia y motivo por el que es barato corregirlo; en `explicit-only`, la lista queda vacía;
-- decisiones materiales, secciones y dependencias;
+- decisiones materiales, bloques y dependencias, con los bloques en orden de dependencias y cada uno con su estimación;
 - estimación mínima, probable y máxima después de aplicar la política;
 - alcance de esta sesión;
 - orden recomendado y motivo;
@@ -144,7 +150,7 @@ Antes de la primera pregunta, escribí en el chat un mapa visible con:
 
 ### Paso 1: crear la sesión
 
-Creá el registro persistente con `grill_session` usando `action: "create"`, un `summary` que incluya hechos, política de supuestos y supuestos `[ASSUMED]`. La tool inicializa `interviewMode: "unselected"`: ningún checkpoint de entrevista será aceptado hasta configurarlo. Si el origen es un issue, incluí `sourceIssue: { number: NN, repository: "owner/repo" }` (omití sólo `repository` si no puede resolverse). Guardá el `sessionId` devuelto y usalo durante toda la entrevista.
+Creá el registro persistente con `grill_session` usando `action: "create"`, un `summary` que incluya hechos, política de supuestos y supuestos `[ASSUMED]`, y `sections` con los bloques en orden (todos `pending`). La tool inicializa `interviewMode: "unselected"`: ningún checkpoint de entrevista será aceptado hasta configurarlo. Si el origen es un issue, incluí `sourceIssue: { number: NN, repository: "owner/repo" }` (omití sólo `repository` si no puede resolverse). Guardá el `sessionId` devuelto y usalo durante toda la entrevista.
 
 ### Paso 2: configurar la modalidad diagnosticada
 
@@ -159,8 +165,8 @@ Persistí el modo elegido con `grill_session` (`action: "configure"`, `interview
 Mientras la sesión esté activa, toda llamada de entrevista o cierre incluye un objeto `grill`:
 
 - `sessionId`: id persistente devuelto por `grill_session`;
-- `phase`: `"interview"` para decisiones o `"closure"` para la confirmación final;
-- `frontierSize`: cantidad real de decisiones representadas por la llamada; es obligatorio en fase `interview`. Vale 1 en modo adaptativo, de 1 a 4 en rondas y hasta 20 en la revisión colectiva del modo rápido.
+- `phase`: `"interview"` para decisiones, `"configuration"` para la modalidad pedida y la frontera de bloque, o `"closure"` para la confirmación final;
+- `frontierSize`: cantidad real de decisiones representadas por la llamada; es obligatorio en fase `interview`. Vale 1 en modo adaptativo, de 1 a 4 en rondas y la cantidad de decisiones del bloque en la revisión colectiva del modo rápido.
 
 El gate de runtime aplica estas reglas:
 
@@ -192,12 +198,12 @@ Para cada decisión material:
    - registrá una `interaction` con id único, pregunta y respuestas;
    - agregá o actualizá la decisión normalizada;
    - reemplazá `pendingBranches` con el estado actual;
-   - actualizá secciones o estimación si cambiaron.
-6. Recién después formulá la siguiente pregunta.
+   - actualizá el `status` de las secciones (el bloque en curso `active`, los cerrados `resolved`) y la estimación si cambiaron.
+6. Recién después formulá la siguiente pregunta. Si el bloque en curso quedó resuelto, aplicá antes la frontera de bloque (ver **Bloques**).
 
 ### Modalidad B: Por rondas
 
-Cada ronda presenta la **frontera de dependencias**: solo decisiones cuyas dependencias ya están resueltas.
+Cada ronda presenta la **frontera de dependencias**: solo decisiones del bloque en curso cuyas dependencias ya están resueltas.
 
 1. Calculá la frontera actual. Con `risk-pruned`, convertí en `[ASSUMED]` los defaults de bajo riesgo que hayan quedado desbloqueados; con `explicit-only`, no conviertas ninguno. Priorizá las decisiones materiales que desbloquean más ramas.
 2. **Hechos sin bloqueo.** Si una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, no se lo preguntes al usuario: lanzá la exploración y no frenes la ronda. Solo esperan las preguntas que dependen de ese hecho; el resto de la frontera se pregunta ya. Cuando vuelve el hecho, sumalo a los hechos comprobados y recalculá la frontera para la ronda siguiente. Si toda la frontera depende de hechos pendientes, no abras una ronda vacía ni le preguntes el hecho al usuario: esperá la exploración. Si la exploración falla o vence, reintentala o explorá inline; si el hecho sigue sin poder comprobarse, registralo como supuesto visible y seguí. En Pi, lanzá la exploración con la tool `subagent` (agente `scout`, `background: true`) y armá la ronda sin esperarla: el reporte vuelve como mensaje `subagent-result`. Si la tool `subagent` no está disponible, explorá inline antes de la ronda.
@@ -209,16 +215,14 @@ Cada ronda presenta la **frontera de dependencias**: solo decisiones cuyas depen
 6. Por cada respuesta recibida, en orden:
    - actualizá el árbol;
    - persistí un `checkpoint` separado con interacción y decisión normalizada;
-   - reemplazá `pendingBranches` y actualizá secciones o estimación.
-7. Recalculá la frontera recién después de procesar toda la ronda y abrí la siguiente.
+   - reemplazá `pendingBranches` y actualizá el `status` de las secciones y la estimación.
+7. Recalculá la frontera recién después de procesar toda la ronda y abrí la siguiente. Si el bloque en curso quedó resuelto, aplicá antes la frontera de bloque (ver **Bloques**).
 8. Si una respuesta contradice una decisión previa o invalida otra rama, mostrá la contradicción y resolvé solo lo afectado antes de continuar. No repitas respuestas válidas.
 9. Si el usuario cancela con respuestas parciales, checkpointá primero las respuestas efectivamente devueltas y después seguí el procedimiento de pausa. Las preguntas no respondidas siguen pendientes.
 
-Cada pregunta incluida en la ronda cuenta individualmente contra el límite de 20.
-
 ### Modalidad C: Grillado rápido
 
-1. Recorré el árbol por orden de dependencias. Con `risk-pruned`, sacá del lote toda elección que cumpla la regla `[ASSUMED]`; con `explicit-only`, no saques ninguna elección abierta. La propuesta contiene las decisiones materiales aplicables, hasta el límite de 20.
+1. Recorré el árbol por orden de dependencias. Con `risk-pruned`, sacá del lote toda elección que cumpla la regla `[ASSUMED]`; con `explicit-only`, no saques ninguna elección abierta. La propuesta contiene las decisiones materiales aplicables del bloque en curso.
 2. Renderizá primero los supuestos nuevos o modificados y después la propuesta de decisiones. Para cada decisión material incluí:
    - id y sección;
    - pregunta autocontenida;
@@ -227,13 +231,13 @@ Cada pregunta incluida en la ronda cuenta individualmente contra el límite de 2
    - justificación breve;
    - dependencia o condición, si existe.
 3. Aclará que las propuestas de decisiones todavía no están confirmadas. Las ramas que solo aparecerían con una respuesta no recomendada deben figurar como condicionales; no inventes sus preguntas antes de que se abra esa rama.
-4. Si quedan cero decisiones materiales, no abras la revisión colectiva: pasá directo al cierre.
+4. Si el bloque en curso queda sin decisiones materiales, no abras la revisión colectiva: pasá a la frontera de bloque o, si era el último, al cierre.
 5. En otro caso, invocá una sola vez `ask_user_question` en modo `multiple`, con `grill: { sessionId, phase: "interview", frontierSize: N }`, una opción por id de decisión y esta consigna: **“Seleccioná las decisiones que te hacen ruido; si no seleccionás ninguna, aprobás todas las propuestas.”** Usá `allowEmptySelection: true` y `allowOther: true`.
 6. Si no selecciona ninguna:
    - considerá aprobadas todas las recomendaciones visibles;
    - persistí cada pregunta y su respuesta aprobada con un `checkpoint` separado y un id de interacción único;
    - actualizá decisiones, ramas pendientes, secciones, estimación y resumen de supuestos en cada checkpoint;
-   - avanzá al cierre.
+   - avanzá a la frontera de bloque o, si era el último, al cierre.
 7. Si señala decisiones que le hacen ruido:
    - resolvelas una por una, en orden de dependencias, usando el ciclo adaptativo de la Modalidad A;
    - aceptá como confirmadas las propuestas no señaladas solo cuando ya no dependan de una decisión revisada;
@@ -241,7 +245,7 @@ Cada pregunta incluida en la ronda cuenta individualmente contra el límite de 2
    - repetí la revisión colectiva hasta que no queden objeciones.
 8. Si la respuesta libre trae reemplazos inequívocos para varias decisiones, aplicalos sin volver a preguntar cada una y mostralos en la propuesta revisada.
 
-Las decisiones mostradas en el lote cuentan contra el límite de 20, aunque se aprueben colectivamente. Los supuestos y la revisión colectiva no cuentan.
+El lote es de un bloque: al resolverlo, aplicá la frontera de bloque (ver **Bloques**). Los supuestos y la revisión colectiva no son preguntas de decisión.
 
 No dependas solamente del historial conversacional: el snapshot persistente debe poder reconstruir el estado en otra sesión de Pi.
 
@@ -265,7 +269,7 @@ Si `ask_user_question` o `ask_user_questions` indica cancelación:
 
 1. No hagas otra pregunta.
 2. Escribí un resumen visible de lo resuelto, los supuestos `[ASSUMED]` y lo pendiente.
-3. Invocá `grill_session` con `action: "pause"`, incluyendo resumen con supuestos, ramas pendientes, secciones y estimación actuales. La tool además escribe/actualiza el handoff interoperable en `<git-common-dir>/sdd/grills/` del proyecto (ver **Formato del handoff**).
+3. Invocá `grill_session` con `action: "pause"`, incluyendo resumen con supuestos, ramas pendientes, secciones y estimación actuales. `pendingBranches` alimenta `## Ramas pendientes`, que lista lo pendiente del bloque en curso y los bloques no empezados, en orden. La tool además escribe/actualiza el handoff interoperable en `<git-common-dir>/sdd/grills/` del proyecto (ver **Formato del handoff**).
 4. Ofrecé exportar las decisiones pendientes como cuestionario para un stakeholder sin agente (ver **Exportar cuestionario**).
 5. Informá el id de la sesión, la ruta del handoff en el repo, y que puede retomarse con `select_grill_session`.
 
@@ -319,7 +323,7 @@ Cuando vuelvan las respuestas, el grill se retoma leyendo ese archivo: registrá
 
 ## Fase 3: cierre
 
-Cerrá solamente cuando las ramas dentro del alcance elegido estén resueltas.
+Cerrá solamente cuando todos los bloques estén resueltos.
 
 ### Paso 1: contrato visible
 
@@ -327,7 +331,7 @@ Primero escribí en el chat el entendimiento compartido completo. Debe incluir:
 
 1. tema y alcance;
 2. hechos comprobados;
-3. decisiones resueltas, enumeradas una por una;
+3. decisiones resueltas, agrupadas por bloque y enumeradas una por una;
 4. restricciones y no-objetivos;
 5. dependencias y consecuencias importantes;
 6. supuestos `[ASSUMED]`, cada uno con su evidencia y el impacto si fuera incorrecto;

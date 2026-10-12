@@ -472,7 +472,7 @@ const GRILL_DESIGN_HANDOFF: RegExp[] = [
 	/mientras la sesión está `paused`, las decisiones de diseño viven en `## Decisiones resueltas` con prefijo `Diseño:`/i,
 	/el contrato visible del cierre incluye el diseño/,
 	/la ruta de cada captura va en la decisión `Diseño:` que la usa/,
-	/no cuenta contra el tope de 20/,
+	/no es una pregunta de decisión/,
 	/En el atajo liviano[^\n]*activación[^\n]*capturas/,
 	/más de un `## Diseño`[^\n]*el vigente es el último/,
 ];
@@ -673,8 +673,14 @@ test("CA-16: next.md no repite las reglas de web en celular que ya trae react.md
 test("CA-17: el contrato fecha los conteos nuevos y cita la corrida con Pi 0.85.1", async () => {
 	const contract = await readRepoFile(".sdd/project.md");
 	const commands = section(contract, /^## Comandos$/);
-	for (const row of ["gate focalizado de Pi Package", "tests de extensiones", "lint de frontmatter"]) {
-		assert.match(commands, new RegExp(`^\\| ${escapeRegExp(row)} \\|[^|]*\\|[^|]*\\| verificado 2026-10-09 \\|`, "m"), `${row}: conteo nuevo con fecha nueva`);
+	// "tests de extensiones" se re-midió el 2026-10-12 al sumar el gate de grill (issue #89).
+	const verifiedOn: Record<string, string> = {
+		"gate focalizado de Pi Package": "2026-10-09",
+		"tests de extensiones": "2026-10-12",
+		"lint de frontmatter": "2026-10-09",
+	};
+	for (const [row, date] of Object.entries(verifiedOn)) {
+		assert.match(commands, new RegExp(`^\\| ${escapeRegExp(row)} \\|[^|]*\\|[^|]*\\| verificado ${date} \\|`, "m"), `${row}: conteo nuevo con fecha nueva`);
 	}
 	assert.match(commands, /18\/18 con Pi 0\.85\.1/);
 	assert.match(contract, /\(issue #66\), los tests de loop rojo/);
