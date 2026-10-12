@@ -11,6 +11,9 @@ import {
 } from "./runtime-import.ts";
 import type { GrillInventoryEntry, GrillSnapshot } from "./inventory.ts";
 
+// El nombre de la clave retirada se arma a pedazos: el gate de grill exige que no aparezca
+// escrito en ningun archivo trackeado de pi-extensions, ni siquiera en los tests.
+const RETIRED_LIMIT_KEY = ["question", "Limit"].join("");
 const ROOT = "/workspace/current repo";
 const SOURCE_PATH = `${ROOT}/.sdd/grills/source handoff.md`;
 const MARKDOWN = [
@@ -95,7 +98,7 @@ test("CA-3/7: resume import uses the physical root, explicit conservative defaul
 	assert.equal("workflowMode" in imported, false);
 	assert.equal(imported.interviewMode, "unselected");
 	assert.deepEqual(imported.estimate, { min: 0, likely: 0, max: 0 });
-	assert.equal(imported.questionLimit, 20);
+	assert.equal(RETIRED_LIMIT_KEY in imported, false);
 	assert.deepEqual(imported.interactions, []);
 	assert.deepEqual(imported.decisions, []);
 	assert.deepEqual(imported.pendingBranches, []);

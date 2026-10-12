@@ -23,8 +23,9 @@ export interface HandoffSnapshot {
 	sourceIssue?: { number: number; repository?: string };
 	createdAt: string;
 	summary?: string;
-	decisions: { title: string; agreement: string }[];
-	pendingBranches: { title: string; description?: string }[];
+	sections?: { id: string; title: string }[];
+	decisions: { title: string; agreement: string; section?: string }[];
+	pendingBranches: { title: string; description?: string; section?: string }[];
 	handoffMarkdown?: string;
 	parentId?: string;
 	importedHandoff?: ImportedHandoffSource;
@@ -78,18 +79,37 @@ export function handoffFileNames(snapshot: HandoffSnapshot): { primary: string; 
 	};
 }
 
+// Mientras la sesion esta pausada, el handoff no tiene donde guardar a que bloque pertenece cada
+// decision, asi que la entrada lleva el titulo de su bloque como prefijo (`<Bloque>: ...`), la misma
+// convencion que `Diseño:`. Sin `section` la entrada queda como esta; una `section` que no esta en el
+// mapa de secciones usa su id, y un titulo que ya trae el prefijo no se duplica.
+function withBlockPrefix(snapshot: HandoffSnapshot, section: string | undefined, text: string): string {
+	const id = section?.trim();
+	if (!id) return text;
+	const label = snapshot.sections?.find((candidate) => candidate.id === id)?.title.trim() || id;
+	return text.startsWith(`${label}:`) ? text : `${label}: ${text}`;
+}
+
+function decisionLines(snapshot: HandoffSnapshot): string[] {
+	return snapshot.decisions.map(
+		(decision, index) =>
+			`${index + 1}. ${withBlockPrefix(snapshot, decision.section, decision.title)} — ${decision.agreement}`,
+	);
+}
+
+function branchLines(snapshot: HandoffSnapshot): string[] {
+	return snapshot.pendingBranches.map(
+		(branch) =>
+			`- ${withBlockPrefix(snapshot, branch.section, branch.title)}${branch.description ? ` — ${branch.description}` : ""}`,
+	);
+}
+
 export function composeHandoffMarkdown(snapshot: HandoffSnapshot): string {
 	const state = snapshot.status === "finalized" ? "finalized" : "paused";
 	const issue = issueReference(snapshot.sourceIssue);
 	const fuente = issue ? `issue ${issue}` : snapshot.topic;
-	const decisiones = snapshot.decisions.length
-		? snapshot.decisions.map((decision, index) => `${index + 1}. ${decision.title} — ${decision.agreement}`)
-		: ["(ninguna todavia)"];
-	const ramas = snapshot.pendingBranches.length
-		? snapshot.pendingBranches.map(
-			(branch) => `- ${branch.title}${branch.description ? ` — ${branch.description}` : ""}`,
-		)
-		: ["(ninguna)"];
+	const decisiones = snapshot.decisions.length ? decisionLines(snapshot) : ["(ninguna todavia)"];
+	const ramas = snapshot.pendingBranches.length ? branchLines(snapshot) : ["(ninguna)"];
 	const handoff =
 		snapshot.status === "finalized" && snapshot.handoffMarkdown?.trim()
 			? [snapshot.handoffMarkdown.trim()]
@@ -123,14 +143,8 @@ function withoutTrackingMarkers(markdown: string): string {
 
 function composeImportedHandoffMarkdown(snapshot: HandoffSnapshot): string {
 	const source = snapshot.importedHandoff!;
-	const decisions = snapshot.decisions.length
-		? snapshot.decisions.map((decision, index) => `${index + 1}. ${decision.title} — ${decision.agreement}`)
-		: ["(ninguna nueva)"];
-	const branches = snapshot.pendingBranches.length
-		? snapshot.pendingBranches.map(
-			(branch) => `- ${branch.title}${branch.description ? ` — ${branch.description}` : ""}`,
-		)
-		: ["(ninguna nueva)"];
+	const decisions = snapshot.decisions.length ? decisionLines(snapshot) : ["(ninguna nueva)"];
+	const branches = snapshot.pendingBranches.length ? branchLines(snapshot) : ["(ninguna nueva)"];
 	const continuation = [
 		"## Continuidad runtime importada",
 		"",
