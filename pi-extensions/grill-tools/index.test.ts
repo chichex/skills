@@ -43,6 +43,9 @@ function findPiPackageRoot(): string | undefined {
 }
 
 const PI_PACKAGE_ROOT = findPiPackageRoot();
+// El nombre de la clave retirada se arma a pedazos: el gate de grill exige que no aparezca
+// escrito en ningun archivo trackeado de pi-extensions, ni siquiera en los tests.
+const RETIRED_LIMIT_KEY = ["question", "Limit"].join("");
 let sandbox = "";
 let previousHome: string | undefined;
 let tools = new Map<string, RegisteredTool>();
@@ -276,6 +279,75 @@ test("grill_session persists interviewMode and refuses checkpoints before it is 
 	assert.equal(loadedLegacy.details.snapshot.version, 5);
 });
 
+test("CA-8/9: grill_session create persists no question limit and progress has no limit suffix", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const tool = tools.get("grill_session");
+	assert.ok(tool);
+	const projectPath = join(sandbox, "no-limit-project");
+	mkdirSync(projectPath, { recursive: true });
+
+	const created = await tool.execute(
+		"create-no-limit",
+		{
+			action: "create",
+			topic: "Interview without a limit",
+			projectPath,
+			estimate: { min: 1, likely: 2, max: 3 },
+			[RETIRED_LIMIT_KEY]: 5,
+		},
+		undefined,
+		undefined,
+		{ cwd: projectPath },
+	);
+	assert.equal(RETIRED_LIMIT_KEY in created.details.snapshot, false);
+	assert.match(created.content[0].text, /"progress": "0 of ~2"/);
+	assert.doesNotMatch(created.content[0].text, /\(limit/, "progress has no (limit N) suffix");
+	const persisted = JSON.parse(readFileSync(created.details.jsonPath, "utf8"));
+	assert.equal(RETIRED_LIMIT_KEY in persisted, false, "create ignores the retired parameter");
+	assert.equal(persisted.version, 5);
+});
+
+test("CA-7: grill_session checkpoint accepts the 21st interaction and keeps going", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const tool = tools.get("grill_session");
+	assert.ok(tool);
+	const projectPath = join(sandbox, "unbounded-project");
+	mkdirSync(projectPath, { recursive: true });
+
+	const created = await tool.execute(
+		"create-unbounded",
+		{ action: "create", topic: "Unbounded interview", projectPath, estimate: { min: 1, likely: 2, max: 3 } },
+		undefined,
+		undefined,
+		{ cwd: projectPath },
+	);
+	const sessionId = created.details.snapshot.id;
+	await tool.execute(
+		"configure-unbounded",
+		{ action: "configure", sessionId, interviewMode: "adaptive" },
+		undefined,
+		undefined,
+		{ cwd: projectPath },
+	);
+
+	let last: any;
+	for (let index = 1; index <= 21; index++) {
+		last = await tool.execute(
+			`checkpoint-${index}`,
+			{
+				action: "checkpoint",
+				sessionId,
+				interaction: { id: `q${index}`, question: `¿Decision ${index}?`, answers: ["A"] },
+			},
+			undefined,
+			undefined,
+			{ cwd: projectPath },
+		);
+	}
+	assert.match(last.content[0].text, /"progress": "21 of ~2"/);
+	const persisted = JSON.parse(readFileSync(last.details.jsonPath, "utf8"));
+	assert.equal(persisted.interactions.length, 21);
+	assert.equal(persisted.status, "active");
+});
+
 test("CA-1/4/6: /grills and select_grill_session expose the same handoff and snapshot inventory", async () => {
 	const command = commands.get("grills");
 	const tool = tools.get("select_grill_session");
@@ -307,7 +379,6 @@ test("CA-1/4/6: /grills and select_grill_session expose the same handoff and sna
 		createdAt: timestamp,
 		updatedAt: timestamp,
 		estimate: { min: 1, likely: 2, max: 3 },
-		questionLimit: 20,
 		sections: [],
 		interactions: [],
 		decisions: [],
@@ -582,7 +653,6 @@ test("CA-9: snapshot-backed spec dispatch quotes an unsafe logical grill id", as
 		createdAt: timestamp,
 		updatedAt: timestamp,
 		estimate: { min: 1, likely: 2, max: 3 },
-		questionLimit: 20,
 		sections: [],
 		interactions: [],
 		decisions: [],

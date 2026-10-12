@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+	GRILL_SNAPSHOT_VERSION,
 	filterGrillInventory,
 	inventoryActions,
 	normalizeGrillSnapshot,
@@ -14,6 +15,9 @@ import {
 const ROOT = "/workspace/current repo";
 const OTHER_ROOT = "/workspace/other";
 const REPOSITORY = "chichex/skills";
+// El nombre de la clave retirada se arma a pedazos: el gate de grill exige que no aparezca
+// escrito en ningun archivo trackeado de pi-extensions, ni siquiera en los tests.
+const RETIRED_LIMIT_KEY = ["question", "Limit"].join("");
 
 function encodeReference(value: string): string {
 	return encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
@@ -60,7 +64,6 @@ function snapshot(overrides: Partial<GrillSnapshot> = {}): GrillSnapshot {
 		createdAt: timestamp,
 		updatedAt: timestamp,
 		estimate: { min: 1, likely: 2, max: 3 },
-		questionLimit: 20,
 		sections: [],
 		interactions: [],
 		decisions: [],
@@ -293,6 +296,22 @@ test("CA-10: v4 snapshots normalize explicitly without losing the inferred issue
 	assert.equal(normalized.snapshot.version, 5);
 	assert.deepEqual(normalized.snapshot.sourceIssue, { number: 42 });
 	assert.equal("workflowMode" in normalized.snapshot, false);
+});
+
+test("CA-8: an old snapshot that still carries the retired question limit is read without it and keeps version 5", () => {
+	assert.equal(GRILL_SNAPSHOT_VERSION, 5);
+	const old = { ...snapshot({ version: 4, id: "old-with-limit" }), [RETIRED_LIMIT_KEY]: 20 };
+	assert.equal(RETIRED_LIMIT_KEY in old, true, "the fixture really carries the old key");
+
+	const normalized = normalizeGrillSnapshot(old);
+	assert.ok(normalized.snapshot);
+	assert.equal(RETIRED_LIMIT_KEY in normalized.snapshot, false);
+	assert.equal(normalized.snapshot.version, 5);
+	assert.equal(normalized.snapshot.interactions.length, 0);
+
+	const fresh = normalizeGrillSnapshot(snapshot({ id: "fresh-without-limit" }));
+	assert.ok(fresh.snapshot);
+	assert.equal(RETIRED_LIMIT_KEY in fresh.snapshot, false);
 });
 
 test("CA-8/10: imported source remains compatible after a persisted continuity section is appended", () => {

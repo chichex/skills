@@ -121,7 +121,6 @@ const GrillQuestionContextSchema = Type.Object({
 	frontierSize: Type.Optional(
 		Type.Integer({
 			minimum: 1,
-			maximum: 20,
 			description: "Number of decisions represented by this interview prompt (rounds remain limited to 4)",
 		}),
 	),

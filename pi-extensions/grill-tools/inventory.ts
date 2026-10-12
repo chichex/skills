@@ -8,7 +8,6 @@ import {
 } from "../workflow-resolution/index.ts";
 
 export const GRILL_SNAPSHOT_VERSION = 5;
-export const DEFAULT_GRILL_QUESTION_LIMIT = 20;
 
 export function isGrillHandoffCandidatePath(path: string): boolean {
 	const name = basename(path);
@@ -82,7 +81,6 @@ export interface GrillSnapshot {
 	createdAt: string;
 	updatedAt: string;
 	estimate: GrillEstimate;
-	questionLimit: number;
 	sections: GrillSection[];
 	interactions: GrillInteraction[];
 	decisions: GrillDecision[];
@@ -260,9 +258,6 @@ export function normalizeGrillSnapshot(value: unknown): NormalizedSnapshotResult
 	const revision = Number.isInteger(value.revision) && (value.revision as number) > 0
 		? value.revision as number
 		: 1;
-	const questionLimit = Number.isInteger(value.questionLimit) && (value.questionLimit as number) > 0
-		? value.questionLimit as number
-		: DEFAULT_GRILL_QUESTION_LIMIT;
 	const importedHandoff = validImportedSource(value.importedHandoff);
 	let sourceIssue = validIssue(value.sourceIssue);
 	if (!sourceIssue) {
@@ -287,7 +282,6 @@ export function normalizeGrillSnapshot(value: unknown): NormalizedSnapshotResult
 			createdAt,
 			updatedAt,
 			estimate: normalizedEstimate(value.estimate),
-			questionLimit,
 			sections: Array.isArray(value.sections) ? value.sections as GrillSection[] : [],
 			interactions: value.interactions as GrillInteraction[],
 			decisions: value.decisions as GrillDecision[],

@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { basename, resolve } from "node:path";
 
 import {
-	DEFAULT_GRILL_QUESTION_LIMIT,
 	GRILL_SNAPSHOT_VERSION,
 	type GrillInventoryEntry,
 	type GrillSnapshot,
@@ -63,7 +62,6 @@ function importedBaseline(
 		createdAt: timestamp,
 		updatedAt: timestamp,
 		estimate: { min: 0, likely: 0, max: 0 },
-		questionLimit: DEFAULT_GRILL_QUESTION_LIMIT,
 		sections: [],
 		interactions: [],
 		decisions: [],

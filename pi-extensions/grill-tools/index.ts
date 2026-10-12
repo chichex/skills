@@ -43,7 +43,6 @@ import {
 	type ResolutionDiagnostic,
 } from "../workflow-resolution/index.ts";
 import {
-	DEFAULT_GRILL_QUESTION_LIMIT,
 	GRILL_SNAPSHOT_VERSION,
 	filterGrillInventory,
 	inventoryActions,
@@ -82,7 +81,6 @@ const AGENT_DIR = join(homedir(), ".pi", "agent");
 const STORE_DIR = join(AGENT_DIR, "grill-sessions");
 const SESSIONS_DIR = join(AGENT_DIR, "sessions");
 const FORMAT_VERSION = GRILL_SNAPSHOT_VERSION;
-const DEFAULT_QUESTION_LIMIT = DEFAULT_GRILL_QUESTION_LIMIT;
 
 interface SpecDocument {
 	path: string;
@@ -155,7 +153,6 @@ const GrillSessionParams = Type.Object({
 	),
 	sourceIssue: Type.Optional(IssueReferenceSchema),
 	estimate: Type.Optional(EstimateSchema),
-	questionLimit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
 	sections: Type.Optional(Type.Array(SectionSchema, { description: "Full replacement section map" })),
 	interaction: Type.Optional(InteractionSchema),
 	decision: Type.Optional(DecisionSchema),
@@ -488,7 +485,7 @@ function compactSnapshot(snapshot: GrillSnapshot): object {
 		status: snapshot.status,
 		interviewMode: snapshot.interviewMode,
 		sourceIssue: snapshot.sourceIssue,
-		progress: `${snapshot.interactions.length} of ~${snapshot.estimate.likely} (limit ${snapshot.questionLimit})`,
+		progress: `${snapshot.interactions.length} of ~${snapshot.estimate.likely}`,
 		estimate: snapshot.estimate,
 		sections: snapshot.sections,
 		decisions: snapshot.decisions,
@@ -1449,7 +1446,6 @@ export default function grillTools(pi: ExtensionAPI) {
 					createdAt: timestamp,
 					updatedAt: timestamp,
 					estimate: params.estimate,
-					questionLimit: params.questionLimit ?? DEFAULT_QUESTION_LIMIT,
 					sections: params.sections ?? [],
 					interactions: [],
 					decisions: [],
@@ -1501,11 +1497,6 @@ export default function grillTools(pi: ExtensionAPI) {
 				if (!params.interaction) throw new Error("interaction is required for checkpoint");
 				if (snapshot.interactions.some((item) => item.id === params.interaction!.id)) {
 					throw new Error(`Interaction id already exists: ${params.interaction.id}`);
-				}
-				if (snapshot.interactions.length >= snapshot.questionLimit) {
-					throw new Error(
-						`Hard question limit reached (${snapshot.questionLimit}). Pause and split the remaining branches before asking more.`,
-					);
 				}
 				snapshot.interactions.push({ ...params.interaction, createdAt: now() });
 				if (params.decision) upsertDecision(snapshot, params.decision);

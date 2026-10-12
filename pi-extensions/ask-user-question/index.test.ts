@@ -36,6 +36,7 @@ const PI_PACKAGE_ROOT = findPiPackageRoot();
 let sandbox = "";
 let tools = new Map<string, RegisteredTool>();
 let visibleWidth: (text: string) => number;
+let validateToolArguments: (tool: unknown, toolCall: { type: "toolCall"; id: string; name: string; arguments: unknown }) => unknown;
 let emittedEvents: Array<{ name: string; payload: unknown }> = [];
 
 before(async () => {
@@ -59,11 +60,13 @@ before(async () => {
 		"dir",
 	);
 
-	const [{ default: register }, tui] = await Promise.all([
+	const [{ default: register }, tui, piAi] = await Promise.all([
 		import(`${pathToFileURL(join(sandbox, "index.ts")).href}?test=${Date.now()}`),
 		import(pathToFileURL(join(PI_PACKAGE_ROOT, "node_modules", "@earendil-works", "pi-tui", "dist", "index.js")).href),
+		import(pathToFileURL(join(PI_PACKAGE_ROOT, "node_modules", "@earendil-works", "pi-ai", "dist", "index.js")).href),
 	]);
 	visibleWidth = tui.visibleWidth;
+	validateToolArguments = piAi.validateToolArguments;
 	register({
 		registerTool(tool: RegisteredTool) {
 			tools.set(tool.name, tool);
@@ -272,6 +275,55 @@ test("ask_user_questions collects a round of independent decisions in one UI", {
 	assert.deepEqual(
 		result.details.questions.map((question: any) => [question.id, question.answers[0]?.value]),
 		[["scope", "narrow"], ["rollout", "gradual"]],
+	);
+});
+
+test("CA-10: grill.frontierSize declares a minimum but no maximum in both question tools", { skip: !PI_PACKAGE_ROOT }, () => {
+	for (const name of ["ask_user_question", "ask_user_questions"]) {
+		const tool = tools.get(name);
+		assert.ok(tool, `${name} is registered`);
+		const frontierSize = (tool as any).parameters.properties.grill.properties.frontierSize;
+		assert.equal(frontierSize.minimum, 1, `${name} keeps the minimum`);
+		assert.equal("maximum" in frontierSize, false, `${name} declares no maximum`);
+	}
+});
+
+test("CA-10: a fast-mode review of 25 decisions passes the registered schema and is not blocked", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const tool = tools.get("ask_user_question");
+	assert.ok(tool);
+	const arguments_ = {
+		question: "Seleccioná las decisiones que te hacen ruido.",
+		options: [{ value: "d1", label: "D1" }],
+		selectionMode: "multiple",
+		allowEmptySelection: true,
+		grill: { sessionId: "grill-rounds-test", phase: "interview", frontierSize: 25 },
+	};
+	const validated = validateToolArguments(tool, {
+		type: "toolCall",
+		id: "call-schema-25",
+		name: "ask_user_question",
+		arguments: arguments_,
+	}) as typeof arguments_;
+	assert.equal(validated.grill.frontierSize, 25);
+
+	const result = await tool.execute(
+		"call-fast-25",
+		validated,
+		undefined,
+		undefined,
+		activeGrillContext("fast", (component) => component.handleInput("\r")),
+	);
+	assert.equal(result.details.cancelled, false);
+
+	assert.throws(
+		() => validateToolArguments(tool, {
+			type: "toolCall",
+			id: "call-schema-0",
+			name: "ask_user_question",
+			arguments: { ...arguments_, grill: { ...arguments_.grill, frontierSize: 0 } },
+		}),
+		/frontierSize/,
+		"the minimum of 1 still rejects an empty frontier",
 	);
 });
 
