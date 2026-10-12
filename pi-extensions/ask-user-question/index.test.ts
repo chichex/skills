@@ -293,7 +293,7 @@ test("CA-10: a fast-mode review of 25 decisions passes the registered schema and
 	assert.ok(tool);
 	const arguments_ = {
 		question: "Seleccioná las decisiones que te hacen ruido.",
-		options: [{ value: "d1", label: "D1" }],
+		options: Array.from({ length: 25 }, (_, index) => ({ value: `d${index + 1}`, label: `D${index + 1}` })),
 		selectionMode: "multiple",
 		allowEmptySelection: true,
 		grill: { sessionId: "grill-rounds-test", phase: "interview", frontierSize: 25 },
@@ -311,9 +311,22 @@ test("CA-10: a fast-mode review of 25 decisions passes the registered schema and
 		validated,
 		undefined,
 		undefined,
-		activeGrillContext("fast", (component) => component.handleInput("\r")),
+		activeGrillContext("fast", (component) => {
+			component.render(300);
+			const narrow = component.render(80);
+			assert.ok(narrow.every((line) => visibleWidth(line) <= 80), "a 25-option list fits a narrow terminal");
+			component.handleInput(" ");
+			for (let index = 0; index < 24; index++) component.handleInput("\x1b[B");
+			component.handleInput(" ");
+			component.handleInput("\r");
+		}),
 	);
 	assert.equal(result.details.cancelled, false);
+	assert.deepEqual(
+		result.details.answers.map((answer: any) => answer.value),
+		["d1", "d25"],
+		"the first and the last of 25 options are selected together",
+	);
 
 	assert.throws(
 		() => validateToolArguments(tool, {
