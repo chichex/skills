@@ -11,7 +11,8 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { test } from "node:test";
 
 import type { Harness } from "../harness-gate/interaction.ts";
@@ -38,14 +39,14 @@ async function grillSkill(harness: Harness): Promise<string> {
 	return readRepoFile(`${harness}/grill/SKILL.md`);
 }
 
-// Archivos del repo que git conoce (indexados o nuevos sin ignorar): el gate ve un archivo
-// recien agregado antes del primer commit.
+// Archivos trackeados en git (el indice), no lo que haya en el working tree de un dev: un borrador
+// local sin trackear no entra al censo. Mismo criterio que pi-package y sdd-land-gate.
 function trackedFiles(...pathspecs: string[]): string[] {
-	const output = execFileSync(
-		"git",
-		["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", ...pathspecs],
-		{ cwd: repoFile("."), encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
-	);
+	const output = execFileSync("git", ["ls-files", "-z", "--", ...pathspecs], {
+		cwd: repoFile("."),
+		encoding: "utf8",
+		maxBuffer: 16 * 1024 * 1024,
+	});
 	return output.split("\0").filter(Boolean);
 }
 
@@ -171,6 +172,8 @@ const BLOCKS_DOCTRINE: RegExp[] = [
 	/Después del último bloque no hay frontera[^\n]*se pasa al cierre/,
 	// (h)
 	/La pregunta de frontera de bloque, la configuración y la confirmación final no son preguntas de decisión y no entran en la estimación/,
+	// review #90: el handoff pausado conserva a qué bloque pertenece cada decisión sin cambiar su formato
+	/\*\*Handoff pausado\.\*\* Mientras la sesión está `paused`, cada decisión de `## Decisiones resueltas` va con el prefijo de su bloque \(`<Bloque>: \.\.\.`, como `Diseño:`\) y cada entrada de `## Ramas pendientes` lleva el encabezado de su bloque, para reconstruir los bloques al retomar/,
 ];
 
 test("CA-2: los cuatro grill/SKILL.md llevan el bloque grill-blocks bajo ### Bloques con la doctrina de (a) a (h)", async () => {
@@ -218,6 +221,10 @@ const PI_BLOCKS_LAYER: RegExp[] = [
 	/En Pi, los bloques se persisten como `sections` de `grill_session`, cada una con `status` \(`pending`, `active`, `resolved`\) que se actualiza en cada `checkpoint` y en cada frontera de bloque/,
 	/La pregunta de frontera de bloque va por `ask_user_question` con `grill: \{ sessionId, phase: "configuration" \}`, sin `frontierSize`/,
 	/El Grillado rápido va bloque a bloque: propuesta y revisión colectiva del bloque en curso, y frontera de bloque entre bloques/,
+	// review #90: decision.section = id del bloque; la tool escribe el prefijo al pausar
+	/`decision\.section` lleva el id del bloque, y cada rama de `pendingBranches` también con `section`; al pausar, la tool escribe el título del bloque como prefijo de cada decisión y de cada rama/,
+	// review #90: un bloque sin checkpoint corrige el status en el checkpoint siguiente o en el pause
+	/Si el bloque no tuvo `checkpoint` \(todas sus elecciones quedaron `\[ASSUMED\]`\), el `status` de las secciones se corrige en el primer `checkpoint` del bloque siguiente o en el `pause`/,
 ];
 
 test("CA-4: en Pi la frontera de bloque va por configuration, los bloques se persisten como sections con status y el Grillado rápido va bloque a bloque", async () => {
@@ -238,7 +245,7 @@ test("CA-4: en Pi la frontera de bloque va por configuration, los bloques se per
 const BLOCKS_LIFECYCLE: RegExp[] = [
 	/todos los bloques estén resueltos/,
 	/decisiones(?: resueltas)?,? agrupadas por bloque y enumeradas/,
-	/bloques cerrados[^\n]*el bloque en curso[^\n]*bloques pendientes[^\n]*por el bloque en curso/,
+	/bloques cerrados con sus decisiones resueltas \(agrupadas por su prefijo de bloque\)[^\n]*el bloque en curso[^\n]*bloques pendientes[^\n]*por el bloque en curso/,
 	/`## Ramas pendientes`[^\n]*lista lo pendiente del bloque en curso y los bloques no empezados, en orden/,
 ];
 
@@ -250,6 +257,23 @@ test("CA-5: los cuatro harnesses cierran, reanudan y pausan por bloques sin camb
 		const templates = fencedBlocks(skill).filter((fence) => fence.content.includes("type=grill"));
 		if (templates.length !== 1) problems.push(`${harness}/grill: ${templates.length} templates con marker type=grill`);
 		for (const problem of missing(templates[0]?.content ?? "", [/SDD-Tracking: version=1; type=grill; state=<paused\|finalized>; issue=<#NN\|owner\/repo#NN\|none>; grill=<ref>; project=<ref>/, /## Hechos comprobados[\s\S]*## Decisiones resueltas[\s\S]*## Ramas pendientes[\s\S]*## Diseño[\s\S]*## Handoff/])) problems.push(`${harness}/grill: template del handoff ${problem}`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+// Restos del modelo de sesión acotada a un bloque elegido: con «todos los bloques resueltos» el
+// mapa no declara un alcance de sesión y el contrato no lista bloques para futuras sesiones.
+const BOUNDED_SESSION_REMNANTS: RegExp[] = [
+	/alcance de (?:la|esta) sesión/,
+	/bloques pendientes para futuras sesiones/,
+	/futuras sesiones/,
+	/riesgos, pendientes/,
+];
+
+test("review #90: ni el mapa ni el contrato del cierre conservan restos de la sesión acotada", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		for (const problem of present(await grillSkill(harness), BOUNDED_SESSION_REMNANTS)) problems.push(`${harness}/grill/SKILL.md: ${problem}`);
 	}
 	assert.deepEqual(problems, []);
 });
@@ -284,14 +308,18 @@ test("CA-6: la pregunta de clasificación de UI «no es una pregunta de decisió
 // F. Runtime Pi sin tope (CA-9)
 // ---------------------------------------------------------------------------
 
-test("CA-9: ningún archivo de pi-extensions nombra el tope de preguntas retirado", async () => {
+export async function retiredFieldOffenders(): Promise<string[]> {
 	const pattern = new RegExp(`${RETIRED_FIELD}|${RETIRED_CONSTANT}`);
 	const offenders: string[] = [];
 	for (const path of trackedFiles("pi-extensions")) {
 		const text = await readRepoFile(path).catch(() => null);
 		if (text !== null && pattern.test(text)) offenders.push(path);
 	}
-	assert.deepEqual(offenders, []);
+	return offenders;
+}
+
+test("CA-9: ningún archivo trackeado de pi-extensions nombra el tope de preguntas retirado", async () => {
+	assert.deepEqual(await retiredFieldOffenders(), []);
 });
 
 // ---------------------------------------------------------------------------
@@ -320,8 +348,47 @@ test("CA-12: el contrato suma la fila del gate de grill y CI lo corre con el glo
 	assert.match(await readRepoFile(".github/workflows/ci.yml"), /node --test pi-extensions\/\*\/\*\.test\.ts/);
 });
 
-test("CA-12: el gate de grill es solo-tests: sin index.ts ni factory en su carpeta", () => {
-	assert.deepEqual(trackedFiles("pi-extensions/grill-gate"), ["pi-extensions/grill-gate/grill-gate.test.ts"]);
+const GATE_FOLDER = "pi-extensions/grill-gate";
+
+// Sin `index.ts` ni factory (default export) entre los archivos trackeados de la carpeta del gate:
+// el gate del Pi Package censa exactamente las factories de produccion.
+export async function gateShapeProblems(): Promise<string[]> {
+	const files = trackedFiles(GATE_FOLDER);
+	const problems: string[] = [];
+	if (!files.includes(`${GATE_FOLDER}/grill-gate.test.ts`)) problems.push("falta grill-gate.test.ts entre los archivos trackeados");
+	for (const path of files) {
+		if (basename(path) === "index.ts") problems.push(`${path}: el gate no tiene index.ts`);
+		const text = await readRepoFile(path).catch(() => null);
+		if (text !== null && /export\s+default/.test(text)) problems.push(`${path}: el gate no exporta una factory por default`);
+	}
+	return problems;
+}
+
+test("CA-12: el gate de grill es solo-tests: sin index.ts ni factory en su carpeta", async () => {
+	assert.deepEqual(await gateShapeProblems(), []);
+});
+
+test("CA-9 y CA-12: un scratch file untracked real no rompe el gate (solo cuentan los archivos trackeados)", async () => {
+	// Borradores locales de un dev (una nota que nombra el campo retirado, un prototipo con factory)
+	// no entran en el censo: el contrato habla de archivos trackeados, como pi-package y sdd-land-gate.
+	const notes = `${GATE_FOLDER}/.chichex-test-scratch-notes.md`;
+	const factory = `${GATE_FOLDER}/.chichex-test-scratch-factory.ts`;
+	try {
+		await writeFile(repoFile(notes), `borrador que nombra ${RETIRED_FIELD} y ${RETIRED_CONSTANT}\n`, "utf8");
+		await writeFile(repoFile(factory), `${["export", "default"].join(" ")} function (pi) {\n\treturn {};\n}\n`, "utf8");
+		const untracked = execFileSync("git", ["ls-files", "--others", "--exclude-standard", "-z", "--", GATE_FOLDER], {
+			cwd: repoFile("."),
+			encoding: "utf8",
+		}).split("\0");
+		assert.ok(untracked.includes(notes) && untracked.includes(factory), "los scratch files existen y git los ve como untracked");
+		assert.equal(trackedFiles(GATE_FOLDER).includes(notes), false);
+		assert.equal(trackedFiles(GATE_FOLDER).includes(factory), false);
+		assert.deepEqual(await retiredFieldOffenders(), []);
+		assert.deepEqual(await gateShapeProblems(), []);
+	} finally {
+		await rm(repoFile(notes), { force: true });
+		await rm(repoFile(factory), { force: true });
+	}
 });
 
 // ---------------------------------------------------------------------------
