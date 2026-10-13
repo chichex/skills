@@ -34,7 +34,7 @@ Pelado, lista los PRs abiertos del repo agrupados por stack (`gh pr list --state
 ## Fase 1 — Preflight (bloqueante)
 
 1. Raíz Git (`git rev-parse --show-toplevel`), `gh auth status`, repo resuelto (`gh repo view --json nameWithOwner,defaultBranchRef,viewerDefaultMergeMethod`) y branch default leído del remote: nunca asumir `main`. Un fallo frena con diagnóstico, sin mutar nada.
-2. Leer `.sdd/project.md` si existe. Si su `## Limites` prohíbe mergear sin una excepción para `$sdd-land`, frena antes de tocar nada y lo dice: el contrato del repo manda por encima de este skill.
+2. Leer `.sdd/project.md` si existe: sus `## Comandos` verifican un branch actualizado en la Fase 2 y sus `## Limites` rigen como siempre, salvo las prohibiciones de merge. Esas no frenan este skill: invocarlo y confirmar el plan es la autorización humana. Si `## Limites` prohíbe mergear sin una excepción para `$sdd-land`, el plan de la Fase 2 cita la línea textual y avisa que confirmar la pisa.
 3. `gh stack` exigido solo si algún target es un stack. Si falta la extensión, frenar con el comando exacto (`gh extension install github/gh-stack`).
 4. Resolver los targets desde GitHub. La pertenencia a un stack no se asume del estado local: un PR pertenece a un stack si su `baseRefName` no es el default o si existe algún PR abierto cuyo `baseRefName` es su `headRefName`; se recorre `baseRefName` hasta el branch default para armar la cadena hacia abajo, se suman los PRs apilados encima y se confirma con `gh stack view --json`. Una cadena de PRs no vinculada se ofrece vincular con `gh stack link` antes de seguir. Si `gh stack view --json` no devuelve el stack porque el checkout principal no tiene su estado local, el fallback es pedir el número de stack. Con `--clean-only` no hay targets: se omiten los puntos 3 y 4. Con varios targets, el preflight predice los conflictos cruzados entre sus branches con `git merge-tree --write-tree origin/<a> origin/<b>` por pares (solo lectura, sin tocar el working tree) y guarda qué pares chocan y en qué archivos, para mostrarlos en el plan.
 
@@ -149,7 +149,7 @@ En cualquier otro caso, `SDD-LAND DETENIDO`, con lo hecho, lo pendiente y el com
 
 ```text
 SDD-LAND DETENIDO
-- motivo: <fallo, gate rojo, cancelación o límite del contrato>
+- motivo: <fallo, gate rojo, cancelación o límite del contrato ajeno al merge>
 - hecho: <merges, remotos, worktrees y branches ya resueltos>
 - pendiente: <targets o pasos sin completar, con ruta y comando exacto>
 - reanudar: <comando exacto, por ejemplo $sdd-land <PR>>
@@ -159,7 +159,7 @@ SDD-LAND DETENIDO
 
 - Mostrar el plan completo y recibir la confirmación antes de cualquier mutación; `--dry-run` no muta nada.
 - Leer el branch default del remote y el estado de cada PR de GitHub; verificar el merge releyendo `state == MERGED`.
-- Respetar los `## Limites` del contrato por encima de cualquier instrucción de este skill.
+- Respetar los `## Limites` del contrato, salvo las prohibiciones de merge, que la invocación más la confirmación del plan reemplazan. En un bullet que junta varias prohibiciones, solo cae la parte de merge.
 - Borrar remotos solo con todo el target `MERGED`, y locales solo lo mergeado y limpio.
 - Reportar con ruta y comando exacto todo lo que no se pudo resolver con seguridad.
 
