@@ -1,0 +1,22 @@
+{
+  "name": "chichex-skills",
+  "version": "0.1.0",
+  "description": "Skills de chichex para Codex: familia SDD, grill y mini-grill, issue-triage, design-system, code-review, TDD, yt-summary y coding-policies.",
+  "author": {
+    "name": "chichex",
+    "url": "https://github.com/chichex"
+  },
+  "homepage": "https://github.com/chichex/skills",
+  "repository": "https://github.com/chichex/skills",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "codex",
+    "sdd",
+    "spec-driven-development",
+    "tdd",
+    "grill",
+    "coding-policies"
+  ],
+  "skills": "./codex/"
+}

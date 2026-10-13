@@ -109,14 +109,43 @@ skills/
 ├── shared/         # fuentes canónicas de artefactos generados
 ├── .claude/        # project skills internos del repo (harness-port)
 ├── .claude-plugin/ # marketplace + manifest del plugin de Claude Code
+├── .codex-plugin/  # manifest del plugin de Codex
+├── .agents/plugins/# marketplace nativo de Codex
 ├── .github/        # CI (GitHub Actions)
 ├── evals/          # evals del plugin de Claude Code (claude plugin eval)
 └── scripts/        # lint, drift y sincronizadores deterministas
 ```
 
-El repo corre CI en GitHub Actions (`.github/workflows/ci.yml`): valida sintaxis y estilo de los shells (`bash -n` + shellcheck), el frontmatter de todos los skills (`scripts/lint-frontmatter.sh`, que también corre en macOS local), los tests de `pi-extensions` con Node 26 y el manifest del plugin de Claude Code (`claude plugin validate .`). Además publica un reporte informativo de drift entre las copias de cada skill por harness (`scripts/drift-report.sh`): la divergencia esperada es solo la capa de interacción de cada harness; una divergencia grande en doctrina amerita revisión manual.
+El repo corre CI en GitHub Actions (`.github/workflows/ci.yml`): valida sintaxis y estilo de los shells (`bash -n` + shellcheck), el frontmatter de todos los skills (`scripts/lint-frontmatter.sh`, que también corre en macOS local), los tests de `pi-extensions` con Node 26, el marketplace nativo de Codex y el manifest del plugin de Claude Code (`claude plugin validate .`). Además publica un reporte informativo de drift entre las copias de cada skill por harness (`scripts/drift-report.sh`): la divergencia esperada es solo la capa de interacción de cada harness; una divergencia grande en doctrina amerita revisión manual.
 
 ## Instalación
+
+### Codex: como plugin (recomendado)
+
+Los skills de `codex/` se pueden instalar juntos como plugin nativo. No hace falta clonar el repo ni correr `install.sh`:
+
+```bash
+codex plugin marketplace add chichex/skills
+codex plugin add chichex-skills@chichex
+```
+
+El marketplace de Codex vive en `.agents/plugins/marketplace.json`. Su manifest separado, `.codex-plugin/plugin.json`, apunta a `codex/`. Claude Code sigue usando `.claude-plugin/plugin.json` y `claude/`.
+
+Para traer cambios nuevos:
+
+```bash
+codex plugin marketplace upgrade chichex
+```
+
+Reiniciá la sesión de Codex después de instalar o actualizar el plugin.
+
+Si lo instalaste antes de que existiera `.codex-plugin/plugin.json`, Codex puede tener cacheada la variante de Claude. Migrala una sola vez:
+
+```bash
+codex plugin marketplace upgrade chichex
+codex plugin remove chichex-skills@chichex
+codex plugin add chichex-skills@chichex
+```
 
 ### Claude Code: como plugin (recomendado)
 
