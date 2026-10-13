@@ -111,14 +111,43 @@ skills/
 ├── shared/         # canonical sources for generated artifacts
 ├── .claude/        # the repo's internal project skills (harness-port)
 ├── .claude-plugin/ # Claude Code plugin marketplace + manifest
+├── .codex-plugin/  # Codex plugin manifest
+├── .agents/plugins/# native Codex marketplace
 ├── .github/        # CI (GitHub Actions)
 ├── evals/          # Claude Code plugin evals (claude plugin eval)
 └── scripts/        # lint, drift, and deterministic synchronizers
 ```
 
-The repo runs CI on GitHub Actions (`.github/workflows/ci.yml`): it validates shell syntax and style (`bash -n` + shellcheck), the frontmatter of every skill (`scripts/lint-frontmatter.sh`, which also runs on local macOS), the `pi-extensions` tests on Node 26, and the Claude Code plugin manifest (`claude plugin validate .`). It also publishes an informational drift report between each skill's per-harness copies (`scripts/drift-report.sh`): the expected divergence is only each harness's interaction layer; a large divergence in doctrine warrants manual review.
+The repo runs CI on GitHub Actions (`.github/workflows/ci.yml`): it validates shell syntax and style (`bash -n` + shellcheck), the frontmatter of every skill (`scripts/lint-frontmatter.sh`, which also runs on local macOS), the `pi-extensions` tests on Node 26, the native Codex marketplace, and the Claude Code plugin manifest (`claude plugin validate .`). It also publishes an informational drift report between each skill's per-harness copies (`scripts/drift-report.sh`): the expected divergence is only each harness's interaction layer; a large divergence in doctrine warrants manual review.
 
 ## Installation
+
+### Codex: as a plugin (recommended)
+
+Every skill under `codex/` can be installed together as a native plugin. You do not need to clone the repository or run `install.sh`:
+
+```bash
+codex plugin marketplace add chichex/skills
+codex plugin add chichex-skills@chichex
+```
+
+The Codex marketplace lives at `.agents/plugins/marketplace.json`. Its separate `.codex-plugin/plugin.json` manifest points to `codex/`. Claude Code keeps using `.claude-plugin/plugin.json` and `claude/`.
+
+To fetch new changes:
+
+```bash
+codex plugin marketplace upgrade chichex
+```
+
+Restart the Codex session after installing or updating the plugin.
+
+If you installed it before `.codex-plugin/plugin.json` existed, Codex may have cached the Claude variant. Migrate it once:
+
+```bash
+codex plugin marketplace upgrade chichex
+codex plugin remove chichex-skills@chichex
+codex plugin add chichex-skills@chichex
+```
 
 ### Claude Code: as a plugin (recommended)
 
