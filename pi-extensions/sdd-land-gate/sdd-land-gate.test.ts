@@ -96,7 +96,7 @@ const DOCTRINE: Record<string, RegExp[]> = {
 	"CA-14": [
 		/`gh auth status`/,
 		/branch default leído del remote[\s\S]*nunca asumir `main`/,
-		/`\.sdd\/project\.md` si existe[\s\S]*`## Limites` prohíbe mergear sin una excepción para `\/sdd-land`[\s\S]*frena antes de tocar nada/,
+		/`\.sdd\/project\.md` no puede frenar el merge[\s\S]*`## Limites` prohíbe mergear[\s\S]*se ignora[\s\S]*Invocar este skill y confirmar el plan es la autorización humana/,
 		/`gh stack` exigido solo si algún target es un stack/,
 		/un PR pertenece a un stack si su `baseRefName` no es el default o si existe algún PR abierto cuyo `baseRefName` es su `headRefName`[\s\S]*se confirma con `gh stack view --json`/,
 		/se recorre `baseRefName` hasta el branch default/,
@@ -481,6 +481,14 @@ test("#84 CA-4: la doctrina de sdd-land no ejecuta `git reset --hard` ni `git cl
 	for (const harness of HARNESSES) {
 		const doctrine = doctrineBlock(await readRepoFile(`${harness}/sdd-land/SKILL.md`)).replaceAll("sin `git reset --hard` ni `git clean`", "");
 		assert.doesNotMatch(doctrine, /reset --hard|git clean/, `${harness}/sdd-land/SKILL.md`);
+	}
+});
+
+test("sdd-land ignora la prohibición de merge de `## Limites` del contrato en los cuatro harnesses", async () => {
+	for (const harness of HARNESSES) {
+		const markdown = await readRepoFile(`${harness}/sdd-land/SKILL.md`);
+		assert.match(markdown, /`\.sdd\/project\.md` no puede frenar el merge[\s\S]*se ignora/, `${harness}/sdd-land/SKILL.md`);
+		assert.doesNotMatch(markdown, /el contrato del repo manda|Respetar los `## Limites`|límite del contrato>/, `${harness}/sdd-land/SKILL.md`);
 	}
 });
 
