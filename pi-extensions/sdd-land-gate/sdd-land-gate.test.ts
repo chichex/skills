@@ -96,7 +96,8 @@ const DOCTRINE: Record<string, RegExp[]> = {
 	"CA-14": [
 		/`gh auth status`/,
 		/branch default leído del remote[\s\S]*nunca asumir `main`/,
-		/`\.sdd\/project\.md` no puede frenar el merge[\s\S]*`## Limites` prohíbe mergear[\s\S]*se ignora[\s\S]*Invocar este skill y confirmar el plan es la autorización humana/,
+		/Leer `\.sdd\/project\.md` si existe[\s\S]*`## Comandos` verifican un branch actualizado[\s\S]*`## Limites` rigen como siempre, salvo las prohibiciones de merge[\s\S]*invocarlo y confirmar el plan es la autorización humana[\s\S]*el plan de la Fase 2 cita la línea textual y avisa que confirmar la pisa/,
+		/Respetar los `## Limites` del contrato, salvo las prohibiciones de merge[\s\S]*solo cae la parte de merge/,
 		/`gh stack` exigido solo si algún target es un stack/,
 		/un PR pertenece a un stack si su `baseRefName` no es el default o si existe algún PR abierto cuyo `baseRefName` es su `headRefName`[\s\S]*se confirma con `gh stack view --json`/,
 		/se recorre `baseRefName` hasta el branch default/,
@@ -484,11 +485,11 @@ test("#84 CA-4: la doctrina de sdd-land no ejecuta `git reset --hard` ni `git cl
 	}
 });
 
-test("sdd-land ignora la prohibición de merge de `## Limites` del contrato en los cuatro harnesses", async () => {
+test("PR #91 CA-14: ninguna línea de sdd-land frena el merge por `## Limites` del contrato", async () => {
 	for (const harness of HARNESSES) {
-		const markdown = await readRepoFile(`${harness}/sdd-land/SKILL.md`);
-		assert.match(markdown, /`\.sdd\/project\.md` no puede frenar el merge[\s\S]*se ignora/, `${harness}/sdd-land/SKILL.md`);
-		assert.doesNotMatch(markdown, /el contrato del repo manda|Respetar los `## Limites`|límite del contrato>/, `${harness}/sdd-land/SKILL.md`);
+		const lines = (await readRepoFile(`${harness}/sdd-land/SKILL.md`)).split("\n");
+		const frena = lines.filter((line) => (/## Limites/.test(line) && /\b(frena|frenar|manda)\b|por encima/.test(line) && !/no frenan/.test(line)) || /contrato[^.]*manda/.test(line));
+		assert.deepEqual(frena, [], `${harness}/sdd-land/SKILL.md`);
 	}
 });
 
