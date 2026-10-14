@@ -228,7 +228,7 @@ const DOCTRINE_84: Record<string, RegExp[]> = {
 	],
 	"CA-6": [
 		/Las Fases 6 y 7 nunca remueven un worktree bloqueado/,
-		/si el lock dice `sdd-run <slug>` o `quick-run <slug>` y su branch es del target recién mergeado, `git worktree unlock` y después `git worktree remove`, solo si el worktree está limpio/,
+		/si el lock dice `sdd-run <slug>` y su branch es del target recién mergeado, `git worktree unlock` y después `git worktree remove`, solo si el worktree está limpio/,
 		/Cualquier otro lock se reporta con su motivo y con el comando `git worktree unlock <ruta> && git worktree remove <ruta>`/,
 		/worktrees detached limpios y sin lock cuyo SHA alcanza algún ref \(`git for-each-ref --contains <sha>` no vacío\), con su SHA y el ref que lo alcanza/,
 		/Los detached que ningún ref alcanza se reportan con la ruta y el comando, sin ofrecerlos/,
