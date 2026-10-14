@@ -301,7 +301,7 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 			{
 				value: "analyze",
 				label: "1  Analizar",
-				description: "Explora issues, código, tests y contrato; recomienda grill, spec, quick-run o rechazo",
+				description: "Explora issues, código, tests y contrato; recomienda grill, spec o rechazo",
 				recommended: true,
 				shortcut: "1",
 			},
@@ -475,7 +475,7 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 	}
 
 	pi.registerCommand("issues", {
-		description: "Seleccionar y administrar GitHub Issues; Analizar enruta a grill, spec, quick-run o rechazo",
+		description: "Seleccionar y administrar GitHub Issues; Analizar enruta a grill, spec o rechazo",
 		handler: async (_args, ctx) => {
 			if (ctx.mode !== "tui") {
 				ctx.ui.notify("El administrador de issues requiere modo TUI", "error");

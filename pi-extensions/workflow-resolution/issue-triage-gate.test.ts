@@ -67,7 +67,7 @@ export function normalizeArtifactAwareBlock(
 	// Mismo borde que normalizeInvocations de harness-gate/interaction.ts: una
 	// ruta como `.sdd/grills/` no es una invocación de `/grill`.
 	let normalized = block.replace(
-		new RegExp(`(^|[^A-Za-z0-9.])${escapeRegExp(invocation)}(issue-triage|quick-run|grill|sdd-spec|sdd-run)(?![A-Za-z0-9-])`, "gm"),
+		new RegExp(`(^|[^A-Za-z0-9.])${escapeRegExp(invocation)}(issue-triage|grill|sdd-spec|sdd-run)(?![A-Za-z0-9-])`, "gm"),
 		(_match, before: string, name: string) => `${before}«skill:${name}»`,
 	);
 	if (questionTool && questionTool !== "—") {
@@ -127,7 +127,6 @@ test("issue-triage has one equivalent artifact-aware contract in all existing ha
 		blocks.set(harness, normalizeArtifactAwareBlock(artifactAwareBlock(markdown), harness, interaction));
 		assert.doesNotMatch(markdown, /## Fase 6 — Ejecutar la ruta/);
 		assert.doesNotMatch(markdown, /Creá un worktree hermano/);
-		assert.doesNotMatch(markdown, /Quick-run completo:/);
 		assert.doesNotMatch(markdown, /Cargá (?:completo )?(?:el skill )?[`~/.a-z-]*(?:grill|sdd-spec)\/SKILL\.md/);
 	}
 	assert.deepEqual(compareArtifactAwareBlocks(blocks), []);
@@ -158,7 +157,7 @@ test("artifact-aware gate reports injected route/schema drift", () => {
 	const base = "route=run-existing-spec\nselectedRoute=null";
 	const blocks = new Map<Harness, string>([
 		["claude", base],
-		["codex", base.replace("run-existing-spec", "quick-run")],
+		["codex", base.replace("run-existing-spec", "update-existing-spec")],
 		["pi", base],
 	]);
 	assert.deepEqual(compareArtifactAwareBlocks(blocks), ["codex diverge de claude"]);
@@ -174,7 +173,6 @@ const CHAINING_HARNESSES = ["claude", "codex"] as const;
 const STAGE_SKILLS: Record<string, string> = {
 	grill: "grill",
 	spec: "sdd-spec",
-	"quick-run": "quick-run",
 	"run-existing-spec": "sdd-run",
 };
 
@@ -221,9 +219,6 @@ test("issue-triage chains the confirmed stage in harnesses without orchestrator"
 		const routes = stageChainRoutes(block, interaction.invocation[harness]);
 		assert.deepEqual(Object.fromEntries(routes), START_ROUTE_SKILLS, `${harness}: mapeo ruta → skill`);
 		const args = stageChainArguments(block);
-		for (const route of ["quick-run", "join-quick-run"]) {
-			assert.match(args.get(route) ?? "", /^—/, `${harness}: ${route} sin args, como dispatch.ts`);
-		}
 		assert.match(args.get("spec-from-grill") ?? "", /--from-grill/);
 		for (const route of ["update-existing-spec", "audit-existing-spec"]) {
 			assert.match(args.get(route) ?? "", /--triage-route/, `${harness}: ${route} distingue update/audit`);
@@ -234,19 +229,17 @@ test("issue-triage chains the confirmed stage in harnesses without orchestrator"
 		blocks.set(harness, normalizeArtifactAwareBlock(block, harness, interaction));
 		assert.match(markdown, /## Fase 7 — Encadenar el stage confirmado/);
 		assert.doesNotMatch(markdown, /no autoriza a ejecutar el stage/);
-		assert.doesNotMatch(markdown, /No invocar ni ejecutar grill, spec, run o quick-run/);
+		assert.doesNotMatch(markdown, /No invocar ni ejecutar grill, spec o run/);
 		assert.match(markdown, /selectedRoute=null[^\n]*no encadenes/i);
 	}
 	assert.equal(blocks.get("codex"), blocks.get("claude"), "codex diverge de claude en stage-chain");
 });
 
-test("codex issue-triage leaves run and quick-run as a ready command because their sidecars forbid implicit invocation", async () => {
+test("codex issue-triage leaves run as a ready command because its sidecar forbids implicit invocation", async () => {
 	const markdown = await readRepoFile("codex/issue-triage/SKILL.md");
-	assert.match(markdown, /Excepción de Codex[^\n]*run-existing-spec[^\n]*quick-run[^\n]*join-quick-run/);
-	for (const skill of ["sdd-run", "quick-run"]) {
-		const sidecar = await readRepoFile(`codex/${skill}/agents/openai.yaml`);
-		assert.match(sidecar, /allow_implicit_invocation:\s*false/, `${skill}: la excepción de issue-triage depende de esta política`);
-	}
+	assert.match(markdown, /Excepción de Codex: `run-existing-spec` no se encadena/);
+	const sidecar = await readRepoFile("codex/sdd-run/agents/openai.yaml");
+	assert.match(sidecar, /allow_implicit_invocation:\s*false/, "sdd-run: la excepción de issue-triage depende de esta política");
 });
 
 test("claude and codex sdd-spec accept the chained triage target", async () => {

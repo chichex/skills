@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { startFreshStage } from "./lifecycle.ts";
+import { ACTIONABLE_ROUTE_CONTRACT } from "./route-contract.ts";
 import { stageCrossProjectSession as persistCrossProjectSession } from "./staging.ts";
 
 /**
@@ -32,12 +33,12 @@ function resolution(overrides: Record<string, unknown> = {}) {
 	return {
 		version: 1,
 		outcome: "start",
-		code: "quick-run",
-		recommendedClassification: "quick-run",
-		fallbackClassification: "spec",
-		recommendedRoute: "quick-run",
-		selectedRoute: "quick-run",
-		stage: "quick-run",
+		code: "spec",
+		recommendedClassification: "spec",
+		fallbackClassification: "grill",
+		recommendedRoute: "spec",
+		selectedRoute: "spec",
+		stage: "spec",
 		mode: "new",
 		repo: "chichex/skills",
 		cwd: "/workspace/skills",
@@ -83,14 +84,14 @@ test("rejects stop, error, unconfirmed, mismatched, and incoherent dispatch befo
 		resolution({ outcome: "stop", code: "cancelled", selectedRoute: null, stage: null, mode: null }),
 		resolution({ outcome: "error", code: "canonicalization", recommendedRoute: null, selectedRoute: null, stage: null, mode: null }),
 		resolution({ selectedRoute: null }),
-		resolution({ selectedRoute: "spec" }),
-		resolution({ stage: "spec" }),
+		resolution({ selectedRoute: "grill" }),
+		resolution({ stage: "grill" }),
 		resolution({ selectedRoute: "already-implemented", code: "already-implemented" }),
 	];
 
 	for (const handoff of cases) {
 		const result = await startFreshStage(
-			{ resolution: handoff, skill: { name: "quick-run", args: "" } },
+			{ resolution: handoff, skill: { name: "sdd-spec", args: "" } },
 			context as never,
 			dependencies as never,
 		);
@@ -118,8 +119,6 @@ test("accepts every actionable route only through its exact stage and mode matri
 		["join-grill", "grill", "new"],
 		["spec", "spec", "new"],
 		["join-spec", "spec", "new"],
-		["quick-run", "quick-run", "new"],
-		["join-quick-run", "quick-run", "new"],
 		["resume-grill", "grill", "resume"],
 		["spec-from-grill", "spec", "from-grill"],
 		["update-existing-spec", "spec", "update"],
@@ -127,6 +126,11 @@ test("accepts every actionable route only through its exact stage and mode matri
 		["run-existing-spec", "run-existing-spec", null],
 	] as const;
 
+	assert.deepEqual(
+		cases.map(([route]) => route).sort(),
+		Object.keys(ACTIONABLE_ROUTE_CONTRACT).sort(),
+		"the matrix covers exactly the actionable routes",
+	);
 	for (const [route, stage, mode] of cases) {
 		const isJoin = route.startsWith("join-");
 		const handoff = resolution({
@@ -160,7 +164,7 @@ test("starts a fresh linked same-project session and sends only materialized ski
 		const childFile = join(sessionDir, "child.jsonl");
 		await mkdir(skillDir);
 		await mkdir(sessionDir);
-		await writeFile(skillPath, "---\nname: quick-run\ndescription: Run\n---\n# Quick run\n", "utf8");
+		await writeFile(skillPath, "---\nname: sdd-spec\ndescription: Spec\n---\n# SDD spec\n", "utf8");
 		await writeFile(originFile, `${JSON.stringify({ type: "session", version: 3, id: "origin-id", cwd: project })}\n`, "utf8");
 
 		const handoff = resolution({ cwd: project, canonicalIssue: null });
@@ -199,8 +203,8 @@ test("starts a fresh linked same-project session and sends only materialized ski
 							cwd: project,
 							contextFiles: [{ path: join(project, "AGENTS.md"), content: "target" }],
 							skills: [{
-								name: "quick-run",
-								description: "Run",
+								name: "sdd-spec",
+								description: "Spec",
 								filePath: skillPath,
 								sourceInfo: { path: skillPath, scope: "temporary" },
 								disableModelInvocation: false,
@@ -224,11 +228,11 @@ test("starts a fresh linked same-project session and sends only materialized ski
 			},
 		};
 		const result = await startFreshStage(
-			{ resolution: handoff, skill: { name: "quick-run", args: "  --assume  " } },
+			{ resolution: handoff, skill: { name: "sdd-spec", args: "  --assume  " } },
 			context as never,
 			{
 				commands: [{
-					name: "skill:quick-run",
+					name: "skill:sdd-spec",
 					source: "skill",
 					sourceInfo: {
 						path: skillPath,
@@ -268,7 +272,7 @@ test("starts a fresh linked same-project session and sends only materialized ski
 			sessionId: "child-id",
 			sessionFile: childFile,
 			cwd: project,
-			name: "SDD quick-run · chichex/skills#13",
+			name: "SDD spec · chichex/skills#13",
 			repository: "chichex/skills",
 			issueNumber: 13,
 		});
@@ -278,7 +282,7 @@ test("starts a fresh linked same-project session and sends only materialized ski
 		assert.ok(calls.slice(0, mutationIndex).some((call) => call.startsWith("git-root:")));
 		assert.deepEqual(calls.slice(mutationIndex), [
 			"MUTATE:newSession",
-			"session-info:SDD quick-run · chichex/skills#13",
+			"session-info:SDD spec · chichex/skills#13",
 			"target-resources",
 			"read-skill",
 			"kickoff",
@@ -287,10 +291,10 @@ test("starts a fresh linked same-project session and sends only materialized ski
 		const envelope = kickoff.match(/^([\s\S]+)\n\n<workflow-handoff version="1">\n([^\n]+)\n<\/workflow-handoff>$/);
 		assert.ok(envelope);
 		assert.equal(envelope[1], [
-			`<skill name="quick-run" location="${skillPath}">`,
+			`<skill name="sdd-spec" location="${skillPath}">`,
 			`References are relative to ${skillDir}.`,
 			"",
-			"# Quick run",
+			"# SDD spec",
 			"</skill>",
 			"",
 			"--assume",
@@ -319,7 +323,7 @@ test("accepts a project root reached through a symlink, matching Pi's resolve()-
 		const childFile = join(sessionDir, "child.jsonl");
 		await mkdir(skillDir);
 		await mkdir(sessionDir);
-		await writeFile(skillPath, "---\nname: quick-run\ndescription: Run\n---\n# Quick run\n", "utf8");
+		await writeFile(skillPath, "---\nname: sdd-spec\ndescription: Spec\n---\n# SDD spec\n", "utf8");
 		await writeFile(
 			originFile,
 			`${JSON.stringify({ type: "session", version: 3, id: "origin-id", cwd: symlinkProject })}\n`,
@@ -350,8 +354,8 @@ test("accepts a project root reached through a symlink, matching Pi's resolve()-
 						cwd: symlinkProject,
 						contextFiles: [],
 						skills: [{
-							name: "quick-run",
-							description: "Run",
+							name: "sdd-spec",
+							description: "Spec",
 							filePath: skillPath,
 							sourceInfo: { path: skillPath, scope: "temporary" },
 							disableModelInvocation: false,
@@ -367,11 +371,11 @@ test("accepts a project root reached through a symlink, matching Pi's resolve()-
 		};
 
 		const result = await startFreshStage(
-			{ resolution: handoff, skill: { name: "quick-run", args: "" } },
+			{ resolution: handoff, skill: { name: "sdd-spec", args: "" } },
 			context as never,
 			{
 				commands: [{
-					name: "skill:quick-run",
+					name: "skill:sdd-spec",
 					source: "skill",
 					sourceInfo: { path: skillPath, baseDir: skillDir, source: "skills", scope: "temporary", origin: "top-level" },
 				}],

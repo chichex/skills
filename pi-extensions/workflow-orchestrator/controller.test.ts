@@ -58,12 +58,12 @@ function workflowResolution(overrides: Record<string, unknown> = {}) {
 	return {
 		version: 1,
 		outcome: "start",
-		code: "quick-run",
-		recommendedClassification: "quick-run",
-		fallbackClassification: "spec",
-		recommendedRoute: "quick-run",
-		selectedRoute: "quick-run",
-		stage: "quick-run",
+		code: "spec",
+		recommendedClassification: "spec",
+		fallbackClassification: "grill",
+		recommendedRoute: "spec",
+		selectedRoute: "spec",
+		stage: "spec",
 		mode: "new",
 		repo: "chichex/skills",
 		cwd: "/workspace/skills",
@@ -346,7 +346,7 @@ test("terminal resolution is one-shot and hands an opaque same-session receipt t
 	assert.equal(starts.length, 1);
 	assert.deepEqual(starts[0], {
 		resolution: workflowResolution(),
-		skill: { name: "quick-run", args: "" },
+		skill: { name: "sdd-spec", args: "#14" },
 	});
 
 	await internal.handler("opaque-receipt", commandContext);

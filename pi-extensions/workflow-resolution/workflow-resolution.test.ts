@@ -23,7 +23,7 @@ function resolutionInput(overrides: Record<string, unknown> = {}) {
 		sources: [issue(11)],
 		canonicalIssue: issue(11),
 		canonicalIssueUsable: true,
-		recommendedClassification: "quick-run",
+		recommendedClassification: "grill",
 		fallbackClassification: "spec",
 		summary: "Resolver el próximo stage.",
 		impactExample: "Una spec implementada no vuelve a ejecutarse.",
@@ -306,10 +306,10 @@ test("routes new work and a single resolved spec through the deterministic stage
 		},
 		{
 			outcome: "start",
-			code: "quick-run",
-			recommendedRoute: "quick-run",
+			code: "grill",
+			recommendedRoute: "grill",
 			selectedRoute: null,
-			stage: "quick-run",
+			stage: "grill",
 			mode: "new",
 		},
 	);
@@ -326,7 +326,7 @@ test("routes new work and a single resolved spec through the deterministic stage
 		const result = resolveWorkflow(resolutionInput({ artifacts: [canonicalSpec(state, freshness)] }));
 		assert.equal(result.outcome, outcome, `${state}/${freshness}: outcome`);
 		assert.equal(result.code, route, `${state}/${freshness}: code`);
-		assert.equal(result.recommendedClassification, "quick-run", `${state}/${freshness}: original classification`);
+		assert.equal(result.recommendedClassification, "grill", `${state}/${freshness}: original classification`);
 		assert.equal(result.recommendedRoute, route, `${state}/${freshness}: route`);
 		assert.equal(result.selectedRoute, null, `${state}/${freshness}: before gate`);
 		assert.equal(result.stage, stage, `${state}/${freshness}: stage`);
@@ -681,14 +681,14 @@ test("requires join canonicalization before inspection and uses only canonical i
 test("keeps recommendation and effective selection independent in serializable v1 results", () => {
 	const proposed = resolveWorkflow(resolutionInput());
 	const primary = selectWorkflowRoute(proposed, "recommended");
-	assert.equal(primary.recommendedRoute, "quick-run");
-	assert.equal(primary.selectedRoute, "quick-run");
-	assert.equal(primary.code, "quick-run");
+	assert.equal(primary.recommendedRoute, "grill");
+	assert.equal(primary.selectedRoute, "grill");
+	assert.equal(primary.code, "grill");
 
 	const fallback = selectWorkflowRoute(proposed, "fallback");
-	assert.equal(fallback.recommendedClassification, "quick-run");
+	assert.equal(fallback.recommendedClassification, "grill");
 	assert.equal(fallback.fallbackClassification, "spec");
-	assert.equal(fallback.recommendedRoute, "quick-run");
+	assert.equal(fallback.recommendedRoute, "grill");
 	assert.equal(fallback.selectedRoute, "spec");
 	assert.equal(fallback.code, "spec");
 	assert.equal(fallback.stage, "spec");
@@ -699,14 +699,14 @@ test("keeps recommendation and effective selection independent in serializable v
 	assert.equal(cancelled.outcome, "stop");
 	assert.equal(cancelled.code, "cancelled");
 	assert.equal(cancelled.selectedRoute, null);
-	assert.equal(cancelled.recommendedRoute, "quick-run");
+	assert.equal(cancelled.recommendedRoute, "grill");
 
 	for (const protectedResult of [
 		resolveWorkflow(resolutionInput({ artifacts: [canonicalSpec("implemented", "fresh")] })),
 		resolveWorkflow(resolutionInput({ artifacts: [canonicalSpec("draft", "unknown")] })),
 	]) {
 		const attemptedFallback = selectWorkflowRoute(protectedResult, "fallback");
-		assert.notEqual(attemptedFallback.selectedRoute, "quick-run");
+		assert.notEqual(attemptedFallback.selectedRoute, "grill");
 		assert.notEqual(attemptedFallback.code, "run-existing-spec");
 	}
 
