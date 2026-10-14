@@ -237,6 +237,31 @@ La spec no está lista por haber generado Markdown ni por haber ejecutado un wri
 En Pi, invocar `persist_sdd_spec` una sola vez por publicación con la sucesora y todas las predecesoras (la transición a `approved` del menú es otra publicación, con su propia llamada). Considerar éxito únicamente si devuelve `details.ok=true` y `details.receipt`; un resultado sin `details.receipt` es un bloqueo diagnosticado y no se reemplaza con escrituras manuales. Si devuelve `createdIssues`, reintentar cada una como destino `issue` existente con esa identidad — nunca repetir `new-issue`. Los demás harnesses aplican la misma doctrina sin requerir este runtime exclusivo de Pi.
 <!-- sdd-spec-publication-gate:end -->
 
+## Log de eventos
+
+<!-- sdd-events:start -->
+Las transiciones de este skill se registran en `<git-common-dir>/sdd/events.jsonl`, el log local append-only del formato `events-v1` (normativo en `docs/sdd-events-v1.md` del repo de estos skills). Cada evento es una línea que agrega este comando, con los valores entre `<>` reemplazados: `issue` es `#NN`, `owner/repo#NN` o `none`; `spec` y `grill` van sin codificar (`.sdd/specs/<slug>.md`, `#NN`, `<fecha>-<slug>` o `none`) y el comando los percent-encodea; `pr` son números separados por coma y sin espacios, o vacío; `reason` es `none` salvo en `run.failed`.
+
+```bash
+(
+  harness='<harness>' event='<evento>' issue='<issue>' spec='<spec>' grillref='<grill>' pr='<prs>' reason='<reason>'
+  export LC_ALL=C
+  enc() { [ "$1" = none ] && { printf none; return; }; s=$1; while [ -n "$s" ]; do c=${s%"${s#?}"}; s=${s#?}; case $c in [A-Za-z0-9._~-]) printf %s "$c" ;; *) printf %% && printf %s "$c" | od -An -tx1 | tr -d ' \n' | tr a-f A-F ;; esac; done; }
+  dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && mkdir -p "$dir/sdd" &&
+    line=$(printf '{"v":1,"ts":"%s","harness":"%s","event":"%s","issue":"%s","spec":"%s","grill":"%s","pr":[%s],"reason":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$harness" "$event" "$issue" "$(enc "$spec")" "$(enc "$grillref")" "$pr" "$reason") &&
+    [ ${#line} -lt 1024 ] && printf '%s\n' "$line" >> "$dir/sdd/events.jsonl" ||
+    echo "aviso: no se registró el evento SDD $event" >&2
+)
+```
+
+- **Best-effort.** Un fallo del append nunca frena ni hace fallar el skill: el comando termina con exit 0 y avisa por stderr, y el reporte del skill lo nombra en una línea.
+- **Solo en el common-dir.** El log se escribe en `<git-common-dir>/sdd/`, nunca dentro del working tree: fuera de un repo git, o si el harness no puede escribir ahí, el evento se saltea con el aviso, sin caer a `.sdd/`.
+<!-- sdd-events:end -->
+
+En Pi, `<harness>` es `pi`.
+
+En Pi, `spec.published`, `spec.approved` y `spec.superseded` los registra `persist_sdd_spec` con cada receipt, con la identidad del marker que releyó: este skill no corre el comando. Si la tool suma un aviso `SDD event log not updated`, el reporte lo nombra en una línea.
+
 ## Reporte
 
 ```text

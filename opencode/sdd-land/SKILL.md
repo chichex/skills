@@ -85,6 +85,7 @@ Ejecución, después de la confirmación y con el gate verde en todos los PRs de
 - El método es `--method` o el default del repo (`viewerDefaultMergeMethod`), tal como lo mostró el plan.
 - Con merge queue el target queda `en cola` y se espera hasta `--wait`; un target que sigue en cola al vencer queda `DETENIDO`, sin borrar nada.
 - El éxito se verifica releyendo `state == MERGED` de cada PR, nunca por exit code.
+- Por cada PR cuyo merge verificó, registrar un `land.merged` (ver «Log de eventos»); un stack que aterriza de una vez registra uno por cada PR que aterrizó.
 
 ## Fase 4 — Remotos
 
@@ -155,6 +156,29 @@ SDD-LAND DETENIDO
 - reanudar: <comando exacto, por ejemplo /sdd-land <PR>>
 ```
 
+## Log de eventos
+
+<!-- sdd-events:start -->
+Las transiciones de este skill se registran en `<git-common-dir>/sdd/events.jsonl`, el log local append-only del formato `events-v1` (normativo en `docs/sdd-events-v1.md` del repo de estos skills). Cada evento es una línea que agrega este comando, con los valores entre `<>` reemplazados: `issue` es `#NN`, `owner/repo#NN` o `none`; `spec` y `grill` van sin codificar (`.sdd/specs/<slug>.md`, `#NN`, `<fecha>-<slug>` o `none`) y el comando los percent-encodea; `pr` son números separados por coma y sin espacios, o vacío; `reason` es `none` salvo en `run.failed`.
+
+```bash
+(
+  harness='<harness>' event='<evento>' issue='<issue>' spec='<spec>' grillref='<grill>' pr='<prs>' reason='<reason>'
+  export LC_ALL=C
+  enc() { [ "$1" = none ] && { printf none; return; }; s=$1; while [ -n "$s" ]; do c=${s%"${s#?}"}; s=${s#?}; case $c in [A-Za-z0-9._~-]) printf %s "$c" ;; *) printf %% && printf %s "$c" | od -An -tx1 | tr -d ' \n' | tr a-f A-F ;; esac; done; }
+  dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && mkdir -p "$dir/sdd" &&
+    line=$(printf '{"v":1,"ts":"%s","harness":"%s","event":"%s","issue":"%s","spec":"%s","grill":"%s","pr":[%s],"reason":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$harness" "$event" "$issue" "$(enc "$spec")" "$(enc "$grillref")" "$pr" "$reason") &&
+    [ ${#line} -lt 1024 ] && printf '%s\n' "$line" >> "$dir/sdd/events.jsonl" ||
+    echo "aviso: no se registró el evento SDD $event" >&2
+)
+```
+
+- **Best-effort.** Un fallo del append nunca frena ni hace fallar el skill: el comando termina con exit 0 y avisa por stderr, y el reporte del skill lo nombra en una línea.
+- **Solo en el common-dir.** El log se escribe en `<git-common-dir>/sdd/`, nunca dentro del working tree: fuera de un repo git, o si el harness no puede escribir ahí, el evento se saltea con el aviso, sin caer a `.sdd/`.
+<!-- sdd-events:end -->
+
+En este skill, cada `land.merged` lleva en `pr` el número de un PR mergeado y verificado, en `issue` el issue que el body de ese PR cierra o referencia (`Closes #NN`, `Refs #NN`) o `none`, y `spec` y `grill` en `none`. `--dry-run` y `--clean-only` no registran nada.
+
 ## MUST DO
 
 - Mostrar el plan completo y recibir la confirmación antes de cualquier mutación; `--dry-run` no muta nada.
@@ -178,3 +202,5 @@ SDD-LAND DETENIDO
 <!-- sdd-land-doctrine:end -->
 
 En opencode, usar `question` (disponible en los clientes app, cli y desktop) con `multiple` solo para `Elegir cuáles`; `Tratar por path` hace una pregunta por path, de opción única. Sin la tool, formular el gate en texto plano con opciones numeradas, la recomendada primera marcada `(Recomendado)`, terminar el turno y esperar la respuesta.
+
+En opencode, `<harness>` es `opencode`.

@@ -171,6 +171,8 @@ El marker `SDD-Tracking` es la identidad machine-readable del handoff (contrato 
 
 Al pausar, `## Ramas pendientes` lista lo pendiente del bloque en curso y los bloques no empezados, en orden; ofrecer además exportar las decisiones pendientes como cuestionario para un tercero (ver **Exportar cuestionario**).
 
+Al pausar o guardar, con el handoff ya escrito, registrar `grill.paused` (ver **Log de eventos**).
+
 Para retomar:
 
 1. Si no se indicó una ruta, listar por fecha los handoffs de los dos lugares (`.sdd/grills/*.md` y `<git-common-dir>/sdd/grills/*.md`).
@@ -199,8 +201,33 @@ Cuando todos los bloques estén resueltos:
 
 1. Mostrar en el chat un contrato autocontenido con tema, alcance, hechos, decisiones agrupadas por bloque y enumeradas, restricciones, no-objetivos, supuestos, riesgos, preguntas deliberadamente diferidas y contexto recomendado para la spec.
 2. Pedir una confirmación explícita y autocontenida: confirmar, ajustar una decisión, pausar, exportar cuestionario para un stakeholder (ver **Exportar cuestionario**) o confirmar y crear spec SDD.
-3. Tras confirmar, guardar el mismo contenido como handoff `finalized` en `<git-common-dir>/sdd/grills/<fecha>-<slug>.md` e informar la ruta absoluta.
+3. Tras confirmar, guardar el mismo contenido como handoff `finalized` en `<git-common-dir>/sdd/grills/<fecha>-<slug>.md` e informar la ruta absoluta. Con el handoff `finalized` escrito, registrar `grill.finalized` (ver **Log de eventos**).
 4. Si pidió crear spec, cargar `sdd-spec` y continuar con `--from-grill <ruta-del-handoff>`.
+
+## Log de eventos
+
+<!-- sdd-events:start -->
+Las transiciones de este skill se registran en `<git-common-dir>/sdd/events.jsonl`, el log local append-only del formato `events-v1` (normativo en `docs/sdd-events-v1.md` del repo de estos skills). Cada evento es una línea que agrega este comando, con los valores entre `<>` reemplazados: `issue` es `#NN`, `owner/repo#NN` o `none`; `spec` y `grill` van sin codificar (`.sdd/specs/<slug>.md`, `#NN`, `<fecha>-<slug>` o `none`) y el comando los percent-encodea; `pr` son números separados por coma y sin espacios, o vacío; `reason` es `none` salvo en `run.failed`.
+
+```bash
+(
+  harness='<harness>' event='<evento>' issue='<issue>' spec='<spec>' grillref='<grill>' pr='<prs>' reason='<reason>'
+  export LC_ALL=C
+  enc() { [ "$1" = none ] && { printf none; return; }; s=$1; while [ -n "$s" ]; do c=${s%"${s#?}"}; s=${s#?}; case $c in [A-Za-z0-9._~-]) printf %s "$c" ;; *) printf %% && printf %s "$c" | od -An -tx1 | tr -d ' \n' | tr a-f A-F ;; esac; done; }
+  dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && mkdir -p "$dir/sdd" &&
+    line=$(printf '{"v":1,"ts":"%s","harness":"%s","event":"%s","issue":"%s","spec":"%s","grill":"%s","pr":[%s],"reason":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$harness" "$event" "$issue" "$(enc "$spec")" "$(enc "$grillref")" "$pr" "$reason") &&
+    [ ${#line} -lt 1024 ] && printf '%s\n' "$line" >> "$dir/sdd/events.jsonl" ||
+    echo "aviso: no se registró el evento SDD $event" >&2
+)
+```
+
+- **Best-effort.** Un fallo del append nunca frena ni hace fallar el skill: el comando termina con exit 0 y avisa por stderr, y el reporte del skill lo nombra en una línea.
+- **Solo en el common-dir.** El log se escribe en `<git-common-dir>/sdd/`, nunca dentro del working tree: fuera de un repo git, o si el harness no puede escribir ahí, el evento se saltea con el aviso, sin caer a `.sdd/`.
+<!-- sdd-events:end -->
+
+En opencode, `<harness>` es `opencode`.
+
+En este skill, `grill` es la referencia del marker sin codificar (el `<fecha>-<slug>` del archivo), `issue` es el `issue` del marker, `spec` es `none` y `pr` va vacío.
 
 ## Límites
 
