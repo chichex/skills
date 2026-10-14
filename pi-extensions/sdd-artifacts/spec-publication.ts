@@ -13,6 +13,7 @@ import {
 	type SpecMetadata,
 	type SpecState,
 } from "./index.ts";
+import type { SddEventFields } from "./sdd-events.ts";
 
 export type SpecPublicationMode = "interactive" | "assume";
 
@@ -47,7 +48,7 @@ export interface SpecPublicationDocument {
 	destinations: SpecPublicationDestination[];
 }
 
-type ResolvedSpecPublicationDestination = Exclude<SpecPublicationDestination, { kind: "new-issue" }>;
+export type ResolvedSpecPublicationDestination = Exclude<SpecPublicationDestination, { kind: "new-issue" }>;
 
 interface PreparedSpecPublicationDocument extends Omit<SpecPublicationDocument, "destinations"> {
 	destinations: ResolvedSpecPublicationDestination[];
@@ -85,8 +86,16 @@ export interface SpecPublicationReceipt {
 	documents: Array<{ id: string; destinations: string[] }>;
 }
 
+/** Metadata releída y verificada de cada documento publicado, con sus destinos resueltos. */
+export interface PublishedSpecDocument {
+	id: string;
+	role: "successor" | "predecessor";
+	metadata: SpecMetadata;
+	destinations: ResolvedSpecPublicationDestination[];
+}
+
 export type PersistSpecPublicationResult =
-	| { ok: true; receipt: SpecPublicationReceipt; outcomes: SpecPublicationOutcome[] }
+	| { ok: true; receipt: SpecPublicationReceipt; outcomes: SpecPublicationOutcome[]; published: PublishedSpecDocument[] }
 	| {
 		ok: false;
 		diagnostics: SpecPublicationOperationDiagnostic[];
@@ -229,6 +238,7 @@ export async function persistSpecPublication(
 	const diagnostics: SpecPublicationOperationDiagnostic[] = [];
 	const outcomes: SpecPublicationOutcome[] = [];
 	const verifiedCopies = new Map<string, string>();
+	const verifiedMetadata = new Map<string, SpecMetadata>();
 	if (input.documents.length === 0) {
 		diagnostics.push({
 			code: "missing-document",
@@ -496,6 +506,7 @@ export async function persistSpecPublication(
 			}
 			outcome.verified = true;
 			verifiedCopies.set(`${document.id}\0${reference}`, reread);
+			if (!verifiedMetadata.has(document.id)) verifiedMetadata.set(document.id, postcheck.metadata);
 		}
 	}
 
@@ -538,9 +549,56 @@ export async function persistSpecPublication(
 		.update("\0")
 		.update(preparedDocuments.map(({ markdown }) => markdown).join("\0"))
 		.digest("hex");
+	const published = preparedDocuments.flatMap((document): PublishedSpecDocument[] => {
+		const metadata = verifiedMetadata.get(document.id);
+		return metadata === undefined
+			? []
+			: [{ id: document.id, role: document.role ?? "successor", metadata, destinations: document.destinations }];
+	});
 	return {
 		ok: true,
 		receipt: { version: 1, kind: "sdd-spec-publication", digest, documents: receiptDocuments },
 		outcomes,
+		published,
 	};
+}
+
+// `spec` de events-v1 (docs/sdd-events-v1.md): la referencia del issue si la
+// spec vive en uno (gana sobre la copia local) y si no su ruta lógica.
+function specEventReference(destinations: ResolvedSpecPublicationDestination[]): string | null {
+	const issue = destinations.find((destination) => destination.kind === "issue");
+	if (issue?.kind === "issue") return `#${issue.issue.number}`;
+	const local = destinations.find((destination) => destination.kind === "local");
+	if (local?.kind !== "local") return null;
+	return `.sdd/specs/${local.path.split(/[\\/]/).at(-1) ?? ""}`;
+}
+
+/**
+ * Eventos del log SDD de una publicación con receipt (issue #93): la sucesora
+ * da `spec.published` en `draft` o `spec.approved` en `approved`, y cada
+ * predecesora un `spec.superseded`, en ese orden.
+ */
+export function specPublicationEvents(published: PublishedSpecDocument[]): SddEventFields[] {
+	const ordered = [
+		...published.filter(({ role }) => role === "successor"),
+		...published.filter(({ role }) => role === "predecessor"),
+	];
+	return ordered.flatMap((document): SddEventFields[] => {
+		const event = document.metadata.state === "draft"
+			? "spec.published"
+			: document.metadata.state === "approved"
+				? "spec.approved"
+				: document.metadata.state === "superseded"
+					? "spec.superseded"
+					: null;
+		if (event === null) return [];
+		return [{
+			event,
+			issue: document.metadata.issue,
+			spec: specEventReference(document.destinations),
+			grill: document.metadata.grill,
+			pr: [],
+			reason: null,
+		}];
+	});
 }
