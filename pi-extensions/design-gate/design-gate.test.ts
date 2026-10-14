@@ -673,10 +673,10 @@ test("CA-16: next.md no repite las reglas de web en celular que ya trae react.md
 test("CA-17: el contrato fecha los conteos nuevos y cita la corrida con Pi 0.85.1", async () => {
 	const contract = await readRepoFile(".sdd/project.md");
 	const commands = section(contract, /^## Comandos$/);
-	// "tests de extensiones" se re-midió el 2026-10-13 al sumar el gate del plugin de Codex.
+	// "tests de extensiones" se re-midió el 2026-10-14 al sumar el log de eventos SDD (issue #93).
 	const verifiedOn: Record<string, string> = {
 		"gate focalizado de Pi Package": "2026-10-09",
-		"tests de extensiones": "2026-10-13",
+		"tests de extensiones": "2026-10-14",
 		"lint de frontmatter": "2026-10-09",
 	};
 	for (const [row, date] of Object.entries(verifiedOn)) {
