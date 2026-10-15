@@ -795,7 +795,7 @@ test(`${SKILL}: la fuente canonica y sus mirrors estan sincronizados`, async () 
 	assert.deepEqual(inspection.canonicalNames, expected, "la fuente canonica coincide con la tabla de casos");
 	assert.deepEqual(inspection.problems, [], "los mirrors generados no tienen drift");
 	const output = execFileSync(process.execPath, [SYNC_SCRIPT, "--check"], { cwd: REPO_ROOT, encoding: "utf8" });
-	assert.match(output, new RegExp(`8 referencias canónicas sincronizadas en ${CODING_POLICIES_HARNESSES.length} harnesses`));
+	assert.match(output, /8 referencias canónicas sincronizadas en 5 harnesses/);
 	for (const harness of HARNESSES) {
 		const markdown = await skillMarkdown(harness);
 		assert.match(markdown, /la única fuente editable vive en `shared\/coding-policies\/references\/`/);
@@ -1120,7 +1120,7 @@ test("autotest: el sincronizador repara mirrors faltantes, divergentes y obsolet
 		assert.ok(before.problems.length > 0, "el fixture empieza con drift");
 		const synced = await syncReferenceMirrors(root);
 		assert.equal(synced.references, 2);
-		assert.equal(synced.harnesses, CODING_POLICIES_HARNESSES.length);
+		assert.equal(synced.harnesses, 5);
 		assert.deepEqual((await inspectReferenceMirrors(root)).problems, []);
 		for (const harness of HARNESSES) {
 			assert.equal(await readFile(join(root, harness, SKILL, "references", "go.md"), "utf8"), "go canonico\n");

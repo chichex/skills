@@ -1,9 +1,9 @@
 ---
 name: harness-port
-description: Portea y mantiene skills de este repo entre sus cuatro harnesses — Claude Code (claude/), Codex (codex/), opencode (opencode/) y Pi (pi/) — manteniendo la doctrina idéntica y cambiando solo la capa de interacción. Usar cuando el usuario quiera portear un skill a otro harness, crear la versión codex/opencode/pi/claude de un skill existente, propagar un cambio de un skill a sus otras versiones, o revisar consistencia entre harnesses. También al crear o editar un `SKILL.md`, un `agents/*.md`, un `agents/openai.yaml`, un `references/*.md` o un `CLAUDE.md`/`AGENTS.md` de este repo.
+description: Portea y mantiene skills de este repo entre sus cinco harnesses — Claude Code (claude/), Codex (codex/), opencode (opencode/), Pi (pi/) y Google Antigravity (antigravity/) — manteniendo la doctrina idéntica y cambiando solo la capa de interacción. Usar cuando el usuario quiera portear un skill a otro harness, crear la versión codex/opencode/pi/claude/antigravity de un skill existente, propagar un cambio de un skill a sus otras versiones, o revisar consistencia entre harnesses. También al crear o editar un `SKILL.md`, un `agents/*.md`, un `agents/openai.yaml`, un `references/*.md` o un `CLAUDE.md`/`AGENTS.md` de este repo.
 ---
 
-Este repo mantiene una versión por harness de cada skill: una carpeta por skill dentro de `claude/`, `codex/`, `opencode/` y `pi/`, cada una con su `SKILL.md` y, opcionalmente, archivos de referencia. Las versiones comparten la doctrina y difieren SOLO en la capa de interacción. Este skill define qué se traduce, qué se copia intacto y cómo se verifica el resultado.
+Este repo mantiene una versión por harness de cada skill: una carpeta por skill dentro de `claude/`, `codex/`, `opencode/`, `pi/` y `antigravity/`, cada una con su `SKILL.md` y, opcionalmente, archivos de referencia. Las versiones comparten la doctrina y difieren SOLO en la capa de interacción. Este skill define qué se traduce, qué se copia intacto y cómo se verifica el resultado.
 
 ## Antes de escribir
 
@@ -31,13 +31,13 @@ Todo el resto del cuerpo es byte a byte idéntico.
 
 ## Mapeo por harness
 
-| | Claude Code | Codex | opencode | Pi |
-|---|---|---|---|---|
-| Carpeta | `claude/` | `codex/` | `opencode/` | `pi/` |
-| Invocación | `/nombre` | `$nombre` | `/nombre` | `/skill:nombre` |
-| Tool de preguntas | `AskUserQuestion` | `request_user_input`, con fallback a texto plano | `question` (clientes app, cli y desktop), con fallback a texto plano | `ask_user_question`; `ask_user_questions` para rondas |
-| Extras | — | sidecar `agents/openai.yaml` | — | campo `compatibility` en el frontmatter cuando hay requisitos |
-| Destino de instalación | `~/.claude/skills` | `${CODEX_HOME:-~/.codex}/skills` | `~/.config/opencode/skills` | `~/.agents/skills` |
+| | Claude Code | Codex | opencode | Pi | Google Antigravity |
+|---|---|---|---|---|---|
+| Carpeta | `claude/` | `codex/` | `opencode/` | `pi/` | `antigravity/` |
+| Invocación | `/nombre` | `$nombre` | `/nombre` | `/skill:nombre` | `/nombre` |
+| Tool de preguntas | `AskUserQuestion` | `request_user_input`, con fallback a texto plano | `question` (clientes app, cli y desktop), con fallback a texto plano | `ask_user_question`; `ask_user_questions` para rondas | `ask_question` |
+| Extras | — | sidecar `agents/openai.yaml` | — | campo `compatibility` en el frontmatter cuando hay requisitos | — |
+| Destino de instalación | `~/.claude/skills` | `${CODEX_HOME:-~/.codex}/skills` | `~/.config/opencode/skills` | `~/.agents/skills` | `${ANTIGRAVITY_SKILLS_DIR:-~/.gemini/config/skills}` |
 
 ### Tool de preguntas: detalle por harness
 

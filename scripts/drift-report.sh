@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Reporte informativo de drift entre las copias de un mismo skill en los
-# distintos harnesses (claude/, codex/, opencode/, pi/).
+# distintos harnesses (claude/, codex/, opencode/, pi/, antigravity/).
 #
 # Imprime Markdown por stdout, pensado para volcarse en $GITHUB_STEP_SUMMARY.
 # Es SOLO informativo: nunca falla, siempre termina con exit 0.

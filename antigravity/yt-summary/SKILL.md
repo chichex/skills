@@ -15,7 +15,9 @@ el texto — no hay ningún LLM en la cadena, el resumen lo escribís con lo que
 
    ```bash
    transcript="$(mktemp "${TMPDIR:-/tmp}/yt-<id>-XXXXXX")"
-   python3 "${ANTIGRAVITY_SKILLS_DIR:-$HOME/.gemini/config/skills}/yt-summary/yt2txt.py" "<url>" -o "$transcript" || { rm -f -- "$transcript"; exit 1; }
+   script="${ANTIGRAVITY_SKILLS_DIR:-$HOME/.gemini/config/skills}/yt-summary/yt2txt.py"
+   [ -f "$script" ] || script=".agents/skills/yt-summary/yt2txt.py"
+   python3 "$script" "<url>" -o "$transcript" || { rm -f -- "$transcript"; exit 1; }
    ```
 
    Imprime título, duración, palabras y el path. Si el video es corto (< 5k palabras)

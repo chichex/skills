@@ -245,12 +245,19 @@ La línea `SDD-Tracking` es el marker canónico de tracking (contrato SDD-Tracki
 
 En `--update`: regenerar todo salvo `## Decisiones humanas` y `## Politicas de generacion` (preservar verbatim — las políticas solo cambian si el usuario eligió `Revisar` en Fase 3.5) y los `[NEEDS-INPUT]` aún sin respuesta (mantenerlos, no duplicarlos).
 
-## Fase 5 — Import en AGENTS.md + encadenado de CLAUDE.md (saltear con `--no-import`)
+## Fase 5 — Referencia en AGENTS.md y CLAUDE.md (saltear con `--no-import`)
 
-Cablear el contrato en dos eslabones, para que lo carguen tanto Antigravity (lee `AGENTS.md`) como Claude Code (lee `CLAUDE.md`):
+Cablear el contrato de forma idempotente:
 
-1. **AGENTS.md** — si existe y no contiene `@.sdd/project.md`: agregar al final una línea `@.sdd/project.md`. Si no existe: crearlo con solo esa línea. Si ya está: no tocar nada.
-2. **CLAUDE.md** — si existe y no contiene `@AGENTS.md` ni `@.sdd/project.md`: agregar al final una línea `@AGENTS.md` (encadena al eslabón 1 sin duplicar contenido). Si no existe: crearlo con solo `@AGENTS.md`. Si ya tiene cualquiera de los dos imports: no tocar nada.
+1. **AGENTS.md** — Antigravity usa `AGENTS.md` como reglas jerárquicas de proyecto. Si `AGENTS.md` no contiene `.sdd/project.md`, agregar este bloque (o crearlo con el bloque):
+
+   ```markdown
+   <!-- sdd-contract -->
+   Antes de planificar o modificar este proyecto, leer `.sdd/project.md` y respetar sus comandos, verificacion autonoma y limites.
+   ```
+
+   Si ya contiene una referencia equivalente o el bloque `sdd-contract`, no tocar nada.
+2. **CLAUDE.md** — si no contiene `@.sdd/project.md`, agregar esa línea; si no existe, crearlo con solo esa línea. Si ya está, no tocar nada.
 
 ## Reporte
 
@@ -262,7 +269,7 @@ Contrato de autonomia listo: .sdd/project.md
 - preguntas hechas: <K> · gaps abiertos: <G>
 - coding-policies: <referenciado|generado|no existe (ofrecido)|--assume: no ofrecido>
 - design-system: <referenciado|generado|no existe (ofrecido)|con sistema (no ofrecido)|--assume: no ofrecido|sin superficies UI>
-- import en AGENTS.md: <agregado|ya estaba|--no-import> · CLAUDE.md: <encadenado|ya estaba|--no-import>
+- referencia en AGENTS.md: <agregada|ya estaba|--no-import> · CLAUDE.md: <import agregado|ya estaba|--no-import>
 <en corridas sobre contrato existente: mejoras de version agregadas, u ofrecidas y no
 tomadas ("mejoras disponibles" con --assume), una linea>
 <si hay FALLAs o gaps criticos, una linea por cada uno>

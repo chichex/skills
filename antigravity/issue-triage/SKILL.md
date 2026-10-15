@@ -126,7 +126,7 @@ type WorkflowResolutionV1 = {
 
 `NewWorkRoute` conserva rutas single/join y rechazos; `WorkflowRoute` agrega las ocho rutas artifact-aware de la matriz. Cada `ArtifactRef` expone ubicación, identidad, tipo, estado, format/provenance, vigencia y diagnósticos. Los campos de dispatch son enums/códigos; prose y evidencia son payload. `JSON.parse(JSON.stringify(result))` preserva el valor completo.
 
-El análisis termina después de confirmar, serializar y emitir el resultado. Esta unidad no ejecuta pasos de ningún stage (grill, spec ni run), no cambia sesiones y no crea branches/worktrees de implementación. Tras una confirmación, el resultado se entrega al skill dueño del stage: en Claude y Codex lo encadena la Fase 7 de este skill; en Pi lo abre el orquestador de `/issues`, y una invocación manual termina con el resultado emitido.
+El análisis termina después de confirmar, serializar y emitir el resultado. Esta unidad no ejecuta pasos de ningún stage (grill, spec ni run), no cambia sesiones y no crea branches/worktrees de implementación. Tras una confirmación, el resultado se entrega al skill dueño del stage: en Claude, Codex y Antigravity lo encadena la Fase 7 de este skill; en Pi lo abre el orquestador de `/issues`, y una invocación manual termina con el resultado emitido.
 <!-- artifact-aware:end -->
 
 ## Fase 1 — Resolver raíz y fuentes
@@ -305,7 +305,7 @@ Desde este punto, la única fuente downstream es `#NEW`.
 
 Sólo con un inicio confirmado y coherente: `outcome=start`, `selectedRoute` no nulo, `code=selectedRoute` y `stage`/`mode` iguales a los de la matriz para esa ruta. Con `outcome=stop|error`, cancelación, `selectedRoute=null` o cualquier incoherencia no encadenes nada: el workflow termina en la Fase 6.
 
-Invocá con la tool `Skill`, en el mismo turno y sin otra confirmación, el skill que corresponde a `selectedRoute`:
+Cargá y ejecutá el skill que corresponde a `selectedRoute`, en el mismo turno y sin otra confirmación:
 
 <!-- stage-chain:start -->
 | `selectedRoute` | Skill | Argumentos |

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# Instala/actualiza los skills de este repo en Codex, Claude Code, opencode y Pi,
+# Instala/actualiza los skills de este repo en Codex, Claude Code, opencode, Pi y Antigravity,
 # junto con las extensiones de Pi.
 # Hace git pull y copia cada skill a su carpeta, SIN borrar los otros skills
 # que ya tengas: agrega/actualiza los que vienen del repo y solo poda los que
 # este mismo repo instaló antes (figuran en el manifest del destino) y retiró.
 #
 # Uso:
-#   ./install.sh              # instala los cuatro sets
-#   ./install.sh all          # instala los cuatro sets
+#   ./install.sh              # instala todos los sets
+#   ./install.sh all          # instala todos los sets
 #   ./install.sh both         # Claude Code + opencode (compatibilidad)
 #   ./install.sh claude       # solo los de Claude Code
 #   ./install.sh opencode     # solo los de opencode
@@ -444,8 +444,8 @@ case "$WHICH" in
   all)      install_codex
             install_claude
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST"
-            install_pi
-            install_antigravity ;;
+            install_antigravity
+            install_pi ;;
   both)     install_claude
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
   claude)   install_claude ;;

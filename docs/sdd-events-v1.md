@@ -61,7 +61,7 @@ escapes such as `\u0041`, `1.0`) is invalid.
   minutes and seconds `00`–`59`. Producers truncate sub-second precision
   (`date -u +%Y-%m-%dT%H:%M:%SZ`).
 - `harness` MUST be `claude`, `codex`, `opencode`, or `pi`: the harness whose
-  skill or tool produced the event.
+  skill or tool produced the event (Google Antigravity does not produce `events-v1` records).
 - `event` MUST be one of the catalog below.
 - `issue` MUST be `none`, `#NN`, or `owner/repo#NN`, with the same grammar as
   the `issue` field of `SDD-Tracking` v1: the source issue of the artifact.
