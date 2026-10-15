@@ -770,7 +770,7 @@ test("autotest: declarar agents en plugin.json falla con diagnostico", () => {
 
 test("autotest: un agents/ de scratch bajo claude/, opencode/ o pi/ se detecta; los sidecars de codex no", () => {
 	const paths = [
-		"claude/quick-run/agents/scratch.md",
+		"claude/sdd-run/agents/scratch.md",
 		"opencode/grill/agents/scratch.yaml",
 		"pi/tdd/agents/scratch.md",
 		// Hallazgo #8 del review de PR #43: profundidad 1 (directo bajo el
@@ -785,7 +785,7 @@ test("autotest: un agents/ de scratch bajo claude/, opencode/ o pi/ se detecta; 
 	];
 	assert.deepEqual(forbiddenAgentDirs(paths).sort(), [
 		"claude/agents/x.md",
-		"claude/quick-run/agents/scratch.md",
+		"claude/sdd-run/agents/scratch.md",
 		"opencode/grill/agents/scratch.yaml",
 		"pi/tdd/agents/scratch.md",
 	]);

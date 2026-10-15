@@ -21,7 +21,7 @@ function resolution(overrides: Record<string, unknown> = {}) {
 		outcome: "start",
 		code: "spec",
 		recommendedClassification: "spec",
-		fallbackClassification: "quick-run",
+		fallbackClassification: "grill",
 		recommendedRoute: "spec",
 		selectedRoute: "spec",
 		stage: "spec",

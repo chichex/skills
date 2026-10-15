@@ -13,7 +13,7 @@ const productionSources = [
 	"./same-session.ts",
 ] as const;
 
-const FORBIDDEN_SKILL_SLASH = /\/skill:(?:issue-triage|grill|sdd-spec|sdd-run|quick-run)\b/;
+const FORBIDDEN_SKILL_SLASH = /\/skill:(?:issue-triage|grill|sdd-spec|sdd-run)\b/;
 const FORBIDDEN_DYNAMIC_SLASH = /`\/\$\{(?:skillCommand|grillCommand|command)\}/;
 
 test("included Pi consumers contain zero SDD dispatch through literal or dynamic skill slash messages", async () => {

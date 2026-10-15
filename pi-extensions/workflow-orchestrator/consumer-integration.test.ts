@@ -136,7 +136,6 @@ test("Pi issue-triage shows its result before one terminal submission and keeps 
 	assert.match(phase, /activa|disponible/i);
 	assert.match(phase, /manual|no est[aá] activa|fallback/i);
 	assert.match(phase, /serializad/i);
-	assert.match(skill, /quick-run.*branch.*commit.*PR/is, "quick-run consent names its mutation capability before confirmation");
 	assert.doesNotMatch(skill, /confirmaci[oó]n s[oó]lo registra `selectedRoute`; no autoriza/i);
 });
 
