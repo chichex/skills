@@ -269,7 +269,7 @@ Si `ask_user_question` o `ask_user_questions` indica cancelación:
 
 1. No hagas otra pregunta.
 2. Escribí un resumen visible de lo resuelto, los supuestos `[ASSUMED]` y lo pendiente.
-3. Invocá `grill_session` con `action: "pause"`, incluyendo resumen con supuestos, ramas pendientes, secciones y estimación actuales. `pendingBranches` alimenta `## Ramas pendientes`, que lista lo pendiente del bloque en curso y los bloques no empezados, en orden. La tool además escribe/actualiza el handoff interoperable en `<git-common-dir>/sdd/grills/` del proyecto (ver **Formato del handoff**).
+3. Invocá `grill_session` con `action: "pause"`, incluyendo resumen con supuestos, ramas pendientes, secciones y estimación actuales. `pendingBranches` alimenta `## Ramas pendientes`, que lista lo pendiente del bloque en curso y los bloques no empezados, en orden. La tool además escribe/actualiza el handoff interoperable en `<git-common-dir>/sdd/grills/` del proyecto (ver **Formato del handoff**). Después de escribir el handoff, la tool registra `grill.paused` en el log de eventos (ver **Log de eventos**).
 4. Ofrecé exportar las decisiones pendientes como cuestionario para un stakeholder sin agente (ver **Exportar cuestionario**).
 5. Informá el id de la sesión, la ruta del handoff en el repo, y que puede retomarse con `select_grill_session`.
 
@@ -357,7 +357,7 @@ No incluyas acciones para implementar o construir.
 Si el usuario confirma, con o sin encadenado:
 
 1. Convertí el contrato visible en Markdown autocontenido siguiendo el template de **Formato del handoff**.
-2. Invocá `grill_session` con `action: "finalize"`, el resumen actualizado — incluidos los supuestos `[ASSUMED]` — y `handoffMarkdown`.
+2. Invocá `grill_session` con `action: "finalize"`, el resumen actualizado — incluidos los supuestos `[ASSUMED]` — y `handoffMarkdown`. Después de escribir el handoff, la tool registra `grill.finalized` en el log de eventos.
    - Si el usuario eligió **Confirmar y crear spec SDD**, incluí `continueWithSpec: true`; la tool persiste primero y recién después encola el skill canónico materializado.
 3. Informá las dos rutas que devuelve la tool: el snapshot global y el handoff del repo en `<git-common-dir>/sdd/grills/`, con su ruta absoluta.
 4. Si hubo encadenado, terminá este turno después de la persistencia: el follow-up materializado de `sdd-spec --from-grill` continúa en esta misma sesión.
@@ -375,3 +375,47 @@ Después de finalizar:
 - la spec sigue exigiendo `.sdd/project.md`.
 
 No implementes el plan desde este skill.
+
+## Log de eventos
+
+<!-- sdd-events:start -->
+Las transiciones de este skill se registran en `<git-common-dir>/sdd/events.jsonl`, el log local append-only del formato `events-v1` (normativo en `docs/sdd-events-v1.md` del repo de estos skills). Cada evento es una línea que agrega este comando, con los valores entre `<>` reemplazados: `issue` es `#NN`, `owner/repo#NN` o `none`; `spec`, `previous` y `grill` van sin codificar (`.sdd/specs/<slug>.md`, `#NN`, `<fecha>-<slug>` o `none`) y el comando los percent-encodea; `previous` es `none` salvo en `spec.moved`; `pr` son números separados por coma y sin espacios, o vacío; `reason` es `none` salvo en `run.failed`.
+
+```bash
+(
+  harness='<harness>' event='<evento>' issue='<issue>' spec='<spec>' previous='<previous>' grillref='<grill>' pr='<prs>' reason='<reason>'
+  export LC_ALL=C
+  enc() { [ "$1" = none ] && { printf none; return; }; s=$1; while [ -n "$s" ]; do c=${s%"${s#?}"}; s=${s#?}; case $c in [A-Za-z0-9._~-]) printf %s "$c" ;; *) printf %% && printf %s "$c" | od -An -tx1 | tr -d ' \n' | tr a-f A-F ;; esac; done; }
+  ok() {
+    case $harness in claude|codex|opencode|pi) ;; *) return 1 ;; esac
+    case "$issue$pr$reason" in *[![:graph:]]*) return 1 ;; esac
+    case "$spec$previous$grillref" in *'<'*'>'*) return 1 ;; esac
+    printf '%s\n' "$issue" | grep -Eqx 'none|#[1-9][0-9]*|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[1-9][0-9]*' || return 1
+    printf '%s\n' "$pr" | grep -Eqx '([1-9][0-9]*(,[1-9][0-9]*)*)?' || return 1
+    [ -n "$spec" ] && [ -n "$previous" ] && [ -n "$grillref" ] || return 1
+    case $reason in none) [ "$event" != run.failed ] ;; aborted|interrupted) [ "$event" = run.failed ] ;; *) false ;; esac || return 1
+    [ "$event" = spec.moved ] || [ "$previous" = none ] || return 1
+    case $event in
+      grill.paused|grill.finalized) [ "$grillref" != none ] && [ -z "$pr" ] ;;
+      spec.moved) [ "$spec" != none ] && [ "$previous" != none ] && [ -z "$pr" ] ;;
+      spec.published|spec.approved|spec.superseded|run.started|run.committed|run.failed) [ "$spec" != none ] && [ -z "$pr" ] ;;
+      run.pr-opened) [ "$spec" != none ] && [ -n "$pr" ] ;;
+      land.merged) case $pr in ''|*,*) false ;; esac ;;
+      *) false ;;
+    esac
+  }
+  ok && dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && mkdir -p "$dir/sdd" &&
+    line=$(printf '{"v":1,"ts":"%s","harness":"%s","event":"%s","issue":"%s","spec":"%s","previous":"%s","grill":"%s","pr":[%s],"reason":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$harness" "$event" "$issue" "$(enc "$spec")" "$(enc "$previous")" "$(enc "$grillref")" "$pr" "$reason") &&
+    [ ${#line} -lt 1024 ] && printf '%s\n' "$line" >> "$dir/sdd/events.jsonl" ||
+    echo "aviso: no se registró el evento SDD $event" >&2
+)
+```
+
+- **Best-effort.** Un fallo del append nunca frena ni hace fallar el skill: el comando termina con exit 0 y avisa por stderr, y el reporte del skill lo nombra en una línea.
+- **Validación barata.** Antes del append, `ok` revisa el harness, el evento del catálogo, `issue`, `pr` sin espacios, refs no vacías y sin un `<...>` sin reemplazar, y los invariantes del catálogo: un valor inválido cae en el mismo aviso y no escribe nada, porque los consumidores saltean en silencio una línea inválida.
+- **Solo en el common-dir.** El log se escribe en `<git-common-dir>/sdd/`, nunca dentro del working tree: fuera de un repo git, o si el harness no puede escribir ahí, el evento se saltea con el aviso, sin caer a `.sdd/`.
+<!-- sdd-events:end -->
+
+En Pi, `<harness>` es `pi`.
+
+En Pi, `grill.paused` y `grill.finalized` los registra `grill_session` después de escribir el handoff, con el `grill` y el `issue` de su marker: este skill no corre el comando, ni lo repone a mano si la tool avisa. Si la tool suma un aviso `SDD event log not updated`, el reporte lo nombra en una línea.

@@ -17,6 +17,8 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { after, before, test } from "node:test";
 
+import { parseSddArtifact } from "../sdd-artifacts/index.ts";
+import { parseSddEventLine, type SddEvent } from "../sdd-artifacts/sdd-events.ts";
 import { handoffFileNames } from "./logic.ts";
 import { snapshotStorageStem } from "./runtime-import.ts";
 
@@ -1315,4 +1317,409 @@ test("#84 CA-11 (review #86): fuera de git, un .sdd/specs symlinkeado fuera del 
 	assert.equal(result.details.ok, false, "la publicación queda bloqueada");
 	assert.match(JSON.stringify(result.details.diagnostics), /resolves outside the project/);
 	assert.deepEqual(readdirSync(outside), [], "no se escribe nada fuera del proyecto");
+});
+
+// #93: log de eventos SDD (events-v1) escrito por las tools de Pi.
+
+function eventLines(common: string): string[] {
+	const path = join(common, "sdd", "events.jsonl");
+	let content = "";
+	try {
+		content = readFileSync(path, "utf8");
+	} catch {
+		return [];
+	}
+	assert.ok(content === "" || content.endsWith("\n"), "cada línea termina en LF");
+	return content === "" ? [] : content.slice(0, -1).split("\n");
+}
+
+function loggedEvents(common: string): SddEvent[] {
+	return eventLines(common).map((line) => {
+		const parsed = parseSddEventLine(line);
+		assert.equal(parsed.kind, "event", `línea válida: ${line}`);
+		return (parsed as { kind: "event"; event: SddEvent }).event;
+	});
+}
+
+function withoutTs(event: SddEvent | undefined): Omit<SddEvent, "ts"> | undefined {
+	if (!event) return undefined;
+	const { ts: _ts, ...rest } = event;
+	return rest;
+}
+
+function warningLines(text: string): string[] {
+	return text.split("\n").filter((line) => line.startsWith("SDD event log not updated"));
+}
+
+test("#93 CA-4: grill_session pause y finalize agregan grill.paused y grill.finalized con la identidad del handoff escrito", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("grill_session");
+	assert.ok(tool);
+	const { base, main, linked, common } = repoWithLinkedWorktree("events-grill");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const created = await tool.execute(
+		"create-events",
+		{
+			action: "create",
+			topic: "Eventos del grill",
+			projectPath: main,
+			estimate: { min: 1, likely: 2, max: 3 },
+			sourceIssue: { number: 93, repository: "chichex/skills" },
+		},
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	const id = created.details.snapshot.id;
+	t.after(() => removeStoredSnapshot(id));
+	await tool.execute("configure-events", { action: "configure", sessionId: id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
+	assert.deepEqual(eventLines(common), [], "create y configure no emiten");
+
+	const paused = await tool.execute("pause-events", { action: "pause", sessionId: id, summary: "Pausa" }, undefined, undefined, { cwd: main });
+	const pausedMarker = parseSddArtifact(readFileSync(paused.details.repoHandoffPath, "utf8"));
+	assert.ok(pausedMarker.kind === "metadata" && pausedMarker.metadata.type === "grill");
+	assert.equal(pausedMarker.metadata.issue, "chichex/skills#93");
+	assert.equal(pausedMarker.metadata.grill, id);
+	let events = loggedEvents(common);
+	assert.equal(events.length, 1, "pause agrega exactamente una línea");
+	assert.deepEqual(withoutTs(events[0]), {
+		v: 1,
+		harness: "pi",
+		event: "grill.paused",
+		issue: pausedMarker.metadata.issue,
+		spec: null,
+		previous: null,
+		grill: pausedMarker.metadata.grill,
+		pr: [],
+		reason: null,
+	});
+	assert.deepEqual(warningLines(paused.content[0].text), []);
+
+	const finalized = await tool.execute(
+		"finalize-events",
+		{ action: "finalize", sessionId: id, handoffMarkdown: "# Grill — Eventos del grill\n\n## Handoff\nListo.\n" },
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	const finalizedMarker = parseSddArtifact(readFileSync(finalized.details.repoHandoffPath, "utf8"));
+	assert.ok(finalizedMarker.kind === "metadata" && finalizedMarker.metadata.type === "grill");
+	events = loggedEvents(common);
+	assert.equal(events.length, 2, "finalize agrega exactamente una línea más");
+	assert.deepEqual(withoutTs(events[1]), {
+		v: 1,
+		harness: "pi",
+		event: "grill.finalized",
+		issue: finalizedMarker.metadata.issue,
+		spec: null,
+		previous: null,
+		grill: finalizedMarker.metadata.grill,
+		pr: [],
+		reason: null,
+	});
+	assert.equal(gitStatus(main), "", "checkout principal limpio");
+	assert.equal(gitStatus(linked), "", "worktree linkeado limpio");
+});
+
+test("#93 CA-4: si el handoff no se pudo escribir, pause no agrega ningún evento", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("grill_session");
+	assert.ok(tool);
+	const { base, main, common } = repoWithLinkedWorktree("events-grill-blocked");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const created = await tool.execute(
+		"create-blocked",
+		{ action: "create", topic: "Handoff bloqueado", projectPath: main, estimate: { min: 1, likely: 2, max: 3 } },
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	const id = created.details.snapshot.id;
+	t.after(() => removeStoredSnapshot(id));
+	await tool.execute("configure-blocked", { action: "configure", sessionId: id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
+	mkdirSync(join(common, "sdd"), { recursive: true });
+	writeFileSync(join(common, "sdd", "grills"), "no es un directorio\n");
+
+	const paused = await tool.execute("pause-blocked", { action: "pause", sessionId: id, summary: "Pausa" }, undefined, undefined, { cwd: main });
+	assert.match(paused.content[0].text, /Repo handoff could not be written/);
+	assert.deepEqual(eventLines(common), [], "sin handoff escrito no hay evento");
+});
+
+test("#93 CA-6: con el append roto, grill_session pause devuelve el mismo resultado exitoso más un aviso de una línea", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("grill_session");
+	assert.ok(tool);
+	const { base, main, linked, common } = repoWithLinkedWorktree("events-grill-broken");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const created = await tool.execute(
+		"create-broken",
+		{ action: "create", topic: "Log roto", projectPath: main, estimate: { min: 1, likely: 2, max: 3 } },
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	const id = created.details.snapshot.id;
+	t.after(() => removeStoredSnapshot(id));
+	await tool.execute("configure-broken", { action: "configure", sessionId: id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
+	const log = join(common, "sdd", "events.jsonl");
+	mkdirSync(log, { recursive: true });
+
+	const broken = await tool.execute("pause-broken", { action: "pause", sessionId: id, summary: "Pausa" }, undefined, undefined, { cwd: main });
+	assert.match(readFileSync(broken.details.repoHandoffPath, "utf8"), /state=paused/, "el handoff queda escrito igual");
+	const brokenText: string = broken.content[0].text;
+	assert.equal(warningLines(brokenText).length, 1, "un aviso de una línea");
+
+	rmSync(log, { recursive: true, force: true });
+	const healthy = await tool.execute("pause-healthy", { action: "pause", sessionId: id, summary: "Pausa" }, undefined, undefined, { cwd: main });
+	assert.equal(loggedEvents(common).length, 1, "con el log sano, pause sí registra");
+	const normalize = (text: string) => text.replace(/"updatedAt": "[^"]*"/g, "\"updatedAt\": \"<t>\"");
+	assert.equal(
+		normalize(brokenText.split("\n").filter((line) => !line.startsWith("SDD event log not updated")).join("\n")),
+		normalize(healthy.content[0].text),
+		"sin el aviso, el texto es el mismo que con el log sano",
+	);
+	const details = (result: any) => ({ ...result.details, snapshot: { ...result.details.snapshot, updatedAt: "<t>" } });
+	assert.deepEqual(details(broken), details(healthy), "mismos details");
+	assert.equal(gitStatus(main), "", "checkout principal limpio");
+	assert.equal(gitStatus(linked), "", "worktree linkeado limpio");
+});
+
+function lifecycleSpec(title: string, state: "draft" | "approved" | "superseded", grill: string, supersededBy = "none"): string {
+	const human = state === "draft" ? "draft" : state === "approved" ? "aprobada" : `reemplazada por ${decodeURIComponent(supersededBy)}`;
+	return [
+		`# Spec — ${title}`,
+		`<!-- Generada por /skill:sdd-spec. Estado: ${human} -->`,
+		`<!-- SDD-Tracking: version=1; type=spec; state=${state}; issue=none; grill=${grill}; superseded-by=${supersededBy} -->`,
+		"",
+		"## Contexto",
+		"Body.",
+		"",
+	].join("\n");
+}
+
+test("#93 CA-5: persist_sdd_spec agrega spec.published en draft, spec.approved al aprobar y un spec.superseded por predecesora", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("persist_sdd_spec");
+	assert.ok(tool);
+	const { base, main, linked, common } = repoWithLinkedWorktree("events-spec");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const persist = (callId: string, mode: "interactive" | "assume", documents: unknown[]) => tool.execute(
+		callId,
+		{ mode, repository: "local/repo", projectPath: main, documents },
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	const successor = (title: string, state: "draft" | "approved", path: string, grill?: string) => ({
+		id: "successor",
+		role: "successor",
+		markdown: lifecycleSpec(title, state, grill ?? "none"),
+		...(grill === undefined ? {} : { grill }),
+		destinations: [{ kind: "local", path }],
+	});
+
+	const steps: Array<[string, "interactive" | "assume", unknown[]]> = [
+		["vieja-draft", "assume", [successor("Vieja", "draft", ".sdd/specs/vieja.md")]],
+		["eventos-draft", "assume", [successor("Eventos", "draft", ".sdd/specs/eventos.md", "grill-x")]],
+		["eventos-republicada", "assume", [successor("Eventos", "draft", ".sdd/specs/eventos.md", "grill-x")]],
+		["eventos-aprobada", "interactive", [successor("Eventos", "approved", ".sdd/specs/eventos.md", "grill-x")]],
+		["eventos-vuelve-a-draft", "assume", [successor("Eventos", "draft", ".sdd/specs/eventos.md", "grill-x")]],
+		["eventos-reemplaza-vieja", "assume", [
+			successor("Eventos", "draft", ".sdd/specs/eventos.md", "grill-x"),
+			{
+				id: "predecessor",
+				role: "predecessor",
+				markdown: lifecycleSpec("Vieja", "superseded", "none", ".sdd%2Fspecs%2Feventos.md"),
+				supersededBy: ".sdd/specs/eventos.md",
+				destinations: [{ kind: "local", path: ".sdd/specs/vieja.md" }],
+			},
+		]],
+	];
+	for (const [callId, mode, documents] of steps) {
+		const result = await persist(callId, mode, documents);
+		assert.equal(result.details.ok, true, `${callId}: ${JSON.stringify(result.details.diagnostics)}`);
+		assert.deepEqual(warningLines(result.content[0].text), [], `${callId}: sin aviso`);
+	}
+	const expected = [
+		["spec.published", ".sdd/specs/vieja.md", null],
+		["spec.published", ".sdd/specs/eventos.md", "grill-x"],
+		["spec.published", ".sdd/specs/eventos.md", "grill-x"],
+		["spec.approved", ".sdd/specs/eventos.md", "grill-x"],
+		["spec.published", ".sdd/specs/eventos.md", "grill-x"],
+		["spec.published", ".sdd/specs/eventos.md", "grill-x"],
+		["spec.superseded", ".sdd/specs/vieja.md", null],
+	];
+	assert.deepEqual(
+		loggedEvents(common).map(withoutTs),
+		expected.map(([event, spec, grill]) => ({ v: 1, harness: "pi", event, issue: null, spec, previous: null, grill, pr: [], reason: null })),
+	);
+
+	const blocked = await persist("gate-falla", "assume", [successor("Eventos", "approved", ".sdd/specs/eventos.md", "grill-x")]);
+	assert.equal(blocked.details.ok, false, "assume exige draft: el gate bloquea");
+	assert.equal(eventLines(common).length, expected.length, "una publicación bloqueada no agrega líneas");
+	assert.equal(gitStatus(main), "", "checkout principal limpio");
+	assert.equal(gitStatus(linked), "", "worktree linkeado limpio");
+});
+
+test("#93 CA-5: una spec publicada en un issue se registra con spec=#NN aunque también tenga copia local", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("persist_sdd_spec");
+	assert.ok(tool);
+	const { base, main, common } = repoWithLinkedWorktree("events-issue");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	let remoteBody = "Pedido original.\n";
+	execHandler = async (command: string, args: string[]) => {
+		if (command === "git" && args[0] === "rev-parse") return { code: 0, stdout: `${main}\n`, stderr: "" };
+		if (command === "git" && args[0] === "config") return { code: 0, stdout: "git@github.com:chichex/skills.git\n", stderr: "" };
+		if (command === "gh" && args[0] === "issue" && args[1] === "view") {
+			return { code: 0, stdout: JSON.stringify({ body: remoteBody }), stderr: "" };
+		}
+		if (command === "gh" && args[0] === "issue" && args[1] === "edit") {
+			remoteBody = readFileSync(args[args.indexOf("--body-file") + 1]!, "utf8");
+			return { code: 0, stdout: "", stderr: "" };
+		}
+		throw new Error(`unexpected command: ${command} ${args.join(" ")}`);
+	};
+	try {
+		const markdown = lifecycleSpec("En issue", "approved", "none").replace("issue=none", "issue=#33");
+		const result = await tool.execute(
+			"persist-issue-events",
+			{
+				mode: "interactive",
+				repository: "chichex/skills",
+				projectPath: main,
+				documents: [{
+					id: "successor",
+					role: "successor",
+					markdown,
+					issueNumber: 33,
+					destinations: [{ kind: "local", path: ".sdd/specs/en-issue.md" }, { kind: "issue", issueNumber: 33 }],
+				}],
+			},
+			undefined,
+			undefined,
+			{ cwd: main },
+		);
+		assert.equal(result.details.ok, true, JSON.stringify(result.details.diagnostics));
+	} finally {
+		execHandler = async (..._args: any[]) => ({ code: 0, stdout: "", stderr: "" });
+	}
+	assert.deepEqual(loggedEvents(common).map(withoutTs), [
+		{ v: 1, harness: "pi", event: "spec.approved", issue: "#33", spec: "#33", previous: null, grill: null, pr: [], reason: null },
+	]);
+});
+
+test("#93 (review #94): spec.approved sale solo en la transición; republicar una spec ya approved no lo repite", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("persist_sdd_spec");
+	assert.ok(tool);
+	const { base, main, common } = repoWithLinkedWorktree("events-approved-once");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const persist = (callId: string, mode: "interactive" | "assume", state: "draft" | "approved") => tool.execute(
+		callId,
+		{
+			mode,
+			repository: "local/repo",
+			projectPath: main,
+			documents: [{ id: "successor", role: "successor", markdown: lifecycleSpec("Una vez", state, "none"), destinations: [{ kind: "local", path: ".sdd/specs/una-vez.md" }] }],
+		},
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	const steps: Array<[string, "interactive" | "assume", "draft" | "approved"]> = [
+		["aprobada", "interactive", "approved"],
+		["republicada-aprobada", "interactive", "approved"],
+		["vuelve-a-draft", "assume", "draft"],
+		["aprobada-otra-vez", "interactive", "approved"],
+	];
+	for (const [callId, mode, state] of steps) {
+		const result = await persist(callId, mode, state);
+		assert.equal(result.details.ok, true, `${callId}: ${JSON.stringify(result.details.diagnostics)}`);
+		assert.deepEqual(warningLines(result.content[0].text), [], `${callId}: sin aviso`);
+	}
+	assert.deepEqual(loggedEvents(common).map((event) => event.event), ["spec.approved", "spec.published", "spec.approved"]);
+});
+
+test("#93 (review #94): llevar a issue una spec local registra spec.moved con la identidad anterior y después la publicación con #NN", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("persist_sdd_spec");
+	assert.ok(tool);
+	const { base, main, common } = repoWithLinkedWorktree("events-moved");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	let remoteBody = "";
+	execHandler = async (command: string, args: string[]) => {
+		if (command === "git" && args[0] === "rev-parse") return { code: 0, stdout: `${main}\n`, stderr: "" };
+		if (command === "git" && args[0] === "config") return { code: 0, stdout: "git@github.com:chichex/skills.git\n", stderr: "" };
+		if (command === "gh" && args[0] === "issue" && args[1] === "create") {
+			remoteBody = readFileSync(args[args.indexOf("--body-file") + 1]!, "utf8");
+			return { code: 0, stdout: "https://github.com/chichex/skills/issues/57\n", stderr: "" };
+		}
+		if (command === "gh" && args[0] === "issue" && args[1] === "view") {
+			return { code: 0, stdout: JSON.stringify({ body: remoteBody }), stderr: "" };
+		}
+		if (command === "gh" && args[0] === "issue" && args[1] === "edit") {
+			remoteBody = readFileSync(args[args.indexOf("--body-file") + 1]!, "utf8");
+			return { code: 0, stdout: "", stderr: "" };
+		}
+		throw new Error(`unexpected command: ${command} ${args.join(" ")}`);
+	};
+	const local = { kind: "local", path: ".sdd/specs/llevar.md" };
+	const publish = (callId: string, destinations: unknown[]) => tool.execute(
+		callId,
+		{
+			mode: "assume",
+			repository: "chichex/skills",
+			projectPath: main,
+			documents: [{ id: "successor", role: "successor", markdown: lifecycleSpec("Llevar", "draft", "grill-l"), grill: "grill-l", destinations }],
+		},
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	try {
+		const first = await publish("local", [local]);
+		assert.equal(first.details.ok, true, JSON.stringify(first.details.diagnostics));
+		const moved = await publish("llevar-a-issue", [local, { kind: "new-issue", title: "Llevar" }]);
+		assert.equal(moved.details.ok, true, JSON.stringify(moved.details.diagnostics));
+		assert.match(remoteBody, /issue=#57/);
+	} finally {
+		execHandler = async (..._args: any[]) => ({ code: 0, stdout: "", stderr: "" });
+	}
+	const base_ = { v: 1, harness: "pi", issue: null, grill: "grill-l", pr: [], reason: null };
+	assert.deepEqual(loggedEvents(common).map(withoutTs), [
+		{ ...base_, event: "spec.published", spec: ".sdd/specs/llevar.md", previous: null },
+		{ ...base_, event: "spec.moved", issue: "#57", spec: "#57", previous: ".sdd/specs/llevar.md" },
+		{ ...base_, event: "spec.published", issue: "#57", spec: "#57", previous: null },
+	]);
+});
+
+test("#93 CA-6: con el append roto, persist_sdd_spec devuelve el mismo resultado exitoso más un aviso de una línea", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("persist_sdd_spec");
+	assert.ok(tool);
+	const { base, main, linked, common } = repoWithLinkedWorktree("events-spec-broken");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const input = {
+		mode: "assume",
+		repository: "local/repo",
+		projectPath: main,
+		documents: [{
+			id: "successor",
+			role: "successor",
+			markdown: lifecycleSpec("Log roto", "draft", "none"),
+			destinations: [{ kind: "local", path: ".sdd/specs/log-roto.md" }],
+		}],
+	};
+	const log = join(common, "sdd", "events.jsonl");
+	mkdirSync(log, { recursive: true });
+	const broken = await tool.execute("persist-broken", input, undefined, undefined, { cwd: main });
+	assert.equal(broken.details.ok, true, "la publicación sigue verificada");
+	assert.equal(readFileSync(join(common, "sdd", "specs", "log-roto.md"), "utf8"), input.documents[0]!.markdown, "la spec queda escrita igual");
+	const brokenText: string = broken.content[0].text;
+	assert.equal(warningLines(brokenText).length, 1, "un aviso de una línea");
+
+	rmSync(log, { recursive: true, force: true });
+	const healthy = await tool.execute("persist-healthy", input, undefined, undefined, { cwd: main });
+	assert.equal(loggedEvents(common).length, 1, "con el log sano, la publicación sí registra");
+	assert.equal(
+		brokenText.split("\n").filter((line) => !line.startsWith("SDD event log not updated")).join("\n"),
+		healthy.content[0].text,
+		"sin el aviso, el texto es el mismo que con el log sano",
+	);
+	assert.deepEqual(broken.details, healthy.details, "mismos details");
+	assert.equal(gitStatus(main), "", "checkout principal limpio");
+	assert.equal(gitStatus(linked), "", "worktree linkeado limpio");
 });

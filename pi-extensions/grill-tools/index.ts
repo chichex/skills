@@ -22,9 +22,13 @@ import {
 	type SddArtifactDirs,
 	type SddArtifactKind,
 } from "../lib/sdd-paths.ts";
+import { parseSddArtifact } from "../sdd-artifacts/index.ts";
+import { recordSddEvents, type SddEventFields } from "../sdd-artifacts/sdd-events.ts";
 import {
 	persistSpecPublication,
+	readPriorSpecPublication,
 	SDD_SPEC_ISSUE_STAGING_BODY,
+	specPublicationEvents,
 	type SpecPublicationDestination,
 	type SpecPublicationPorts,
 } from "../sdd-artifacts/spec-publication.ts";
@@ -240,9 +244,9 @@ async function fileExists(path: string): Promise<boolean> {
 // archivo es el artefacto SDD que consumen los otros harnesses y el handoff
 // materializado de sdd-spec --from-grill. Nunca rompe la accion que lo
 // invoca: ante un proyecto inexistente devuelve el error como texto.
-async function writeRepoHandoff(
-	snapshot: GrillSnapshot,
-): Promise<{ path: string; diagnostics: string[] } | { error: string }> {
+type RepoHandoffOutcome = { path: string; diagnostics: string[]; content: string } | { error: string };
+
+async function writeRepoHandoff(snapshot: GrillSnapshot): Promise<RepoHandoffOutcome> {
 	try {
 		const dirs = await resolveSddArtifactDirs(snapshot.projectPath, "grills");
 		await mkdir(dirs.local, { recursive: true });
@@ -258,16 +262,35 @@ async function writeRepoHandoff(
 		const plan = planGrillHandoff(snapshot, existing);
 		const path = join(dirs.local, plan.fileName);
 		await writeFileAtomic(path, plan.content);
-		return { path, diagnostics: plan.diagnostics };
+		return { path, diagnostics: plan.diagnostics, content: plan.content };
 	} catch (error) {
 		return { error: error instanceof Error ? error.message : String(error) };
 	}
 }
 
-function repoHandoffNote(outcome: { path: string; diagnostics: string[] } | { error: string }): string {
+function repoHandoffNote(outcome: RepoHandoffOutcome): string {
 	if ("error" in outcome) return `\nRepo handoff could not be written: ${outcome.error}`;
 	const diagnostics = outcome.diagnostics.length ? ` (recovered: ${outcome.diagnostics.join(", ")})` : "";
 	return `\nRepo handoff: ${outcome.path}${diagnostics}`;
+}
+
+// Log de eventos SDD (issue #93, docs/sdd-events-v1.md): solo después de que
+// el handoff quedó escrito, con la identidad de su marker canónico. Es
+// best-effort: un fallo del append suma una línea de aviso y nada más.
+async function recordHandoffEvent(
+	projectPath: string,
+	outcome: RepoHandoffOutcome,
+	event: "grill.paused" | "grill.finalized",
+): Promise<string> {
+	if (!("path" in outcome)) return "";
+	const parsed = parseSddArtifact(outcome.content);
+	const fields: SddEventFields | null = parsed.kind === "metadata" && parsed.format === "canonical" && parsed.metadata.type === "grill"
+		? { event, issue: parsed.metadata.issue, spec: null, previous: null, grill: parsed.metadata.grill, pr: [], reason: null }
+		: null;
+	const warning = fields === null
+		? "SDD event log not updated: the written handoff has no canonical grill marker"
+		: await recordSddEvents(projectPath, "pi", [fields]);
+	return warning === null ? "" : `\n${warning}`;
 }
 
 async function saveSnapshot(snapshot: GrillSnapshot): Promise<void> {
@@ -1397,9 +1420,15 @@ export default function grillTools(pi: ExtensionAPI) {
 				},
 			};
 
-			const result = await withLocalMutationQueues(localPaths, () => persistSpecPublication({ documents }, ports));
+			const { prior, result } = await withLocalMutationQueues(localPaths, async () => {
+				// Lo persistido antes de escribir decide `spec.moved` y si `spec.approved` es transición.
+				const prior = await readPriorSpecPublication(documents, ports);
+				return { prior, result: await persistSpecPublication({ documents }, ports) };
+			});
+			// Log de eventos SDD (issue #93): solo con receipt, best-effort.
+			const eventWarning = result.ok ? await recordSddEvents(root, "pi", specPublicationEvents(result.published, prior)) : null;
 			const text = result.ok
-				? `Canonical spec publication verified. Receipt:\n${JSON.stringify(result.receipt, null, 2)}`
+				? `Canonical spec publication verified. Receipt:\n${JSON.stringify(result.receipt, null, 2)}${eventWarning === null ? "" : `\n${eventWarning}`}`
 				: `Canonical spec publication blocked; no receipt was issued.\n${result.diagnostics
 					.map(({ documentId, stage, code, message }) => `- ${documentId} · ${stage} · ${code}: ${message}`)
 					.join("\n")}${result.createdIssues.length > 0
@@ -1522,10 +1551,11 @@ export default function grillTools(pi: ExtensionAPI) {
 				await saveSnapshot(snapshot);
 				publishInterviewState(pi, snapshot);
 				const pausedHandoff = await writeRepoHandoff(snapshot);
+				const pausedEventNote = await recordHandoffEvent(snapshot.projectPath, pausedHandoff, "grill.paused");
 				return {
 					content: [{
 						type: "text",
-						text: `${snapshotText("Grill session paused.", snapshot)}${repoHandoffNote(pausedHandoff)}`,
+						text: `${snapshotText("Grill session paused.", snapshot)}${repoHandoffNote(pausedHandoff)}${pausedEventNote}`,
 					}],
 					details: {
 						action: "pause",
@@ -1547,6 +1577,7 @@ export default function grillTools(pi: ExtensionAPI) {
 				await saveSnapshot(snapshot);
 				publishInterviewState(pi, snapshot);
 				const finalizedHandoff = await writeRepoHandoff(snapshot);
+				const finalizedEventNote = await recordHandoffEvent(snapshot.projectPath, finalizedHandoff, "grill.finalized");
 				const continuation = params.continueWithSpec
 					? await continueWithMaterializedSkill(
 						pi,
@@ -1563,7 +1594,7 @@ export default function grillTools(pi: ExtensionAPI) {
 				return {
 					content: [{
 						type: "text",
-						text: `${snapshotText("Grill session finalized.", snapshot)}\nMarkdown: ${markdownPath(snapshot.id)}${repoHandoffNote(finalizedHandoff)}${continuationNote}`,
+						text: `${snapshotText("Grill session finalized.", snapshot)}\nMarkdown: ${markdownPath(snapshot.id)}${repoHandoffNote(finalizedHandoff)}${finalizedEventNote}${continuationNote}`,
 					}],
 					details: {
 						action: "finalize",

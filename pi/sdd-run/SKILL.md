@@ -88,6 +88,50 @@ Si la superficie está `sin sistema`, aplica la doctrina mínima de `/skill:desi
 **Evidencia de fidelidad.** En la Fase 3, cada CA de UI con mecanismo de captura produce la captura de la implementación con el comando que la spec declara. En el `## Resultado de ejecucion`, la celda `Evidencia` cita el comando y la ruta de la captura; la cabecera `| CA | Capa | Estado | Evidencia |` no cambia. El body del PR gana la sección `## Fidelidad visual` con la tabla `| Pantalla o estado | Referencia | Implementacion | Diferencias declaradas |`, ubicada antes de `## Riesgo de merge`, que sigue siendo la última sección. Las capturas de implementación se commitean en el branch bajo `.sdd/evidence/<slug>/` y se embeben por URL raw del sha del commit que las agrega (`https://github.com/<owner>/<repo>/raw/<sha>/.sdd/evidence/<slug>/<pantalla>.png`), que sigue resolviendo después de que `/skill:sdd-land` borre el branch; si `gh stack sync` restackea, se reescriben las URLs con el sha nuevo. Son evidencia nueva y no reescriben los artefactos de entrada; el plan de diseño las declara, y `.sdd/evidence/` queda fuera de los gates de tamaño de PR y de líneas por archivo, como los generados. Con stack, la sección va en el PR de la capa que la produjo. En una capa superior, que no lleva `## Riesgo de merge`, va al final de su sección de capa, antes de la línea de riesgo si la hay. En la Fase 6, una resincronización del body desde la spec conserva `## Fidelidad visual` igual que `## Riesgo de merge`, y un fix sobre un CA de UI rehace su captura.
 <!-- sdd-run-design:end -->
 
+## Log de eventos
+
+<!-- sdd-events:start -->
+Las transiciones de este skill se registran en `<git-common-dir>/sdd/events.jsonl`, el log local append-only del formato `events-v1` (normativo en `docs/sdd-events-v1.md` del repo de estos skills). Cada evento es una línea que agrega este comando, con los valores entre `<>` reemplazados: `issue` es `#NN`, `owner/repo#NN` o `none`; `spec`, `previous` y `grill` van sin codificar (`.sdd/specs/<slug>.md`, `#NN`, `<fecha>-<slug>` o `none`) y el comando los percent-encodea; `previous` es `none` salvo en `spec.moved`; `pr` son números separados por coma y sin espacios, o vacío; `reason` es `none` salvo en `run.failed`.
+
+```bash
+(
+  harness='<harness>' event='<evento>' issue='<issue>' spec='<spec>' previous='<previous>' grillref='<grill>' pr='<prs>' reason='<reason>'
+  export LC_ALL=C
+  enc() { [ "$1" = none ] && { printf none; return; }; s=$1; while [ -n "$s" ]; do c=${s%"${s#?}"}; s=${s#?}; case $c in [A-Za-z0-9._~-]) printf %s "$c" ;; *) printf %% && printf %s "$c" | od -An -tx1 | tr -d ' \n' | tr a-f A-F ;; esac; done; }
+  ok() {
+    case $harness in claude|codex|opencode|pi) ;; *) return 1 ;; esac
+    case "$issue$pr$reason" in *[![:graph:]]*) return 1 ;; esac
+    case "$spec$previous$grillref" in *'<'*'>'*) return 1 ;; esac
+    printf '%s\n' "$issue" | grep -Eqx 'none|#[1-9][0-9]*|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[1-9][0-9]*' || return 1
+    printf '%s\n' "$pr" | grep -Eqx '([1-9][0-9]*(,[1-9][0-9]*)*)?' || return 1
+    [ -n "$spec" ] && [ -n "$previous" ] && [ -n "$grillref" ] || return 1
+    case $reason in none) [ "$event" != run.failed ] ;; aborted|interrupted) [ "$event" = run.failed ] ;; *) false ;; esac || return 1
+    [ "$event" = spec.moved ] || [ "$previous" = none ] || return 1
+    case $event in
+      grill.paused|grill.finalized) [ "$grillref" != none ] && [ -z "$pr" ] ;;
+      spec.moved) [ "$spec" != none ] && [ "$previous" != none ] && [ -z "$pr" ] ;;
+      spec.published|spec.approved|spec.superseded|run.started|run.committed|run.failed) [ "$spec" != none ] && [ -z "$pr" ] ;;
+      run.pr-opened) [ "$spec" != none ] && [ -n "$pr" ] ;;
+      land.merged) case $pr in ''|*,*) false ;; esac ;;
+      *) false ;;
+    esac
+  }
+  ok && dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && mkdir -p "$dir/sdd" &&
+    line=$(printf '{"v":1,"ts":"%s","harness":"%s","event":"%s","issue":"%s","spec":"%s","previous":"%s","grill":"%s","pr":[%s],"reason":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$harness" "$event" "$issue" "$(enc "$spec")" "$(enc "$previous")" "$(enc "$grillref")" "$pr" "$reason") &&
+    [ ${#line} -lt 1024 ] && printf '%s\n' "$line" >> "$dir/sdd/events.jsonl" ||
+    echo "aviso: no se registró el evento SDD $event" >&2
+)
+```
+
+- **Best-effort.** Un fallo del append nunca frena ni hace fallar el skill: el comando termina con exit 0 y avisa por stderr, y el reporte del skill lo nombra en una línea.
+- **Validación barata.** Antes del append, `ok` revisa el harness, el evento del catálogo, `issue`, `pr` sin espacios, refs no vacías y sin un `<...>` sin reemplazar, y los invariantes del catálogo: un valor inválido cae en el mismo aviso y no escribe nada, porque los consumidores saltean en silencio una línea inválida.
+- **Solo en el common-dir.** El log se escribe en `<git-common-dir>/sdd/`, nunca dentro del working tree: fuera de un repo git, o si el harness no puede escribir ahí, el evento se saltea con el aviso, sin caer a `.sdd/`.
+<!-- sdd-events:end -->
+
+En Pi, `<harness>` es `pi`.
+
+En este skill, `spec` es `#NN` si la spec vive en un issue y si no su ruta lógica `.sdd/specs/<slug>.md`; `issue` y `grill` son los del marker de la spec, sin codificar. Cada fase registra su evento: `run.started` en la Fase 1, `run.pr-opened` o `run.committed` en la Fase 5 y `run.failed` con `reason=interrupted` en «Run interrumpido» si ya hubo `run.started`. Un abort posterior a `run.started` registra `run.failed` con `reason=aborted`; un bloqueo anterior no registra nada. La Fase 6 no registra eventos.
+
 ## Fase 0 — Lanzador (solo con `/skill:sdd-run` pelado)
 
 Dispara SOLO cuando los argumentos vienen vacíos. Si trajo spec, issue o flags, saltear.
@@ -122,6 +166,8 @@ Si hay una sola spec candidata (estado `draft` o `aprobada`), usarla directo inf
 
    Crear desde `<base-ref>` el worktree y branch `sdd/<slug>` con `git worktree add --lock --reason "sdd-run <slug>" ../<repo>-sdd-<slug> -b sdd/<slug> <base-ref>`: el lock (`locked sdd-run <slug>` en `git worktree list --porcelain`) dice que el worktree tiene dueño: las otras sesiones no lo remueven mientras siga bloqueado, y `/skill:sdd-land` solo lo remueve, limpio, cuando su branch ya se mergeó. Reproducir allí el snapshot working-tree exacto de los artefactos de entrada — altas, modificaciones o bajas — y validar antes de commitear que ningún path excluido apareció. Si se importó al menos uno, agruparlos como PRIMER commit (`sdd: incorporar artefactos de entrada de <slug>`); si no, no crear un commit vacío. Con `#NN` no hay spec local que importar, pero el contrato, handoff o documentación de su linaje siguen pudiendo entrar. El checkout original queda intacto y puede seguir sucio; TODO el run continúa únicamente en el worktree, que sí debe quedar limpio después del commit de entrada.
 <!-- sdd-run-dirty-checkout:end -->
+
+Con el worktree y el branch creados (con stack, después de `gh stack init`), registrar `run.started` (ver «Log de eventos»).
 
 ## Fase 2 — Plan efímero
 
@@ -198,10 +244,10 @@ La transición preserva la identidad: `issue`, `grill` y `superseded-by` conserv
 
 ## Fase 5 — PR
 
-Saltear con `--no-pr` (el run termina con el branch committeado y lo dice).
+Saltear con `--no-pr` (el run termina con el branch committeado, lo dice y registra `run.committed`; también cuando degrada a commit local).
 
 1. **Aptitud primero, push después**: si el contrato declara que no hay remote o gh no está autenticado, degradar automáticamente a `--no-pr` (commit local) y avisar — no descubrirlo con un push fallido. Con aptitud ok: push del branch (`git push -u origin sdd/<slug>`; con 2 o más capas el push lo hace `gh stack submit` de «Entrega por capas»: este paso solo verifica aptitud y Limites y no ejecuta `git push -u origin sdd/<slug>`), respetando los Limites del contrato — si el contrato prohíbe push en general (no solo a main), degradar a commit local, avisar, y listar el comando que el usuario debe correr.
-2. `gh pr create` (con 2 o más capas, publicar como dice «Entrega por capas»: `gh stack submit` en lugar de este paso) — base `--base`, título = título de la spec. Body: la spec completa (con su Resultado de ejecucion) + checklist de protocolo humano si hay CA NULA + `Closes #NN` si la spec vino de un issue. La última sección del body, antes de la firma, es `## Riesgo de merge` (ver abajo). Cerrar con la firma estándar de PR. Con alguna política de generación en FALLA: crear con `--draft` y la política violada (con su medición) al tope del body — el pase a ready es decisión humana.
+2. `gh pr create` (con 2 o más capas, publicar como dice «Entrega por capas»: `gh stack submit` en lugar de este paso) — base `--base`, título = título de la spec. Body: la spec completa (con su Resultado de ejecucion) + checklist de protocolo humano si hay CA NULA + `Closes #NN` si la spec vino de un issue. La última sección del body, antes de la firma, es `## Riesgo de merge` (ver abajo). Cerrar con la firma estándar de PR. Con alguna política de generación en FALLA: crear con `--draft` y la política violada (con su medición) al tope del body — el pase a ready es decisión humana. Con el PR creado, registrar `run.pr-opened` con su número; después de `gh stack submit`, con los números de todos los PRs en orden de capa.
 3. NO mergear: el merge es del humano, siempre.
 4. **Baseline y ciclo de vida del worktree**: si la corrida es interactiva y creó un PR, capturar primero el snapshot de la Fase 6.1 y conservar el worktree limpio del run hasta resolver la oferta post-cierre. Si el usuario elige `Terminar`, removerlo (`git worktree unlock` y después `git worktree remove`); si elige `Resolver feedback automáticamente` o `Code review`, retenerlo bloqueado para la Fase 6, y el reporte lo dice. Ante un bloqueo o cambios pendientes, conservarlo bloqueado y reportar la ruta; en toda salida sin pendientes, limpiarlo con `git worktree unlock` y después `git worktree remove`. El branch y sus commits permanecen en el repo.
 
@@ -270,6 +316,8 @@ RUN INTERRUMPIDO
 ```
 
 Conservar el worktree bloqueado. Nunca presentar una interrupción, timeout o tarea pendiente como una entrega parcial lista para validar.
+
+Al emitir `RUN INTERRUMPIDO` después de `run.started`, registrar `run.failed` con `reason=interrupted` (ver «Log de eventos»); antes de `run.started` no se registra nada.
 
 ### Checklist de cierre obligatorio
 

@@ -123,7 +123,7 @@ export type UpsertResult =
 
 const UNRESERVED_BYTE = /^[A-Za-z0-9._~-]$/;
 
-function encodeReference(value: string): string {
+export function encodeReference(value: string): string {
 	return [...new TextEncoder().encode(value)]
 		.map((byte) => {
 			const character = String.fromCharCode(byte);
@@ -155,7 +155,7 @@ function schemaKeys(metadata: Record<string, unknown>, expected: readonly string
 	return undefined;
 }
 
-function isIssueReference(value: unknown): value is IssueReference {
+export function isIssueReference(value: unknown): value is IssueReference {
 	if (typeof value !== "string") return false;
 	if (/^#[1-9]\d*$/.test(value)) return true;
 	return /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+#[1-9]\d*$/.test(value);
@@ -176,7 +176,7 @@ function isWellFormedReference(value: unknown): value is string {
 	return true;
 }
 
-function isCalendarDate(value: unknown): value is string {
+export function isCalendarDate(value: unknown): value is string {
 	if (typeof value !== "string") return false;
 	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
 	if (!match) return false;
@@ -343,7 +343,7 @@ function absentState(): NormalizedStateResult {
 	return { value: "unknown", provenance: "absent" };
 }
 
-function decodeReference(value: string): { ok: true; value: string } | { ok: false } {
+export function decodeReference(value: string): { ok: true; value: string } | { ok: false } {
 	if (value.length === 0 || value === "none") return { ok: false };
 	const bytes: number[] = [];
 	for (let index = 0; index < value.length; index += 1) {
