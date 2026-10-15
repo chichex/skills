@@ -17,23 +17,31 @@ import {
 // Entradas independientes de los vectores normativos de docs/sdd-events-v1.md:
 // refs decodificadas y `null` donde la línea dice `none`.
 const VECTOR_INPUTS: SddEvent[] = [
-	{ v: 1, ts: "2026-10-14T12:00:00Z", harness: "claude", event: "grill.paused", issue: null, spec: null, grill: "2026-10-14-visualizacion-harness", pr: [], reason: null },
-	{ v: 1, ts: "2026-10-14T12:30:05Z", harness: "pi", event: "grill.finalized", issue: "owner/repo#9", spec: null, grill: "session 9/á", pr: [], reason: null },
-	{ v: 1, ts: "2026-10-14T13:00:00Z", harness: "codex", event: "spec.published", issue: null, spec: ".sdd/specs/sdd-events.md", grill: "2026-10-14-visualizacion-harness", pr: [], reason: null },
-	{ v: 1, ts: "2026-10-14T13:10:00Z", harness: "opencode", event: "spec.approved", issue: "#93", spec: "#93", grill: "2026-10-14-visualizacion-harness", pr: [], reason: null },
-	{ v: 1, ts: "2026-10-14T13:10:00Z", harness: "pi", event: "spec.superseded", issue: "#12", spec: ".sdd/specs/old.md", grill: null, pr: [], reason: null },
-	{ v: 1, ts: "2026-10-14T14:00:00Z", harness: "claude", event: "run.started", issue: "#93", spec: "#93", grill: "2026-10-14-visualizacion-harness", pr: [], reason: null },
-	{ v: 1, ts: "2026-10-14T15:45:59Z", harness: "claude", event: "run.pr-opened", issue: "#93", spec: "#93", grill: "2026-10-14-visualizacion-harness", pr: [101, 102], reason: null },
-	{ v: 1, ts: "2026-10-14T16:00:00Z", harness: "codex", event: "run.committed", issue: null, spec: ".sdd/specs/sdd-events.md", grill: null, pr: [], reason: null },
-	{ v: 1, ts: "2026-10-14T16:20:00Z", harness: "opencode", event: "run.failed", issue: null, spec: ".sdd/specs/sdd-events.md", grill: null, pr: [], reason: "aborted" },
-	{ v: 1, ts: "2026-10-14T16:25:00Z", harness: "pi", event: "run.failed", issue: "#93", spec: "#93", grill: null, pr: [], reason: "interrupted" },
-	{ v: 1, ts: "2026-10-15T09:00:00Z", harness: "pi", event: "land.merged", issue: "#93", spec: null, grill: null, pr: [101], reason: null },
+	{ v: 1, ts: "2026-10-14T12:00:00Z", harness: "claude", event: "grill.paused", issue: null, spec: null, previous: null, grill: "2026-10-14-visualizacion-harness", pr: [], reason: null },
+	{ v: 1, ts: "2026-10-14T12:30:05Z", harness: "pi", event: "grill.finalized", issue: "owner/repo#9", spec: null, previous: null, grill: "session 9/á", pr: [], reason: null },
+	{ v: 1, ts: "2026-10-14T13:00:00Z", harness: "codex", event: "spec.published", issue: null, spec: ".sdd/specs/sdd-events.md", previous: null, grill: "2026-10-14-visualizacion-harness", pr: [], reason: null },
+	{ v: 1, ts: "2026-10-14T13:05:00Z", harness: "pi", event: "spec.moved", issue: "#93", spec: "#93", previous: ".sdd/specs/sdd-events.md", grill: "2026-10-14-visualizacion-harness", pr: [], reason: null },
+	{ v: 1, ts: "2026-10-14T13:10:00Z", harness: "opencode", event: "spec.approved", issue: "#93", spec: "#93", previous: null, grill: "2026-10-14-visualizacion-harness", pr: [], reason: null },
+	{ v: 1, ts: "2026-10-14T13:10:00Z", harness: "pi", event: "spec.superseded", issue: "#12", spec: ".sdd/specs/old.md", previous: null, grill: null, pr: [], reason: null },
+	{ v: 1, ts: "2026-10-14T14:00:00Z", harness: "claude", event: "run.started", issue: "#93", spec: "#93", previous: null, grill: "2026-10-14-visualizacion-harness", pr: [], reason: null },
+	{ v: 1, ts: "2026-10-14T15:45:59Z", harness: "claude", event: "run.pr-opened", issue: "#93", spec: "#93", previous: null, grill: "2026-10-14-visualizacion-harness", pr: [101, 102], reason: null },
+	{ v: 1, ts: "2026-10-14T16:00:00Z", harness: "codex", event: "run.committed", issue: null, spec: ".sdd/specs/sdd-events.md", previous: null, grill: null, pr: [], reason: null },
+	{ v: 1, ts: "2026-10-14T16:20:00Z", harness: "opencode", event: "run.failed", issue: null, spec: ".sdd/specs/sdd-events.md", previous: null, grill: null, pr: [], reason: "aborted" },
+	{ v: 1, ts: "2026-10-14T16:25:00Z", harness: "pi", event: "run.failed", issue: "#93", spec: "#93", previous: null, grill: null, pr: [], reason: "interrupted" },
+	{ v: 1, ts: "2026-10-15T09:00:00Z", harness: "pi", event: "land.merged", issue: "#93", spec: null, previous: null, grill: null, pr: [101], reason: null },
 ];
+
+function vectorOf(event: string): SddEvent {
+	const vector = VECTOR_INPUTS.find((input) => input.event === event);
+	assert.ok(vector, `vector de ${event}`);
+	return vector;
+}
 
 const CATALOG = [
 	"grill.paused",
 	"grill.finalized",
 	"spec.published",
+	"spec.moved",
 	"spec.approved",
 	"spec.superseded",
 	"run.started",
@@ -63,6 +71,7 @@ const BASE_WIRE = {
 	event: "run.started",
 	issue: "#93",
 	spec: "%2393",
+	previous: "none",
 	grill: "none",
 	pr: [] as unknown,
 	reason: "none",
@@ -85,7 +94,7 @@ test("CA-1: el doc normativo fija ubicación, gramática, claves, catálogo, ref
 	assert.match(contract, /UTF-8/);
 	assert.match(contract, /`LF`/);
 	assert.match(contract, /at most 1024 bytes/);
-	assert.match(contract, /`v`, `ts`, `harness`, `event`, `issue`, `spec`, `grill`, `pr`, `reason`/);
+	assert.match(contract, /`v`, `ts`, `harness`, `event`, `issue`, `spec`, `previous`, `grill`, `pr`, `reason`/);
 	for (const event of CATALOG) {
 		assert.match(contract, new RegExp(`^\\| \`${event.replace(".", "\\.")}\` \\|`, "m"), `fila del catálogo para ${event}`);
 	}
@@ -95,6 +104,18 @@ test("CA-1: el doc normativo fija ubicación, gramática, claves, catálogo, ref
 	assert.match(contract, /MUST NOT block or fail/);
 	assert.match(contract, /Consumers MUST skip invalid and unsupported lines/);
 	assert.match(contract, /final\s+segment without its terminating `LF`/);
+});
+
+test("CA-1 (review #94): el doc nombra el escape real, printf '%s\\n', la transición de spec.approved y el puente spec.moved", async () => {
+	const contract = await readContract();
+	assert.match(contract, /escapes such as `\\u0041`/, "el ejemplo de escape es un escape JSON, no una A literal");
+	assert.doesNotMatch(contract, /escapes such as `A`/);
+	assert.match(contract, /`printf '%s\\n' "\$line"`/, "nombra la forma de printf que no interpreta los %HH");
+	assert.match(contract, /never as the format/);
+	assert.match(contract, /^\| `spec\.approved` \| [^|]*persisted state before the publication was not `approved`[^|]*\|/m);
+	assert.match(contract, /^\| `spec\.moved` \| [^|]*\| `spec` ≠ `none`; `previous` ≠ `none`; `pr=\[\]` \|$/m);
+	assert.match(contract, /In every event except `spec\.moved`, `previous` MUST be `none`/);
+	assert.match(contract, /`#NN` is relative to the repository of the clone/);
 });
 
 test("CA-1: serializeSddEvent reproduce byte a byte cada vector del doc, con al menos uno por evento", async () => {
@@ -128,9 +149,11 @@ test("CA-2: rechazo tipado con un código de diagnóstico por caso", () => {
 	const longGrill = "g".repeat(1100);
 	const cases: Array<[string, string, string]> = [
 		["clave extra", wire({ extra: "x" }), "extra-key"],
-		["clave faltante", JSON.stringify({ v: 1, ts: BASE_WIRE.ts, harness: "claude", event: "run.started", issue: "#93", spec: "%2393", grill: "none", pr: [] }), "missing-key"],
+		["clave faltante", JSON.stringify({ v: 1, ts: BASE_WIRE.ts, harness: "claude", event: "run.started", issue: "#93", spec: "%2393", previous: "none", grill: "none", pr: [] }), "missing-key"],
+		["clave previous faltante", JSON.stringify({ v: 1, ts: BASE_WIRE.ts, harness: "claude", event: "run.started", issue: "#93", spec: "%2393", grill: "none", pr: [], reason: "none" }), "missing-key"],
 		["clave repetida", wire().replace('"harness":"claude"', '"harness":"claude","harness":"pi"'), "duplicate-key"],
-		["clave fuera de orden", JSON.stringify({ v: 1, harness: "claude", ts: BASE_WIRE.ts, event: "run.started", issue: "#93", spec: "%2393", grill: "none", pr: [], reason: "none" }), "key-order"],
+		["clave fuera de orden", JSON.stringify({ v: 1, harness: "claude", ts: BASE_WIRE.ts, event: "run.started", issue: "#93", spec: "%2393", previous: "none", grill: "none", pr: [], reason: "none" }), "key-order"],
+		["previous fuera de orden", JSON.stringify({ v: 1, ts: BASE_WIRE.ts, harness: "claude", event: "run.started", issue: "#93", spec: "%2393", grill: "none", previous: "none", pr: [], reason: "none" }), "key-order"],
 		["JSON truncado", wire().slice(0, 40), "invalid-json"],
 		["JSON que no es objeto", "[1,2]", "invalid-json"],
 		["línea vacía", "", "invalid-json"],
@@ -148,6 +171,7 @@ test("CA-2: rechazo tipado con un código de diagnóstico por caso", () => {
 		["ref con escape en minúscula", wire({ spec: ".sdd%2fspecs%2fx.md" }), "invalid-reference"],
 		["ref con no reservado escapado", wire({ spec: "%41bc" }), "invalid-reference"],
 		["ref vacía", wire({ spec: "" }), "invalid-reference"],
+		["previous no canónica", wire({ event: "spec.moved", previous: ".sdd/specs/x.md" }), "invalid-reference"],
 		["ref que no es string", wire({ grill: 7 }), "invalid-reference"],
 		["pr que no es array", wire({ pr: "101" }), "invalid-pr"],
 		["pr con cero", wire({ event: "land.merged", pr: [0] }), "invalid-pr"],
@@ -176,7 +200,7 @@ test("CA-2: el límite de 1024 bytes incluye el LF: 1023 bytes de contenido pasa
 	assert.equal(Buffer.byteLength(fits, "utf8"), 1023);
 	assert.equal(parseSddEventLine(fits).kind, "event");
 	assert.equal(diagnosticOf(overflows), "line-too-long");
-	const serialized = serializeSddEvent({ ...VECTOR_INPUTS[5]!, grill: "g".repeat(2000) });
+	const serialized = serializeSddEvent({ ...vectorOf("run.started"), grill: "g".repeat(2000) });
 	assert.equal(serialized.ok, false);
 	assert.equal(serialized.ok ? "" : serialized.diagnostics[0]?.code, "line-too-long");
 });
@@ -192,6 +216,18 @@ test("CA-2: v distinto de 1 es unsupported-version, no inválido", () => {
 		assert.equal(result.kind === "event" ? "" : result.diagnostics[0]?.code, "unsupported-version");
 	}
 	assert.equal(diagnosticOf(JSON.stringify({ ts: BASE_WIRE.ts })), "missing-key");
+});
+
+test("CA-2 (review #94): una línea con v distinto de 1 y claves repetidas sigue siendo unsupported-version", () => {
+	const repeated = wire({ v: 2 }).replace('"harness":"claude"', '"harness":"claude","harness":"pi"');
+	const result = parseSddEventLine(repeated);
+	assert.equal(result.kind, "unsupported-version", JSON.stringify(result));
+	assert.equal(diagnosticOf(wire().replace('"harness":"claude"', '"harness":"claude","harness":"pi"')), "duplicate-key", "con v=1 sigue siendo duplicate-key");
+});
+
+test("CA-2 (review #94): las claves repetidas se buscan recién sobre una línea acotada a 1024 bytes", () => {
+	const repeatedAndLong = wire({ grill: "g".repeat(1100) }).replace('"harness":"claude"', '"harness":"claude","harness":"pi"');
+	assert.equal(diagnosticOf(repeatedAndLong), "line-too-long");
 });
 
 test("CA-2: el parseo es total y nunca lanza", () => {
@@ -219,6 +255,11 @@ test("CA-3: cada invariante del catálogo produce su diagnóstico al parsear y a
 		["spec.published con pr", { event: "spec.published", pr: [1] }],
 		["spec.approved sin spec", { event: "spec.approved", spec: "none" }],
 		["spec.approved con pr", { event: "spec.approved", pr: [1] }],
+		["spec.moved sin spec", { event: "spec.moved", spec: "none", previous: ".sdd%2Fspecs%2Fx.md" }],
+		["spec.moved sin previous", { event: "spec.moved", previous: "none" }],
+		["spec.moved con pr", { event: "spec.moved", previous: ".sdd%2Fspecs%2Fx.md", pr: [1] }],
+		["previous en un evento que no es spec.moved", { event: "spec.published", previous: ".sdd%2Fspecs%2Fx.md" }],
+		["previous en land.merged", { event: "land.merged", pr: [1], previous: ".sdd%2Fspecs%2Fx.md" }],
 		["spec.superseded sin spec", { event: "spec.superseded", spec: "none" }],
 		["spec.superseded con pr", { event: "spec.superseded", pr: [1] }],
 		["run.started sin spec", { event: "run.started", spec: "none" }],
@@ -240,10 +281,11 @@ test("CA-3: cada invariante del catálogo produce su diagnóstico al parsear y a
 		const parsedCode = diagnosticOf(wire(overrides));
 		if (parsedCode !== "invariant-violation") problems.push(`parse ${name}: dio ${parsedCode}`);
 		const model = {
-			...VECTOR_INPUTS[5]!,
+			...vectorOf("run.started"),
 			event: overrides.event,
 			...(overrides.grill === undefined ? {} : { grill: overrides.grill === "none" ? null : overrides.grill }),
 			...(overrides.spec === undefined ? {} : { spec: null }),
+			...(overrides.previous === undefined ? {} : { previous: overrides.previous === "none" ? null : decodeURIComponent(String(overrides.previous)) }),
 			...(overrides.pr === undefined ? {} : { pr: overrides.pr }),
 			...(overrides.reason === undefined ? {} : { reason: overrides.reason === "none" ? null : overrides.reason }),
 		} as SddEvent;
@@ -253,6 +295,7 @@ test("CA-3: cada invariante del catálogo produce su diagnóstico al parsear y a
 	}
 	assert.deepEqual(problems, []);
 	assert.equal(parseSddEventLine(wire({ event: "land.merged", spec: "none", pr: [7] })).kind, "event", "land.merged admite spec none");
+	assert.equal(parseSddEventLine(wire({ event: "spec.moved", previous: ".sdd%2Fspecs%2Fx.md" })).kind, "event", "spec.moved con spec y previous es válido");
 });
 
 function gitRepo(name: string): string {
@@ -274,7 +317,7 @@ test("CA-7: 20 appends concurrentes dejan intactas las líneas previas y suman 2
 	writeFileSync(log, `${previous.join("\n")}\n`, "utf8");
 
 	const results = await Promise.all(Array.from({ length: 20 }, (_unused, index) => appendSddEvent(repo, {
-		...VECTOR_INPUTS[6]!,
+		...vectorOf("run.pr-opened"),
 		pr: [index + 1, 1000 + index],
 	})));
 	assert.deepEqual(results.filter((result) => !result.ok), []);
@@ -312,12 +355,12 @@ test("recordSddEvents sella ts con el reloj inyectado y devuelve un aviso de una
 	const repo = gitRepo("record");
 	t.after(() => rmSync(repo, { recursive: true, force: true }));
 	const now = () => new Date("2026-10-14T18:19:20.987Z");
-	const fields = { event: "grill.paused" as const, issue: null, spec: null, grill: "g-1", pr: [], reason: null };
+	const fields = { event: "grill.paused" as const, issue: null, spec: null, previous: null, grill: "g-1", pr: [], reason: null };
 	assert.equal(await recordSddEvents(repo, "pi", [fields], { now }), null);
 	const log = join(commonDirOf(repo), "sdd", "events.jsonl");
 	assert.equal(
 		readFileSync(log, "utf8"),
-		'{"v":1,"ts":"2026-10-14T18:19:20Z","harness":"pi","event":"grill.paused","issue":"none","spec":"none","grill":"g-1","pr":[],"reason":"none"}\n',
+		'{"v":1,"ts":"2026-10-14T18:19:20Z","harness":"pi","event":"grill.paused","issue":"none","spec":"none","previous":"none","grill":"g-1","pr":[],"reason":"none"}\n',
 	);
 	rmSync(log);
 	mkdirSync(log);
@@ -325,4 +368,28 @@ test("recordSddEvents sella ts con el reloj inyectado y devuelve un aviso de una
 	assert.ok(warning, "devuelve un aviso");
 	assert.doesNotMatch(warning ?? "", /\n/, "el aviso es de una línea");
 	assert.match(warning ?? "", /SDD event log/);
+});
+
+test("recordSddEvents (review #94) resuelve el common-dir una sola vez por lote", async (t) => {
+	const repo = gitRepo("record-once");
+	t.after(() => rmSync(repo, { recursive: true, force: true }));
+	const common = commonDirOf(repo);
+	const calls: string[][] = [];
+	const runGit = async (args: readonly string[]) => {
+		calls.push([...args]);
+		return { code: 0, stdout: `${common}\n` };
+	};
+	const fields = { event: "grill.paused" as const, issue: null, spec: null, previous: null, grill: "g-1", pr: [], reason: null };
+	assert.equal(await recordSddEvents(repo, "pi", [fields, fields, fields], { runGit }), null);
+	assert.equal(calls.length, 1, "un solo git rev-parse para los 3 eventos");
+	assert.equal(readFileSync(join(common, "sdd", "events.jsonl"), "utf8").split("\n").length - 1, 3);
+
+	calls.length = 0;
+	const outside = async (args: readonly string[]) => {
+		calls.push([...args]);
+		return { code: 128, stdout: "" };
+	};
+	const warning = await recordSddEvents(repo, "pi", [fields, fields], { runGit: outside });
+	assert.equal(calls.length, 1, "fuera de git también se consulta una vez");
+	assert.match(warning ?? "", /^SDD event log not updated \(2\/2 events\): no <git-common-dir>/);
 });

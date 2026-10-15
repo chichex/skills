@@ -573,32 +573,78 @@ function specEventReference(destinations: ResolvedSpecPublicationDestination[]):
 	return `.sdd/specs/${local.path.split(/[\\/]/).at(-1) ?? ""}`;
 }
 
+/** Lo que la sucesora ya tenía persistido antes de una publicación (issue #93). */
+export interface PriorSpecPublication {
+	/** Algún destino ya tenía la spec en `approved`. */
+	approved: boolean;
+	/** Identidad events-v1 de los destinos que ya tenían la spec, o `null` si ninguno. */
+	spec: string | null;
+}
+
 /**
- * Eventos del log SDD de una publicación con receipt (issue #93): la sucesora
- * da `spec.published` en `draft` o `spec.approved` en `approved`, y cada
- * predecesora un `spec.superseded`, en ese orden.
+ * Relee, antes de escribir, los destinos existentes de la sucesora (no los
+ * `new-issue`). Solo alimenta el log de eventos: un destino que no se puede
+ * leer o que no trae un marker canónico de spec cuenta como sin copia previa.
  */
-export function specPublicationEvents(published: PublishedSpecDocument[]): SddEventFields[] {
+export async function readPriorSpecPublication(
+	documents: SpecPublicationDocument[],
+	ports: Pick<SpecPublicationPorts, "readLocal" | "readIssue">,
+): Promise<PriorSpecPublication> {
+	const successor = documents.find((document) => (document.role ?? "successor") === "successor");
+	const existing: ResolvedSpecPublicationDestination[] = [];
+	let approved = false;
+	for (const destination of successor?.destinations ?? []) {
+		if (destination.kind === "new-issue") continue;
+		let persisted: string;
+		try {
+			persisted = destination.kind === "local"
+				? await ports.readLocal(destination.path)
+				: await ports.readIssue(destination.issue);
+		} catch {
+			continue;
+		}
+		const parsed = parseSddArtifact(persisted);
+		if (parsed.kind !== "metadata" || parsed.format !== "canonical" || parsed.metadata.type !== "spec") continue;
+		existing.push(destination);
+		if (parsed.metadata.state === "approved") approved = true;
+	}
+	return { approved, spec: existing.length === 0 ? null : specEventReference(existing) };
+}
+
+/**
+ * Eventos del log SDD de una publicación con receipt (issue #93): si la
+ * sucesora cambia de identidad (una spec local llevada a un issue), primero
+ * `spec.moved`; después `spec.published` en `draft`, o `spec.approved` en
+ * `approved` solo si antes no lo estaba; y cada predecesora un
+ * `spec.superseded`, en ese orden.
+ */
+export function specPublicationEvents(published: PublishedSpecDocument[], prior: PriorSpecPublication): SddEventFields[] {
 	const ordered = [
 		...published.filter(({ role }) => role === "successor"),
 		...published.filter(({ role }) => role === "predecessor"),
 	];
 	return ordered.flatMap((document): SddEventFields[] => {
-		const event = document.metadata.state === "draft"
-			? "spec.published"
-			: document.metadata.state === "approved"
-				? "spec.approved"
-				: document.metadata.state === "superseded"
-					? "spec.superseded"
-					: null;
-		if (event === null) return [];
-		return [{
+		const successor = document.role === "successor";
+		const spec = specEventReference(document.destinations);
+		const fields = (event: SddEventFields["event"], previous: string | null = null): SddEventFields => ({
 			event,
 			issue: document.metadata.issue,
-			spec: specEventReference(document.destinations),
+			spec,
+			previous,
 			grill: document.metadata.grill,
 			pr: [],
 			reason: null,
-		}];
+		});
+		const moved = successor && prior.spec !== null && spec !== null && prior.spec !== spec
+			? [fields("spec.moved", prior.spec)]
+			: [];
+		const event = document.metadata.state === "draft"
+			? "spec.published"
+			: document.metadata.state === "approved"
+				? (successor && prior.approved ? null : "spec.approved")
+				: document.metadata.state === "superseded"
+					? "spec.superseded"
+					: null;
+		return event === null ? moved : [...moved, fields(event)];
 	});
 }
