@@ -4,7 +4,7 @@ import { copyFile, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const CODING_POLICIES_HARNESSES = ["claude", "codex", "opencode", "pi"];
+export const CODING_POLICIES_HARNESSES = ["claude", "codex", "opencode", "pi", "antigravity"];
 
 const SKILL = "coding-policies";
 const CANONICAL_DIRECTORY = join("shared", SKILL, "references");

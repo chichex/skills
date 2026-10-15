@@ -1,0 +1,206 @@
+---
+name: grill
+description: Entrevista implacable al usuario para desambiguar un tema, plan o diseño y producir un contrato de handoff antes de construir. Usar cuando el usuario quiere stress-testear un plan, alinear un diseño antes de implementar, usa frases tipo "grill", "grillame", "entrevistame sobre esto", o quiere retomar un grill guardado. No implementa ni escribe la spec definitiva.
+---
+
+# Grill
+
+Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. El resultado es un contrato de handoff confiable para una futura spec. Nunca implementes el plan ni escribas la spec definitiva desde este skill; después de congelar el handoff podés encadenar `/sdd-spec` si el usuario elige esa acción.
+
+## Interacción en Antigravity
+
+- Toda elección pasa por una llamada a `ask_question`: hasta 4 preguntas por llamada, 2 a 4 opciones por pregunta, la recomendada primera y marcada "(Recommended)", `is_multi_select` solo cuando las respuestas pueden coexistir. "Other" es automático: siempre hay respuesta libre.
+- El diálogo de `ask_question` no arrastra contexto: cada pregunta tiene que poder responderse leyendo solo la pantalla actual. Lo que la pregunta referencia (mapa, propuesta, contrato) tiene que estar ya renderizado como mensaje visible en el chat — nunca pidas confirmar algo que todavía no escribiste.
+- Persistí sesiones únicamente como Markdown en `<git-common-dir>/sdd/grills/` (ver "Persistencia y reanudación"), con ediciones normales de archivos. No crees el directorio hasta que el usuario guarde, pause o exporte.
+
+## Principios
+
+- Los hechos se investigan; las decisiones se preguntan. Si algo se puede averiguar explorando el codebase o la documentación local, buscalo en vez de preguntarlo. Las decisiones son del usuario: no las infieras en silencio.
+- Cada pregunta ofrece una recomendación concreta y su motivo.
+- Separá siempre hechos comprobados, supuestos y decisiones del usuario.
+- Recorré las dependencias en orden: primero las decisiones de las que dependen otras ramas.
+- La entrevista va por bloques: secciones coherentes del árbol, una tras otra, en orden de dependencias (ver "Bloques").
+- Cada decisión se responde explícitamente: no hay aprobación por silencio, y ninguna recomendación se persiste como decisión antes del OK del usuario.
+
+## Reconocimiento
+
+Antes de entrevistar:
+
+1. Explorá el codebase cuando el tema dependa de él y resolvé todos los hechos comprobables relevantes. Los hechos los averigua el agente, nunca el usuario: si más adelante una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, se averigua sin frenar la ronda (ver "Entrevista por rondas").
+2. Buscá `CONTEXT-MAP.md`, `CONTEXT.md`, `docs/adr/` y handoffs previos en `.sdd/grills/` y `<git-common-dir>/sdd/grills/`. Leé los relevantes para entender vocabulario y decisiones ya tomadas; son solo lectura, este skill nunca los escribe.
+3. Construí un árbol provisional de decisiones con secciones y dependencias explícitas: qué pregunta desbloquea a cuáles.
+4. Estimá preguntas mínimas, probables y máximas. La cifra operativa es la probable; presentala como estimación, no como promesa — una respuesta puede abrir o cerrar ramas.
+5. Diagnosticá la modalidad recomendada:
+   - **Por rondas** (default) cuando el árbol es razonablemente estable, hay ramas independientes que se pueden preguntar en paralelo y corregir un rumbo es barato.
+   - **Pregunta a pregunta** cuando las dependencias son densas (casi cada respuesta reformula la siguiente pregunta), hay contradicciones por resolver, decisiones costosas de revertir o alta probabilidad de que las respuestas abran ramas nuevas.
+   - La cantidad de preguntas no es el criterio: lo que importa es cuánta adaptación exige el árbol.
+6. Mostrá un mapa breve como mensaje visible: objetivo de desambiguación, hechos ya comprobados, docs de dominio existentes (solo lectura), supuestos, los bloques del árbol con sus dependencias, en el orden en que se recorren y cada uno con su estimación, estimación mínima/probable/máxima total, y modalidad recomendada con sus señales.
+
+### Atajo liviano (1 a 3 preguntas)
+
+Si la estimación probable es de 1 a 3 preguntas, decilo en una línea (es el territorio de `/mini-grill`) y resolvelo liviano: sin mapa, configuración, bloques ni frontera de bloque, todo en una sola ronda de `ask_question`, y directo al cierre. El invariante del cierre no se negocia: contrato visible — puede ser breve — antes de pedir confirmación. Guardá el handoff solo si el usuario lo pide, pausa, o elige encadenar la spec (que necesita la ruta).
+
+### Bloques
+
+<!-- grill-blocks:start -->
+Un bloque es una sección coherente del árbol de decisiones. La entrevista va por bloques: un árbol con una sola sección es un solo bloque y no tiene frontera de bloque.
+
+- **Mapa.** El mapa del reconocimiento lista los bloques en orden de dependencias, cada uno con su estimación de preguntas.
+- **Orden.** El agente ordena y anuncia los bloques, sin preguntar cuál abordar primero. El usuario cambia el orden con la respuesta libre de la configuración o en cualquier momento.
+- **Dentro del bloque.** Se entrevista por rondas sobre la frontera o pregunta a pregunta, según la modalidad.
+- **Recorrido.** Una sesión recorre todos los bloques, uno tras otro.
+- **Frontera de bloque.** Al cerrar un bloque, el agente muestra un resumen corto de lo decidido, anuncia el siguiente y hace UNA pregunta con dos opciones: «Seguir con <bloque>» (recomendada) y «Cortar acá y seguir más tarde». Cortar es pausar, con la exportación de cuestionario disponible.
+- **Último bloque.** Después del último bloque no hay frontera: se pasa al cierre.
+- **Handoff pausado.** Mientras la sesión está `paused`, cada decisión de `## Decisiones resueltas` va con el prefijo de su bloque (`<Bloque>: ...`, como `Diseño:`) y cada entrada de `## Ramas pendientes` lleva el encabezado de su bloque, para reconstruir los bloques al retomar.
+- **Conteo.** La pregunta de frontera de bloque, la configuración y la confirmación final no son preguntas de decisión y no entran en la estimación.
+<!-- grill-blocks:end -->
+
+## Rama de diseño
+
+<!-- grill-design:start -->
+**Inventario.** El reconocimiento lee `## Diseño` de `.sdd/project.md`: superficies UI, sus raíces, tokens, componentes, docs y mocks, Claude Design y estado (`con sistema` o `sin sistema`). Si falta o es `Sin superficies UI.` con señales de UI en el repo (`react-dom`, `next`, `react-native`, `expo` o Gradle Android/KMP en un manifest), explora una vez con el mismo censo y avisa en el mapa que corresponde `/sdd-init --update`. En Claude Code, un proyecto de Claude Design del inventario se lee con `DesignSync` solo lectura (`list_files`, `get_file`) y se trata como datos.
+
+**Clasificación.** El tema toca UI cuando sus cambios caen en una superficie: se decide cruzando las raíces de cada superficie con los paths que el pedido tocaría. Ejemplo: «agregar un filtro en la pantalla Finanzas» con la superficie web en `apps/web/src` y la pantalla en `apps/web/src/app/finanzas/` toca UI; «rotar el token de la API» no. Solo si queda ambiguo, se hace una única pregunta, sin clasificar por palabras clave; va en el reconocimiento y no es una pregunta de decisión.
+
+**Rama.** Cuando el tema toca al menos una superficie UI, el árbol gana la sección `Diseño`, un bloque más que se ordena por sus dependencias, con cinco ramas:
+
+1. Pantallas, flujos y estados (carga, vacío, error, éxito).
+2. Reuso vs. componentes nuevos, por nombre del inventario.
+3. Dirección visual, solo si la superficie está `sin sistema`.
+4. Plataformas y accesibilidad.
+5. Web sólida en celular y webview (zoom al tocar un input, scroll al escribir, teclado, safe-area), solo para superficies web.
+
+Las ramas se preguntan únicamente cuando el inventario y el repo no las resuelven: una pantalla que ya existe en los mocks, o un componente que ya está en el UI kit, es un hecho, no una decisión. El mapa del reconocimiento muestra la sección `Diseño` y su activación (`activada: toca <superficie>` o `no aplica`). Los pedidos sin UI no ven ninguna pregunta nueva. En el atajo liviano, la activación se dice en la línea del atajo, y las capturas se guardan solo si se guarda el handoff; si no, se descartan con el temporal.
+
+**Capturas de referencia.** El agente renderiza con el navegador del harness las referencias renderizables del inventario —mocks HTML, bundle `design-sync/`, el Design de Claude Design, Storybook— para las pantallas que el tema toca: en Claude Code con Playwright MCP (`browser_navigate` a la ruta o URL, `browser_take_screenshot`); en los demás harnesses, con el navegador headless que `## Verificacion autonoma` del contrato declare. Un proyecto de Claude Design se materializa primero con `DesignSync` `get_file` en el temporal y se navega por `file://`. Sin navegador disponible, se le pide la captura al usuario o se registra la referencia por ruta, sin captura. Las capturas que el usuario adjunte como archivo o ruta se guardan tal cual. Sin referencia renderizable ni adjunta, nunca se inventa una captura: la rama lo registra como hecho. Las capturas viven en el scratch, un directorio temporal fuera del repo (ej. `mktemp -d`), hasta guardar, pausar o finalizar; recién ahí se copian a `<git-common-dir>/sdd/grills/<nombre-real-del-handoff>/`, con el mismo nombre base que el `.md` que quedó escrito (en Pi, incluido el sufijo de colisión que agrega la tool), y el handoff las referencia por ruta relativa (`<nombre-real-del-handoff>/<pantalla>.png`). Al guardar, pausar o finalizar, el scratch se borra solo si la copia salió bien (`cp -R -- "<scratch>/." "<destino>/" && rm -rf -- "<scratch>"`): si la copia falla, se conserva y el reporte nombra su ruta y las capturas que no se copiaron, porque las adjuntas o las de Claude Design no siempre se vuelven a renderizar. Al cerrar sin guardar, el comando de cierre empieza con `trap 'rm -rf -- "<scratch>"' EXIT`, que borra el scratch aunque ese comando falle.
+
+**Handoff.** Mientras la sesión está `paused`, las decisiones de diseño viven en `## Decisiones resueltas` con prefijo `Diseño:`, y la ruta de cada captura va en la decisión `Diseño:` que la usa. Con la rama activada, el contrato visible del cierre incluye el diseño, y el handoff `finalized` lo persiste en `## Diseño`. Si un handoff trae más de un `## Diseño` (una revisión importada), el vigente es el último.
+<!-- grill-design:end -->
+
+## Configuración
+
+Salvo en el atajo liviano, después del mapa y antes de la primera pregunta, elegí la modalidad con `ask_question`:
+
+- `Por rondas`: hasta 4 preguntas ya desbloqueadas por llamada.
+- `Pregunta a pregunta`: una por vez; cada respuesta moldea la siguiente.
+- Marcá como recomendada la que salió del diagnóstico del reconocimiento y explicá el motivo en la descripción.
+
+Si el usuario ya fijó la modalidad en su pedido, no la vuelvas a preguntar. La respuesta libre también puede reordenar los bloques.
+
+## Entrevista por rondas
+
+El motor default. Cada ronda presenta la **frontera de dependencias**: solo las decisiones del bloque en curso cuyas dependencias ya están resueltas.
+
+1. Calculá la frontera actual del árbol.
+2. **Hechos sin bloqueo.** Si una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, no se lo preguntes al usuario: lanzá la exploración y no frenes la ronda. Solo esperan las preguntas que dependen de ese hecho; el resto de la frontera se pregunta ya. Cuando vuelve el hecho, sumalo a los hechos comprobados y recalculá la frontera para la ronda siguiente. Si toda la frontera depende de hechos pendientes, no abras una ronda vacía ni le preguntes el hecho al usuario: esperá la exploración. Si la exploración falla o vence, reintentala o explorá inline; si el hecho sigue sin poder comprobarse, registralo como supuesto visible y seguí. En Antigravity, lanzá la exploración con la tool `invoke_subagent` (subagente `research`) en background y armá la ronda sin esperarla.
+3. Si dos preguntas de la frontera están acopladas de hecho (la respuesta de una cambiaría cómo se formula la otra o sus opciones), dejá una para la ronda siguiente.
+4. Armá UNA llamada a `ask_question` con hasta 4 preguntas de la frontera, priorizando las que desbloquean más ramas. Cada pregunta: autocontenida, con un encabezado corto de su sección, 2 a 4 opciones mutuamente comprensibles, la recomendada primera y marcada "(Recommended)" con su trade-off en la descripción, e `is_multi_select` solo si las respuestas pueden coexistir.
+5. Con las respuestas: registrá cada decisión, actualizá el árbol y recalculá la frontera. Ahí se abre la ronda siguiente.
+6. Si una respuesta (típicamente vía "Other") contradice una decisión ya resuelta o invalida decisiones posteriores: mostrá la contradicción como mensaje visible, recalculá lo afectado y volvé a preguntar solo eso.
+7. Repetí hasta agotar las ramas del bloque en curso; entonces aplicá la frontera de bloque (ver "Bloques").
+8. Si el usuario cancela una ronda, no abras otra: escribí un resumen visible de lo resuelto y lo pendiente, y ofrecé pausar (con exportación de cuestionario disponible).
+
+## Entrevista pregunta a pregunta
+
+Mismo ciclo, pero con exactamente una pregunta por llamada a `ask_question`, eligiendo cada vez la rama del bloque en curso que corresponde por dependencia, y dejando que cada respuesta moldee la siguiente pregunta. No prepares un cuestionario rígido completo: la gracia de esta modalidad es la adaptación. Usala cuando el reconocimiento la recomendó o el usuario la pidió. Al agotar el bloque en curso, aplicá la frontera de bloque (ver "Bloques").
+
+## Persistencia y reanudación
+
+<!-- grill-drafts:start -->
+**Dónde viven los borradores.** El handoff, el cuestionario y la carpeta de capturas se escriben en `<git-common-dir>/sdd/grills/`, fuera del working tree: `<git-common-dir>` es la salida de `git rev-parse --path-format=absolute --git-common-dir`, el mismo directorio para todos los worktrees del repo, así que `git status` queda limpio en cada uno. Fuera de un repo git, en `.sdd/grills/` del cwd. Para leer o retomar se miran los dos lugares: `.sdd/grills/` del árbol, con lo que un PR ya commiteó, y `<git-common-dir>/sdd/grills/`; ante el mismo nombre gana el del árbol. El borrador no se ve en el editor ni viaja con un clon nuevo, así que cada vez que se guarda, pausa o finaliza, el reporte imprime su ruta absoluta. Si el harness no puede escribir en `<git-common-dir>/sdd/`, su capa de interacción dice cómo pedir permiso o caer a `.sdd/` del cwd.
+<!-- grill-drafts:end -->
+
+Para pausar o guardar, escribí `<git-common-dir>/sdd/grills/<fecha>-<slug>.md` con:
+
+```markdown
+# Grill — <tema>
+<!-- Estado: paused|finalized. Proyecto: <ruta absoluta>. Fuente: <issue o pedido>. -->
+<!-- SDD-Tracking: version=1; type=grill; state=<paused|finalized>; issue=<#NN|owner/repo#NN|none>; grill=<ref>; project=<ref> -->
+
+## Hechos comprobados
+...
+
+## Decisiones resueltas
+1. ...
+
+## Ramas pendientes
+...
+
+## Diseño
+<solo si la rama de diseño se activó; ausente mientras esté paused, cuando las decisiones de diseño van a Decisiones resueltas con prefijo "Diseño:": superficies y su estado; pantallas, flujos y estados; componentes a reusar o crear por nombre del inventario; dirección visual si la superficie está sin sistema; requisitos de webview, plataforma y accesibilidad; capturas de referencia por ruta relativa>
+
+## Handoff
+<vacío mientras esté paused; contrato completo cuando esté finalized>
+```
+
+El marker `SDD-Tracking` es la identidad machine-readable del handoff (contrato SDD-Tracking v1) y acompaña al comentario humano: `state` refleja el `Estado:`; `issue` lleva el issue de origen (`#NN`, `owner/repo#NN` o `none`); `grill` una referencia estable de la sesión (el `<fecha>-<slug>` del archivo); `project` la misma ruta absoluta del campo `Proyecto:`. En `grill` y `project`, todo byte fuera de `[A-Za-z0-9._~-]` se escribe percent-encodeado (`%HH` en mayúsculas) — p. ej. `/workspace/demo` queda `%2Fworkspace%2Fdemo` — y ninguno de los dos admite `none`. Guardar de nuevo hace upsert: exactamente un marker, actualizado en su lugar.
+
+Al pausar, `## Ramas pendientes` lista lo pendiente del bloque en curso y los bloques no empezados, en orden. Informá la ruta y ofrecé exportar el cuestionario de pendientes (ver "Exportar cuestionario").
+
+Para retomar:
+
+1. Si no se indicó una ruta, listá por fecha los handoffs de los dos lugares (`.sdd/grills/*.md` y `<git-common-dir>/sdd/grills/*.md`).
+2. Pedí elegir con `ask_question` solo si hay más de un candidato razonable; si hay más de 4, ofrecé los más recientes como opciones y el resto vía "Other".
+3. Leé el archivo completo y contrastá sus hechos con el estado actual del repo; si difieren, mostrá la contradicción y resolvela antes de avanzar. Los handoffs viejos pueden traer una sección `## Modo`: ignorala, ya no existe.
+4. Mostrá el tema, los bloques cerrados con sus decisiones resueltas (agrupadas por su prefijo de bloque), el bloque en curso y los bloques pendientes, y seguí por el bloque en curso con su próxima frontera.
+5. Reevaluá la modalidad para lo pendiente si cambió el panorama; no repitas decisiones ya resueltas salvo que el usuario quiera revisarlas.
+6. No modifiques un handoff `finalized`; para revisarlo creá un archivo nuevo con sufijo `-rev-N`.
+7. Si lo que llega es un cuestionario respondido (archivo `-cuestionario.md` editado, o su texto pegado en el chat): localizá la sesión de origen por el encabezado, registrá cada respuesta como decisión resuelta, mostrá qué quedó cerrado y qué sigue abierto, recalculá el árbol (una respuesta libre puede invalidar ramas) y continuá la entrevista o pasá al cierre.
+
+## Exportar cuestionario
+
+Disponible al pausar y como acción del cierre. Sirve cuando las decisiones pendientes las tiene que responder un tercero sin agente (un PM, un cliente, otro equipo): el formato está pensado para copiar y pegar en un Google Doc.
+
+Escribí `<git-common-dir>/sdd/grills/<fecha>-<slug>-cuestionario.md`:
+
+```markdown
+# Cuestionario — <tema>
+<!-- Generado por grill. Sesión de origen: <git-common-dir>/sdd/grills/<fecha>-<slug>.md -->
+
+Cómo responder: escribí tu respuesta debajo de cada "Respuesta:". Si una opción te
+sirve tal cual, alcanza con nombrarla; si no, respondé con tus palabras.
+
+## 1. <pregunta autocontenida>
+
+Contexto: <2-3 líneas entendibles sin acceso al repo ni a esta conversación>
+
+Opciones:
+- <opción A> — recomendada: <motivo en una línea>
+- <opción B> — <trade-off>
+
+Respuesta:
+```
+
+Reglas:
+
+- Incluí solo las decisiones pendientes; las resueltas viven en la sesión, no en el cuestionario.
+- Cada pregunta es autocontenida: contexto breve, opciones con trade-offs y la recomendación con su motivo. Nada de jerga interna sin explicar ni referencias a "lo que hablamos".
+- Si hay dependencias entre pendientes, anotalas en el contexto ("si en la 3 elegiste X, esta no aplica").
+- Exportar no finaliza nada: la sesión queda `paused` y se retoma cuando vuelven las respuestas (ver "Persistencia y reanudación").
+
+## Cierre
+
+Cerrá solo cuando todos los bloques estén resueltos.
+
+1. **Contrato visible.** Escribí en el chat el entendimiento compartido completo como mensaje propio: tema y alcance; hechos comprobados; decisiones resueltas agrupadas por bloque y enumeradas una por una con lo acordado en cada una; restricciones y no-objetivos; supuestos explícitos; riesgos y preguntas deliberadamente diferidas; contexto recomendado para la sesión que escriba la spec. Este texto es el contrato de handoff: tiene que estar renderizado en el chat, no vivir solo en tu razonamiento ni en un archivo.
+
+2. **Confirmación autocontenida.** Recién después del contrato, UNA llamada a `ask_question` con estas opciones (sin acciones de implementar o construir):
+   - `Confirmar`: finaliza y congela el handoff.
+   - `Confirmar y crear spec SDD`: congela el handoff y recién después encadena `/sdd-spec`.
+   - `Ajustar una decisión`: el usuario indica cuál y se retoma esa rama.
+   - `Pausar o exportar cuestionario`: guarda el progreso sin finalizar; un follow-up pregunta si además genera el cuestionario para un tercero.
+   Si elige ajustar: retomá solo la rama elegida con el ciclo de entrevista, recalculá las decisiones dependientes si el cambio las invalida, y volvé a renderizar el contrato actualizado antes de pedir confirmación otra vez.
+
+3. **Persistencia final.** Tras confirmar (con o sin encadenado), guardá el mismo contenido del contrato como handoff `finalized` en `<git-common-dir>/sdd/grills/<fecha>-<slug>.md` con el formato de "Persistencia y reanudación", e informá la ruta absoluta.
+
+4. **Encadenar la spec.** Si eligió crear la spec, cargá el skill `sdd-spec` y continuá con `--from-grill <ruta-del-handoff>`. Este es el último paso del cierre. El handoff confirmado es fuente autoritativa: la spec no vuelve a preguntar decisiones ya cerradas, y sigue exigiendo `.sdd/project.md`.
+
+## Límites
+
+- No implementes el plan ni escribas la spec definitiva desde este skill.
+- No crees ni modifiques `CONTEXT.md`, glosarios ni ADRs.
+- No persistas recomendaciones como decisiones antes de la aprobación del usuario.
+- No hagas preguntas compuestas: una decisión por pregunta.
+- No agrupes en una misma ronda una decisión y otra que depende de ella.
+- No pidas confirmar por `ask_question` nada que no esté ya renderizado como mensaje visible.
+- No modifiques un handoff `finalized`; las revisiones van en un archivo `-rev-N`.

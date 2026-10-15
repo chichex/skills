@@ -2,7 +2,7 @@
 
 > 🇬🇧 [Read this in English](./README.en.md)
 
-Este repo gira alrededor de un workflow propio de **Spec-Driven Development (SDD)** — más los skills fundacionales sobre los que se apoya. Todo lo que uso a diario en **[Codex](https://developers.openai.com/codex/)**, **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[opencode](https://opencode.ai)** y **[Pi](https://github.com/badlogic/pi-mono)**.
+Este repo gira alrededor de un workflow propio de **Spec-Driven Development (SDD)** — más los skills fundacionales sobre los que se apoya. Todo lo que uso a diario en **[Codex](https://developers.openai.com/codex/)**, **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[opencode](https://opencode.ai)**, **[Pi](https://github.com/badlogic/pi-mono)** y **[Google Antigravity](https://github.com/google/antigravity)**.
 
 Los skills son piezas de conocimiento reutilizable que un agente carga bajo demanda: cada carpeta es un skill con su `SKILL.md` (frontmatter `name` + `description` que decide cuándo aplica) y, opcionalmente, archivos de referencia que el skill lee cuando los necesita.
 
@@ -96,6 +96,7 @@ Está partido por herramienta porque las versiones no son idénticas y cada harn
 
 ```
 skills/
+├── antigravity/ # versiones para Antigravity   (~/.gemini/config/skills)
 ├── codex/       # versiones para Codex        (~/.codex/skills)
 ├── claude/      # versiones para Claude Code  (~/.claude/skills)
 ├── agents/         # agentes del plugin de Claude Code (~/.claude/agents)
@@ -236,16 +237,17 @@ Cloná el repo y corré `install.sh`. Hace `git pull` y copia cada skill —y la
 ```bash
 git clone https://github.com/chichex/skills.git
 cd skills
-./install.sh            # instala los cuatro sets
+./install.sh            # instala todos los sets
 ./install.sh all        # igual que el anterior
 ./install.sh both       # Claude Code + opencode
+./install.sh antigravity# solo los de Antigravity
 ./install.sh codex      # solo los de Codex
 ./install.sh claude     # solo los de Claude Code
 ./install.sh opencode   # solo los de opencode
 ./install.sh pi         # solo los de Pi
 ```
 
-Destinos por defecto: `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~/.claude/agents/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/` y `~/.pi/agent/themes/` (overridables con `CODEX_SKILLS_DIR`, `CLAUDE_SKILLS_DIR`, `CLAUDE_AGENTS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR` y `PI_THEMES_DIR`). `CLAUDE_PLUGIN_REGISTRY_FILE` no es un destino: apunta al registro de plugins que `install.sh claude` lee para avisar si el plugin `chichex-skills` ya está instalado (y en ese caso saltear la instalación de `agents/`, que quedaría tapada por el plugin).
+Destinos por defecto: `${ANTIGRAVITY_SKILLS_DIR:-~/.gemini/config/skills/}`, `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~/.claude/agents/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/` y `~/.pi/agent/themes/` (overridables con `ANTIGRAVITY_SKILLS_DIR`, `CODEX_SKILLS_DIR`, `CLAUDE_SKILLS_DIR`, `CLAUDE_AGENTS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR` y `PI_THEMES_DIR`). `CLAUDE_PLUGIN_REGISTRY_FILE` no es un destino: apunta al registro de plugins que `install.sh claude` lee para avisar si el plugin `chichex-skills` ya está instalado (y en ese caso saltear la instalación de `agents/`, que quedaría tapada por el plugin).
 
 Como Codex también descubre los skills de Pi en `~/.agents/skills` y no fusiona nombres repetidos, la instalación de Codex agrega un bloque administrado a `${CODEX_HOME:-~/.codex}/config.toml`: desactiva para Codex únicamente las copias Pi que tienen una versión equivalente en `codex/`. Pi sigue usando sus archivos normalmente. El resto de `config.toml` se preserva y las corridas posteriores actualizan el mismo bloque sin duplicarlo. Usá `CODEX_DEDUPLICATE_PI_SKILLS=0` para omitir este cambio o `CODEX_CONFIG_FILE` para apuntar a otro config.
 
@@ -254,16 +256,17 @@ Para **actualizar** más adelante, volvé a correr `./install.sh` — ya hace el
 Si preferís a mano, es un simple copy:
 
 ```bash
-cp -R codex/*    "${CODEX_HOME:-$HOME/.codex}/skills/"
-cp -R claude/*   ~/.claude/skills/
-cp agents/*.md   ~/.claude/agents/
-cp -R opencode/* ~/.config/opencode/skills/
-cp -R pi/*             ~/.agents/skills/
+cp -R antigravity/* "${ANTIGRAVITY_SKILLS_DIR:-$HOME/.gemini/config/skills/}"
+cp -R codex/*       "${CODEX_HOME:-$HOME/.codex}/skills/"
+cp -R claude/*      ~/.claude/skills/
+cp agents/*.md      ~/.claude/agents/
+cp -R opencode/*    ~/.config/opencode/skills/
+cp -R pi/*          ~/.agents/skills/
 cp -R pi-extensions/*  ~/.pi/agent/extensions/
 cp pi-themes/*.json    ~/.pi/agent/themes/
 ```
 
-Una vez instalados, Codex los invoca como `$grill`, `$code-review`, `$sdd-spec`, etc., o los carga según su `description` — salvo `sdd-run`: su sidecar `agents/openai.yaml` declara `policy.allow_implicit_invocation: false`, así que sólo se ejecuta al invocarlo explícitamente con `$sdd-run`. Claude Code/opencode usan sus comandos habituales. En Pi se usan como `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec` y equivalentes.
+Una vez instalados, Codex los invoca como `$grill`, `$code-review`, `$sdd-spec`, etc., o los carga según su `description` — salvo `sdd-run`: su sidecar `agents/openai.yaml` declara `policy.allow_implicit_invocation: false`, así que sólo se ejecuta al invocarlo explícitamente con `$sdd-run`. Antigravity, Claude Code y opencode usan sus comandos habituales (`/nombre`). En Pi se usan como `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec` y equivalentes.
 
 **Alternativa legacy/manual de Pi:** `./install.sh pi` se conserva para compatibilidad, pero el Pi Package es la vía recomendada. Corré el instalador sólo con autorización explícita, porque actualiza el checkout y reemplaza las copias globales administradas; después ejecutá `/reload`. Las sesiones ya abiertas no reciben el código nuevo hasta recargar. No lo uses si el package nativo sigue instalado. Las instalaciones de Claude Code, Codex y OpenCode no cambian. Para la prueba interactiva usá una sesión persistida y repos descartables; los stages reales requieren un provider local/falso o consumo de proveedor explícitamente autorizado. El smoke autónomo usa configuración temporal y no ejecuta providers.
 

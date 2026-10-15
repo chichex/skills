@@ -2,7 +2,7 @@
 
 > 🇦🇷 [Leer en español](./README.md)
 
-This repo is built around my own **Spec-Driven Development (SDD)** workflow — plus the foundational skills it builds on. Everything I use day to day in **[Codex](https://developers.openai.com/codex/)**, **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[opencode](https://opencode.ai)**, and **[Pi](https://github.com/badlogic/pi-mono)**.
+This repo is built around my own **Spec-Driven Development (SDD)** workflow — plus the foundational skills it builds on. Everything I use day to day in **[Codex](https://developers.openai.com/codex/)**, **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[opencode](https://opencode.ai)**, **[Pi](https://github.com/badlogic/pi-mono)**, and **[Google Antigravity](https://github.com/google/antigravity)**.
 
 Skills are reusable pieces of knowledge an agent loads on demand: each folder is a skill with its `SKILL.md` (frontmatter `name` + `description` that decides when it applies) and, optionally, reference files the skill reads when it needs them.
 
@@ -98,6 +98,7 @@ It's split by tool because the versions aren't identical and each harness expose
 
 ```
 skills/
+├── antigravity/ # versions for Antigravity   (~/.gemini/config/skills)
 ├── codex/       # versions for Codex        (~/.codex/skills)
 ├── claude/      # versions for Claude Code  (~/.claude/skills)
 ├── agents/         # Claude Code plugin agents    (~/.claude/agents)
@@ -238,16 +239,17 @@ Clone the repo and run `install.sh`. It runs `git pull` and copies each skill—
 ```bash
 git clone https://github.com/chichex/skills.git
 cd skills
-./install.sh            # installs all four sets
+./install.sh            # installs all sets
 ./install.sh all        # same as above
 ./install.sh both       # Claude Code + opencode
+./install.sh antigravity# only the Antigravity ones
 ./install.sh codex      # only the Codex ones
 ./install.sh claude     # only the Claude Code ones
 ./install.sh opencode   # only the opencode ones
 ./install.sh pi         # only the Pi ones
 ```
 
-Default destinations: `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~/.claude/agents/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/`, and `~/.pi/agent/themes/` (overridable with `CODEX_SKILLS_DIR`, `CLAUDE_SKILLS_DIR`, `CLAUDE_AGENTS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR`, and `PI_THEMES_DIR`). `CLAUDE_PLUGIN_REGISTRY_FILE` is not a destination: it points at the plugin registry that `install.sh claude` reads to warn when the `chichex-skills` plugin is already installed (and in that case skip installing `agents/`, which the plugin would otherwise shadow).
+Default destinations: `${ANTIGRAVITY_SKILLS_DIR:-~/.gemini/config/skills/}`, `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~/.claude/agents/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/`, and `~/.pi/agent/themes/` (overridable with `ANTIGRAVITY_SKILLS_DIR`, `CODEX_SKILLS_DIR`, `CLAUDE_SKILLS_DIR`, `CLAUDE_AGENTS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR`, and `PI_THEMES_DIR`). `CLAUDE_PLUGIN_REGISTRY_FILE` is not a destination: it points at the plugin registry that `install.sh claude` reads to warn when the `chichex-skills` plugin is already installed (and in that case skip installing `agents/`, which the plugin would otherwise shadow).
 
 Because Codex also discovers Pi skills under `~/.agents/skills` and does not merge duplicate names, installing the Codex set adds a managed block to `${CODEX_HOME:-~/.codex}/config.toml`. It disables only the Pi copies that have an equivalent under `codex/`; Pi keeps using its files normally. The rest of `config.toml` is preserved and later runs update the same block without duplicating it. Set `CODEX_DEDUPLICATE_PI_SKILLS=0` to skip this change or `CODEX_CONFIG_FILE` to target another config.
 
@@ -256,16 +258,17 @@ To **update** later, just run `./install.sh` again — it does the `pull` for yo
 If you'd rather do it by hand, it's a plain copy:
 
 ```bash
-cp -R codex/*    "${CODEX_HOME:-$HOME/.codex}/skills/"
-cp -R claude/*   ~/.claude/skills/
-cp agents/*.md   ~/.claude/agents/
-cp -R opencode/* ~/.config/opencode/skills/
-cp -R pi/*             ~/.agents/skills/
+cp -R antigravity/* "${ANTIGRAVITY_SKILLS_DIR:-$HOME/.gemini/config/skills/}"
+cp -R codex/*       "${CODEX_HOME:-$HOME/.codex}/skills/"
+cp -R claude/*      ~/.claude/skills/
+cp agents/*.md      ~/.claude/agents/
+cp -R opencode/*    ~/.config/opencode/skills/
+cp -R pi/*          ~/.agents/skills/
 cp -R pi-extensions/*  ~/.pi/agent/extensions/
 cp pi-themes/*.json    ~/.pi/agent/themes/
 ```
 
-Once installed, Codex invokes them as `$grill`, `$code-review`, `$sdd-spec`, and so on, or loads them from their `description` — except for `sdd-run`: its `agents/openai.yaml` sidecar declares `policy.allow_implicit_invocation: false`, so it only runs when explicitly invoked with `$sdd-run`. Claude Code/opencode use their usual commands. Pi uses `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec`, and equivalents.
+Once installed, Codex invokes them as `$grill`, `$code-review`, `$sdd-spec`, and so on, or loads them from their `description` — except for `sdd-run`: its `agents/openai.yaml` sidecar declares `policy.allow_implicit_invocation: false`, so it only runs when explicitly invoked with `$sdd-run`. Antigravity, Claude Code, and opencode use their usual commands (`/name`). Pi uses `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec`, and equivalents.
 
 **Pi legacy/manual alternative:** `./install.sh pi` remains available for compatibility, but the Pi Package is the recommended path. Run the installer only with explicit authorization because it updates the checkout and replaces the managed global copies; then run `/reload`. Already-open sessions do not receive the new code until they reload. Do not use it while the native package remains installed. Claude Code, Codex, and OpenCode installation behavior is unchanged. Interactive testing uses persisted sessions and disposable repositories; real stages require a local/fake provider or explicitly authorized provider usage. The autonomous smoke uses temporary configuration and no providers.
 

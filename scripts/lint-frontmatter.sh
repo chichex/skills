@@ -16,7 +16,7 @@
 set -u
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HARNESSES=(claude codex opencode pi)
+HARNESSES=(claude codex opencode pi antigravity)
 
 errors=0
 checked=0

@@ -11,7 +11,7 @@
 set -u
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HARNESSES=(claude codex opencode pi)
+HARNESSES=(claude codex opencode pi antigravity)
 
 # Todos los nombres de skill presentes en al menos un harness.
 names="$(
