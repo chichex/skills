@@ -989,9 +989,8 @@ test("#84 CA-15: sdd-run toma los artefactos de entrada de <git-common-dir>/sdd/
 });
 
 test("#84 CA-16: issue-triage resuelve el linaje en los dos lugares y los READMEs dicen dónde viven los borradores", async () => {
-	const triageHarnesses = HARNESSES.filter((harness) => harness !== "opencode");
-	const problems = await draftsBlocks("issue-triage", "issue-triage-drafts", ISSUE_TRIAGE_DRAFTS_DOCTRINE, triageHarnesses);
-	for (const harness of ["claude", "codex"] as const) {
+	const problems = await draftsBlocks("issue-triage", "issue-triage-drafts", ISSUE_TRIAGE_DRAFTS_DOCTRINE);
+	for (const harness of ["claude", "codex", "opencode"] as const) {
 		const file = `${harness}/issue-triage/SKILL.md`;
 		if (!/ubicado directamente bajo `<cwd>\/\.sdd\/grills\/` o `<git-common-dir>\/sdd\/grills\/`/.test(await readRepoFile(file))) {
 			problems.push(`${file}: spec-from-grill no acepta el handoff de <git-common-dir>/sdd/grills/`);

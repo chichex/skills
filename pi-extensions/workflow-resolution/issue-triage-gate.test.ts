@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import { ACTIONABLE_ROUTE_CONTRACT } from "../workflow-orchestrator/route-contract.ts";
 
-const HARNESSES = ["claude", "codex", "pi"] as const;
+const HARNESSES = ["claude", "codex", "opencode", "pi"] as const;
 type Harness = (typeof HARNESSES)[number];
 
 function repoFile(path: string): URL {
@@ -148,7 +148,7 @@ test("issue-triage has one equivalent artifact-aware contract in all existing ha
 		assert.ok(contract.includes(rule), rule);
 	}
 	assert.match(contract, /no ejecuta pasos de ningún stage/i);
-	assert.match(contract, /en Claude y Codex lo encadena la Fase 7/);
+	assert.match(contract, /en Claude, Codex y OpenCode lo encadena la Fase 7/);
 	assert.match(contract, /en Pi lo abre el orquestador de `\/issues`/);
 	assert.doesNotMatch(contract, /triage produce contexto y termina/);
 });
@@ -158,16 +158,25 @@ test("artifact-aware gate reports injected route/schema drift", () => {
 	const blocks = new Map<Harness, string>([
 		["claude", base],
 		["codex", base.replace("run-existing-spec", "update-existing-spec")],
+		["opencode", base],
 		["pi", base],
 	]);
 	assert.deepEqual(compareArtifactAwareBlocks(blocks), ["codex diverge de claude"]);
 });
 
-test("issue-triage remains absent from OpenCode", async () => {
-	await assert.rejects(access(repoFile("opencode/issue-triage/SKILL.md")));
+test("opencode issue-triage uses native skill loading and question gates with a blocking fallback", async () => {
+	const markdown = await readRepoFile("opencode/issue-triage/SKILL.md");
+	assert.match(markdown, /\/issue-triage #12/);
+	assert.match(markdown, /tool `skill`/);
+	assert.match(markdown, /`question`[^\n]*Fases 4 y 5/);
+	assert.match(markdown, /Confirmar \(Recommended\)/);
+	assert.match(markdown, /ruta completa[^\n]*`description`/);
+	assert.match(markdown, /Si `question` no está disponible[^\n]*opciones numeradas[^\n]*terminá el turno[^\n]*esperá/);
+	assert.doesNotMatch(markdown, /AskUserQuestion|request_user_input|ask_user_question|submit_workflow_resolution|tool `Skill`/);
+	assert.doesNotMatch(markdown, /\$sdd-|\/skill:|quick-run/);
 });
 
-const CHAINING_HARNESSES = ["claude", "codex"] as const;
+const CHAINING_HARNESSES = ["claude", "codex", "opencode"] as const;
 
 // Stage → skill dueño; las rutas salen del contrato que usa el orquestador de Pi.
 const STAGE_SKILLS: Record<string, string> = {
@@ -232,7 +241,9 @@ test("issue-triage chains the confirmed stage in harnesses without orchestrator"
 		assert.doesNotMatch(markdown, /No invocar ni ejecutar grill, spec o run/);
 		assert.match(markdown, /selectedRoute=null[^\n]*no encadenes/i);
 	}
-	assert.equal(blocks.get("codex"), blocks.get("claude"), "codex diverge de claude en stage-chain");
+	for (const harness of CHAINING_HARNESSES.slice(1)) {
+		assert.equal(blocks.get(harness), blocks.get("claude"), `${harness} diverge de claude en stage-chain`);
+	}
 });
 
 test("codex issue-triage leaves run as a ready command because its sidecar forbids implicit invocation", async () => {
@@ -242,12 +253,36 @@ test("codex issue-triage leaves run as a ready command because its sidecar forbi
 	assert.match(sidecar, /allow_implicit_invocation:\s*false/, "sdd-run: la excepción de issue-triage depende de esta política");
 });
 
-test("claude and codex sdd-spec accept the chained triage target", async () => {
+test("sdd-spec accepts the chained triage target in every chaining harness", async () => {
 	for (const harness of CHAINING_HARNESSES) {
 		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
 		assert.match(markdown, /### Entrada encadenada desde issue-triage/, harness);
 		assert.match(markdown, /\| ruta de spec\]/, `${harness}: firma acepta ruta de spec`);
 		assert.match(markdown, /--triage-route update-existing-spec\|audit-existing-spec/, harness);
+	}
+});
+
+test("opencode sdd-spec preserves the chained input safeguards from claude", async () => {
+	const interaction = parseInteractionDifferences(await readRepoFile("docs/harness-interaction-differences.md"));
+	const inputBlock = (markdown: string) => {
+		const match = markdown.match(/### Entrada encadenada desde issue-triage\n([\s\S]*?)\n<!-- sdd-spec-drafts:start -->/);
+		assert.ok(match?.[1], "entrada encadenada presente");
+		return match[1];
+	};
+	const claude = inputBlock(await readRepoFile("claude/sdd-spec/SKILL.md"));
+	const opencode = inputBlock(await readRepoFile("opencode/sdd-spec/SKILL.md"));
+	assert.equal(
+		normalizeArtifactAwareBlock(opencode, "opencode", interaction),
+		normalizeArtifactAwareBlock(claude, "claude", interaction),
+	);
+});
+
+test("both READMEs advertise issue-triage and its confirmed chaining in OpenCode", async () => {
+	for (const path of ["README.md", "README.en.md"]) {
+		const markdown = await readRepoFile(path);
+		const row = markdown.split("\n").find((line) => line.startsWith("| **`issue-triage`**")) ?? "";
+		assert.match(row, /OpenCode/, path);
+		assert.doesNotMatch(row, /\*\(Codex\/Claude\/Pi\)\*/, path);
 	}
 });
 

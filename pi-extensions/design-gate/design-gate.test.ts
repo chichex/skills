@@ -428,7 +428,7 @@ test("CA-5: el contrato de este repo gana ## Diseño sin superficies, la fila de
 	assert.match(section(contract, /^## Diseño$/), /^## Diseño\nSin superficies UI\.\n/);
 	const commands = section(contract, /^## Comandos$/);
 	assert.match(commands, /^\| gate de doctrina de diseño \| `node --test pi-extensions\/design-gate\/design-gate\.test\.ts` \|/m);
-	assert.match(commands, /^\| lint de frontmatter \|[^\n]*\| 47 skills OK;/m);
+	assert.match(commands, /^\| lint de frontmatter \|[^\n]*\| 48 skills OK;/m);
 	assert.match(contract, /12 skills de Pi/);
 	assert.doesNotMatch(contract, /13 skills de Pi/);
 	assert.match(contract, /RPC con 22 comandos[^\n]*`skill:design-system`/);
