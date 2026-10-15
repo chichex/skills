@@ -172,6 +172,12 @@ test("opencode issue-triage uses native skill loading and question gates with a 
 	assert.match(markdown, /Confirmar \(Recommended\)/);
 	assert.match(markdown, /ruta completa[^\n]*`description`/);
 	assert.match(markdown, /Si `question` no está disponible[^\n]*opciones numeradas[^\n]*terminá el turno[^\n]*esperá/);
+	const actionable = markdown.split("### Rutas accionables\n")[1]?.split("## Fase 5")[0] ?? "";
+	assert.match(actionable, /Con `question`[^\n]*labels[^\n]*Interacción en OpenCode/);
+	assert.match(actionable, /En el fallback en texto plano[^\n]*opciones numeradas:/);
+	assert.match(markdown, /Pasale sólo el nombre sin la barra[^\n]*`grill`[^\n]*`sdd-spec`[^\n]*`sdd-run`/);
+	assert.match(markdown, /argumentos de invocación[^\n]*nunca como invocación pelada/);
+	assert.match(markdown, /Si el skill no está instalado o su carga queda denegada[^\n]*comando exacto[^\n]*terminá/);
 	assert.doesNotMatch(markdown, /AskUserQuestion|request_user_input|ask_user_question|submit_workflow_resolution|tool `Skill`/);
 	assert.doesNotMatch(markdown, /\$sdd-|\/skill:|quick-run/);
 });
@@ -262,7 +268,7 @@ test("sdd-spec accepts the chained triage target in every chaining harness", asy
 	}
 });
 
-test("opencode sdd-spec preserves the chained input safeguards from claude", async () => {
+test("sdd-spec preserves equivalent chained input safeguards in every chaining harness", async () => {
 	const interaction = parseInteractionDifferences(await readRepoFile("docs/harness-interaction-differences.md"));
 	const inputBlock = (markdown: string) => {
 		const match = markdown.match(/### Entrada encadenada desde issue-triage\n([\s\S]*?)\n<!-- sdd-spec-drafts:start -->/);
@@ -270,19 +276,24 @@ test("opencode sdd-spec preserves the chained input safeguards from claude", asy
 		return match[1];
 	};
 	const claude = inputBlock(await readRepoFile("claude/sdd-spec/SKILL.md"));
-	const opencode = inputBlock(await readRepoFile("opencode/sdd-spec/SKILL.md"));
-	assert.equal(
-		normalizeArtifactAwareBlock(opencode, "opencode", interaction),
-		normalizeArtifactAwareBlock(claude, "claude", interaction),
-	);
+	for (const harness of CHAINING_HARNESSES.slice(1)) {
+		const block = inputBlock(await readRepoFile(`${harness}/sdd-spec/SKILL.md`));
+		assert.equal(
+			normalizeArtifactAwareBlock(block, harness, interaction),
+			normalizeArtifactAwareBlock(claude, "claude", interaction),
+			`${harness}: entrada encadenada diverge de claude`,
+		);
+	}
 });
 
 test("both READMEs advertise issue-triage and its confirmed chaining in OpenCode", async () => {
 	for (const path of ["README.md", "README.en.md"]) {
 		const markdown = await readRepoFile(path);
 		const row = markdown.split("\n").find((line) => line.startsWith("| **`issue-triage`**")) ?? "";
-		assert.match(row, /OpenCode/, path);
+		assert.match(row, /Claude y OpenCode encadena el skill del stage|Claude and OpenCode chain the stage skill/, path);
+		assert.match(row, /Disponible en los cuatro harnesses|Available in all four harnesses/, path);
 		assert.doesNotMatch(row, /\*\(Codex\/Claude\/Pi\)\*/, path);
+		assert.match(markdown, /(?:Para encadenar|Chaining)[^\n]*`grill`[^\n]*`sdd-spec`[^\n]*`sdd-run`/, `${path}: permisos de skills encadenados`);
 	}
 });
 

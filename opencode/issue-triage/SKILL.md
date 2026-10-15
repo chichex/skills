@@ -232,7 +232,7 @@ Para `blocked-dependency`, `split-too-large`, `combined-too-large`, `incoherent-
 
 ### Rutas accionables
 
-Para todo resultado `outcome=start` —ruta nueva o artifact-aware— usá `question` (o el fallback de «Interacción en OpenCode»). La pregunta debe repetir en una oración el outcome de `En pocas palabras`, para que la decisión sea autocontenida, y ofrecer:
+Para todo resultado `outcome=start` —ruta nueva o artifact-aware— usá `question` (o el fallback de «Interacción en OpenCode»). La pregunta debe repetir en una oración el outcome de `En pocas palabras`, para que la decisión sea autocontenida. Con `question`, usá las labels cortas de «Interacción en OpenCode» y la ruta completa en `description`. En el fallback en texto plano, ofrecé estas opciones numeradas:
 
 - `Confirmar <ruta recomendada> (Recomendado)`
 - `Usar fallback: <ruta>`
@@ -311,7 +311,9 @@ Desde este punto, la única fuente downstream es `#NEW`.
 
 Sólo con un inicio confirmado y coherente: `outcome=start`, `selectedRoute` no nulo, `code=selectedRoute` y `stage`/`mode` iguales a los de la matriz para esa ruta. Con `outcome=stop|error`, cancelación, `selectedRoute=null` o cualquier incoherencia no encadenes nada: el workflow termina en la Fase 6.
 
-Cargá con la tool `skill`, en el mismo turno y sin otra confirmación, el skill que corresponde a `selectedRoute` y continuá con los argumentos de la tabla:
+Cargá con la tool `skill`, en el mismo turno y sin otra confirmación, el skill que corresponde a `selectedRoute`. Pasale sólo el nombre sin la barra (`grill`, `sdd-spec` o `sdd-run`), sin concatenar flags ni targets. La tool sólo carga instrucciones: después continuá con los argumentos de la tabla como argumentos de invocación del skill cargado, nunca como invocación pelada; no abras su Fase 0 ni elijas otro target.
+
+Si el skill no está instalado o su carga queda denegada por `permission.skill`, informá cuál falta habilitar, mostrá el comando exacto de la tabla con el target validado y terminá; no ejecutes los pasos del stage por tu cuenta ni cambies de ruta.
 
 <!-- stage-chain:start -->
 | `selectedRoute` | Skill | Argumentos |

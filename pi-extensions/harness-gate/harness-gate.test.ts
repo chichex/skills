@@ -928,18 +928,18 @@ const ISSUE_TRIAGE_DRAFTS_DOCTRINE = [
 	/`superseded-by=\.sdd\/specs\/<x>\.md` se busca primero en el árbol y después en `<git-common-dir>\/sdd\/specs\/`/,
 ];
 
-async function draftsBlocks(skill: string, block: string, patterns: RegExp[], harnesses: readonly Harness[] = HARNESSES): Promise<string[]> {
+async function draftsBlocks(skill: string, block: string, patterns: RegExp[]): Promise<string[]> {
 	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
 	const problems: string[] = [];
 	const byHarness = new Map<Harness, string[]>();
-	for (const harness of harnesses) {
+	for (const harness of HARNESSES) {
 		const doctrine = delimitedDoctrine(await readRepoFile(`${harness}/${skill}/SKILL.md`), block);
 		for (const pattern of patterns) {
 			if (!pattern.test(doctrine)) problems.push(`${harness}/${skill}/SKILL.md (${block}) no declara ${pattern}`);
 		}
 		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
 	}
-	const [reference, ...rest] = harnesses;
+	const [reference, ...rest] = HARNESSES;
 	for (const harness of rest) {
 		const left = byHarness.get(reference!)?.[0] ?? "";
 		const right = byHarness.get(harness)?.[0] ?? "";
