@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import * as orchestrator from "./index.ts";
+import { ACTIONABLE_ROUTE_CONTRACT } from "./route-contract.ts";
 
 function issue(number: number) {
 	return { repository: "chichex/skills", number };
@@ -12,9 +13,9 @@ function resolution(overrides: Record<string, unknown> = {}) {
 		version: 1,
 		outcome: "start",
 		code: "spec",
-		recommendedClassification: "quick-run",
+		recommendedClassification: "grill",
 		fallbackClassification: "spec",
-		recommendedRoute: "quick-run",
+		recommendedRoute: "grill",
 		selectedRoute: "spec",
 		stage: "spec",
 		mode: "new",
@@ -74,8 +75,6 @@ test("dispatch maps every actionable route to one canonical downstream skill and
 		["join-grill", "grill", "new", [], "grill", "#14"],
 		["spec", "spec", "new", [], "sdd-spec", "#14"],
 		["join-spec", "spec", "new", [], "sdd-spec", "#14"],
-		["quick-run", "quick-run", "new", [], "quick-run", ""],
-		["join-quick-run", "quick-run", "new", [], "quick-run", ""],
 		["resume-grill", "grill", "resume", [artifact("grill")], "grill", "--resume \"grill-leaf-14\""],
 		[
 			"spec-from-grill",
@@ -125,6 +124,11 @@ test("dispatch maps every actionable route to one canonical downstream skill and
 		],
 	] as const;
 
+	assert.deepEqual(
+		cases.map(([route]) => route).sort(),
+		Object.keys(ACTIONABLE_ROUTE_CONTRACT).sort(),
+		"the matrix covers exactly the actionable routes",
+	);
 	for (const [route, stage, mode, artifacts, skill, expectedArgs] of cases) {
 		const handoff = resolution({
 			code: route,

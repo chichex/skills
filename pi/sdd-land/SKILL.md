@@ -114,7 +114,7 @@ Va antes de la limpieza local porque `git branch -d` compara contra el upstream 
 
 Solo para lo que el run mergeó, con el `git fetch --prune` de la Fase 5 ya hecho: por cada branch mergeado del target, `git worktree remove` solo si ese worktree está limpio y sin lock (si no, reporta la ruta), después `git branch -d` (nunca `-D`); si se niega, por ejemplo tras un squash, reportar el branch y el comando para que decida el humano; al final, `gh stack unstack --local` del stack cerrado y `git worktree prune`. Si el checkout principal está parado en uno de esos branches no cambia de branch: lo reporta con el comando. Si el checkout principal no pudo sincronizarse (sucio y `Dejar como está`, otro branch, commits adelante), `git branch -d` puede negarse porque compara contra `HEAD`: se reporta con el comando, sin `-D`. Con aterrizaje parcial no borra ningún branch ni worktree del stack y no hace `unstack`. Con `--clean-only` el run no mergeó nada y no hay qué limpiar acá: la limpieza es el barrido.
 
-Las Fases 6 y 7 nunca remueven un worktree bloqueado (línea `locked` en `git worktree list --porcelain`). La única excepción es de esta fase: si el lock dice `sdd-run <slug>` o `quick-run <slug>` y su branch es del target recién mergeado, `git worktree unlock` y después `git worktree remove`, solo si el worktree está limpio. Cualquier otro lock se reporta con su motivo y con el comando `git worktree unlock <ruta> && git worktree remove <ruta>`.
+Las Fases 6 y 7 nunca remueven un worktree bloqueado (línea `locked` en `git worktree list --porcelain`). La única excepción es de esta fase: si el lock dice `sdd-run <slug>` y su branch es del target recién mergeado, `git worktree unlock` y después `git worktree remove`, solo si el worktree está limpio. Cualquier otro lock se reporta con su motivo y con el comando `git worktree unlock <ruta> && git worktree remove <ruta>`.
 
 ## Fase 7 — Barrido del ruido previo
 
@@ -213,7 +213,7 @@ En este skill, cada `land.merged` lleva en `pr` el número de un PR mergeado y v
 - No `git push --force*`.
 - No push al default.
 - No reset, stash ni clean del checkout principal: `Descartar` usa `git restore` y `rm` solo sobre los paths sin dueño de la preview.
-- No remover un worktree bloqueado, salvo el lock `sdd-run`/`quick-run` del target recién mergeado en la Fase 6.
+- No remover un worktree bloqueado, salvo el lock `sdd-run` del target recién mergeado en la Fase 6.
 - No borrar branches con PR abierto o sin mergear.
 - No cambiar settings del repo (`deleteBranchOnMerge`, protecciones).
 - No polling en background.

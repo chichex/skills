@@ -38,8 +38,7 @@ The disciplines SDD builds on — which I also use standalone, outside the pipel
 | **`design-system`** | Writes `DESIGN_SYSTEM.md` at the root of a UI surface (web or mobile) that has no design system yet: it inventories tokens, base components, docs, mocks and Claude Design; if a system already exists, it only records it under the contract's `## Diseño`. Otherwise it runs one round of visual direction (audience and tone, palette, typography, density and mode) and writes tokens with values, base components, states and rules, plus an "Ajustes de este proyecto" section preserved on regeneration. With your confirmation it links the doc from `.sdd/project.md` `## Diseño`, `CLAUDE.md` and `AGENTS.md`. It never writes code: tokens in code are born in the first `sdd-run` that touches UI. `sdd-init` offers it when it finds a surface without a system. Available in all four harnesses. |
 | **`code-review`** *(Codex/Pi/opencode)* | Reviews a PR across three separate axes—correctness and risk, standards, and spec—runs available checks, and reports evidence-backed findings with an exact preview. By default it posts the comments to GitHub as a single COMMENT review; `--no-publish` keeps them in the conversation only. It never approves or requests changes. |
 | **`github-issue-selector`** *(Codex/Pi)* | Lets you choose or inspect an issue when no specific number was provided. |
-| **`issue-triage`** *(Codex/Claude/Pi)* | Analyzes one or more issues against code, tests, and dependencies; classifies the next stage and emits a structured handoff; after confirmation, Claude chains the stage skill (`grill`, `sdd-spec`, `sdd-run` or `quick-run`); in Codex it chains `grill` and `sdd-spec`, and for `sdd-run` and `quick-run` (which require explicit invocation) leaves the command ready to send; in Pi, the `/issues` orchestrator opens the stage. Joint selections become one canonical issue while originals are closed as superseded. |
-| **`quick-run`** *(Codex/Claude/Pi)* | Consumes only a confirmed `issue-triage` handoff to implement a small change in an isolated worktree, with tests first when applicable, a finite attempt budget, and a PR or local commit carrying exact evidence. |
+| **`issue-triage`** *(Codex/Claude/Pi)* | Analyzes one or more issues against code, tests, and dependencies; classifies the next stage and emits a structured handoff; after confirmation, Claude chains the stage skill (`grill`, `sdd-spec` or `sdd-run`); in Codex it chains `grill` and `sdd-spec`, and for `sdd-run` (which requires explicit invocation) leaves the command ready to send; in Pi, the `/issues` orchestrator opens the stage. Joint selections become one canonical issue while originals are closed as superseded. |
 | **`find-skills`** *(Codex/Pi)* | Searches the open ecosystem for installable skills through `npx skills`. Vendored from `vercel-labs/skills`. |
 | **`yt-summary`** *(Codex/Claude)* | Downloads a single YouTube subtitle track with `yt-dlp` and guides a summary with a TL;DR, key points, and timestamps. |
 
@@ -65,12 +64,11 @@ The public entrypoints are `/issues` for triage, `/grill <#NN|owner/repo#NN|issu
 
 | Transition | Session boundary |
 |---|---|
-| `/issues` → confirmed Grill/Spec/Quick-run/Run | Fresh **child session**, linked through `parentSession`; stop, error, rejection, or cancellation preserve the triage session. |
+| `/issues` → confirmed Grill/Spec/Run | Fresh **child session**, linked through `parentSession`; stop, error, rejection, or cancellation preserve the triage session. |
 | `/grill` or `/skill:grill` with a qualified issue → Grill | **Child session** in the only known local checkout matching `owner/repo`; absence or ambiguity fails before the switch. |
 | Active/paused Grill → resume | **Same session**; the authoritative snapshot reconstructs progress. |
 | Finalized Grill → Spec | **Same session**; the handoff is persisted before `sdd-spec --from-grill` is materialized. |
 | Spec → Run | **Child session**, only after explicit authorization through **Run now**, `/sdd-run`, or **Run** in `/specs`. |
-| Triage → Quick-run | Clean **child session**; `quick-run` retains its own preflight, worktree, TDD, budget, and no-merge PR delivery. |
 
 For cross-project launches, `#NN` retains the current repository, while `owner/repo#NN` and canonical GitHub issue URLs locate a checkout among roots known from Pi/Grill sessions and collapse worktrees that share one Git identity. Exactly one independent clone must match the remote identity; otherwise the launcher reports the missing or ambiguous candidates before switching. The request uses the target project's root, repository, and artifact: the child is stored there, loads its project-scoped resources, and re-materializes the skill from the target's winning resource — including project overrides — while copying no origin transcript. Finding a spec does not run it, inspecting/cancelling does not switch sessions, and the workflow never merges PRs.
 
@@ -267,7 +265,7 @@ cp -R pi-extensions/*  ~/.pi/agent/extensions/
 cp pi-themes/*.json    ~/.pi/agent/themes/
 ```
 
-Once installed, Codex invokes them as `$grill`, `$code-review`, `$sdd-spec`, and so on, or loads them from their `description` — except for `sdd-run` and `quick-run`: their `agents/openai.yaml` sidecars declare `policy.allow_implicit_invocation: false`, so they only run when explicitly invoked with `$sdd-run` or `$quick-run`. Claude Code/opencode use their usual commands. Pi uses `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec`, and equivalents.
+Once installed, Codex invokes them as `$grill`, `$code-review`, `$sdd-spec`, and so on, or loads them from their `description` — except for `sdd-run`: its `agents/openai.yaml` sidecar declares `policy.allow_implicit_invocation: false`, so it only runs when explicitly invoked with `$sdd-run`. Claude Code/opencode use their usual commands. Pi uses `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec`, and equivalents.
 
 **Pi legacy/manual alternative:** `./install.sh pi` remains available for compatibility, but the Pi Package is the recommended path. Run the installer only with explicit authorization because it updates the checkout and replaces the managed global copies; then run `/reload`. Already-open sessions do not receive the new code until they reload. Do not use it while the native package remains installed. Claude Code, Codex, and OpenCode installation behavior is unchanged. Interactive testing uses persisted sessions and disposable repositories; real stages require a local/fake provider or explicitly authorized provider usage. The autonomous smoke uses temporary configuration and no providers.
 
@@ -286,7 +284,7 @@ In addition, `grill`'s **questionnaire export** is inspired by his `to-questionn
 
 The **SDD** family (`sdd-init`, `sdd-spec`, `sdd-run`) is my own: inspired by the same way of working (tracer bullets, tests-first, spec → implementation) as his `to-spec` / `to-tickets` / `implement` / `wayfinder` skills, but with different artifacts — the `.sdd/project.md` autonomy contract and the verifiability verdict.
 
-Also, the **red loop before touching code** in `quick-run` and `sdd-run` adapts Matt Pocock's `diagnosing-bugs`, and the **Merge risk** section of the PR body adapts "Merge Danger" from his `pr` skill, which in turn comes from Dex Horthy's (Humanlayer) `show-me` skill. MIT.
+Also, the **red loop before touching code** in `sdd-run` adapts Matt Pocock's `diagnosing-bugs`, and the **Merge risk** section of the PR body adapts "Merge Danger" from his `pr` skill, which in turn comes from Dex Horthy's (Humanlayer) `show-me` skill. MIT.
 
 The "Smells como juicio" section of the `clean-code.md` baseline in `coding-policies` adapts Matt Pocock's `code-review`, and its deep-module rules (deletion test, seams, interface as test surface) adapt his `codebase-design` ([mattpocock/skills](https://github.com/mattpocock/skills), MIT).
 

@@ -428,10 +428,10 @@ test("CA-5: el contrato de este repo gana ## Diseño sin superficies, la fila de
 	assert.match(section(contract, /^## Diseño$/), /^## Diseño\nSin superficies UI\.\n/);
 	const commands = section(contract, /^## Comandos$/);
 	assert.match(commands, /^\| gate de doctrina de diseño \| `node --test pi-extensions\/design-gate\/design-gate\.test\.ts` \|/m);
-	assert.match(commands, /^\| lint de frontmatter \|[^\n]*\| 50 skills OK;/m);
-	assert.match(contract, /13 skills de Pi/);
-	assert.doesNotMatch(contract, /12 skills de Pi/);
-	assert.match(contract, /RPC con 23 comandos[^\n]*`skill:design-system`/);
+	assert.match(commands, /^\| lint de frontmatter \|[^\n]*\| 47 skills OK;/m);
+	assert.match(contract, /12 skills de Pi/);
+	assert.doesNotMatch(contract, /13 skills de Pi/);
+	assert.match(contract, /RPC con 22 comandos[^\n]*`skill:design-system`/);
 	assert.match(contract, /## Politicas de generacion\nSin politicas activas\./);
 	assert.match(contract, /## Decisiones humanas\n/);
 });
@@ -673,11 +673,12 @@ test("CA-16: next.md no repite las reglas de web en celular que ya trae react.md
 test("CA-17: el contrato fecha los conteos nuevos y cita la corrida con Pi 0.85.1", async () => {
 	const contract = await readRepoFile(".sdd/project.md");
 	const commands = section(contract, /^## Comandos$/);
-	// "tests de extensiones" se re-midió el 2026-10-14 al sumar el log de eventos SDD (issue #93).
+	// Las tres filas se re-midieron el 2026-10-14 al retirar un skill de Claude Code, Codex y Pi;
+	// "tests de extensiones", además, al sumar el log de eventos SDD (issue #93).
 	const verifiedOn: Record<string, string> = {
-		"gate focalizado de Pi Package": "2026-10-09",
+		"gate focalizado de Pi Package": "2026-10-14",
 		"tests de extensiones": "2026-10-14",
-		"lint de frontmatter": "2026-10-09",
+		"lint de frontmatter": "2026-10-14",
 	};
 	for (const [row, date] of Object.entries(verifiedOn)) {
 		assert.match(commands, new RegExp(`^\\| ${escapeRegExp(row)} \\|[^|]*\\|[^|]*\\| verificado ${date} \\|`, "m"), `${row}: conteo nuevo con fecha nueva`);
