@@ -4,7 +4,7 @@ description: >-
   Convierte un pedido de feature (texto libre, issue de GitHub o handoff confirmado de grill) en una spec verificable — el "qué" contra el que $sdd-run trabaja después. Usar SIEMPRE para especificar una feature antes de implementarla, convertir un handoff de grill o un issue en spec, escribir criterios de aceptación, o cuando el usuario diga "hagamos la spec de X" o "definamos bien esto antes de codear". Exige .sdd/project.md: si no existe, correr $sdd-init primero.
 ---
 
-Convierte un pedido en una spec: el **"qué" verificable** que `$sdd-run` usa como criterio de terminado. La spec no es prosa aspiracional: cada criterio de aceptación declara CÓMO se va a verificar y qué tan confiable es esa verificación en ESTE repo. Los argumentos pueden traer el pedido libre ("agregar dark mode al settings"), una referencia a issue (`#42` o URL), un handoff confirmado de `grill`, y/o flags.
+Convierte un pedido en una spec: el **"qué" verificable** que `$sdd-run` usa como criterio de terminado. La spec no es prosa aspiracional: cada criterio de aceptación declara CÓMO se va a verificar y qué tan confiable es esa verificación en ESTE repo. Los argumentos pueden traer el pedido libre ("agregar dark mode al settings"), una referencia a issue (`#42` o URL), una ruta de spec para actualizarla, un handoff confirmado de `grill`, y/o flags.
 
 En Codex, usar `request_user_input` solo cuando esté disponible y la decisión tenga 2-3 opciones mutuamente excluyentes. Para selección múltiple o más opciones, preguntar en texto plano, terminar el turno y continuar tras la respuesta.
 
@@ -51,7 +51,7 @@ verificable va a ser la ejecucion segun el contrato de autonomia (.sdd/project.m
   • De un issue abierto  — abro el selector de issues del repo.
   • De un grill cerrado  — elijo un handoff confirmado como fuente.
 
-Atajo: $sdd-spec <pedido | #NN> [--from-grill [ID|ruta.md]] [--out local|issue] [--assume] saltea este menu.
+Atajo: $sdd-spec [pedido libre | #NN | URL de issue | ruta de spec] [--from-grill [ruta.md]] [--triage-route update-existing-spec|audit-existing-spec] [--out local|issue] [--assume] saltea este menu.
 ```
 
 Luego usar `request_user_input` — una pregunta, "¿De dónde sale la spec?":

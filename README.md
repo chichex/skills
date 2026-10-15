@@ -36,7 +36,7 @@ Las disciplinas sobre las que SDD se apoya — y que también uso sueltas, fuera
 | **`design-system`** | Escribe `DESIGN_SYSTEM.md` en la raíz de una superficie UI (web o mobile) que todavía no tiene sistema de diseño: censa tokens, componentes base, docs, mocks y Claude Design; si ya hay sistema, solo lo registra en `## Diseño` del contrato. Si no, hace una ronda de dirección visual (audiencia y tono, paleta, tipografía, densidad y modo) y escribe tokens con valores, componentes base, estados y reglas, con una sección "Ajustes de este proyecto" que se preserva al regenerar. Lo engancha, con tu confirmación, en `## Diseño` de `.sdd/project.md`, `CLAUDE.md` y `AGENTS.md`. Nunca escribe código: los tokens en código nacen en el primer `sdd-run` que toque UI. `sdd-init` lo ofrece cuando detecta una superficie sin sistema. Disponible en los cuatro harnesses. |
 | **`code-review`** *(Codex/Pi/opencode)* | Revisa un PR en tres ejes separados —correctness y riesgo, estándares y spec—, ejecuta verificaciones y muestra findings con evidencia y la preview exacta. Por default publica los comments en GitHub como un único review COMMENT; `--no-publish` lo deja solo en la conversación. Nunca aprueba ni pide cambios. |
 | **`github-issue-selector`** *(Codex/Pi)* | Permite elegir o inspeccionar un issue cuando todavía no diste un número concreto. |
-| **`issue-triage`** *(Codex/Claude/Pi)* | Analiza uno o varios issues contra código, tests y dependencias; clasifica el próximo stage y emite un handoff estructurado; tras la confirmación, en Claude encadena el skill del stage (`grill`, `sdd-spec` o `sdd-run`); en Codex encadena `grill` y `sdd-spec`, y para `sdd-run` (que exige invocación explícita) deja el comando listo para enviar; en Pi el stage lo abre el orquestador de `/issues`. Para selecciones conjuntas crea un issue canónico y cierra los originales como reemplazados. |
+| **`issue-triage`** | Analiza uno o varios issues contra código, tests y dependencias; clasifica el próximo stage y emite un handoff estructurado; tras la confirmación, en Claude y OpenCode encadena el skill del stage (`grill`, `sdd-spec` o `sdd-run`); en Codex encadena `grill` y `sdd-spec`, y para `sdd-run` (que exige invocación explícita) deja el comando listo para enviar; en Pi el stage lo abre el orquestador de `/issues`. Para selecciones conjuntas crea un issue canónico y cierra los originales como reemplazados. Disponible en los cuatro harnesses. |
 | **`find-skills`** *(Codex/Pi)* | Busca skills instalables en el ecosistema abierto mediante `npx skills`. Vendorizado desde `vercel-labs/skills`. |
 | **`yt-summary`** *(Codex/Claude)* | Descarga con `yt-dlp` un único track de subtítulos de YouTube y guía un resumen con TL;DR, puntos clave y timestamps. |
 
@@ -264,6 +264,24 @@ cp pi-themes/*.json    ~/.pi/agent/themes/
 ```
 
 Una vez instalados, Codex los invoca como `$grill`, `$code-review`, `$sdd-spec`, etc., o los carga según su `description` — salvo `sdd-run`: su sidecar `agents/openai.yaml` declara `policy.allow_implicit_invocation: false`, así que sólo se ejecuta al invocarlo explícitamente con `$sdd-run`. Claude Code/opencode usan sus comandos habituales. En Pi se usan como `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec` y equivalentes.
+
+En OpenCode, si `permission.skill` usa una allowlist, habilitá también el nombre del skill en `opencode.json`. [Gana la última regla que coincide](https://opencode.ai/docs/permissions/#granular-rules-object-syntax): poné `"*"` primero y las reglas específicas después. Ejemplo completo para este flujo:
+
+```json
+{
+  "permission": {
+    "skill": {
+      "*": "deny",
+      "issue-triage": "allow",
+      "grill": "allow",
+      "sdd-spec": "allow",
+      "sdd-run": "allow"
+    }
+  }
+}
+```
+
+Para encadenar desde `issue-triage`, también deben estar instalados y habilitados `grill`, `sdd-spec` y `sdd-run`. Si la carga del skill elegido falla o queda denegada, el triage muestra el comando exacto y termina sin ejecutar el stage. Copiar los skills no cambia esos permisos; si no aparecen en la sesión abierta, abrí una nueva.
 
 **Alternativa legacy/manual de Pi:** `./install.sh pi` se conserva para compatibilidad, pero el Pi Package es la vía recomendada. Corré el instalador sólo con autorización explícita, porque actualiza el checkout y reemplaza las copias globales administradas; después ejecutá `/reload`. Las sesiones ya abiertas no reciben el código nuevo hasta recargar. No lo uses si el package nativo sigue instalado. Las instalaciones de Claude Code, Codex y OpenCode no cambian. Para la prueba interactiva usá una sesión persistida y repos descartables; los stages reales requieren un provider local/falso o consumo de proveedor explícitamente autorizado. El smoke autónomo usa configuración temporal y no ejecuta providers.
 
