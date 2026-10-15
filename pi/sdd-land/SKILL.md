@@ -168,7 +168,7 @@ Las transiciones de este skill se registran en `<git-common-dir>/sdd/events.json
   export LC_ALL=C
   enc() { [ "$1" = none ] && { printf none; return; }; s=$1; while [ -n "$s" ]; do c=${s%"${s#?}"}; s=${s#?}; case $c in [A-Za-z0-9._~-]) printf %s "$c" ;; *) printf %% && printf %s "$c" | od -An -tx1 | tr -d ' \n' | tr a-f A-F ;; esac; done; }
   ok() {
-    case $harness in claude|codex|opencode|pi) ;; *) return 1 ;; esac
+    case $harness in claude|codex|opencode|pi|antigravity) ;; *) return 1 ;; esac
     case "$issue$pr$reason" in *[![:graph:]]*) return 1 ;; esac
     case "$spec$previous$grillref" in *'<'*'>'*) return 1 ;; esac
     printf '%s\n' "$issue" | grep -Eqx 'none|#[1-9][0-9]*|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[1-9][0-9]*' || return 1

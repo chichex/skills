@@ -16,7 +16,7 @@ import {
 	type IssueReference,
 } from "./index.ts";
 
-export const SDD_EVENT_HARNESSES = ["claude", "codex", "opencode", "pi"] as const;
+export const SDD_EVENT_HARNESSES = ["claude", "codex", "opencode", "pi", "antigravity"] as const;
 export type SddEventHarness = (typeof SDD_EVENT_HARNESSES)[number];
 
 export const SDD_EVENT_NAMES = [

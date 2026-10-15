@@ -296,7 +296,7 @@ test("both READMEs advertise issue-triage and its confirmed chaining in OpenCode
 		const markdown = await readRepoFile(path);
 		const row = markdown.split("\n").find((line) => line.startsWith("| **`issue-triage`**")) ?? "";
 		assert.match(row, /Claude y OpenCode encadena el skill del stage|Claude and OpenCode chain the stage skill/, path);
-		assert.match(row, /Disponible en los cuatro harnesses|Available in all four harnesses/, path);
+		assert.match(row, /Disponible en los (?:cuatro|cinco) harnesses|Available in all (?:four|five) harnesses/, path);
 		assert.doesNotMatch(row, /\*\(Codex\/Claude\/Pi\)\*/, path);
 		assert.match(markdown, /(?:Para encadenar|Chaining)[^\n]*`grill`[^\n]*`sdd-spec`[^\n]*`sdd-run`/, `${path}: permisos de skills encadenados`);
 		const permissionBlock = markdown.match(/```json\n(\{\n  "permission": \{[\s\S]*?\n\})\n```/)?.[1];

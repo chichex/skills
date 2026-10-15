@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
 #
-# Instala/actualiza los skills de este repo en Codex, Claude Code, opencode y Pi,
+# Instala/actualiza los skills de este repo en Codex, Claude Code, opencode, Pi y Antigravity,
 # junto con las extensiones de Pi.
 # Hace git pull y copia cada skill a su carpeta, SIN borrar los otros skills
 # que ya tengas: agrega/actualiza los que vienen del repo y solo poda los que
 # este mismo repo instaló antes (figuran en el manifest del destino) y retiró.
 #
 # Uso:
-#   ./install.sh              # instala los cuatro sets
-#   ./install.sh all          # instala los cuatro sets
+#   ./install.sh              # instala los cinco sets
+#   ./install.sh all          # instala los cinco sets
 #   ./install.sh both         # Claude Code + opencode (compatibilidad)
 #   ./install.sh claude       # solo los de Claude Code
 #   ./install.sh opencode     # solo los de opencode
 #   ./install.sh pi           # solo los de Pi
 #   ./install.sh pi-clean --confirm  # elimina solo las copias Pi administradas
+#   ./install.sh antigravity  # solo los de Antigravity
 #   ./install.sh codex        # solo los de Codex
 #
 # Overrides por variable de entorno (destinos):
+#   ANTIGRAVITY_SKILLS_DIR (default: ~/.gemini/config/skills)
 #   CLAUDE_SKILLS_DIR    (default: ~/.claude/skills)
 #   CLAUDE_AGENTS_DIR    (default: ~/.claude/agents)
 #   CLAUDE_PLUGIN_REGISTRY_FILE (default: ~/.claude/plugins/installed_plugins.json)
@@ -31,6 +33,7 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ANTIGRAVITY_DEST="${ANTIGRAVITY_SKILLS_DIR:-$HOME/.gemini/config/skills}"
 CLAUDE_DEST="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
 CLAUDE_AGENTS_DEST="${CLAUDE_AGENTS_DIR:-$HOME/.claude/agents}"
 CLAUDE_PLUGIN_REGISTRY="${CLAUDE_PLUGIN_REGISTRY_FILE:-$HOME/.claude/plugins/installed_plugins.json}"
@@ -48,8 +51,12 @@ CONFIRMATION="${2:-}"
 
 # 1. traer lo último (si es un clon git). La limpieza nunca actualiza el repo.
 if [ "$WHICH" != "pi-clean" ] && [ -d "$REPO_DIR/.git" ]; then
-  echo "→ git pull"
-  git -C "$REPO_DIR" pull --ff-only
+  if git -C "$REPO_DIR" rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
+    echo "→ git pull"
+    git -C "$REPO_DIR" pull --ff-only
+  else
+    echo "→ git pull omitido (rama local sin upstream configurado)"
+  fi
 fi
 
 # --- Registro de nombres administrados por este repo (skills/extensiones/themes de Pi) ---
@@ -429,10 +436,15 @@ install_codex() {
   configure_codex_skill_precedence
 }
 
+install_antigravity() {
+  install_set "Antigravity" "$REPO_DIR/antigravity" "$ANTIGRAVITY_DEST"
+}
+
 case "$WHICH" in
   all)      install_codex
             install_claude
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST"
+            install_antigravity
             install_pi ;;
   both)     install_claude
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
@@ -441,7 +453,8 @@ case "$WHICH" in
   pi)       install_pi ;;
   pi-clean) clean_pi ;;
   codex)    install_codex ;;
-  *) echo "Argumento inválido: '$WHICH' (usá: all | both | codex | claude | opencode | pi | pi-clean --confirm)" >&2; exit 2 ;;
+  antigravity) install_antigravity ;;
+  *) echo "Argumento inválido: '$WHICH' (usá: all | both | codex | claude | opencode | pi | pi-clean --confirm | antigravity)" >&2; exit 2 ;;
 esac
 
 echo

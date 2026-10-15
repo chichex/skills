@@ -1,0 +1,314 @@
+---
+name: sdd-init
+description: Explora el proyecto a fondo y genera .sdd/project.md — el "contrato de autonomía" que le dice a un agente autónomo cómo correr, testear y buildear la app, qué ambientes hay, cuál usar para probar, y qué puede verificar sin un humano. Usar SIEMPRE que el usuario quiera inicializar SDD, preparar un repo para trabajo autónomo, documentar el harness del proyecto (cómo se corre/testea/buildea), o cuando otro skill sdd-* necesite un .sdd/project.md que no existe o está desactualizado. También cuando el usuario diga "quiero que Antigravity pueda trabajar solo acá", "documenta cómo se testea esto" o similar.
+---
+
+Explora el proyecto y genera `.sdd/project.md`: el **contrato de autonomía** que los demás skills `sdd-*` (spec, run) consumen para trabajar sin humano. No es documentación aspiracional: cada comando documentado se EJECUTA antes de escribirse, y lo que no se pudo verificar queda marcado como tal. Los argumentos pueden traer pistas libres ("es un monorepo, ignora apps/legacy", "el ambiente de prueba es staging") o ir vacío.
+
+Skill operativo con una fase interactiva acotada: explora solo, verifica solo, y pregunta ÚNICAMENTE lo que el código no puede responder.
+
+## Qué es el contrato de autonomía
+
+`.sdd/project.md` responde, con evidencia, las preguntas que un agente autónomo necesita antes de tocar código:
+
+1. **Cómo se corre / testea / buildea** — comandos exactos, cwd, duración, y si fueron verificados ejecutándolos.
+2. **Qué ambientes existen y cuál puedo usar para probar** — local, staging, prod; env vars y de dónde salen.
+3. **Qué puedo verificar sin humano** — la escalera de verificación: typecheck < unit < build < levantar la app y probarla < e2e. Hasta qué escalón llega este repo y cómo se sube cada uno.
+4. **Qué NO debo hacer sin humano** — deploy, migraciones, push, tocar servicios pagos.
+5. **Bajo qué políticas genero código** — preferencias que el usuario ELIGE (tamaño máximo de PR, coverage mínimo, dependencias nuevas, convención de commits, políticas propias de la tecnología) y que `/sdd-run` aplica como gates duros — o sigue como `guia` explícita cuando no hay gate medible. Solo son activables como gate las políticas cuyo mecanismo de medición esté verificado en este repo.
+
+Se referencia desde el `AGENTS.md` del proyecto (línea `@.sdd/project.md`) para que TODA sesión lo cargue, no solo las sdd; `CLAUDE.md` encadena vía `@AGENTS.md` para que Claude Code también lo herede.
+
+## Argumentos
+
+```text
+/sdd-init [pistas libres] [--assume] [--no-verify] [--update] [--no-import]
+```
+
+- `--assume` — cero preguntas: los gaps se resuelven con la assumption más conservadora y quedan marcados `[NEEDS-INPUT]` en el doc. Para correr desatendido.
+- `--no-verify` — no ejecutar comandos: documenta lo detectado como `no probado`. Útil en repos con builds carísimos.
+- `--update` — refresco de un `.sdd/project.md` existente: re-explora, re-verifica, pero PRESERVA la sección `## Decisiones humanas` y las respuestas previas. Además ofrece las capacidades que el skill ganó desde que el contrato se generó (ver "## Upgrade de contrato").
+- `--no-import` — no tocar `AGENTS.md` ni `CLAUDE.md`.
+
+## Fase 0 — Lanzador (solo con `/sdd-init` pelado)
+
+Dispara SOLO cuando los argumentos vienen vacíos. Si trajo pistas o flags, saltear: el usuario ya dijo por dónde va.
+
+Si `.sdd/project.md` ya existe, decirlo primero (`Ya hay un contrato del <fecha>. Esto lo actualiza.`) y tratar toda elección como `--update` — incluida la oferta de mejoras de "## Upgrade de contrato" si el contrato es de una versión anterior del skill.
+
+```text
+/sdd-init explora el repo y genera .sdd/project.md: el contrato de autonomia que guia a
+un agente cuando trabaja solo. Hay dos perillas: si EJECUTO los comandos que encuentre
+(test/build/dev server) para probar que de verdad funcionan, y si te PREGUNTO las dudas
+que el codigo no responde o las asumo solo. En modo interactivo tambien te ofrezco
+activar politicas de generacion (tamaño maximo de PR, coverage minimo, dependencias,
+commits, politicas de tu tecnologia) que /sdd-run aplica como gates duros.
+
+  • Verificar y preguntar — ejecuta los comandos para probarlos, y pregunta
+                            solo lo que no pueda deducir del codigo. (default)
+  • Sin ejecutar nada     — documenta lo que detecta sin correr ningun comando;
+                            quedan como "no probado". Para builds/tests muy
+                            caros o lentos.                          (--no-verify)
+  • Sin preguntar nada    — ejecuta y verifica, pero no te interrumpe: cada duda
+                            se asume conservadora y queda [NEEDS-INPUT] en el doc
+                            para revisar despues.                    (--assume)
+
+Atajo: /sdd-init <pistas> [--assume] [--no-verify] saltea este menu.
+```
+
+Luego usar `ask_question` — una pregunta, "¿Ejecuto los comandos para verificarlos, y te pregunto las dudas?":
+
+1. `Verificar y preguntar (Recomendado)` — ejecuta test/build para probar que funcionan; pregunta solo los gaps que el código no responde.
+2. `Sin ejecutar nada` — solo explora y documenta; los comandos quedan `no probado` (`--no-verify`).
+3. `Sin preguntar nada` — corre desatendido; las dudas se asumen conservadoras y quedan `[NEEDS-INPUT]` (`--assume`).
+
+## Fase 1 — Exploración
+
+Lanzar subagents `research` con la tool `invoke_subagent` en paralelo (en repos chicos, <30 archivos, hacerlo inline):
+
+```text
+invoke_subagent(TypeName: "research", Role: "Harness Explorer", Prompt: |
+  Releva el harness de este proyecto para un agente autonomo. Devolve texto plano:
+  1. STACK: lenguajes, frameworks, package manager (segun lockfile), estructura (monorepo?).
+  2. COMANDOS: como correr / testear / buildear / lint / typecheck. Fuente exacta
+     (package.json scripts, Makefile, justfile, Cargo.toml, go.mod, pyproject...).
+     Por comando: cwd y que hace de verdad (leer el script, no adivinar del nombre).
+  3. TESTS: framework, cuantos archivos de test hay, unit vs integration vs e2e.
+  4. DISEÑO: superficies UI hasta profundidad 2, sin node_modules, vendor, .git, dist ni build:
+     package.json con las claves exactas react-dom, next, react-native o expo en
+     dependencies/devDependencies (react-native-web no cuenta); Gradle con
+     com.android.application, o KMP con Compose, en build.gradle(.kts) o
+     gradle/libs.versions.toml (com.android.library y KMP sin Compose no cuentan; android/
+     e ios/ de un proyecto RN son de la superficie RN). Por superficie: raices de codigo;
+     tokens (theme/, tokens/, globals.css, tailwind.config.*, @theme, Theme.kt), separando
+     los defaults de scaffold (--background/--foreground de create-next-app, theme default de
+     shadcn, components/ui/ del template de Expo) de los tokens propios; componentes base
+     (components/ui/, ui/, design-system/components/); docs y mocks (DESIGN_SYSTEM.md,
+     design-system/, .storybook/ o *.stories.*, docs/design/); bundle design-sync/; y URL o
+     projectId de Claude Design en README, design-sync/README.md o CLAUDE.md.
+  Busqueda breadth: medium.)
+
+invoke_subagent(TypeName: "research", Role: "Environment Explorer", Prompt: |
+  Releva ambientes y verificabilidad de este proyecto. Devolve texto plano:
+  1. AMBIENTES: .env*, docker-compose, configs por ambiente, URLs de staging/prod.
+  2. ENV VARS: cuales necesita la app para arrancar (leer donde se consumen), cuales
+     ya estan resueltas (archivo .env presente, defaults) y cuales faltan.
+  3. CI: que corre el CI (.github/workflows, etc.) — eso define que "tiene que pasar".
+  4. SERVICIOS EXTERNOS: DBs, APIs, colas de las que depende la app para correr local.
+  5. GIT: cual es el branch default del repo (main/master/otro — `git symbolic-ref refs/remotes/origin/HEAD`
+     o el branch actual si no hay remote), remotes configurados (git remote -v) y si `gh auth status`
+     responde ok — esto determina desde donde se ramifica y si un agente puede crear PRs.
+  Busqueda breadth: medium.)
+```
+
+Integrar las pistas de los argumentos como prioridad sobre lo detectado.
+
+<!-- sdd-init-design-census:start -->
+**Censo de diseño (`DISEÑO`).** Una superficie UI es un manifest con marcador front o mobile, con la detección de /coding-policies: buscado en la raíz y hasta profundidad 2, excluyendo `node_modules`, `vendor`, `.git`, `dist` y `build`. En `package.json` se miran las claves exactas de `dependencies` y `devDependencies`: `react-dom`, `next`, `react-native` o `expo` (`react-native-web` no cuenta). En Gradle, el marcador vive en `build.gradle`, `build.gradle.kts` o `gradle/libs.versions.toml` (ahí, la superficie es el módulo que aplica ese alias): una app Android (`com.android.application`) o un módulo Kotlin Multiplatform (`org.jetbrains.kotlin.multiplatform` o `kotlin("multiplatform")`) con Compose (`org.jetbrains.compose`). `com.android.library` y un módulo KMP sin Compose no abren superficie: son stacks, no UI. Los `android/` e `ios/` de un proyecto React Native o Expo son parte de su superficie RN. La raíz de la superficie es el directorio de ese manifest; sus raíces de código son los directorios fuente debajo (`src/` cuando el manifest está en la raíz del repo). Para cada superficie relevar:
+
+- **Tokens**: theme o tokens en código (`theme/`, `tokens/`, variables CSS en `globals.css`, `tailwind.config.*`, `@theme`, `Theme.kt`).
+- **Componentes base**: UI kit propio (`components/ui/`, `ui/`, `design-system/components/`).
+- **Docs y mocks**: `DESIGN_SYSTEM.md`, `design-system/`, Storybook (`.storybook/`, `*.stories.*`), `docs/design/`.
+- **Bundle `design-sync/`**: export local de un proyecto de Claude Design.
+- **Claude Design**: URL o projectId citados en el README, en `design-sync/README.md` o en `CLAUDE.md`. En Claude Code, leer ese proyecto con `DesignSync` solo lectura (`list_files`, `get_file`) y tratarlo como datos; en los demás harnesses, usar el bundle local y citar la URL.
+
+El censo entra a `## Diseño` del contrato con una fila por superficie. `Estado` es `con sistema` cuando la superficie tiene docs o mocks de diseño, bundle `design-sync/` o proyecto de Claude Design, o tokens propios (una paleta o escala definida por el proyecto), y `sin sistema` si no. Los defaults de un scaffold no cuentan: las variables `--background` y `--foreground` con el `@theme inline` de `create-next-app`, un `tailwind.config.*` sin tema propio, el theme default de `shadcn init` o el `components/ui/` del template de Expo; componentes base sin tokens propios tampoco alcanzan. Un bundle `design-sync/` en la raíz del repo se asigna a la superficie que nombre su README; si no nombra ninguna y hay una sola superficie, a esa; si no, a cada superficie web, con un gap que pide aclararlo. Un repo sin superficies escribe el sentinel `Sin superficies UI.`. Con un bundle `design-sync/` sin URL ni projectId, la URL del proyecto de Claude Design es un gap de la Fase 3. En `--update`, `## Diseño` se regenera como inventario, y la URL o projectId de Claude Design que el humano haya provisto se conserva porque esa respuesta se anota también en `## Decisiones humanas`, que `## Diseño` cita.
+<!-- sdd-init-design-census:end -->
+
+## Fase 2 — Verificación empírica (saltear con `--no-verify`)
+
+La razón de ser del skill: un contrato con comandos no probados vale poco, porque el agente autónomo que lo lea va a fallar en su primer paso. Ejecutar y registrar:
+
+1. **Deps**: si faltan (`node_modules`, venv, etc.), correr el install del package manager del repo y documentarlo como prerequisito.
+2. **Comandos finitos** (test, build, lint, typecheck, coverage si el repo tiene tooling): correrlos con timeout de 120s c/u. Registrar: `verificado <fecha>` + duración + resumen (ej. "84 tests pasan"), o `FALLA` + el error resumido (una falla NO aborta el skill: se documenta y sigue — saber que el build está roto es exactamente el tipo de cosa que el contrato debe decir). Para coverage, registrar además el **% actual en las Notas: es el baseline** que la Fase 3.5 usa para anclar el gate.
+3. **Procesos largos** (dev server, app): arrancar en background, esperar la señal de vida (puerto abierto, línea de log), registrar cómo se reconoce el "está arriba" (ej. `curl -sf localhost:5173` responde), y MATARLO. Si no levanta en 60s, anotar `no levanta: <motivo>`.
+4. Lo que exceda timeout o requiera credenciales ausentes: `no probado (<motivo>)`. Nunca inventar el estado.
+
+## Fase 3 — Gaps: preguntar solo lo no inferible
+
+Listar las preguntas que el código NO respondió. Típicas: ¿cuál ambiente uso para probar?, ¿de dónde saco las env vars que faltan?, ¿hay datos de prueba / seeds?, ¿qué cosas requieren confirmación humana además de los defaults (deploy, migraciones, push)?
+
+- Preguntar con `ask_question`, de a UNA, opciones concretas derivadas de la exploración, la recomendada primera y marcada `(Recomendado)`. Máximo 5 preguntas; si hay más gaps, priorizar por impacto en autonomía y el resto va a `## Gaps`.
+- Lo ya claro NO se pregunta: preguntar lo inferible erosiona la confianza en el skill.
+- Con `--assume` (o si el usuario no responde): assumption más conservadora (ej. "solo local, nunca staging"), documentada en el doc con `[NEEDS-INPUT]`.
+
+## Fase 3.5 — Políticas de generación
+
+Ofrecer las políticas de generación: preferencias que el usuario ELIGE — nunca se infieren — y que `/sdd-run` aplica como **gates duros**: una política incumplida es FALLA visible (PR en draft), jamás se maquilla. Regla de oro: **solo es activable como gate la política cuyo gate se puede medir en ESTE repo hoy** — por eso esta fase corre después de la verificación empírica, que ya estableció qué tooling hay. Una preferencia sin gate medible puede entrar únicamente como **`guia`** explícita (ver Políticas de la tecnología): orienta la generación, no gatea.
+
+Menú v1 (cada política con su gate — el mecanismo con el que `/sdd-run` la va a medir):
+
+| Politica | Valor | Gate |
+|---|---|---|
+| Tamaño máximo de PR | N líneas de diff y/o M archivos (sugerido: 400 / 15) | `git diff --stat <base>...HEAD`, excluyendo lockfiles y archivos generados |
+| Coverage mínimo | umbral anclado al baseline actual | correr el comando y comparar contra el umbral; activable SOLO si el comando figura `verificado` en `## Comandos` con su baseline medido |
+| Dependencias nuevas | prohibido / preguntar / libre | diff sobre manifest + lockfile contra el base |
+| Commits convencionales | patrón (ej. `tipo(scope): resumen`) | cada mensaje del branch matchea el patrón |
+| Políticas de la tecnología (custom) | preferencia libre del stack: guía de estilo (ej. Uber para Go), max líneas por archivo, naming, constructos prohibidos | el más barato que la observe: regla de linter con config verificada, script del contrato o grep; sin gate medible queda como `guia` |
+
+Reglas:
+
+- Usar `ask_question` con `is_multi_select: true` — "¿Activás alguna política de generación?": una opción por política ACTIVABLE. Si el usuario no elige ninguna, la sección queda vacía. Por cada elegida, UNA pregunta de valor con defaults sugeridos como opciones.
+- Política no medible = no ofrecida. Coverage sin comando de coverage verificado no aparece en el menú: se anota en `## Gaps` ("coverage no activable: no hay tooling de coverage verificado") y se ofrece activarla cuando el tooling exista.
+- **Baseline primero (coverage)**: el umbral se elige mirando el % actual medido en Fase 2, nunca en el aire. Ofrecer: `No bajar del baseline (X%) (Recomendado)` — ratchet, cumplible desde el día uno — / un % fijo que el repo YA cumple / custom. Un umbral por encima del baseline nace en FALLA (pedir 90% con un repo en 10% = todos los PRs en draft para siempre): decirlo con los dos números sobre la mesa y aceptarlo SOLO si el usuario lo confirma viendo el baseline; queda anotado `aspiracional` junto al baseline.
+- **Políticas de la tecnología (custom)**: el usuario describe la preferencia en texto libre ("seguir la guía de estilo de Uber en Go", "max 300 líneas por archivo", "prohibir panic() fuera de main"). Por cada una, proponer el gate MÁS BARATO que la observe — regla de un linter ya configurado > config nueva de un linter que el repo ya tiene > script corto del contrato (ej. `wc -l` sobre los archivos del diff) > grep — y VERIFICARLO ejecutándolo antes de escribirlo, como cualquier comando. Sin gate medible, ofrecer escribirla como **`guia`**: `/sdd-run` la sigue al GENERAR el código y el reviewer la juzga en el PR — una `guia` nunca se reporta verificada ni gatea. Si un linter la haría medible pero falta configurarlo, anotarlo en `## Gaps` ("sería gate si golangci-lint tuviera config").
+- **Coding policies del proyecto**: si existe `.sdd/coding-policies.md` (generado por `/coding-policies`) — o si la fila `coding-policies` ya presente en `## Politicas de generacion` apunta a un archivo existente, porque el skill acepta `--out` —, escribir sin preguntar la fila `guia` `| coding-policies | <ruta> (<stacks del marker>) | guia — sin gate: /sdd-run la sigue al generar, la juzga el reviewer |` — también con `--assume`, y en `--update` aunque se elija `Mantener` (si la fila ya existe se actualiza en su lugar): el archivo ya es una decisión humana en el repo y la fila solo la refleja. Si no existe, sumar al menú la opción `Generar coding policies` que, al terminar el contrato, invoca `/coding-policies`; nunca con `--assume`: generar el archivo es una elección humana.
+<!-- sdd-init-design-policies:start -->
+- **Gates de diseño**: solo para superficies `con sistema` con tokens detectados, sumar al menú gates ratchet de diseño medibles con grep y baseline. `git grep` mira solo archivos trackeados (sin `node_modules` ni builds), y `:!` excluye tanto archivos como directorios. `<raíces>` son los globs de código de la superficie (ej. `'apps/web/src/**/*.tsx'`), `<tokens>` el archivo o directorio de tokens y `<ui kit>` el de los componentes base:
+  - hex fuera del directorio de tokens: `git grep -IhoE '#([0-9a-fA-F]{3}){1,2}' -- <raíces> ':!<tokens>' | wc -l`;
+  - estilos inline: `git grep -h 'style={{' -- <raíces> ':!<ui kit>' | wc -l`;
+  - componentes duplicados por nombre: `git grep -hoE '(function|const|class) [A-Z][A-Za-z0-9]+' -- <raíces> ':!<ui kit>' | sort | uniq -d | wc -l`.
+
+  Cada gate se verifica ejecutándolo como cualquier comando, y su conteo actual es el baseline: la política queda `no superar el baseline (<N>, <fecha>)`. Sin tokens detectados no se ofrecen: no hay contra qué medir.
+- **Design system**: sumar al menú la opción `Generar design system` solo si hay al menos una superficie `sin sistema`, también en `--update` aunque se elija `Mantener`; al terminar el contrato invoca `/design-system` sin flags, nunca con `--assume`: la dirección visual es una elección humana. Con todas las superficies `con sistema` y ningún `DESIGN_SYSTEM.md` que referenciar, el reporte dice `con sistema (no ofrecido)`.
+<!-- sdd-init-design-policies:end -->
+- Pistas de los argumentos que fijen políticas ("coverage 80", "PRs de max 300 líneas") cuentan como elección del usuario: se activan sin preguntar (verificando igual que el gate sea medible). Única excepción: un umbral de coverage por encima del baseline se confirma igual — regla del baseline.
+- Con `--assume`: ninguna política se activa — son elecciones humanas, no se asumen.
+- Con `--update` y políticas ya activas: preguntar `Mantener (Recomendado)` / `Revisar` — mantener preserva la sección verbatim; revisar re-abre el menú con los valores actuales como default. Si el menú ganó políticas que el contrato no conocía (ej. las de tecnología), decirlo en esa misma pregunta.
+
+## Upgrade de contrato (corridas sobre contrato existente)
+
+El skill evoluciona; los contratos generados por versiones anteriores no. En TODA corrida sobre un `.sdd/project.md` existente (`--update` explícito o lanzador que lo detectó), antes de escribir: cruzar el contrato viejo contra esta **checklist de capacidades** y detectar cuáles le faltan. La detección es estructural — se mira el doc, no hace falta versionado:
+
+| Capacidad | Cómo detectar que falta en el contrato viejo |
+|---|---|
+| Políticas de generación | no existe la sección `## Politicas de generacion` |
+| Baseline de coverage | hay política de coverage activa sin baseline anotado junto al umbral |
+| Políticas de la tecnología | `## Politicas de generacion` existe pero sin filas custom ni `guia` (el menú que la generó no las ofrecía) |
+| Capacidad de Git/PR | `## Ambientes` no declara branch default, remote o estado de `gh` |
+| Señal de vida de procesos largos | comandos `run` sin el "cómo se reconoce que está arriba" |
+| Coding policies | existe `.sdd/coding-policies.md` pero `## Politicas de generacion` no tiene la fila `coding-policies` — no entra al menú: la Fase 3.5 la escribe sin preguntar y el reporte la lista como `referenciado` |
+| Diseño | no existe la sección `## Diseño` — no entra al menú: el censo de la Fase 1 corre siempre y la Fase 4 la escribe sin preguntar, también con `--assume`; el reporte la lista como mejora aplicada |
+
+Con faltantes: listarlos como texto visible (una línea por capacidad, con qué aporta) y usar `ask_question` con `is_multi_select: true` — "El contrato es de una versión anterior del skill; ¿qué mejoras le agrego?". SOLO lo elegido se releva, pregunta y escribe, cada capacidad con el mecanismo de su fase (ej. elegir `Politicas de generacion` se resuelve con el menú de la Fase 3.5); lo no elegido no se anota como gap — es una elección, no una deuda. Con `--assume`: no se agrega ninguna (varias exigen elección humana); quedan en el reporte como `mejoras disponibles`.
+
+**Regla de mantenimiento del skill**: al agregarle una capacidad nueva a este skill, sumar SIEMPRE su fila a esta checklist. Es lo que hace que los contratos viejos se pongan al día preguntando, en vez de quedar silenciosamente desactualizados.
+
+## Fase 4 — Escribir el contrato
+
+Escribir `.sdd/project.md` con EXACTAMENTE esta estructura:
+
+```markdown
+# Contrato de autonomia — <proyecto>
+<!-- Generado por /sdd-init el <fecha>. Refrescar con /sdd-init --update. -->
+<!-- SDD-Tracking: version=1; type=project; generated-at=<YYYY-MM-DD> -->
+
+## Stack
+<lenguajes, frameworks, package manager, estructura; 3-6 lineas>
+
+## Diseño
+<inventario de diseño por superficie UI (Fase 1). Sin front ni mobile: "Sin superficies UI."
+Con superficies, una fila por superficie; Estado es `con sistema` o `sin sistema`:
+| Superficie | Raices | Tokens | Componentes | Docs y mocks | Claude Design | Estado |
+| web | apps/web/src | apps/web/src/app/globals.css | apps/web/src/components/ui | apps/web/DESIGN_SYSTEM.md | design-sync/ · <URL o projectId> (Decisiones humanas <fecha>) | con sistema |
+| mobile | src | — | — | — | — | sin sistema |>
+
+## Comandos
+| Accion | Comando | cwd | Estado | Duracion | Notas |
+|---|---|---|---|---|---|
+| test | pnpm test | . | verificado 2026-07-02 | 12s | 84 tests pasan |
+| build | pnpm build | . | FALLA | 40s | TS2345 en src/x.ts — ver Gaps |
+| run | pnpm dev | . | verificado 2026-07-02 | — | listo cuando responde curl -sf localhost:5173 |
+
+## Ambientes
+<cuales hay, CUAL usar para probar, env vars: resueltas vs faltantes y de donde salen.
+Git: branch default del repo (main/master/otro) — /sdd-run ramifica desde ahi.
+Capacidad de PR: remote configurado + gh autenticado, o "sin remote — /sdd-run termina
+en commit local". /sdd-run lee estas lineas antes de ramificar o pushear.>
+
+## Verificacion autonoma
+<la escalera para ESTE repo, en orden de confianza creciente, con el como concreto de
+cada escalon. Y explicitamente que NO se puede verificar sin humano, con el motivo.>
+
+## Limites
+<que NO hacer sin confirmacion humana. Defaults siempre presentes: deploy, migraciones
+sobre datos compartidos, git push a main, tocar servicios pagos. Mas lo que sumo el usuario.>
+
+## Politicas de generacion
+<gates duros que /sdd-run verifica antes de abrir el PR. Elegidas por el usuario en
+Fase 3.5, nunca inferidas; si no activo ninguna: "Sin politicas activas. Configurar
+con /sdd-init --update." Formato tabla, cada fila con su gate concreto:
+| Politica | Valor | Gate |
+| tamaño-pr | max 400 lineas / 15 archivos | git diff --stat vs base, sin lockfiles |
+| coverage | no bajar del baseline (82%, 2026-07-20) | pnpm test -- --coverage (verificado en Comandos) |
+| max-lineas-archivo | 300 por archivo tocado | script: wc -l sobre los archivos del diff |
+| estilo-go | guia de estilo de Uber | guia — sin gate medible: /sdd-run la sigue al generar, la juzga el reviewer |>
+
+## Decisiones humanas
+<respuestas de la Fase 3, una bullet por decision con fecha. INTOCABLE en --update.>
+
+## Gaps
+<[NEEDS-INPUT] pendientes + comandos FALLA/no probados que un humano deberia mirar.>
+```
+
+La línea `SDD-Tracking` es el marker canónico de tracking (contrato SDD-Tracking v1): `version` y `type` son fijos, y `generated-at` lleva la fecha de ESTA corrida en `YYYY-MM-DD`. Mantenerlo como upsert idempotente: exactamente un marker por contrato — en `--update` se actualiza la fecha en la línea existente (o se inserta si el contrato viejo no la tenía), nunca se duplica ni se mueve. El H1 y los headers de sección quedan intactos.
+
+En `--update`: regenerar todo salvo `## Decisiones humanas` y `## Politicas de generacion` (preservar verbatim — las políticas solo cambian si el usuario eligió `Revisar` en Fase 3.5) y los `[NEEDS-INPUT]` aún sin respuesta (mantenerlos, no duplicarlos).
+
+## Fase 5 — Referencia en AGENTS.md y CLAUDE.md (saltear con `--no-import`)
+
+Cablear el contrato de forma idempotente:
+
+1. **AGENTS.md** — Antigravity lee `AGENTS.md` como instrucción de proyecto y no expande imports `@archivo`. Si `AGENTS.md` no contiene `.sdd/project.md`, agregar este bloque (o crearlo con el bloque):
+
+   ```markdown
+   <!-- sdd-contract -->
+   Antes de planificar o modificar este proyecto, leer `.sdd/project.md` y respetar sus comandos, verificacion autonoma y limites.
+   ```
+
+   Si ya contiene una referencia equivalente o el bloque `sdd-contract`, no duplicarla.
+2. **CLAUDE.md** — si no contiene `@.sdd/project.md`, agregar esa línea; si no existe, crearlo con solo esa línea. Si ya está, no tocar nada.
+
+## Reporte
+
+```text
+Contrato de autonomia listo: .sdd/project.md
+- comandos: <N> documentados (<K> verificados, <F> fallan, <P> no probados)
+- escalera de verificacion: llega hasta <escalon mas alto>
+- politicas de generacion: <lista con valores | ninguna activa>
+- preguntas hechas: <K> · gaps abiertos: <G>
+- coding-policies: <referenciado|generado|no existe (ofrecido)|--assume: no ofrecido>
+- design-system: <referenciado|generado|no existe (ofrecido)|con sistema (no ofrecido)|--assume: no ofrecido|sin superficies UI>
+- referencia en AGENTS.md: <agregada|ya estaba|--no-import> · CLAUDE.md: <import agregado|ya estaba|--no-import>
+<en corridas sobre contrato existente: mejoras de version agregadas, u ofrecidas y no
+tomadas ("mejoras disponibles" con --assume), una linea>
+<si hay FALLAs o gaps criticos, una linea por cada uno>
+```
+
+<!-- commit-pr-close:start -->
+## Cierre — Commit + PR
+
+Después del reporte, preguntar `Commit + PR (Recomendado)` / `Dejar sin commitear`. Este skill escribe en el checkout principal porque los demás skills leen de ahí lo que genera: es la excepción al principio de que el checkout principal es de solo lectura, y por eso cierra ofreciendo un PR. El cierre usa el `git status --porcelain=v1 -z` que la corrida tomó antes de escribir su primer archivo.
+
+`Commit + PR`:
+
+1. Comprobar la aptitud igual que `/sdd-run`: hay remote y `gh` autenticado, y `## Limites` de `.sdd/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
+2. Revisar cada path que esta corrida escribió. Uno nuevo, ausente en `origin/<default>`, se copia. Uno que ya existía se copia solo si `HEAD:<path>` del checkout es igual a `origin/<default>:<path>` y el path no tenía cambios antes de la corrida; si no, el cierre queda en `Dejar sin commitear` con el motivo, para no meter cambios ajenos en el PR ni revertir lo que `origin/<default>` ya cambió.
+3. `git fetch origin` y crear el worktree con lock, con el branch `chore/sdd-init-<YYYY-MM-DD>` nacido de `origin/<default>`: `git worktree add --lock --reason "sdd-init <YYYY-MM-DD>" ../<repo>-sdd-init-<YYYY-MM-DD> -b chore/sdd-init-<YYYY-MM-DD> origin/<default>`. Si el branch o el path ya existen, usar en los dos el primer sufijo libre (`-2`, `-3`…).
+4. Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR con `gh pr create --base <default> --title "chore(sdd-init): <YYYY-MM-DD>" --body-file <archivo>`.
+5. `git worktree unlock` y después `git worktree remove` del worktree.
+
+Si el push o `gh pr create` fallan después del commit, el cierre queda como commit local sin PR: el reporte nombra el branch, el motivo y el comando para seguir (`git push -u origin <branch>` y el `gh pr create` del paso 4). La copia idéntica que queda en el checkout principal no se toca: después del merge, `/sdd-land` la reconoce como `ya aterrizado` y la resuelve sin preguntar. `Dejar sin commitear` no toca nada. El reporte suma la línea `- cierre: <PR #<n> <url> | commit local sin PR en <branch> (<motivo>) · <comando> | sin commitear (<motivo>)>`. En modo desatendido, si el skill lo tiene, no se pregunta y el cierre queda en `Dejar sin commitear`. Si un skill encadena a otro (`/sdd-init` encadena `/coding-policies` y `/design-system`), el cierre lo ofrece una sola vez el que encadenó, con todos los paths escritos.
+<!-- commit-pr-close:end -->
+
+La pregunta del cierre `Commit + PR` usa `ask_question`, con la recomendada primera.
+
+## MUST DO
+
+- Ejecutar los comandos antes de documentarlos como verificados (salvo `--no-verify`); distinguir siempre `verificado` / `FALLA` / `no probado (<motivo>)`.
+- Matar todo proceso largo que se haya arrancado para verificar.
+- Preguntar solo gaps reales, de a una pregunta, con recomendación.
+- Ofrecer como gate SOLO lo que tiene gate medible en este repo, y escribir cada política activa con su gate concreto; una preferencia sin gate medible entra únicamente como `guia` explícita. El umbral de coverage se elige siempre contra el baseline medido, nunca en el aire.
+- En corridas sobre un contrato existente, cruzarlo contra la checklist de "## Upgrade de contrato" y OFRECER los faltantes — nunca agregarlos sin preguntar, nunca callarlos.
+- Preservar `## Decisiones humanas` y `## Politicas de generacion` en `--update`.
+- Ser idempotente: re-correr sobre un repo ya inicializado actualiza, no duplica (ni el doc ni el import de CLAUDE.md).
+
+## MUST NOT DO
+
+- No correr NADA que mute estado externo o compartido: deploy, publish, migraciones contra DBs remotas, git push. La verificación es local y read-only hacia afuera. La única excepción es el `Commit + PR` del cierre, cuando el usuario lo elige: pushea solo `chore/sdd-init-<YYYY-MM-DD>` y abre su PR.
+- No documentar comandos adivinados por el nombre del script sin leer qué hacen.
+- No preguntar lo que la exploración ya respondió.
+- No escribir secrets ni valores de env vars en el contrato — solo el NOMBRE de la var y de dónde sale.
+- No inferir ni asumir políticas de generación: si el usuario no las eligió (o corrió `--assume`), la sección queda vacía. Y no activar una cuyo gate no se pueda medir hoy (coverage sin comando verificado va a Gaps, no al contrato). Una preferencia sin gate medible jamás se disfraza de gate: o es `guia` explícita o no entra.
+- No pisar un `.sdd/project.md` editado a mano sin preservar `## Decisiones humanas`.
+- No commitear en el checkout principal: el único commit es el de `Commit + PR`, en su worktree, cuando el usuario lo elige.

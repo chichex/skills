@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { inspectReferenceMirrors, syncReferenceMirrors } from "../../scripts/sync-coding-policies-references.mjs";
+import { CODING_POLICIES_HARNESSES, inspectReferenceMirrors, syncReferenceMirrors } from "../../scripts/sync-coding-policies-references.mjs";
 import type { Harness } from "../harness-gate/interaction.ts";
 import {
 	HARNESSES,
@@ -66,6 +66,10 @@ const QUESTION_PHRASES: Record<Harness, [string, string][]> = {
 		['usar `ask_user_question` con `selectionMode: "multiple"`', "«pregunta-multiple»"],
 		["usar `ask_user_question`", "«pregunta»"],
 	],
+	antigravity: [
+		["usar `ask_question` con `is_multi_select: true`", "«pregunta-multiple»"],
+		["usar `ask_question`", "«pregunta»"],
+	],
 };
 
 // Estilo de pregunta propio de cada harness y tools ajenas que no pueden
@@ -86,6 +90,10 @@ const QUESTION_STYLE: Record<Harness, { required: RegExp[]; forbidden: RegExp }>
 	pi: {
 		required: [/usar `ask_user_question`/, /selectionMode: "multiple"/],
 		forbidden: /AskUserQuestion|request_user_input/,
+	},
+	antigravity: {
+		required: [/usar `ask_question`/, /is_multi_select: true/],
+		forbidden: /AskUserQuestion|request_user_input|ask_user_question|texto plano/,
 	},
 };
 
@@ -172,6 +180,7 @@ const AGENTS_LINK_STYLE: Record<Harness, RegExp> = {
 	codex: AGENTS_LINK_BLOCK,
 	opencode: AGENTS_LINK_BLOCK,
 	pi: AGENTS_LINK_BLOCK,
+	antigravity: AGENTS_LINK_BLOCK,
 };
 
 // Template del archivo generado (CA-8).
@@ -795,7 +804,7 @@ test(`${SKILL}: la fuente canonica y sus mirrors estan sincronizados`, async () 
 	assert.deepEqual(inspection.canonicalNames, expected, "la fuente canonica coincide con la tabla de casos");
 	assert.deepEqual(inspection.problems, [], "los mirrors generados no tienen drift");
 	const output = execFileSync(process.execPath, [SYNC_SCRIPT, "--check"], { cwd: REPO_ROOT, encoding: "utf8" });
-	assert.match(output, /8 referencias canónicas sincronizadas en 4 harnesses/);
+	assert.match(output, /8 referencias canónicas sincronizadas en 5 harnesses/);
 	for (const harness of HARNESSES) {
 		const markdown = await skillMarkdown(harness);
 		assert.match(markdown, /la única fuente editable vive en `shared\/coding-policies\/references\/`/);
@@ -1120,7 +1129,7 @@ test("autotest: el sincronizador repara mirrors faltantes, divergentes y obsolet
 		assert.ok(before.problems.length > 0, "el fixture empieza con drift");
 		const synced = await syncReferenceMirrors(root);
 		assert.equal(synced.references, 2);
-		assert.equal(synced.harnesses, 4);
+		assert.equal(synced.harnesses, 5);
 		assert.deepEqual((await inspectReferenceMirrors(root)).problems, []);
 		for (const harness of HARNESSES) {
 			assert.equal(await readFile(join(root, harness, SKILL, "references", "go.md"), "utf8"), "go canonico\n");

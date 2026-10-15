@@ -133,6 +133,7 @@ const PER_CALL_MENTION: Record<Harness, RegExp> = {
 	codex: /hasta 3 preguntas/,
 	opencode: /hasta 4 preguntas por llamada/,
 	pi: /hasta 4 preguntas/,
+	antigravity: /hasta 4 preguntas/,
 };
 
 test("CA-1: ningún grill/SKILL.md habla de un tope de 20 ni de elegir bloque", async () => {

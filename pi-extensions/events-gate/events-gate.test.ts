@@ -30,6 +30,7 @@ const HARNESS_LABELS: Record<Harness, string> = {
 	codex: "Codex",
 	opencode: "opencode",
 	pi: "Pi",
+	antigravity: "Google Antigravity",
 };
 
 const PLACEHOLDERS = ["harness", "event", "issue", "spec", "previous", "grill", "pr", "reason"] as const;
@@ -131,14 +132,14 @@ function missing(text: string, patterns: RegExp[]): string[] {
 // ---------------------------------------------------------------------------
 // CA-8: bloque compartido y literal del harness
 
-test("CA-8: el bloque sdd-events está en los 16 SKILL.md y es idéntico byte a byte", async () => {
+test("CA-8: el bloque sdd-events está en los 20 SKILL.md y es idéntico byte a byte", async () => {
 	const { blocks, problems } = await eventBlocks();
 	const reference = blocks.get("claude/grill/SKILL.md") ?? "";
 	for (const [path, block] of blocks) {
 		if (block !== reference) problems.push(`claude/grill vs ${path}: ${firstDifference(reference, block)}`);
 	}
 	assert.deepEqual(problems, []);
-	assert.equal(blocks.size, 16);
+	assert.equal(blocks.size, 20);
 });
 
 test("CA-8: el bloque trae el puntero al formato, el comando canónico, la regla best-effort y la prohibición del working tree", async () => {
@@ -163,12 +164,12 @@ test("CA-8: el bloque trae el puntero al formato, el comando canónico, la regla
 		const token = PLACEHOLDER_TOKENS[placeholder];
 		assert.equal(command.split(token).length - 1, 1, `${token} aparece una sola vez en el comando`);
 	}
-	assert.doesNotMatch(block, /`(?:claude|codex|opencode|pi)`|harness='(?:claude|codex|opencode|pi)'/, "el literal del harness no vive en el bloque");
+	assert.doesNotMatch(block, /`(?:claude|codex|opencode|pi|antigravity)`|harness='(?:claude|codex|opencode|pi|antigravity)'/, "el literal del harness no vive en el bloque");
 });
 
 test("CA-8: el literal del harness va fuera del bloque, en una sola línea por archivo", async () => {
 	const problems: string[] = [];
-	const linePattern = /^En (Claude Code|Codex|opencode|Pi), `<harness>` es `([a-z]+)`\.$/gm;
+	const linePattern = /^En (Claude Code|Codex|opencode|Pi|Google Antigravity), `<harness>` es `([a-z]+)`\.$/gm;
 	for (const skill of SKILLS) {
 		for (const harness of HARNESSES) {
 			const path = `${harness}/${skill}/SKILL.md`;
@@ -192,7 +193,7 @@ test("CA-8: el literal del harness va fuera del bloque, en una sola línea por a
 
 test("CA-9: grill registra grill.paused al pausar o guardar y grill.finalized al persistir el handoff final", async () => {
 	const problems: string[] = [];
-	for (const harness of ["claude", "codex", "opencode"] as const) {
+	for (const harness of ["claude", "codex", "opencode", "antigravity"] as const) {
 		const markdown = await skillFile(harness, "grill");
 		const persistence = section(markdown, /^Persistencia y reanudación$/);
 		const closing = section(markdown, /^Cierre$/);
@@ -221,7 +222,7 @@ test("CA-9: grill registra grill.paused al pausar o guardar y grill.finalized al
 
 test("CA-9: sdd-spec registra spec.published con receipt, spec.approved en el menú y spec.superseded por predecesora", async () => {
 	const problems: string[] = [];
-	for (const harness of ["claude", "codex", "opencode"] as const) {
+	for (const harness of ["claude", "codex", "opencode", "antigravity"] as const) {
 		const events = section(await skillFile(harness, "sdd-spec"), /^Log de eventos$/);
 		problems.push(...missing(events, [
 			/receipt de cada publicación/,

@@ -388,6 +388,12 @@ test("CA-2: la Fase 1 de sdd-init releva DISEÑO por superficie con el censo com
 			for (const pattern of ["node_modules", "react-native-web", "libs.versions.toml", "globals.css", "tailwind.config", "components/ui/", ".storybook/", "design-sync/README.md", "defaults de scaffold"]) {
 				if (!prompt.includes(pattern)) problems.push(`${path}: el Explore «harness del proyecto» no recibe «${pattern}» del censo`);
 			}
+		} else if (harness === "antigravity") {
+			const prompt = phase1.match(/Role: "Harness Explorer"[\s\S]*?Prompt: \|[\s\S]*?(?=\n```)/)?.[0] ?? "";
+			if (!/^ {2}4\. DISEÑO:/m.test(prompt)) problems.push(`${path}: el subagente «Harness Explorer» no pide DISEÑO`);
+			for (const pattern of ["node_modules", "react-native-web", "libs.versions.toml", "globals.css", "tailwind.config", "components/ui/", ".storybook/", "design-sync/README.md", "defaults de scaffold"]) {
+				if (!prompt.includes(pattern)) problems.push(`${path}: el subagente «Harness Explorer» no recibe «${pattern}» del censo`);
+			}
 		} else if (!/^1\. \*\*Harness\*\*:[^\n]*DISEÑO/m.test(phase1)) {
 			problems.push(`${path}: la lente **Harness** no pide DISEÑO`);
 		}
@@ -428,7 +434,7 @@ test("CA-5: el contrato de este repo gana ## Diseño sin superficies, la fila de
 	assert.match(section(contract, /^## Diseño$/), /^## Diseño\nSin superficies UI\.\n/);
 	const commands = section(contract, /^## Comandos$/);
 	assert.match(commands, /^\| gate de doctrina de diseño \| `node --test pi-extensions\/design-gate\/design-gate\.test\.ts` \|/m);
-	assert.match(commands, /^\| lint de frontmatter \|[^\n]*\| 48 skills OK;/m);
+	assert.match(commands, /^\| lint de frontmatter \|[^\n]*\| 60 skills OK;/m);
 	assert.match(contract, /12 skills de Pi/);
 	assert.doesNotMatch(contract, /13 skills de Pi/);
 	assert.match(contract, /RPC con 22 comandos[^\n]*`skill:design-system`/);

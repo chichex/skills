@@ -2,7 +2,7 @@
 #
 # Linter de frontmatter para los skills del repo.
 #
-# Para cada skill en claude/, codex/, opencode/ y pi/ verifica que:
+# Para cada skill en claude/, codex/, opencode/, pi/ y antigravity/ verifica que:
 #   1. exista SKILL.md;
 #   2. el archivo abra con frontmatter YAML (--- en la primera línea, cerrado
 #      con otro ---);
@@ -16,7 +16,7 @@
 set -u
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HARNESSES=(claude codex opencode pi)
+HARNESSES=(claude codex opencode pi antigravity)
 
 errors=0
 checked=0
