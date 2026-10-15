@@ -366,12 +366,10 @@ export type NewWorkRoute =
 	| "split-too-large"
 	| "grill"
 	| "spec"
-	| "quick-run"
 	| "incoherent-selection"
 	| "combined-too-large"
 	| "join-grill"
-	| "join-spec"
-	| "join-quick-run";
+	| "join-spec";
 
 export type ExistingWorkRoute =
 	| "resume-grill"
@@ -384,7 +382,7 @@ export type ExistingWorkRoute =
 	| "artifact-conflict";
 
 export type WorkflowRoute = NewWorkRoute | ExistingWorkRoute;
-export type WorkflowStage = "grill" | "spec" | "quick-run" | "run-existing-spec";
+export type WorkflowStage = "grill" | "spec" | "run-existing-spec";
 export type WorkflowMode = "new" | "resume" | "update" | "from-grill";
 
 export interface EvidenceRef {
@@ -472,9 +470,6 @@ const STOP_CLASSIFICATIONS = new Set<NewWorkRoute>([
 function dispatchForRoute(route: WorkflowRoute): Dispatch {
 	if (route === "grill" || route === "join-grill") return { outcome: "start", stage: "grill", mode: "new" };
 	if (route === "spec" || route === "join-spec") return { outcome: "start", stage: "spec", mode: "new" };
-	if (route === "quick-run" || route === "join-quick-run") {
-		return { outcome: "start", stage: "quick-run", mode: "new" };
-	}
 	if (route === "resume-grill") return { outcome: "start", stage: "grill", mode: "resume" };
 	if (route === "spec-from-grill") return { outcome: "start", stage: "spec", mode: "from-grill" };
 	if (route === "update-existing-spec" || route === "audit-existing-spec") {

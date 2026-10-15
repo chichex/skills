@@ -25,12 +25,10 @@ const NEW_WORK_ROUTES = [
 	"split-too-large",
 	"grill",
 	"spec",
-	"quick-run",
 	"incoherent-selection",
 	"combined-too-large",
 	"join-grill",
 	"join-spec",
-	"join-quick-run",
 ] as const satisfies readonly NewWorkRoute[];
 
 const EXISTING_WORK_ROUTES = [
@@ -45,7 +43,7 @@ const EXISTING_WORK_ROUTES = [
 ] as const;
 
 export const WORKFLOW_ROUTES = [...NEW_WORK_ROUTES, ...EXISTING_WORK_ROUTES] as const satisfies readonly WorkflowRoute[];
-export const WORKFLOW_STAGES = ["grill", "spec", "quick-run", "run-existing-spec"] as const satisfies readonly WorkflowStage[];
+export const WORKFLOW_STAGES = ["grill", "spec", "run-existing-spec"] as const satisfies readonly WorkflowStage[];
 export const WORKFLOW_MODES = ["new", "resume", "update", "from-grill"] as const satisfies readonly WorkflowMode[];
 
 const ARTIFACT_LOCATIONS = ["local", "issue", "handoff", "snapshot"] as const;

@@ -15,12 +15,12 @@ function startResolution() {
 	return {
 		version: 1,
 		outcome: "start",
-		code: "quick-run",
-		recommendedClassification: "quick-run",
-		fallbackClassification: "spec",
-		recommendedRoute: "quick-run",
-		selectedRoute: "quick-run",
-		stage: "quick-run",
+		code: "spec",
+		recommendedClassification: "spec",
+		fallbackClassification: "grill",
+		recommendedRoute: "spec",
+		selectedRoute: "spec",
+		stage: "spec",
 		mode: "new",
 		repo: "chichex/skills",
 		cwd: "/workspace/skills",
@@ -63,8 +63,8 @@ test("validates and canonically clones a complete start resolution without mergi
 	assert.deepEqual(result.value, input);
 	assert.notEqual(result.value, input);
 	assert.notEqual(result.value.sources, input.sources);
-	assert.equal(result.value.recommendedRoute, "quick-run");
-	assert.equal(result.value.selectedRoute, "quick-run");
+	assert.equal(result.value.recommendedRoute, "spec");
+	assert.equal(result.value.selectedRoute, "spec");
 	assert.deepEqual(JSON.parse(JSON.stringify(result.value)), result.value);
 });
 
@@ -120,6 +120,39 @@ test("rejects missing, extra, invalid enum, and malformed nested protocol fields
 		if (result.ok) continue;
 		assert.ok(result.diagnostics.some((diagnostic) => diagnostic.path === fixture.path), fixture.name);
 	}
+});
+
+test("terminal tool schema offers exactly the supported routes and stages", () => {
+	const properties = (createSubmitWorkflowResolutionTool().parameters as {
+		properties: Record<string, { anyOf?: Array<{ enum?: string[] }> }>;
+	}).properties;
+	const enumOf = (field: string) => properties[field]?.anyOf?.[0]?.enum;
+	const newWork = [
+		"blocked-dependency",
+		"split-too-large",
+		"grill",
+		"spec",
+		"incoherent-selection",
+		"combined-too-large",
+		"join-grill",
+		"join-spec",
+	];
+	const existingWork = [
+		"resume-grill",
+		"spec-from-grill",
+		"update-existing-spec",
+		"run-existing-spec",
+		"already-implemented",
+		"superseded-artifact",
+		"audit-existing-spec",
+		"artifact-conflict",
+	];
+
+	assert.deepEqual(enumOf("stage"), ["grill", "spec", "run-existing-spec"]);
+	assert.deepEqual(enumOf("recommendedClassification"), newWork);
+	assert.deepEqual(enumOf("fallbackClassification"), newWork);
+	assert.deepEqual(enumOf("recommendedRoute"), [...newWork, ...existingWork]);
+	assert.deepEqual(enumOf("selectedRoute"), [...newWork, ...existingWork]);
 });
 
 test("registerable terminal tool exposes a strict complete schema and returns the validated value", async () => {

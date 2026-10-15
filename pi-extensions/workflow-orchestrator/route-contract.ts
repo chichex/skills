@@ -10,8 +10,6 @@ export const ACTIONABLE_ROUTE_CONTRACT = {
 	"join-grill": { stage: "grill", mode: "new" },
 	spec: { stage: "spec", mode: "new" },
 	"join-spec": { stage: "spec", mode: "new" },
-	"quick-run": { stage: "quick-run", mode: "new" },
-	"join-quick-run": { stage: "quick-run", mode: "new" },
 	"resume-grill": { stage: "grill", mode: "resume" },
 	"spec-from-grill": { stage: "spec", mode: "from-grill" },
 	"update-existing-spec": { stage: "spec", mode: "update" },
