@@ -23,6 +23,7 @@ export const SDD_EVENT_NAMES = [
 	"grill.paused",
 	"grill.finalized",
 	"spec.published",
+	"spec.moved",
 	"spec.approved",
 	"spec.superseded",
 	"run.started",
@@ -42,13 +43,15 @@ export interface SddEvent {
 	event: SddEventName;
 	issue: IssueReference | null;
 	spec: string | null;
+	/** Identidad anterior de la spec: solo en `spec.moved`, `null` en el resto. */
+	previous: string | null;
 	grill: string | null;
 	pr: number[];
 	reason: SddEventReason | null;
 }
 
 /** Lo que aporta quien produce el evento; `v`, `ts` y `harness` los sella el registro. */
-export type SddEventFields = Pick<SddEvent, "event" | "issue" | "spec" | "grill" | "pr" | "reason">;
+export type SddEventFields = Pick<SddEvent, "event" | "issue" | "spec" | "previous" | "grill" | "pr" | "reason">;
 
 export type SddEventDiagnosticCode =
 	| "invalid-json"
@@ -82,7 +85,7 @@ export type SddEventParseResult =
 
 export type SddEventAppendResult = { ok: true; path: string } | { ok: false; message: string };
 
-export const SDD_EVENT_KEYS = ["v", "ts", "harness", "event", "issue", "spec", "grill", "pr", "reason"] as const;
+export const SDD_EVENT_KEYS = ["v", "ts", "harness", "event", "issue", "spec", "previous", "grill", "pr", "reason"] as const;
 /** Tope de una línea, contando su LF final. */
 export const SDD_EVENT_MAX_LINE_BYTES = 1024;
 export const SDD_EVENTS_FILE = "events.jsonl";
@@ -123,6 +126,12 @@ function invariantProblem(event: SddEvent): string | null {
 	} else if (event.reason !== null) {
 		return `${event.event} requires reason=none`;
 	}
+	if (event.event === "spec.moved") {
+		if (event.spec === null) return "spec.moved requires spec";
+		if (event.previous === null) return "spec.moved requires previous";
+		return event.pr.length === 0 ? null : "spec.moved requires pr=[]";
+	}
+	if (event.previous !== null) return `${event.event} requires previous=none`;
 	if (event.event === "grill.paused" || event.event === "grill.finalized") {
 		if (event.grill === null) return `${event.event} requires grill`;
 		return event.pr.length === 0 ? null : `${event.event} requires pr=[]`;
@@ -150,7 +159,7 @@ function eventProblem(event: Record<string, unknown>): SddEventDiagnostic | null
 	if (event.issue !== null && !isIssueReference(event.issue)) {
 		return diagnostic("invalid-issue", `Invalid issue: ${String(event.issue)}`);
 	}
-	for (const key of ["spec", "grill"] as const) {
+	for (const key of ["spec", "previous", "grill"] as const) {
 		if (event[key] !== null && !isReference(event[key])) {
 			return diagnostic("invalid-reference", `Invalid ${key} reference: ${String(event[key])}`);
 		}
@@ -163,12 +172,15 @@ function eventProblem(event: Record<string, unknown>): SddEventDiagnostic | null
 	return invariant === null ? null : diagnostic("invariant-violation", invariant);
 }
 
-function keyProblem(keys: readonly string[]): SddEventDiagnostic | null {
+// Claves faltantes, extra y, si `ordered`, fuera de orden. Un objeto del
+// modelo no tiene orden de claves: el serializer lo saltea y la línea sale
+// siempre en el orden canónico.
+function keyProblem(keys: readonly string[], ordered: boolean): SddEventDiagnostic | null {
 	const missing = SDD_EVENT_KEYS.find((key) => !keys.includes(key));
 	if (missing !== undefined) return diagnostic("missing-key", `Missing key: ${missing}`);
 	const extra = keys.find((key) => !(SDD_EVENT_KEYS as readonly string[]).includes(key));
 	if (extra !== undefined) return diagnostic("extra-key", `Unexpected key: ${extra}`);
-	if (keys.some((key, index) => key !== SDD_EVENT_KEYS[index])) {
+	if (ordered && keys.some((key, index) => key !== SDD_EVENT_KEYS[index])) {
 		return diagnostic("key-order", "Keys are out of order");
 	}
 	return null;
@@ -183,16 +195,12 @@ export function serializeSddEvent(event: SddEvent): SddEventSerialization {
 	if (!isRecord(event)) return failure(diagnostic("invalid-json", "An SDD event must be an object"));
 	if (!Object.hasOwn(event, "v")) return failure(diagnostic("missing-key", "Missing key: v"));
 	if (event.v !== 1) return failure(diagnostic("unsupported-version", `Unsupported version: ${String(event.v)}`));
-	// Un objeto del modelo no tiene orden de claves: la línea siempre sale en el orden canónico.
-	const keys = Object.keys(event);
-	const missing = SDD_EVENT_KEYS.find((key) => !keys.includes(key));
-	if (missing !== undefined) return failure(diagnostic("missing-key", `Missing key: ${missing}`));
-	const extra = keys.find((key) => !(SDD_EVENT_KEYS as readonly string[]).includes(key));
-	if (extra !== undefined) return failure(diagnostic("extra-key", `Unexpected key: ${extra}`));
+	const keyError = keyProblem(Object.keys(event), false);
+	if (keyError) return failure(keyError);
 	const problem = eventProblem(event as unknown as Record<string, unknown>);
 	if (problem) return failure(problem);
 
-	const line = `{"v":1,"ts":"${event.ts}","harness":"${event.harness}","event":"${event.event}","issue":"${event.issue ?? "none"}","spec":"${wireReference(event.spec)}","grill":"${wireReference(event.grill)}","pr":[${event.pr.join(",")}],"reason":"${event.reason ?? "none"}"}`;
+	const line = `{"v":1,"ts":"${event.ts}","harness":"${event.harness}","event":"${event.event}","issue":"${event.issue ?? "none"}","spec":"${wireReference(event.spec)}","previous":"${wireReference(event.previous)}","grill":"${wireReference(event.grill)}","pr":[${event.pr.join(",")}],"reason":"${event.reason ?? "none"}"}`;
 	if (byteLength(line) + 1 > SDD_EVENT_MAX_LINE_BYTES) {
 		return failure(diagnostic("line-too-long", `The line exceeds ${SDD_EVENT_MAX_LINE_BYTES} bytes with its LF`));
 	}
@@ -266,9 +274,6 @@ function parseLine(line: string): SddEventParseResult {
 		return invalid("invalid-json", "The line is not valid JSON");
 	}
 	if (!isRecord(value)) return invalid("invalid-json", "The line is not a JSON object");
-	const keys = topLevelKeys(line);
-	const duplicate = keys.find((key, index) => keys.indexOf(key) !== index);
-	if (duplicate !== undefined) return invalid("duplicate-key", `Repeated key: ${duplicate}`);
 	if (!Object.hasOwn(value, "v")) return invalid("missing-key", "Missing key: v");
 	if (value.v !== 1) {
 		return {
@@ -279,13 +284,21 @@ function parseLine(line: string): SddEventParseResult {
 	if (byteLength(line) + 1 > SDD_EVENT_MAX_LINE_BYTES) {
 		return invalid("line-too-long", `The line exceeds ${SDD_EVENT_MAX_LINE_BYTES} bytes with its LF`);
 	}
-	const keyError = keyProblem(keys);
+	// Recién acá, con v=1 y la línea acotada: las claves de otra versión no se
+	// juzgan, y el escaneo corre sobre a lo sumo 1024 bytes.
+	const keys = topLevelKeys(line);
+	const seen = new Set<string>();
+	const duplicate = keys.find((key) => seen.has(key) || (seen.add(key), false));
+	if (duplicate !== undefined) return invalid("duplicate-key", `Repeated key: ${duplicate}`);
+	const keyError = keyProblem(keys, true);
 	if (keyError) return { kind: "invalid", diagnostics: [keyError] };
 
 	const issue = wireNullable(value.issue);
 	if (!issue.ok) return invalid("invalid-issue", "issue must be a string");
 	const spec = wireRef(value.spec);
 	if (!spec.ok) return invalid("invalid-reference", `Invalid spec reference: ${JSON.stringify(value.spec)}`);
+	const previous = wireRef(value.previous);
+	if (!previous.ok) return invalid("invalid-reference", `Invalid previous reference: ${JSON.stringify(value.previous)}`);
 	const grill = wireRef(value.grill);
 	if (!grill.ok) return invalid("invalid-reference", `Invalid grill reference: ${JSON.stringify(value.grill)}`);
 	const reason = wireNullable(value.reason);
@@ -298,13 +311,12 @@ function parseLine(line: string): SddEventParseResult {
 		event: value.event,
 		issue: issue.value,
 		spec: spec.value,
+		previous: previous.value,
 		grill: grill.value,
 		pr: value.pr,
 		reason: reason.value,
 	} as unknown as SddEvent;
-	const problem = eventProblem(event as unknown as Record<string, unknown>);
-	if (problem) return { kind: "invalid", diagnostics: [problem] };
-
+	// El serializer valida el evento (eventProblem) y devuelve su diagnóstico.
 	const canonical = serializeSddEvent(event);
 	if (!canonical.ok) return { kind: "invalid", diagnostics: canonical.diagnostics };
 	if (canonical.line !== line) return invalid("non-canonical", "The line is not in its canonical byte form");
@@ -329,25 +341,19 @@ function oneLine(text: string): string {
 	return text.replace(/\s+/g, " ").trim();
 }
 
-/**
- * Agrega una línea a `<git-common-dir>/sdd/events.jsonl` de `projectRoot` con
- * un solo write en modo append (O_APPEND), sin lock. Nunca lanza: fuera de git,
- * sin permiso o con `events.jsonl` como directorio devuelve `ok: false` y no
- * escribe en ningún otro lugar.
- */
-export async function appendSddEvent(
-	projectRoot: string,
-	event: SddEvent,
-	options: { runGit?: GitRunner } = {},
-): Promise<SddEventAppendResult> {
+function notGitMessage(projectRoot: string): string {
+	return `no <git-common-dir> for ${projectRoot}: not a Git repository`;
+}
+
+// Un solo write en modo append (O_APPEND) sobre `<commonDir>/sdd/events.jsonl`,
+// con el common-dir ya resuelto. Nunca lanza.
+async function appendToCommonDir(commonDir: string, event: SddEvent): Promise<SddEventAppendResult> {
 	try {
 		const serialized = serializeSddEvent(event);
 		if (!serialized.ok) {
 			const [first] = serialized.diagnostics;
 			return { ok: false, message: `invalid event (${first?.code}): ${first?.message}` };
 		}
-		const commonDir = await resolveGitCommonDir(projectRoot, options.runGit);
-		if (commonDir === null) return { ok: false, message: `no <git-common-dir> for ${projectRoot}: not a Git repository` };
 		const directory = join(commonDir, "sdd");
 		await mkdir(directory, { recursive: true });
 		const path = join(directory, SDD_EVENTS_FILE);
@@ -366,6 +372,22 @@ export async function appendSddEvent(
 }
 
 /**
+ * Agrega una línea a `<git-common-dir>/sdd/events.jsonl` de `projectRoot` con
+ * un solo write en modo append (O_APPEND), sin lock. Nunca lanza: fuera de git,
+ * sin permiso o con `events.jsonl` como directorio devuelve `ok: false` y no
+ * escribe en ningún otro lugar.
+ */
+export async function appendSddEvent(
+	projectRoot: string,
+	event: SddEvent,
+	options: { runGit?: GitRunner } = {},
+): Promise<SddEventAppendResult> {
+	const commonDir = await resolveGitCommonDir(projectRoot, options.runGit);
+	if (commonDir === null) return { ok: false, message: notGitMessage(projectRoot) };
+	return appendToCommonDir(commonDir, event);
+}
+
+/**
  * Registra eventos best-effort: sella `v`, `ts` y `harness` y los agrega en
  * orden. Devuelve `null` si todos se agregaron, o un aviso de una sola línea
  * para sumar al resultado de quien los produjo, que nunca falla por esto.
@@ -376,14 +398,17 @@ export async function recordSddEvents(
 	events: SddEventFields[],
 	options: { now?: () => Date; runGit?: GitRunner } = {},
 ): Promise<string | null> {
+	if (events.length === 0) return null;
 	const now = options.now ?? (() => new Date());
+	// Un solo `git rev-parse` por lote: fuera de git, un único diagnóstico.
+	const commonDir = await resolveGitCommonDir(projectRoot, options.runGit);
 	const failures: string[] = [];
 	for (const fields of events) {
-		const outcome = await appendSddEvent(
-			projectRoot,
-			{ v: 1, ts: sddEventTimestamp(now()), harness, ...fields },
-			{ runGit: options.runGit },
-		);
+		if (commonDir === null) {
+			failures.push(notGitMessage(projectRoot));
+			continue;
+		}
+		const outcome = await appendToCommonDir(commonDir, { v: 1, ts: sddEventTimestamp(now()), harness, ...fields });
 		if (!outcome.ok) failures.push(outcome.message);
 	}
 	if (failures.length === 0) return null;

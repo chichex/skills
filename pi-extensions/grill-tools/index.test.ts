@@ -1387,6 +1387,7 @@ test("#93 CA-4: grill_session pause y finalize agregan grill.paused y grill.fina
 		event: "grill.paused",
 		issue: pausedMarker.metadata.issue,
 		spec: null,
+		previous: null,
 		grill: pausedMarker.metadata.grill,
 		pr: [],
 		reason: null,
@@ -1410,6 +1411,7 @@ test("#93 CA-4: grill_session pause y finalize agregan grill.paused y grill.fina
 		event: "grill.finalized",
 		issue: finalizedMarker.metadata.issue,
 		spec: null,
+		previous: null,
 		grill: finalizedMarker.metadata.grill,
 		pr: [],
 		reason: null,
@@ -1545,7 +1547,7 @@ test("#93 CA-5: persist_sdd_spec agrega spec.published en draft, spec.approved a
 	];
 	assert.deepEqual(
 		loggedEvents(common).map(withoutTs),
-		expected.map(([event, spec, grill]) => ({ v: 1, harness: "pi", event, issue: null, spec, grill, pr: [], reason: null })),
+		expected.map(([event, spec, grill]) => ({ v: 1, harness: "pi", event, issue: null, spec, previous: null, grill, pr: [], reason: null })),
 	);
 
 	const blocked = await persist("gate-falla", "assume", [successor("Eventos", "approved", ".sdd/specs/eventos.md", "grill-x")]);
@@ -1598,7 +1600,90 @@ test("#93 CA-5: una spec publicada en un issue se registra con spec=#NN aunque t
 		execHandler = async (..._args: any[]) => ({ code: 0, stdout: "", stderr: "" });
 	}
 	assert.deepEqual(loggedEvents(common).map(withoutTs), [
-		{ v: 1, harness: "pi", event: "spec.approved", issue: "#33", spec: "#33", grill: null, pr: [], reason: null },
+		{ v: 1, harness: "pi", event: "spec.approved", issue: "#33", spec: "#33", previous: null, grill: null, pr: [], reason: null },
+	]);
+});
+
+test("#93 (review #94): spec.approved sale solo en la transición; republicar una spec ya approved no lo repite", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("persist_sdd_spec");
+	assert.ok(tool);
+	const { base, main, common } = repoWithLinkedWorktree("events-approved-once");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const persist = (callId: string, mode: "interactive" | "assume", state: "draft" | "approved") => tool.execute(
+		callId,
+		{
+			mode,
+			repository: "local/repo",
+			projectPath: main,
+			documents: [{ id: "successor", role: "successor", markdown: lifecycleSpec("Una vez", state, "none"), destinations: [{ kind: "local", path: ".sdd/specs/una-vez.md" }] }],
+		},
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	const steps: Array<[string, "interactive" | "assume", "draft" | "approved"]> = [
+		["aprobada", "interactive", "approved"],
+		["republicada-aprobada", "interactive", "approved"],
+		["vuelve-a-draft", "assume", "draft"],
+		["aprobada-otra-vez", "interactive", "approved"],
+	];
+	for (const [callId, mode, state] of steps) {
+		const result = await persist(callId, mode, state);
+		assert.equal(result.details.ok, true, `${callId}: ${JSON.stringify(result.details.diagnostics)}`);
+		assert.deepEqual(warningLines(result.content[0].text), [], `${callId}: sin aviso`);
+	}
+	assert.deepEqual(loggedEvents(common).map((event) => event.event), ["spec.approved", "spec.published", "spec.approved"]);
+});
+
+test("#93 (review #94): llevar a issue una spec local registra spec.moved con la identidad anterior y después la publicación con #NN", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("persist_sdd_spec");
+	assert.ok(tool);
+	const { base, main, common } = repoWithLinkedWorktree("events-moved");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	let remoteBody = "";
+	execHandler = async (command: string, args: string[]) => {
+		if (command === "git" && args[0] === "rev-parse") return { code: 0, stdout: `${main}\n`, stderr: "" };
+		if (command === "git" && args[0] === "config") return { code: 0, stdout: "git@github.com:chichex/skills.git\n", stderr: "" };
+		if (command === "gh" && args[0] === "issue" && args[1] === "create") {
+			remoteBody = readFileSync(args[args.indexOf("--body-file") + 1]!, "utf8");
+			return { code: 0, stdout: "https://github.com/chichex/skills/issues/57\n", stderr: "" };
+		}
+		if (command === "gh" && args[0] === "issue" && args[1] === "view") {
+			return { code: 0, stdout: JSON.stringify({ body: remoteBody }), stderr: "" };
+		}
+		if (command === "gh" && args[0] === "issue" && args[1] === "edit") {
+			remoteBody = readFileSync(args[args.indexOf("--body-file") + 1]!, "utf8");
+			return { code: 0, stdout: "", stderr: "" };
+		}
+		throw new Error(`unexpected command: ${command} ${args.join(" ")}`);
+	};
+	const local = { kind: "local", path: ".sdd/specs/llevar.md" };
+	const publish = (callId: string, destinations: unknown[]) => tool.execute(
+		callId,
+		{
+			mode: "assume",
+			repository: "chichex/skills",
+			projectPath: main,
+			documents: [{ id: "successor", role: "successor", markdown: lifecycleSpec("Llevar", "draft", "grill-l"), grill: "grill-l", destinations }],
+		},
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	try {
+		const first = await publish("local", [local]);
+		assert.equal(first.details.ok, true, JSON.stringify(first.details.diagnostics));
+		const moved = await publish("llevar-a-issue", [local, { kind: "new-issue", title: "Llevar" }]);
+		assert.equal(moved.details.ok, true, JSON.stringify(moved.details.diagnostics));
+		assert.match(remoteBody, /issue=#57/);
+	} finally {
+		execHandler = async (..._args: any[]) => ({ code: 0, stdout: "", stderr: "" });
+	}
+	const base_ = { v: 1, harness: "pi", issue: null, grill: "grill-l", pr: [], reason: null };
+	assert.deepEqual(loggedEvents(common).map(withoutTs), [
+		{ ...base_, event: "spec.published", spec: ".sdd/specs/llevar.md", previous: null },
+		{ ...base_, event: "spec.moved", issue: "#57", spec: "#57", previous: ".sdd/specs/llevar.md" },
+		{ ...base_, event: "spec.published", issue: "#57", spec: "#57", previous: null },
 	]);
 });
 

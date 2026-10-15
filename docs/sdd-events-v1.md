@@ -32,9 +32,9 @@ The log is UTF-8 text. Each event is exactly one line: one JSON object
 followed by a single `LF` (`0x0A`). A line, including its terminating `LF`,
 MUST be at most 1024 bytes. Lines contain no `CR` and no other `LF`.
 
-Every event has exactly these nine keys, each exactly once and in this order:
-`v`, `ts`, `harness`, `event`, `issue`, `spec`, `grill`, `pr`, `reason`. There
-is no optional key: a key that does not apply carries `none` (or `[]` for
+Every event has exactly these ten keys, each exactly once and in this order:
+`v`, `ts`, `harness`, `event`, `issue`, `spec`, `previous`, `grill`, `pr`, `reason`.
+There is no optional key: a key that does not apply carries `none` (or `[]` for
 `pr`). Extra keys, missing keys, repeated keys, and reordered keys make a line
 invalid.
 
@@ -42,14 +42,16 @@ The serialization is canonical and has a single byte form, with no
 insignificant whitespace:
 
 ```text
-{"v":1,"ts":"<ts>","harness":"<harness>","event":"<event>","issue":"<issue>","spec":"<ref|none>","grill":"<ref|none>","pr":[<n>,<n>],"reason":"<reason>"}
+{"v":1,"ts":"<ts>","harness":"<harness>","event":"<event>","issue":"<issue>","spec":"<ref|none>","previous":"<ref|none>","grill":"<ref|none>","pr":[<n>,<n>],"reason":"<reason>"}
 ```
 
 Every string value is printable ASCII without `"` or `\`, so a line never needs
-a JSON escape and can be written with `printf`. Numbers are decimal integers
-with no sign, leading zero, fraction, or exponent. A line that is valid JSON
-with the right keys and values but whose bytes differ from the canonical form
-(extra spaces, escapes such as `A`, `1.0`) is invalid.
+a JSON escape and can be written with `printf '%s\n' "$line"`: the line goes as
+an argument, never as the format, because references carry `%HH` sequences
+that a format would interpret. Numbers are decimal integers with no sign,
+leading zero, fraction, or exponent. A line that is valid JSON with the right
+keys and values but whose bytes differ from the canonical form (extra spaces,
+escapes such as `\u0041`, `1.0`) is invalid.
 
 ## Field semantics
 
@@ -63,11 +65,19 @@ with the right keys and values but whose bytes differ from the canonical form
 - `event` MUST be one of the catalog below.
 - `issue` MUST be `none`, `#NN`, or `owner/repo#NN`, with the same grammar as
   the `issue` field of `SDD-Tracking` v1: the source issue of the artifact.
+  `#NN` is relative to the repository of the clone: a consumer that correlates
+  events by issue resolves `#NN` against that repository, so in a clone of
+  `owner/repo`, `#93` and `owner/repo#93` name the same issue.
 - `spec` is a `<ref>` or `none`: the identity of the spec. It is the issue
   reference (`#NN` or `owner/repo#NN`) when the spec lives in an issue body,
   and otherwise its logical path `.sdd/specs/<slug>.md` — the same convention as
   `superseded-by`. When a spec has both a local copy and an issue copy, the
-  issue reference wins.
+  issue reference wins. The identity therefore changes when a spec published
+  only under its logical path is carried to an issue; `spec.moved` links both
+  identities.
+- `previous` is a `<ref>` or `none`: in `spec.moved`, the identity the spec had
+  before (its logical path `.sdd/specs/<slug>.md`), with `spec` carrying the
+  new one. It is `none` in every other event.
 - `grill` is a `<ref>` or `none`: the logical grill id, the same value as the
   `grill` field of the handoff marker.
 - `pr` is a JSON array of positive integers: the pull request numbers of the
@@ -77,7 +87,7 @@ with the right keys and values but whose bytes differ from the canonical form
 
 ### Reference encoding
 
-`spec` and `grill` use exactly the `<ref>` encoding of `SDD-Tracking` v1
+`spec`, `previous`, and `grill` use exactly the `<ref>` encoding of `SDD-Tracking` v1
 ("Reference encoding"): the UTF-8 bytes of the value, with only bytes
 representing `[A-Za-z0-9._~-]` left literal and every other byte encoded as
 `%HH` with uppercase hexadecimal digits. Non-canonical encodings are invalid.
@@ -92,7 +102,8 @@ The token `none` is the null sentinel; an actual reference MUST NOT decode to
 | `grill.paused` | a grill is paused or saved for later | `grill` ≠ `none`; `pr=[]` |
 | `grill.finalized` | the final grill handoff is persisted | `grill` ≠ `none`; `pr=[]` |
 | `spec.published` | a spec is published in `draft` (every publication with a receipt, including a republication and a return to `draft`) | `spec` ≠ `none`; `pr=[]` |
-| `spec.approved` | a spec transitions to `approved` | `spec` ≠ `none`; `pr=[]` |
+| `spec.moved` | a spec published only under its logical path is carried to an issue, so its identity changes from `previous` (`.sdd/specs/<slug>.md`) to `spec` (`#NN`); emitted before the publication event of the same publication | `spec` ≠ `none`; `previous` ≠ `none`; `pr=[]` |
+| `spec.approved` | a spec transitions to `approved`: its persisted state before the publication was not `approved`. Republishing a spec that is already `approved` emits nothing | `spec` ≠ `none`; `pr=[]` |
 | `spec.superseded` | a predecessor spec is superseded (one event per predecessor) | `spec` ≠ `none`; `pr=[]` |
 | `run.started` | a run created its worktree and branch, or its stack | `spec` ≠ `none`; `pr=[]` |
 | `run.pr-opened` | a run opened its pull request, or submitted its stack | `spec` ≠ `none`; `pr` not empty, every PR of the stack in layer order |
@@ -100,7 +111,8 @@ The token `none` is the null sentinel; an actual reference MUST NOT decode to
 | `run.failed` | a run aborts after `run.started` (`aborted`) or is interrupted (`interrupted`) | `spec` ≠ `none`; `pr=[]`; `reason` is `aborted` or `interrupted` |
 | `land.merged` | a merge of one pull request was verified | `pr` has exactly one number |
 
-In every event except `run.failed`, `reason` MUST be `none`. A line that
+In every event except `run.failed`, `reason` MUST be `none`.
+In every event except `spec.moved`, `previous` MUST be `none`. A line that
 violates an invariant is invalid.
 
 ## Appending
@@ -142,17 +154,18 @@ detect drift.
 
 <!-- conformance-vectors:start -->
 ```jsonl
-{"v":1,"ts":"2026-10-14T12:00:00Z","harness":"claude","event":"grill.paused","issue":"none","spec":"none","grill":"2026-10-14-visualizacion-harness","pr":[],"reason":"none"}
-{"v":1,"ts":"2026-10-14T12:30:05Z","harness":"pi","event":"grill.finalized","issue":"owner/repo#9","spec":"none","grill":"session%209%2F%C3%A1","pr":[],"reason":"none"}
-{"v":1,"ts":"2026-10-14T13:00:00Z","harness":"codex","event":"spec.published","issue":"none","spec":".sdd%2Fspecs%2Fsdd-events.md","grill":"2026-10-14-visualizacion-harness","pr":[],"reason":"none"}
-{"v":1,"ts":"2026-10-14T13:10:00Z","harness":"opencode","event":"spec.approved","issue":"#93","spec":"%2393","grill":"2026-10-14-visualizacion-harness","pr":[],"reason":"none"}
-{"v":1,"ts":"2026-10-14T13:10:00Z","harness":"pi","event":"spec.superseded","issue":"#12","spec":".sdd%2Fspecs%2Fold.md","grill":"none","pr":[],"reason":"none"}
-{"v":1,"ts":"2026-10-14T14:00:00Z","harness":"claude","event":"run.started","issue":"#93","spec":"%2393","grill":"2026-10-14-visualizacion-harness","pr":[],"reason":"none"}
-{"v":1,"ts":"2026-10-14T15:45:59Z","harness":"claude","event":"run.pr-opened","issue":"#93","spec":"%2393","grill":"2026-10-14-visualizacion-harness","pr":[101,102],"reason":"none"}
-{"v":1,"ts":"2026-10-14T16:00:00Z","harness":"codex","event":"run.committed","issue":"none","spec":".sdd%2Fspecs%2Fsdd-events.md","grill":"none","pr":[],"reason":"none"}
-{"v":1,"ts":"2026-10-14T16:20:00Z","harness":"opencode","event":"run.failed","issue":"none","spec":".sdd%2Fspecs%2Fsdd-events.md","grill":"none","pr":[],"reason":"aborted"}
-{"v":1,"ts":"2026-10-14T16:25:00Z","harness":"pi","event":"run.failed","issue":"#93","spec":"%2393","grill":"none","pr":[],"reason":"interrupted"}
-{"v":1,"ts":"2026-10-15T09:00:00Z","harness":"pi","event":"land.merged","issue":"#93","spec":"none","grill":"none","pr":[101],"reason":"none"}
+{"v":1,"ts":"2026-10-14T12:00:00Z","harness":"claude","event":"grill.paused","issue":"none","spec":"none","previous":"none","grill":"2026-10-14-visualizacion-harness","pr":[],"reason":"none"}
+{"v":1,"ts":"2026-10-14T12:30:05Z","harness":"pi","event":"grill.finalized","issue":"owner/repo#9","spec":"none","previous":"none","grill":"session%209%2F%C3%A1","pr":[],"reason":"none"}
+{"v":1,"ts":"2026-10-14T13:00:00Z","harness":"codex","event":"spec.published","issue":"none","spec":".sdd%2Fspecs%2Fsdd-events.md","previous":"none","grill":"2026-10-14-visualizacion-harness","pr":[],"reason":"none"}
+{"v":1,"ts":"2026-10-14T13:05:00Z","harness":"pi","event":"spec.moved","issue":"#93","spec":"%2393","previous":".sdd%2Fspecs%2Fsdd-events.md","grill":"2026-10-14-visualizacion-harness","pr":[],"reason":"none"}
+{"v":1,"ts":"2026-10-14T13:10:00Z","harness":"opencode","event":"spec.approved","issue":"#93","spec":"%2393","previous":"none","grill":"2026-10-14-visualizacion-harness","pr":[],"reason":"none"}
+{"v":1,"ts":"2026-10-14T13:10:00Z","harness":"pi","event":"spec.superseded","issue":"#12","spec":".sdd%2Fspecs%2Fold.md","previous":"none","grill":"none","pr":[],"reason":"none"}
+{"v":1,"ts":"2026-10-14T14:00:00Z","harness":"claude","event":"run.started","issue":"#93","spec":"%2393","previous":"none","grill":"2026-10-14-visualizacion-harness","pr":[],"reason":"none"}
+{"v":1,"ts":"2026-10-14T15:45:59Z","harness":"claude","event":"run.pr-opened","issue":"#93","spec":"%2393","previous":"none","grill":"2026-10-14-visualizacion-harness","pr":[101,102],"reason":"none"}
+{"v":1,"ts":"2026-10-14T16:00:00Z","harness":"codex","event":"run.committed","issue":"none","spec":".sdd%2Fspecs%2Fsdd-events.md","previous":"none","grill":"none","pr":[],"reason":"none"}
+{"v":1,"ts":"2026-10-14T16:20:00Z","harness":"opencode","event":"run.failed","issue":"none","spec":".sdd%2Fspecs%2Fsdd-events.md","previous":"none","grill":"none","pr":[],"reason":"aborted"}
+{"v":1,"ts":"2026-10-14T16:25:00Z","harness":"pi","event":"run.failed","issue":"#93","spec":"%2393","previous":"none","grill":"none","pr":[],"reason":"interrupted"}
+{"v":1,"ts":"2026-10-15T09:00:00Z","harness":"pi","event":"land.merged","issue":"#93","spec":"none","previous":"none","grill":"none","pr":[101],"reason":"none"}
 ```
 <!-- conformance-vectors:end -->
 

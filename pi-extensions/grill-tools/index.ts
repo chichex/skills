@@ -26,6 +26,7 @@ import { parseSddArtifact } from "../sdd-artifacts/index.ts";
 import { recordSddEvents, type SddEventFields } from "../sdd-artifacts/sdd-events.ts";
 import {
 	persistSpecPublication,
+	readPriorSpecPublication,
 	SDD_SPEC_ISSUE_STAGING_BODY,
 	specPublicationEvents,
 	type SpecPublicationDestination,
@@ -284,7 +285,7 @@ async function recordHandoffEvent(
 	if (!("path" in outcome)) return "";
 	const parsed = parseSddArtifact(outcome.content);
 	const fields: SddEventFields | null = parsed.kind === "metadata" && parsed.format === "canonical" && parsed.metadata.type === "grill"
-		? { event, issue: parsed.metadata.issue, spec: null, grill: parsed.metadata.grill, pr: [], reason: null }
+		? { event, issue: parsed.metadata.issue, spec: null, previous: null, grill: parsed.metadata.grill, pr: [], reason: null }
 		: null;
 	const warning = fields === null
 		? "SDD event log not updated: the written handoff has no canonical grill marker"
@@ -1419,9 +1420,13 @@ export default function grillTools(pi: ExtensionAPI) {
 				},
 			};
 
-			const result = await withLocalMutationQueues(localPaths, () => persistSpecPublication({ documents }, ports));
+			const { prior, result } = await withLocalMutationQueues(localPaths, async () => {
+				// Lo persistido antes de escribir decide `spec.moved` y si `spec.approved` es transición.
+				const prior = await readPriorSpecPublication(documents, ports);
+				return { prior, result: await persistSpecPublication({ documents }, ports) };
+			});
 			// Log de eventos SDD (issue #93): solo con receipt, best-effort.
-			const eventWarning = result.ok ? await recordSddEvents(root, "pi", specPublicationEvents(result.published)) : null;
+			const eventWarning = result.ok ? await recordSddEvents(root, "pi", specPublicationEvents(result.published, prior)) : null;
 			const text = result.ok
 				? `Canonical spec publication verified. Receipt:\n${JSON.stringify(result.receipt, null, 2)}${eventWarning === null ? "" : `\n${eventWarning}`}`
 				: `Canonical spec publication blocked; no receipt was issued.\n${result.diagnostics
