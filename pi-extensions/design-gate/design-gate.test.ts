@@ -388,6 +388,12 @@ test("CA-2: la Fase 1 de sdd-init releva DISEÑO por superficie con el censo com
 			for (const pattern of ["node_modules", "react-native-web", "libs.versions.toml", "globals.css", "tailwind.config", "components/ui/", ".storybook/", "design-sync/README.md", "defaults de scaffold"]) {
 				if (!prompt.includes(pattern)) problems.push(`${path}: el Explore «harness del proyecto» no recibe «${pattern}» del censo`);
 			}
+		} else if (harness === "antigravity") {
+			const prompt = phase1.match(/Role: "Harness Explorer"[\s\S]*?Prompt: \|[\s\S]*?(?=\n```)/)?.[0] ?? "";
+			if (!/^ {2}4\. DISEÑO:/m.test(prompt)) problems.push(`${path}: el subagente «Harness Explorer» no pide DISEÑO`);
+			for (const pattern of ["node_modules", "react-native-web", "libs.versions.toml", "globals.css", "tailwind.config", "components/ui/", ".storybook/", "design-sync/README.md", "defaults de scaffold"]) {
+				if (!prompt.includes(pattern)) problems.push(`${path}: el subagente «Harness Explorer» no recibe «${pattern}» del censo`);
+			}
 		} else if (!/^1\. \*\*Harness\*\*:[^\n]*DISEÑO/m.test(phase1)) {
 			problems.push(`${path}: la lente **Harness** no pide DISEÑO`);
 		}

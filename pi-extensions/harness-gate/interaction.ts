@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 
-export const HARNESSES = ["claude", "codex", "opencode", "pi"] as const;
+export const HARNESSES = ["claude", "codex", "opencode", "pi", "antigravity"] as const;
 export type Harness = (typeof HARNESSES)[number];
 
 // Nombres de skill del repo que pueden aparecer invocados dentro de un

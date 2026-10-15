@@ -66,6 +66,10 @@ const QUESTION_PHRASES: Record<Harness, [string, string][]> = {
 		['usar `ask_user_question` con `selectionMode: "multiple"`', "«pregunta-multiple»"],
 		["usar `ask_user_question`", "«pregunta»"],
 	],
+	antigravity: [
+		["usar `ask_question` con `is_multi_select: true`", "«pregunta-multiple»"],
+		["usar `ask_question`", "«pregunta»"],
+	],
 };
 
 // Estilo de pregunta propio de cada harness y tools ajenas que no pueden
@@ -86,6 +90,10 @@ const QUESTION_STYLE: Record<Harness, { required: RegExp[]; forbidden: RegExp }>
 	pi: {
 		required: [/usar `ask_user_question`/, /selectionMode: "multiple"/],
 		forbidden: /AskUserQuestion|request_user_input/,
+	},
+	antigravity: {
+		required: [/usar `ask_question`/, /is_multi_select: true/],
+		forbidden: /AskUserQuestion|request_user_input|ask_user_question|texto plano/,
 	},
 };
 
@@ -172,6 +180,7 @@ const AGENTS_LINK_STYLE: Record<Harness, RegExp> = {
 	codex: AGENTS_LINK_BLOCK,
 	opencode: AGENTS_LINK_BLOCK,
 	pi: AGENTS_LINK_BLOCK,
+	antigravity: AGENTS_LINK_BLOCK,
 };
 
 // Template del archivo generado (CA-8).

@@ -34,7 +34,7 @@ Pelado, lista los PRs abiertos del repo agrupados por stack (`gh pr list --state
 ## Fase 1 — Preflight (bloqueante)
 
 1. Raíz Git (`git rev-parse --show-toplevel`), `gh auth status`, repo resuelto (`gh repo view --json nameWithOwner,defaultBranchRef,viewerDefaultMergeMethod`) y branch default leído del remote: nunca asumir `main`. Un fallo frena con diagnóstico, sin mutar nada.
-2. Leer `.sdd/project.md` si existe: `## Comandos` verifican que el branch default local esté actualizado tras la sincronización de la Fase 5. Sus `## Limites` rigen como siempre, salvo las prohibiciones de merge (por ejemplo, «No mergear PRs» o «No hacer merge a main»): invocar el skill y confirmar el plan es la autorización humana explícita que las reemplaza, y el plan de la Fase 2 cita la línea textual y avisa que confirmar la pisa. En un bullet que junta varias prohibiciones, solo cae la parte de merge.
+2. Leer `.sdd/project.md` si existe: sus `## Comandos` verifican un branch actualizado en la Fase 2 y sus `## Limites` rigen como siempre, salvo las prohibiciones de merge. Esas no frenan este skill: invocarlo y confirmar el plan es la autorización humana. Si `## Limites` prohíbe mergear sin una excepción para `/sdd-land`, el plan de la Fase 2 cita la línea textual y avisa que confirmar la pisa.
 3. `gh stack` exigido solo si algún target es un stack. Si falta la extensión, frenar con el comando exacto (`gh extension install github/gh-stack`).
 4. Resolver los targets desde GitHub. La pertenencia a un stack no se asume del estado local: un PR pertenece a un stack si su `baseRefName` no es el default o si existe algún PR abierto cuyo `baseRefName` es su `headRefName`; se recorre `baseRefName` hasta el branch default para armar la cadena hacia abajo, se suman los PRs apilados encima y se confirma con `gh stack view --json`. Una cadena de PRs no vinculada se ofrece vincular con `gh stack link` antes de seguir. Si `gh stack view --json` no devuelve el stack porque el checkout principal no tiene su estado local, el fallback es pedir el número de stack. Con `--clean-only` no hay targets: se omiten los puntos 3 y 4. Con varios targets, el preflight predice los conflictos cruzados entre sus branches con `git merge-tree --write-tree origin/<a> origin/<b>` por pares (solo lectura, sin tocar el working tree) y guarda qué pares chocan y en qué archivos, para mostrarlos en el plan.
 
@@ -85,6 +85,7 @@ Ejecución, después de la confirmación y con el gate verde en todos los PRs de
 - El método es `--method` o el default del repo (`viewerDefaultMergeMethod`), tal como lo mostró el plan.
 - Con merge queue el target queda `en cola` y se espera hasta `--wait`; un target que sigue en cola al vencer queda `DETENIDO`, sin borrar nada.
 - El éxito se verifica releyendo `state == MERGED` de cada PR, nunca por exit code.
+- Por cada PR cuyo merge verificó, registrar un `land.merged` (ver «Log de eventos»); un stack que aterriza de una vez registra uno por cada PR que aterrizó.
 
 ## Fase 4 — Remotos
 
@@ -155,6 +156,48 @@ SDD-LAND DETENIDO
 - reanudar: <comando exacto, por ejemplo /sdd-land <PR>>
 ```
 
+## Log de eventos
+
+<!-- sdd-events:start -->
+Las transiciones de este skill se registran en `<git-common-dir>/sdd/events.jsonl`, el log local append-only del formato `events-v1` (normativo en `docs/sdd-events-v1.md` del repo de estos skills). Cada evento es una línea que agrega este comando, con los valores entre `<>` reemplazados: `issue` es `#NN`, `owner/repo#NN` o `none`; `spec`, `previous` y `grill` van sin codificar (`.sdd/specs/<slug>.md`, `#NN`, `<fecha>-<slug>` o `none`) y el comando los percent-encodea; `previous` es `none` salvo en `spec.moved`; `pr` son números separados por coma y sin espacios, o vacío; `reason` es `none` salvo en `run.failed`.
+
+```bash
+(
+  harness='<harness>' event='<evento>' issue='<issue>' spec='<spec>' previous='<previous>' grillref='<grill>' pr='<prs>' reason='<reason>'
+  export LC_ALL=C
+  enc() { [ "$1" = none ] && { printf none; return; }; s=$1; while [ -n "$s" ]; do c=${s%"${s#?}"}; s=${s#?}; case $c in [A-Za-z0-9._~-]) printf %s "$c" ;; *) printf %% && printf %s "$c" | od -An -tx1 | tr -d ' \n' | tr a-f A-F ;; esac; done; }
+  ok() {
+    case $harness in claude|codex|opencode|pi|antigravity) ;; *) return 1 ;; esac
+    case "$issue$pr$reason" in *[![:graph:]]*) return 1 ;; esac
+    case "$spec$previous$grillref" in *'<'*'>'*) return 1 ;; esac
+    printf '%s\n' "$issue" | grep -Eqx 'none|#[1-9][0-9]*|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[1-9][0-9]*' || return 1
+    printf '%s\n' "$pr" | grep -Eqx '([1-9][0-9]*(,[1-9][0-9]*)*)?' || return 1
+    [ -n "$spec" ] && [ -n "$previous" ] && [ -n "$grillref" ] || return 1
+    case $reason in none) [ "$event" != run.failed ] ;; aborted|interrupted) [ "$event" = run.failed ] ;; *) false ;; esac || return 1
+    [ "$event" = spec.moved ] || [ "$previous" = none ] || return 1
+    case $event in
+      grill.paused|grill.finalized) [ "$grillref" != none ] && [ -z "$pr" ] ;;
+      spec.moved) [ "$spec" != none ] && [ "$previous" != none ] && [ -z "$pr" ] ;;
+      spec.published|spec.approved|spec.superseded|run.started|run.committed|run.failed) [ "$spec" != none ] && [ -z "$pr" ] ;;
+      run.pr-opened) [ "$spec" != none ] && [ -n "$pr" ] ;;
+      land.merged) case $pr in ''|*,*) false ;; esac ;;
+      *) false ;;
+    esac
+  }
+  ok && dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && mkdir -p "$dir/sdd" &&
+    line=$(printf '{"v":1,"ts":"%s","harness":"%s","event":"%s","issue":"%s","spec":"%s","previous":"%s","grill":"%s","pr":[%s],"reason":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$harness" "$event" "$issue" "$(enc "$spec")" "$(enc "$previous")" "$(enc "$grillref")" "$pr" "$reason") &&
+    [ ${#line} -lt 1024 ] && printf '%s\n' "$line" >> "$dir/sdd/events.jsonl" ||
+    echo "aviso: no se registró el evento SDD $event" >&2
+)
+```
+
+- **Best-effort.** Un fallo del append nunca frena ni hace fallar el skill: el comando termina con exit 0 y avisa por stderr, y el reporte del skill lo nombra en una línea.
+- **Validación barata.** Antes del append, `ok` revisa el harness, el evento del catálogo, `issue`, `pr` sin espacios, refs no vacías y sin un `<...>` sin reemplazar, y los invariantes del catálogo: un valor inválido cae en el mismo aviso y no escribe nada, porque los consumidores saltean en silencio una línea inválida.
+- **Solo en el common-dir.** El log se escribe en `<git-common-dir>/sdd/`, nunca dentro del working tree: fuera de un repo git, o si el harness no puede escribir ahí, el evento se saltea con el aviso, sin caer a `.sdd/`.
+<!-- sdd-events:end -->
+
+En este skill, cada `land.merged` lleva en `pr` el número de un PR mergeado y verificado, en `issue` el issue que el body de ese PR cierra o referencia (`Closes #NN`, `Refs #NN`) o `none` —en un stack, el issue del `Refs`/`Closes` del stack para todos sus PRs: la línea `spec en #<PR>` nombra un PR, no un issue—, y `spec`, `previous` y `grill` en `none`. `--dry-run` y `--clean-only` no registran nada. Un PR que queda `en cola` al vencer `--wait` y que la cola mergea después no registra `land.merged`: reanudar no lo recupera, porque un PR ya `MERGED` no es target, y el formato no hace backfill.
+
 ## MUST DO
 
 - Mostrar el plan completo y recibir la confirmación antes de cualquier mutación; `--dry-run` no muta nada.
@@ -177,4 +220,6 @@ SDD-LAND DETENIDO
 - No actualizar el branch de un PR sin la pregunta del plan, ni con rebase.
 <!-- sdd-land-doctrine:end -->
 
-En Antigravity, las preguntas van en un `ask_question` autocontenido: la tabla del plan se imprime como texto en el MISMO mensaje que la pregunta (el modal tapa la pantalla), `Elegir cuáles` usa `is_multi_select: true` (solo ahí) y `Tratar por path` hace una pregunta por path, en llamadas de hasta 4 preguntas.
+En Google Antigravity, las preguntas van en un `ask_question` autocontenido: la tabla del plan se imprime como texto en el MISMO mensaje que la pregunta (el modal tapa la pantalla), `Elegir cuáles` usa `is_multi_select: true` (solo ahí) y `Tratar por path` hace una pregunta por path, en llamadas de hasta 4 preguntas.
+
+En Google Antigravity, `<harness>` es `antigravity`.

@@ -7,8 +7,8 @@
 # este mismo repo instaló antes (figuran en el manifest del destino) y retiró.
 #
 # Uso:
-#   ./install.sh              # instala todos los sets
-#   ./install.sh all          # instala todos los sets
+#   ./install.sh              # instala los cinco sets
+#   ./install.sh all          # instala los cinco sets
 #   ./install.sh both         # Claude Code + opencode (compatibilidad)
 #   ./install.sh claude       # solo los de Claude Code
 #   ./install.sh opencode     # solo los de opencode

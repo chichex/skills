@@ -149,6 +149,7 @@ const CODE_REVIEW_BRANCH: Record<Harness, RegExp> = {
 	codex: /`Code review` en Codex[\s\S]*sin subagentes[\s\S]*solo (?:aparece )?(?:si|por GHA)[\s\S]*`workflow_dispatch`/i,
 	opencode: /`Code review` en opencode[\s\S]*sin subagentes[\s\S]*solo (?:aparece )?(?:si|por GHA)[\s\S]*`workflow_dispatch`/i,
 	pi: /`Code review` en Pi[\s\S]*`workflow_dispatch`[\s\S]*`subagent`[\s\S]*`reviewer`[\s\S]*`\/skill:code-review`/,
+	antigravity: /`Code review` en Antigravity[\s\S]*`workflow_dispatch`[\s\S]*invoke_subagent[\s\S]*`\/code-review <PR>`/,
 };
 
 // Hallazgo 10 del review de PR #46: en codex y opencode la oferta califica
@@ -170,6 +171,7 @@ const FEEDBACK_REMEDIATION_QUESTION_STYLE: Record<Harness, RegExp> = {
 	codex: /usar `request_user_input`[\s\S]*texto plano[\s\S]*Resolver feedback automáticamente/,
 	opencode: /preguntar en texto plano[\s\S]*terminar el turno[\s\S]*Resolver feedback automáticamente/,
 	pi: /usar `ask_user_question`[\s\S]*Resolver feedback automáticamente/,
+	antigravity: /usar `ask_question`[\s\S]*Resolver feedback automáticamente/,
 };
 
 // grill: rondas por frontera de dependencias y hechos sin bloqueo en los
@@ -187,12 +189,13 @@ const GRILL_NON_BLOCKING_FACTS_DOCTRINE = [
 	/exploración falla o vence[\s\S]{0,300}supuesto visible/i,
 ];
 const GRILL_LIGHT_SHORTCUT = /### Atajo liviano \(1 a 3 preguntas\)/;
-const GRILL_LIGHT_SHORTCUT_HARNESSES: readonly Harness[] = ["claude", "codex", "opencode"];
+const GRILL_LIGHT_SHORTCUT_HARNESSES: readonly Harness[] = ["claude", "codex", "opencode", "antigravity"];
 const GRILL_FACT_EXPLORATION: Record<Harness, RegExp> = {
 	claude: /`Agent`[\s\S]{0,80}`Explore`[\s\S]{0,80}background/,
 	codex: /subagente `explorer`[\s\S]{0,400}misma ronda/,
 	opencode: /subagente `explore`[\s\S]{0,80}`task`[\s\S]{0,400}misma ronda/,
 	pi: /`subagent`[\s\S]{0,80}`scout`[\s\S]{0,80}`background: true`/,
+	antigravity: /`invoke_subagent`[\s\S]{0,80}`research`[\s\S]{0,80}background/,
 };
 
 // Stacks de PRs por spec (issue #66, CA-1/CA-2): `sdd-spec` propone el corte
@@ -785,10 +788,10 @@ test("grill entrevista por rondas con hechos sin bloqueo en cada harness y atajo
 test("autotest: la fila tool-preguntas mapea `—` a null y quita backticks", () => {
 	const doc = [
 		"<!-- interaction-differences:start -->",
-		"| Campo | claude | codex | opencode | pi |",
-		"|---|---|---|---|---|",
-		"| invocacion | `/nombre` | `$nombre` | `/nombre` | `/skill:nombre` |",
-		"| tool-preguntas | `AskUserQuestion` | `request_user_input` | — | `ask_user_question` |",
+		"| Campo | claude | codex | opencode | pi | antigravity |",
+		"|---|---|---|---|---|---|",
+		"| invocacion | `/nombre` | `$nombre` | `/nombre` | `/skill:nombre` | `/nombre` |",
+		"| tool-preguntas | `AskUserQuestion` | `request_user_input` | — | `ask_user_question` | `ask_question` |",
 		"<!-- interaction-differences:end -->",
 	].join("\n");
 	assert.deepEqual(parseInteractionTable(doc).questionTools, {
@@ -796,6 +799,7 @@ test("autotest: la fila tool-preguntas mapea `—` a null y quita backticks", ()
 		codex: "request_user_input",
 		opencode: null,
 		pi: "ask_user_question",
+		antigravity: "ask_question",
 	});
 });
 
@@ -829,6 +833,7 @@ test("autotest: una divergencia entre harnesses se reporta con la linea que difi
 		["codex", ["# Spec — <titulo>\nlinea comun"]],
 		["opencode", ["# Spec — <titulo>\nlinea DIVERGENTE"]],
 		["pi", ["# Spec — <titulo>\nlinea comun"]],
+		["antigravity", ["# Spec — <titulo>\nlinea comun"]],
 	]);
 	const divergences = compareTemplates("sdd-spec", byHarness);
 	assert.equal(divergences.length, 1);
@@ -842,6 +847,7 @@ test("autotest: un template que falta en un harness se reporta como diferencia d
 		["codex", ["template"]],
 		["opencode", []],
 		["pi", ["template"]],
+		["antigravity", ["template"]],
 	]);
 	const divergences = compareTemplates("grill", byHarness);
 	assert.equal(divergences.length, 1);
@@ -1018,7 +1024,7 @@ test("#84 review #86: en Codex, escribir en <git-common-dir>/sdd/ pide escalaci�
 		const codex = await readRepoFile(`codex/${skill}/SKILL.md`);
 		if (!shared.test(codex)) problems.push(`codex/${skill}/SKILL.md: falta la escalación de Codex`);
 		if (!pattern.test(codex)) problems.push(`codex/${skill}/SKILL.md: falta el fallback ${pattern}`);
-		for (const harness of ["claude", "opencode", "pi"] as const) {
+		for (const harness of ["claude", "opencode", "pi", "antigravity"] as const) {
 			if (/pedir escalación para escribir en `<git-common-dir>/.test(await readRepoFile(`${harness}/${skill}/SKILL.md`))) problems.push(`${harness}/${skill}/SKILL.md: la escalación es solo de Codex`);
 		}
 	}
@@ -1083,7 +1089,7 @@ test("#84 CA-18: code-review, grill y yt-summary limpian sus temporales con trap
 		if (!/`cp -R -- "<scratch>\/\." "<destino>\/" && rm -rf -- "<scratch>"`/.test(design)) problems.push(`${file}: el scratch se borra aunque la copia falle`);
 		if (!/si la copia falla, se conserva y el reporte nombra su ruta y las capturas que no se copiaron/.test(design)) problems.push(`${file}: la copia fallida no conserva el scratch`);
 	}
-	for (const harness of ["claude", "codex"] as const) {
+	for (const harness of ["claude", "codex", "antigravity"] as const) {
 		const file = `${harness}/yt-summary/SKILL.md`;
 		const markdown = await readRepoFile(file);
 		if (!/transcript="\$\(mktemp "\$\{TMPDIR:-\/tmp\}\/yt-<id>-XXXXXX"\)"/.test(markdown)) problems.push(`${file}: el transcript no nace con mktemp`);

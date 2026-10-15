@@ -249,14 +249,14 @@ En `--update`: regenerar todo salvo `## Decisiones humanas` y `## Politicas de g
 
 Cablear el contrato de forma idempotente:
 
-1. **AGENTS.md** — Antigravity usa `AGENTS.md` como reglas jerárquicas de proyecto. Si `AGENTS.md` no contiene `.sdd/project.md`, agregar este bloque (o crearlo con el bloque):
+1. **AGENTS.md** — Antigravity lee `AGENTS.md` como instrucción de proyecto y no expande imports `@archivo`. Si `AGENTS.md` no contiene `.sdd/project.md`, agregar este bloque (o crearlo con el bloque):
 
    ```markdown
    <!-- sdd-contract -->
    Antes de planificar o modificar este proyecto, leer `.sdd/project.md` y respetar sus comandos, verificacion autonoma y limites.
    ```
 
-   Si ya contiene una referencia equivalente o el bloque `sdd-contract`, no tocar nada.
+   Si ya contiene una referencia equivalente o el bloque `sdd-contract`, no duplicarla.
 2. **CLAUDE.md** — si no contiene `@.sdd/project.md`, agregar esa línea; si no existe, crearlo con solo esa línea. Si ya está, no tocar nada.
 
 ## Reporte

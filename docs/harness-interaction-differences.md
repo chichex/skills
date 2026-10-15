@@ -1,7 +1,7 @@
 # Diferencias de interacción entre harnesses
 
 Este documento es la definición normativa de las ÚNICAS diferencias toleradas
-entre las copias de un mismo skill en los cuatro harnesses. La doctrina —
+entre las copias de un mismo skill en los cinco harnesses. La doctrina —
 fases, principios, formatos de artefactos, templates de marker, gates,
 MUST DO / MUST NOT DO — se portea idéntica; solo la capa de interacción
 listada acá puede divergir. La regla completa de porteo vive en
@@ -13,13 +13,15 @@ El gate lee el bloque delimitado directamente. Las filas son estables: no
 renombrar `Campo` ni las columnas sin actualizar el gate.
 
 <!-- interaction-differences:start -->
-| Campo | claude | codex | opencode | pi |
-|---|---|---|---|---|
-| carpeta | `claude/` | `codex/` | `opencode/` | `pi/` |
-| invocacion | `/nombre` | `$nombre` | `/nombre` | `/skill:nombre` |
-| tool-preguntas | `AskUserQuestion` | `request_user_input` | `question` | `ask_user_question` |
-| extras | — | `agents/openai.yaml` | — | `compatibility` |
+| Campo | claude | codex | opencode | pi | antigravity |
+|---|---|---|---|---|---|
+| carpeta | `claude/` | `codex/` | `opencode/` | `pi/` | `antigravity/` |
+| invocacion | `/nombre` | `$nombre` | `/nombre` | `/skill:nombre` | `/nombre` |
+| tool-preguntas | `AskUserQuestion` | `request_user_input` | `question` | `ask_user_question` | `ask_question` |
+| extras | — | `agents/openai.yaml` | — | `compatibility` | — |
 <!-- interaction-differences:end -->
+
+En Google Antigravity, la tool nativa de interacción es `ask_question`, que renderiza un modal interactivo con preguntas (`questions`), opciones estructuradas con la recomendada primera marcada con `(Recommended)` y soporte para selección múltiple vía `is_multi_select`. Para tareas delegadas en paralelo se usa `invoke_subagent` (`TypeName`, `Role`, `Prompt`, `Model` con opciones `inherit`, `flash_lite`, `flash` y `pro`), con subagentes built-in como `research` (solo lectura) y `self`. La ruta canónica de discovery global es `~/.gemini/config/skills/` y la de workspace `.agents/skills/`.
 
 En Pi, la misma extensión agrega además `ask_user_questions` como variante batch para rondas de 2 a 4 decisiones independientes. La fila machine-readable conserva `ask_user_question` como token canónico porque los gates que normalizan doctrina de a una decisión lo reemplazan literalmente.
 
