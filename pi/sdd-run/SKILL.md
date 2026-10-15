@@ -91,27 +91,46 @@ Si la superficie está `sin sistema`, aplica la doctrina mínima de `/skill:desi
 ## Log de eventos
 
 <!-- sdd-events:start -->
-Las transiciones de este skill se registran en `<git-common-dir>/sdd/events.jsonl`, el log local append-only del formato `events-v1` (normativo en `docs/sdd-events-v1.md` del repo de estos skills). Cada evento es una línea que agrega este comando, con los valores entre `<>` reemplazados: `issue` es `#NN`, `owner/repo#NN` o `none`; `spec` y `grill` van sin codificar (`.sdd/specs/<slug>.md`, `#NN`, `<fecha>-<slug>` o `none`) y el comando los percent-encodea; `pr` son números separados por coma y sin espacios, o vacío; `reason` es `none` salvo en `run.failed`.
+Las transiciones de este skill se registran en `<git-common-dir>/sdd/events.jsonl`, el log local append-only del formato `events-v1` (normativo en `docs/sdd-events-v1.md` del repo de estos skills). Cada evento es una línea que agrega este comando, con los valores entre `<>` reemplazados: `issue` es `#NN`, `owner/repo#NN` o `none`; `spec`, `previous` y `grill` van sin codificar (`.sdd/specs/<slug>.md`, `#NN`, `<fecha>-<slug>` o `none`) y el comando los percent-encodea; `previous` es `none` salvo en `spec.moved`; `pr` son números separados por coma y sin espacios, o vacío; `reason` es `none` salvo en `run.failed`.
 
 ```bash
 (
-  harness='<harness>' event='<evento>' issue='<issue>' spec='<spec>' grillref='<grill>' pr='<prs>' reason='<reason>'
+  harness='<harness>' event='<evento>' issue='<issue>' spec='<spec>' previous='<previous>' grillref='<grill>' pr='<prs>' reason='<reason>'
   export LC_ALL=C
   enc() { [ "$1" = none ] && { printf none; return; }; s=$1; while [ -n "$s" ]; do c=${s%"${s#?}"}; s=${s#?}; case $c in [A-Za-z0-9._~-]) printf %s "$c" ;; *) printf %% && printf %s "$c" | od -An -tx1 | tr -d ' \n' | tr a-f A-F ;; esac; done; }
-  dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && mkdir -p "$dir/sdd" &&
-    line=$(printf '{"v":1,"ts":"%s","harness":"%s","event":"%s","issue":"%s","spec":"%s","grill":"%s","pr":[%s],"reason":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$harness" "$event" "$issue" "$(enc "$spec")" "$(enc "$grillref")" "$pr" "$reason") &&
+  ok() {
+    case $harness in claude|codex|opencode|pi) ;; *) return 1 ;; esac
+    case "$issue$pr$reason" in *[![:graph:]]*) return 1 ;; esac
+    case "$spec$previous$grillref" in *'<'*'>'*) return 1 ;; esac
+    printf '%s\n' "$issue" | grep -Eqx 'none|#[1-9][0-9]*|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[1-9][0-9]*' || return 1
+    printf '%s\n' "$pr" | grep -Eqx '([1-9][0-9]*(,[1-9][0-9]*)*)?' || return 1
+    [ -n "$spec" ] && [ -n "$previous" ] && [ -n "$grillref" ] || return 1
+    case $reason in none) [ "$event" != run.failed ] ;; aborted|interrupted) [ "$event" = run.failed ] ;; *) false ;; esac || return 1
+    [ "$event" = spec.moved ] || [ "$previous" = none ] || return 1
+    case $event in
+      grill.paused|grill.finalized) [ "$grillref" != none ] && [ -z "$pr" ] ;;
+      spec.moved) [ "$spec" != none ] && [ "$previous" != none ] && [ -z "$pr" ] ;;
+      spec.published|spec.approved|spec.superseded|run.started|run.committed|run.failed) [ "$spec" != none ] && [ -z "$pr" ] ;;
+      run.pr-opened) [ "$spec" != none ] && [ -n "$pr" ] ;;
+      land.merged) case $pr in ''|*,*) false ;; esac ;;
+      *) false ;;
+    esac
+  }
+  ok && dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && mkdir -p "$dir/sdd" &&
+    line=$(printf '{"v":1,"ts":"%s","harness":"%s","event":"%s","issue":"%s","spec":"%s","previous":"%s","grill":"%s","pr":[%s],"reason":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$harness" "$event" "$issue" "$(enc "$spec")" "$(enc "$previous")" "$(enc "$grillref")" "$pr" "$reason") &&
     [ ${#line} -lt 1024 ] && printf '%s\n' "$line" >> "$dir/sdd/events.jsonl" ||
     echo "aviso: no se registró el evento SDD $event" >&2
 )
 ```
 
 - **Best-effort.** Un fallo del append nunca frena ni hace fallar el skill: el comando termina con exit 0 y avisa por stderr, y el reporte del skill lo nombra en una línea.
+- **Validación barata.** Antes del append, `ok` revisa el harness, el evento del catálogo, `issue`, `pr` sin espacios, refs no vacías y sin un `<...>` sin reemplazar, y los invariantes del catálogo: un valor inválido cae en el mismo aviso y no escribe nada, porque los consumidores saltean en silencio una línea inválida.
 - **Solo en el common-dir.** El log se escribe en `<git-common-dir>/sdd/`, nunca dentro del working tree: fuera de un repo git, o si el harness no puede escribir ahí, el evento se saltea con el aviso, sin caer a `.sdd/`.
 <!-- sdd-events:end -->
 
 En Pi, `<harness>` es `pi`.
 
-En este skill, `spec` es `#NN` si la spec vive en un issue y si no su ruta lógica `.sdd/specs/<slug>.md`; `issue` y `grill` son los del marker de la spec, sin codificar. Cada fase registra su evento: `run.started` en la Fase 1, `run.pr-opened` o `run.committed` en la Fase 5 y `run.failed` con `reason=interrupted` en «Run interrumpido». Un abort posterior a `run.started` registra `run.failed` con `reason=aborted`; un bloqueo anterior no registra nada. La Fase 6 no registra eventos.
+En este skill, `spec` es `#NN` si la spec vive en un issue y si no su ruta lógica `.sdd/specs/<slug>.md`; `issue` y `grill` son los del marker de la spec, sin codificar. Cada fase registra su evento: `run.started` en la Fase 1, `run.pr-opened` o `run.committed` en la Fase 5 y `run.failed` con `reason=interrupted` en «Run interrumpido» si ya hubo `run.started`. Un abort posterior a `run.started` registra `run.failed` con `reason=aborted`; un bloqueo anterior no registra nada. La Fase 6 no registra eventos.
 
 ## Fase 0 — Lanzador (solo con `/skill:sdd-run` pelado)
 
@@ -298,7 +317,7 @@ RUN INTERRUMPIDO
 
 Conservar el worktree bloqueado. Nunca presentar una interrupción, timeout o tarea pendiente como una entrega parcial lista para validar.
 
-Al emitir `RUN INTERRUMPIDO`, registrar `run.failed` con `reason=interrupted` (ver «Log de eventos»).
+Al emitir `RUN INTERRUMPIDO` después de `run.started`, registrar `run.failed` con `reason=interrupted` (ver «Log de eventos»); antes de `run.started` no se registra nada.
 
 ### Checklist de cierre obligatorio
 
