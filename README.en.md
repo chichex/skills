@@ -267,7 +267,23 @@ cp pi-themes/*.json    ~/.pi/agent/themes/
 
 Once installed, Codex invokes them as `$grill`, `$code-review`, `$sdd-spec`, and so on, or loads them from their `description` — except for `sdd-run`: its `agents/openai.yaml` sidecar declares `policy.allow_implicit_invocation: false`, so it only runs when explicitly invoked with `$sdd-run`. Claude Code/opencode use their usual commands. Pi uses `/skill:grill`, `/skill:code-review`, `/skill:sdd-spec`, and equivalents.
 
-In OpenCode, if `permission.skill` uses an allowlist, also allow the skill name in `opencode.json`: for example, `"issue-triage": "allow"` inside `permission.skill`. Chaining from `issue-triage` also requires `grill`, `sdd-spec` and `sdd-run` to be installed and allowed (each with `"allow"`). If the selected skill fails to load or permission is denied, triage shows the exact command and stops without executing the stage. Copying skills does not change those permissions; if they do not appear in an open session, start a new one.
+In OpenCode, if `permission.skill` uses an allowlist, also allow the skill name in `opencode.json`. [The last matching rule wins](https://opencode.ai/docs/permissions/#granular-rules-object-syntax): put `"*"` first and specific rules after it. Complete example for this workflow:
+
+```json
+{
+  "permission": {
+    "skill": {
+      "*": "deny",
+      "issue-triage": "allow",
+      "grill": "allow",
+      "sdd-spec": "allow",
+      "sdd-run": "allow"
+    }
+  }
+}
+```
+
+Chaining from `issue-triage` also requires `grill`, `sdd-spec` and `sdd-run` to be installed and allowed. If the selected skill fails to load or permission is denied, triage shows the exact command and stops without executing the stage. Copying skills does not change those permissions; if they do not appear in an open session, start a new one.
 
 **Pi legacy/manual alternative:** `./install.sh pi` remains available for compatibility, but the Pi Package is the recommended path. Run the installer only with explicit authorization because it updates the checkout and replaces the managed global copies; then run `/reload`. Already-open sessions do not receive the new code until they reload. Do not use it while the native package remains installed. Claude Code, Codex, and OpenCode installation behavior is unchanged. Interactive testing uses persisted sessions and disposable repositories; real stages require a local/fake provider or explicitly authorized provider usage. The autonomous smoke uses temporary configuration and no providers.
 

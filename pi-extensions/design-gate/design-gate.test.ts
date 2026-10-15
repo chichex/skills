@@ -673,12 +673,13 @@ test("CA-16: next.md no repite las reglas de web en celular que ya trae react.md
 test("CA-17: el contrato fecha los conteos nuevos y cita la corrida con Pi 0.85.1", async () => {
 	const contract = await readRepoFile(".sdd/project.md");
 	const commands = section(contract, /^## Comandos$/);
-	// Las tres filas se re-midieron el 2026-10-14 al retirar un skill de Claude Code, Codex y Pi;
-	// "tests de extensiones", además, al sumar el log de eventos SDD (issue #93).
+	// Pi Package conserva su verificación del 14; suite, frontmatter y drift se
+	// re-ejecutaron el 15 con el port de issue-triage a OpenCode.
 	const verifiedOn: Record<string, string> = {
 		"gate focalizado de Pi Package": "2026-10-14",
-		"tests de extensiones": "2026-10-14",
-		"lint de frontmatter": "2026-10-14",
+		"tests de extensiones": "2026-10-15",
+		"lint de frontmatter": "2026-10-15",
+		"reporte de drift": "2026-10-15",
 	};
 	for (const [row, date] of Object.entries(verifiedOn)) {
 		assert.match(commands, new RegExp(`^\\| ${escapeRegExp(row)} \\|[^|]*\\|[^|]*\\| verificado ${date} \\|`, "m"), `${row}: conteo nuevo con fecha nueva`);

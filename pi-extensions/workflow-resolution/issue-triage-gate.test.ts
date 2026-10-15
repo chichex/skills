@@ -71,7 +71,7 @@ export function normalizeArtifactAwareBlock(
 		(_match, before: string, name: string) => `${before}«skill:${name}»`,
 	);
 	if (questionTool && questionTool !== "—") {
-		normalized = normalized.replaceAll(questionTool, "«question-tool»");
+		normalized = normalized.replaceAll(`\`${questionTool}\``, "`«question-tool»`");
 	}
 	return normalized;
 }
@@ -259,9 +259,14 @@ test("codex issue-triage leaves run as a ready command because its sidecar forbi
 	assert.match(sidecar, /allow_implicit_invocation:\s*false/, "sdd-run: la excepción de issue-triage depende de esta política");
 });
 
-test("sdd-spec accepts the chained triage target in every chaining harness", async () => {
-	for (const harness of CHAINING_HARNESSES) {
+test("sdd-spec advertises its full signature and the supported chained triage targets", async () => {
+	for (const harness of HARNESSES) {
 		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
+		const signature = markdown.match(/## Argumentos\n\n```text\n([^\n]+)\n```/)?.[1];
+		assert.ok(signature, `${harness}: firma de argumentos presente`);
+		assert.ok(markdown.includes(`Atajo: ${signature} saltea este menu.`), `${harness}: atajo alineado con la firma`);
+		assert.match(markdown, /Los argumentos[^\n]*una ruta de spec para actualizarla/, `${harness}: intro menciona la ruta de spec`);
+		if (harness === "pi") continue;
 		assert.match(markdown, /### Entrada encadenada desde issue-triage/, harness);
 		assert.match(markdown, /\| ruta de spec\]/, `${harness}: firma acepta ruta de spec`);
 		assert.match(markdown, /--triage-route update-existing-spec\|audit-existing-spec/, harness);
@@ -294,6 +299,14 @@ test("both READMEs advertise issue-triage and its confirmed chaining in OpenCode
 		assert.match(row, /Disponible en los cuatro harnesses|Available in all four harnesses/, path);
 		assert.doesNotMatch(row, /\*\(Codex\/Claude\/Pi\)\*/, path);
 		assert.match(markdown, /(?:Para encadenar|Chaining)[^\n]*`grill`[^\n]*`sdd-spec`[^\n]*`sdd-run`/, `${path}: permisos de skills encadenados`);
+		const permissionBlock = markdown.match(/```json\n(\{\n  "permission": \{[\s\S]*?\n\})\n```/)?.[1];
+		assert.ok(permissionBlock, `${path}: ejemplo completo de permisos`);
+		const rules = JSON.parse(permissionBlock).permission.skill;
+		assert.equal(Object.keys(rules)[0], "*", `${path}: catch-all primero`);
+		assert.equal(rules["*"], "deny", `${path}: deny por default`);
+		for (const skill of ["issue-triage", "grill", "sdd-spec", "sdd-run"]) {
+			assert.equal(rules[skill], "allow", `${path}: ${skill} habilitado después del catch-all`);
+		}
 	}
 });
 
@@ -319,4 +332,17 @@ test("autotest: el normalizador de issue-triage no confunde una ruta .sdd/grills
 		normalizeArtifactAwareBlock("`/grill` y `<git-common-dir>/sdd/grills/`", "claude", interaction),
 		"`«skill:grill»` y `<git-common-dir>/sdd/grills/`",
 	);
+});
+
+test("autotest: question normalization only replaces the exact backticked tool in every harness", async () => {
+	const interaction = parseInteractionDifferences(await readRepoFile("docs/harness-interaction-differences.md"));
+	const literal = "question questions questionnaire AskUserQuestion request_user_input ask_user_question `questions` `question_count` `ask_user_questions`";
+	for (const harness of HARNESSES) {
+		const input = `Gate: \`${interaction.questionTool[harness]}\`\n${literal}`;
+		assert.equal(
+			normalizeArtifactAwareBlock(input, harness, interaction),
+			`Gate: \`«question-tool»\`\n${literal}`,
+			`${harness}: preserva prosa y otros identificadores`,
+		);
+	}
 });
