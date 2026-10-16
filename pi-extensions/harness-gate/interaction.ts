@@ -14,14 +14,10 @@ export type Harness = (typeof HARNESSES)[number];
 // la lista, para que la alternancia de la regex no corte un nombre largo por
 // uno que sea su prefijo.
 export const SKILL_NAMES = [
-	"github-issue-selector",
 	"coding-policies",
 	"design-system",
 	"issue-triage",
-	"mini-grill",
 	"code-review",
-	"find-skills",
-	"yt-summary",
 	"sdd-init",
 	"sdd-land",
 	"sdd-spec",

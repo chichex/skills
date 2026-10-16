@@ -394,7 +394,7 @@ test("CA-24: README.md y README.en.md sin repo-clean, con sdd-land en la tabla S
 	}
 });
 
-test("CA-24: plugin.json y marketplace.json nombran sdd-land con descripciones idénticas; los sidecars de Codex siguen siendo 14 o más", async () => {
+test("CA-24: plugin.json y marketplace.json nombran sdd-land con descripciones idénticas; los sidecars de Codex siguen siendo 10 o más", async () => {
 	const plugin = JSON.parse(await readRepoFile(".claude-plugin/plugin.json")) as { description: string };
 	const marketplace = JSON.parse(await readRepoFile(".claude-plugin/marketplace.json")) as {
 		plugins: Array<{ name: string; description: string }>;
@@ -404,7 +404,7 @@ test("CA-24: plugin.json y marketplace.json nombran sdd-land con descripciones i
 	assert.equal(entry?.description, plugin.description, "descripciones byte a byte iguales");
 	const tracked = spawnSync("git", ["ls-files", "codex"], { cwd: REPO_ROOT, encoding: "utf8" });
 	const sidecars = tracked.stdout.split("\n").filter((path) => /^codex\/[^/]+\/agents\/openai\.yaml$/.test(path));
-	assert.ok(sidecars.length >= 14, `sidecars de Codex: ${sidecars.length}`);
+	assert.ok(sidecars.length >= 10, `sidecars de Codex: ${sidecars.length}`);
 });
 
 test("CA-24: el contrato autoriza el merge de /sdd-land, declara el gate nuevo y pinea la versión de gh-stack", async () => {

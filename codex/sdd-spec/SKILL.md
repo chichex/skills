@@ -48,7 +48,7 @@ modelo infiere para que lo revises sobre la spec publicada, y te dice que tan
 verificable va a ser la ejecucion segun el contrato de autonomia (.sdd/project.md).
 
   • De una descripcion   — me escribis el pedido y arranco.
-  • De un issue abierto  — abro el selector de issues del repo.
+  • De un issue abierto  — listo los issues del repo y elegis cual especificar.
   • De un grill cerrado  — elijo un handoff confirmado como fuente.
 
 Atajo: $sdd-spec [pedido libre | #NN | URL de issue | ruta de spec] [--from-grill [ruta.md]] [--triage-route update-existing-spec|audit-existing-spec] [--out local|issue] [--assume] saltea este menu.
@@ -57,7 +57,7 @@ Atajo: $sdd-spec [pedido libre | #NN | URL de issue | ruta de spec] [--from-gril
 Luego usar `request_user_input` — una pregunta, "¿De dónde sale la spec?":
 
 1. `De una descripcion (Recomendado)` — el usuario escribe el pedido (vía Other o en el mensaje siguiente).
-2. `De un issue abierto` — invocar `github-issue-selector`; sus detalles completos son la fuente.
+2. `De un issue abierto` — correr `gh issue list --state open --limit 20`, mostrar la lista y preguntar cuál.
 3. `De un grill cerrado` — listar `.sdd/grills/*.md` y `<git-common-dir>/sdd/grills/*.md`, filtrar los que declaren `Estado: finalized` y elegir el handoff sin mutarlo.
 
 ## Fase 1 — Raíz y contrato primero (bloqueante)
