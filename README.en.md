@@ -32,15 +32,11 @@ The disciplines SDD builds on — which I also use standalone, outside the pipel
 | Skill | What it does |
 |---|---|
 | **`grill`** | A relentless interview about a plan or design **before** building. In all five harnesses it starts with an upfront reconnaissance (code, domain docs, previous handoffs) that builds the decision tree with its dependencies and persists and resumes sessions in `<git-common-dir>/sdd/grills/`, outside the working tree (Pi resumes from its global runtime snapshot, but every pause or close also writes the interoperable handoff into the project's `<git-common-dir>/sdd/grills/`), can export the pending decisions as a self-contained questionnaire for a stakeholder without an agent, and on close chains into `sdd-spec --from-grill`. When the topic touches a UI surface listed in the contract's `## Diseño`, the tree gains a design branch (screens and states, component reuse, visual direction, platforms, web on phones) and the handoff keeps reference screenshots of the mocks. All five harnesses interview in **Rounds** over the dependency frontier—up to 4 decisions per call to `AskUserQuestion` (Claude Code), `ask_user_questions` (Pi), `ask_question` (Antigravity) or `question` (opencode, with numbered plain text when the tool is missing), and up to 3 per `request_user_input` (Codex)—or one question at a time; Pi, Codex and opencode add **Quick grilling** (batch proposals) and Claude Code, Codex, opencode, and Antigravity a lightweight shortcut for 1-3 questions. The agent looks up facts, never the user: Claude Code (`Explore`), Pi (`scout` via `subagent`), and Antigravity (`research` via `invoke_subagent`) explore in the background without stalling the round, and only the questions that depend on the fact wait; Codex and opencode, with no background, explore before the round and ask with the fact already in hand. |
-| **`mini-grill`** *(Codex/Claude/opencode/Antigravity)* | An express `grill`: disambiguates a single request in one to three questions (recommended option first) and confirms the interpretation before acting. If too many decisions surface, it hands off to the full `grill`. |
 | **`tdd`** | A test-driven development reference: the red → green loop, what makes a good test, where tests live (seams), the anti-patterns. Includes `mocking` and `tests` guides. Available in all five harnesses; `sdd-run` references its doctrine when declaring the plan's seams and in the tests-first step. |
 | **`coding-policies`** | Generates `.sdd/coding-policies.md` (or the path you ask for) in the project: a self-contained file with an always-included cross-cutting Clean Code and SOLID baseline —SRP, healthy size signals, and protection against over-splitting— plus your per-stack practices as short MUST/SHOULD rules with their rationale and gate. It detects the repo's stacks (Go, TypeScript, Node, React, Next.js, React Native, Kotlin Multiplatform, Kotlin Android) and links the file, with your confirmation, from `CLAUDE.md`, `AGENTS.md` or `.sdd/project.md`. Regenerating rewrites everything except the "Ajustes de este proyecto" section (project adjustments), which is preserved verbatim. It ships content for Go, TypeScript, Node, React, Next.js, React Native, and Kotlin Multiplatform; Kotlin Android is detected but reported as "sin prácticas definidas todavía". `sdd-init` references it as a `guia` when it exists and offers to generate it otherwise. Available in all five harnesses. |
 | **`design-system`** | Writes `DESIGN_SYSTEM.md` at the root of a UI surface (web or mobile) that has no design system yet: it inventories tokens, base components, docs, mocks and Claude Design; if a system already exists, it only records it under the contract's `## Diseño`. Otherwise it runs one round of visual direction (audience and tone, palette, typography, density and mode) and writes tokens with values, base components, states and rules, plus an "Ajustes de este proyecto" section preserved on regeneration. With your confirmation it links the doc from `.sdd/project.md` `## Diseño`, `CLAUDE.md` and `AGENTS.md`. It never writes code: tokens in code are born in the first `sdd-run` that touches UI. `sdd-init` offers it when it finds a surface without a system. Available in all five harnesses. |
 | **`code-review`** *(Codex/Pi/opencode/Antigravity)* | Reviews a PR across three separate axes—correctness and risk, standards, and spec—runs available checks, and reports evidence-backed findings with an exact preview. By default it posts the comments to GitHub as a single COMMENT review; `--no-publish` keeps them in the conversation only. It never approves or requests changes. |
-| **`github-issue-selector`** *(Codex/Pi)* | Lets you choose or inspect an issue when no specific number was provided. |
 | **`issue-triage`** | Analyzes one or more issues against code, tests, and dependencies; classifies the next stage and emits a structured handoff; after confirmation, Claude and OpenCode chain the stage skill (`grill`, `sdd-spec` or `sdd-run`); in Codex it chains `grill` and `sdd-spec`, and for `sdd-run` (which requires explicit invocation) leaves the command ready to send; in Antigravity it shows the command to continue or chains directly; in Pi, the `/issues` orchestrator opens the stage. Joint selections become one canonical issue while originals are closed as superseded. Available in all five harnesses. |
-| **`find-skills`** *(Codex/Pi)* | Searches the open ecosystem for installable skills through `npx skills`. Vendored from `vercel-labs/skills`. |
-| **`yt-summary`** *(Codex/Claude/Antigravity)* | Downloads a single YouTube subtitle track with `yt-dlp` and guides a summary with a TL;DR, key points, and timestamps. |
 
 SDD doesn't replace these skills — it orchestrates them. The design that precedes a spec is sharpened with `grill`, and `sdd-run` implements following the `tdd` discipline.
 
@@ -180,7 +176,7 @@ claude plugin marketplace update chichex
 claude plugin update chichex-skills@chichex
 ```
 
-**Evals:** `evals/` holds a suite for `claude plugin eval` (Claude Code ≥ 2.1.280) that measures behavior, not structure: that `sdd-init`, `sdd-spec`, `sdd-run`, `grill` and `mini-grill` fire on the right prompt and not on a foreign one, and that `sdd-spec` follows its doctrine on a test project (`evals/adherence-sdd-spec/fixtures/mini-cli`). Each case runs a real `claude` on your account (`model: claude-sonnet-5`), so it is paid and non-deterministic, and it does not replace the `node --test` gates. Locally, from the repo root:
+**Evals:** `evals/` holds a suite for `claude plugin eval` (Claude Code ≥ 2.1.280) that measures behavior, not structure: that `sdd-init`, `sdd-spec`, `sdd-run` and `grill` fire on the right prompt and not on a foreign one, and that `sdd-spec` follows its doctrine on a test project (`evals/adherence-sdd-spec/fixtures/mini-cli`). Each case runs a real `claude` on your account (`model: claude-sonnet-5`), so it is paid and non-deterministic, and it does not replace the `node --test` gates. Locally, from the repo root:
 
 ```
 claude plugin eval . --ablation none --runs 1 --max-cost-usd 5 --no-publish --allow-tools Write --scaffold
@@ -292,7 +288,7 @@ Chaining from `issue-triage` also requires `grill`, `sdd-spec` and `sdd-run` to 
 
 ## Credits
 
-Two of the **foundational skills** are **based on** **[Matt Pocock](https://github.com/mattpocock)**'s skills — from his [mattpocock/skills](https://github.com/mattpocock/skills) repo (MIT); `mini-grill` is my own stripped-down variant of `grill`:
+Two of the **foundational skills** are **based on** **[Matt Pocock](https://github.com/mattpocock)**'s skills — from his [mattpocock/skills](https://github.com/mattpocock/skills) repo (MIT):
 
 | In this repo | Matt Pocock's original |
 |---|---|
@@ -309,8 +305,6 @@ Also, the **red loop before touching code** in `sdd-run` adapts Matt Pocock's `d
 
 The "Smells como juicio" section of the `clean-code.md` baseline in `coding-policies` adapts Matt Pocock's `code-review`, and its deep-module rules (deletion test, seams, interface as test surface) adapt his `codebase-design` ([mattpocock/skills](https://github.com/mattpocock/skills), MIT).
 
-`find-skills` is kept exactly as installed from [`vercel-labs/skills`](https://skills.sh/vercel-labs/skills/find-skills); it is not my own skill.
-
 ## License
 
-[MIT](./LICENSE) for original and adapted material; `find-skills` retains its upstream source terms.
+[MIT](./LICENSE) for original and adapted material.

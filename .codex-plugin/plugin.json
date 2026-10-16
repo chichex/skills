@@ -1,7 +1,7 @@
 {
   "name": "chichex-skills",
   "version": "0.1.0",
-  "description": "Skills de chichex para Codex: familia SDD, grill y mini-grill, issue-triage, design-system, code-review, TDD, yt-summary y coding-policies.",
+  "description": "Skills de chichex para Codex: familia SDD, grill, issue-triage, design-system, code-review, TDD y coding-policies.",
   "author": {
     "name": "chichex",
     "url": "https://github.com/chichex"

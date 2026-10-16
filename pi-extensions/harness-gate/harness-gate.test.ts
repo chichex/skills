@@ -1064,7 +1064,7 @@ test("#84 CA-17: sdd-run crea su worktree con --lock --reason y lo desbloquea an
 	assert.deepEqual(problems, []);
 });
 
-test("#84 CA-18: code-review, grill y yt-summary limpian sus temporales con trap", async () => {
+test("#84 CA-18: code-review y grill limpian sus temporales con trap", async () => {
 	const problems: string[] = [];
 	for (const harness of ["codex", "opencode", "pi"] as const) {
 		const file = `${harness}/code-review/SKILL.md`;
@@ -1087,14 +1087,6 @@ test("#84 CA-18: code-review, grill y yt-summary limpian sus temporales con trap
 		if (!/trap 'rm -rf -- "<scratch>"' EXIT/.test(design)) problems.push(`${file}: el scratch de capturas no se borra con trap`);
 		if (!/`cp -R -- "<scratch>\/\." "<destino>\/" && rm -rf -- "<scratch>"`/.test(design)) problems.push(`${file}: el scratch se borra aunque la copia falle`);
 		if (!/si la copia falla, se conserva y el reporte nombra su ruta y las capturas que no se copiaron/.test(design)) problems.push(`${file}: la copia fallida no conserva el scratch`);
-	}
-	for (const harness of ["claude", "codex", "antigravity"] as const) {
-		const file = `${harness}/yt-summary/SKILL.md`;
-		const markdown = await readRepoFile(file);
-		if (!/transcript="\$\(mktemp "\$\{TMPDIR:-\/tmp\}\/yt-<id>-XXXXXX"\)"/.test(markdown)) problems.push(`${file}: el transcript no nace con mktemp`);
-		if (!/trap 'rm -f -- "<transcript>"' EXIT/.test(markdown)) problems.push(`${file}: el transcript no se borra con trap`);
-		if (/-o \/tmp\/yt-<id>\.txt/.test(markdown)) problems.push(`${file}: todavía escribe /tmp/yt-<id>.txt fijo`);
-		if (!/-o "\$transcript" \|\| \{ rm -f -- "\$transcript"; exit 1; \}/.test(markdown)) problems.push(`${file}: un fallo del script deja el transcript vacío`);
 	}
 	assert.deepEqual(problems, []);
 });
