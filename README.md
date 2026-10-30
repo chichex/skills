@@ -289,7 +289,7 @@ Para encadenar desde `issue-triage`, también deben estar instalados y habilitad
 La versión del repo vive en [`VERSION`](VERSION), una línea `MAJOR.MINOR.PATCH` (por ejemplo `2.0.0`). `package.json` y `.codex-plugin/plugin.json` repiten el mismo valor.
 
 - **En cada PR**, CI (`Versión semver`) exige que `VERSION` suba un paso semver respecto del branch base y que los dos manifests coincidan. Desde `2.0.0` valen `2.0.1`, `2.1.0` o `3.0.0`; `2.0.0`, `2.2.0` o `2.1` fallan.
-- **En cada push a `main`**, si pasan los checks, CI crea el tag `v<VERSION>` y su release con las notas que genera GitHub. Si el tag ya existe, no hace nada.
+- **En cada push a `main`**, si pasan los checks, CI crea el tag `v<VERSION>` y su release con las notas que genera GitHub. Re-correr el workflow sobre el commit ya tageado no hace nada; un push con código nuevo que no sube `VERSION` hace fallar el job `Release`.
 
 Para validarlo antes de abrir el PR:
 

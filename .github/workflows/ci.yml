@@ -122,9 +122,11 @@ jobs:
           exit "$status"
 
   # Cada push a main crea el tag v<VERSION> y su release con notas generadas
-  # por GitHub, solo si pasaron los checks. Si el tag ya existe (re-run o push
-  # sin bump) no hace nada. Dos merges seguidos se serializan; si GitHub cancela
-  # un run pendiente, el release siguiente acepta el salto y sus notas lo cubren.
+  # por GitHub, solo si pasaron los checks. Un re-run sobre el commit ya
+  # tageado no hace nada; un push con codigo nuevo sin subir VERSION falla.
+  # El grupo de concurrencia del workflow ya serializa los pushes a main; el
+  # del job es defensa explicita por si ese grupo cambia. Si GitHub cancela un
+  # run pendiente, el release siguiente acepta el salto y sus notas lo cubren.
   release:
     name: Release
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -143,14 +145,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          v=$(bash scripts/version.sh check)
-          if git ls-remote --exit-code --tags origin "refs/tags/v$v" > /dev/null; then
-            echo "v$v ya existe: no hay release nuevo" | tee -a "$GITHUB_STEP_SUMMARY"
+          plan=$(bash scripts/version.sh plan-release "$GITHUB_SHA")
+          v=${plan#* }
+          if [ "${plan%% *}" = skip ]; then
+            echo "v$v ya apunta a este commit: no hay release nuevo" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
-          fi
-          latest=$(bash scripts/version.sh latest)
-          if [ -n "$latest" ]; then
-            bash scripts/version.sh check --newer-than "$latest" > /dev/null
           fi
           gh release create "v$v" --target "$GITHUB_SHA" --title "v$v" --generate-notes
           echo "Release v$v creado" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -99,6 +99,32 @@ test("check acepta VERSION sin salto de linea final", () => {
 	});
 });
 
+test("check rechaza un VERSION de varias lineas en vez de pegarlas", () => {
+	withRepo({ version: "2.\n0.0\n", pkg: "2.0.0", codex: "2.0.0" }, (dir) => {
+		const result = version(dir, "check");
+		assert.equal(result.status, 1);
+		assert.equal(result.stdout, "");
+		assert.equal(
+			result.stderr,
+			"VERSION invalida: '2.\n0.0' (se espera MAJOR.MINOR.PATCH, por ejemplo 2.0.0)\n",
+		);
+	});
+});
+
+test("check nombra el manifest que falta o que no es JSON y sigue con el resto", () => {
+	withRepo(synced("2.0.0"), (dir) => {
+		rmSync(join(dir, "package.json"));
+		writeFileSync(join(dir, ".codex-plugin/plugin.json"), "{ no es json");
+		const result = version(dir, "check");
+		assert.equal(result.status, 1);
+		assert.equal(result.stdout, "");
+		assert.equal(
+			result.stderr,
+			"package.json no existe\n.codex-plugin/plugin.json no es JSON valido\n",
+		);
+	});
+});
+
 test("check falla y nombra cada manifest desincronizado", () => {
 	withRepo({ version: "2.0.0\n", pkg: "0.0.0", codex: "0.1.0" }, (dir) => {
 		const result = version(dir, "check");
@@ -184,6 +210,18 @@ test("base lee VERSION del ref y, sin archivo, cae al ultimo tag semver", () => 
 	});
 });
 
+test("base falla con exit 2 si el ref no existe, aunque haya tags", () => {
+	withRepo(synced("2.0.0"), (dir) => {
+		git(dir, "add", ".");
+		git(dir, "commit", "-q", "-m", "init");
+		git(dir, "tag", "v1.0.0");
+		const result = version(dir, "base", "origin/nope");
+		assert.equal(result.status, 2);
+		assert.equal(result.stdout, "");
+		assert.equal(result.stderr, "ref inexistente: origin/nope\n");
+	});
+});
+
 test("base falla si el ref no tiene VERSION ni hay tags semver", () => {
 	withRepo(synced("2.0.0"), (dir) => {
 		rmSync(join(dir, "VERSION"));
@@ -208,6 +246,86 @@ test("latest imprime el ultimo tag semver o nada", () => {
 		git(dir, "tag", "v1.10.0-rc.1");
 		const latest = version(dir, "latest");
 		assert.equal(latest.stdout, "1.10.0\n");
+	});
+});
+
+function head(dir: string): string {
+	const result = run("git", ["rev-parse", "HEAD"], dir);
+	assert.equal(result.status, 0, result.stderr);
+	return result.stdout.trim();
+}
+
+function commitAll(dir: string, message: string): string {
+	git(dir, "add", "-A");
+	git(dir, "commit", "-q", "--allow-empty", "-m", message);
+	return head(dir);
+}
+
+test("plan-release propone crear el tag si no existe y VERSION supera al ultimo tag", () => {
+	withRepo(synced("2.0.0"), (dir) => {
+		const first = commitAll(dir, "init");
+		const fresh = version(dir, "plan-release", first);
+		assert.equal(fresh.status, 0, fresh.stderr);
+		assert.equal(fresh.stdout, "create 2.0.0\n");
+		assert.equal(fresh.stderr, "");
+
+		git(dir, "tag", "v1.3.1");
+		const afterOld = version(dir, "plan-release", first);
+		assert.equal(afterOld.status, 0, afterOld.stderr);
+		assert.equal(afterOld.stdout, "create 2.0.0\n");
+	});
+});
+
+test("plan-release saltea un re-run: el tag ya apunta a este commit", () => {
+	withRepo(synced("2.0.0"), (dir) => {
+		const sha = commitAll(dir, "init");
+		git(dir, "tag", "v2.0.0");
+		const result = version(dir, "plan-release", sha);
+		assert.equal(result.status, 0, result.stderr);
+		assert.equal(result.stdout, "skip 2.0.0\n");
+		assert.equal(result.stderr, "");
+	});
+});
+
+test("plan-release falla si el tag existe en otro commit: el push no subio VERSION", () => {
+	withRepo(synced("2.0.0"), (dir) => {
+		const tagged = commitAll(dir, "init");
+		git(dir, "tag", "v2.0.0");
+		writeFileSync(join(dir, "nuevo.txt"), "codigo nuevo\n");
+		const sha = commitAll(dir, "sin bump");
+		const result = version(dir, "plan-release", sha);
+		assert.equal(result.status, 1);
+		assert.equal(result.stdout, "");
+		assert.equal(
+			result.stderr,
+			`v2.0.0 ya existe en ${tagged.slice(0, 12)}: el commit ${sha.slice(0, 12)} no subio VERSION\n`,
+		);
+	});
+});
+
+test("plan-release falla si VERSION no supera al ultimo tag", () => {
+	withRepo(synced("1.0.0"), (dir) => {
+		const sha = commitAll(dir, "init");
+		git(dir, "tag", "v1.2.0");
+		const result = version(dir, "plan-release", sha);
+		assert.equal(result.status, 1);
+		assert.equal(result.stdout, "");
+		assert.equal(result.stderr, "VERSION '1.0.0' no es mayor que el ultimo tag v1.2.0\n");
+	});
+});
+
+test("plan-release propaga el diagnostico de check y rechaza un commit inexistente", () => {
+	withRepo({ version: "2.0.0\n", pkg: "0.0.0", codex: "2.0.0" }, (dir) => {
+		const sha = commitAll(dir, "init");
+		const unsynced = version(dir, "plan-release", sha);
+		assert.equal(unsynced.status, 1);
+		assert.equal(unsynced.stdout, "");
+		assert.equal(unsynced.stderr, "package.json tiene version '0.0.0' y VERSION dice '2.0.0'\n");
+
+		const missing = version(dir, "plan-release", "deadbeef");
+		assert.equal(missing.status, 2);
+		assert.equal(missing.stdout, "");
+		assert.equal(missing.stderr, "commit inexistente: deadbeef\n");
 	});
 });
 
@@ -247,8 +365,9 @@ test("ci.yml crea el release solo en push a main y despues de los checks", () =>
 	assert.deepEqual(needs, ["frontmatter", "harness-gate", "plugin-validate", "shell", "tests", "version"]);
 	assert.match(job, /permissions:\n {6}contents: write\n/);
 	assert.match(job, /concurrency:\n {6}group: release\n {6}cancel-in-progress: false\n/);
-	assert.match(job, /git ls-remote --exit-code --tags origin "refs\/tags\/v\$v"/);
-	assert.match(job, /bash scripts\/version\.sh check --newer-than "\$latest"/);
+	assert.match(job, /plan=\$\(bash scripts\/version\.sh plan-release "\$GITHUB_SHA"\)/);
+	assert.match(job, /if \[ "\$\{plan%% \*\}" = skip \]; then/);
+	assert.doesNotMatch(job, /ls-remote/);
 	assert.match(
 		job,
 		/gh release create "v\$v" --target "\$GITHUB_SHA" --title "v\$v" --generate-notes/,
