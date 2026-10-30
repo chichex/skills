@@ -85,7 +85,12 @@ export async function resolveArtifactDirs(root: string, kind: ArtifactKind, runG
 		: dirs;
 }
 
-/** Los lugares de lectura en orden de precedencia, sin repetir un mismo directorio. */
+/**
+ * Los lugares de lectura en orden de precedencia, sin repetir un mismo
+ * directorio. Un objeto con la forma vieja `{ tracked, local }` (el
+ * `SddArtifactDirs` de antes del issue #103) se acepta: los lugares que faltan
+ * se saltean.
+ */
 export function artifactReadDirs(dirs: ArtifactDirs): ArtifactReadDir[] {
 	const ordered: ArtifactReadDir[] = [
 		{ path: dirs.tracked, location: "tracked", brand: "chiche" },
@@ -95,6 +100,7 @@ export function artifactReadDirs(dirs: ArtifactDirs): ArtifactReadDir[] {
 	];
 	const seen = new Set<string>();
 	return ordered.filter((entry) => {
+		if (typeof entry.path !== "string") return false;
 		const key = resolve(entry.path);
 		if (seen.has(key)) return false;
 		seen.add(key);

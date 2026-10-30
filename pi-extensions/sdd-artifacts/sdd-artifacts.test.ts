@@ -900,6 +900,39 @@ test("does not delete prose that merely mentions SDD-Tracking", () => {
 	assert.ok(result.document.includes("See the SDD-Tracking marker above for details."));
 });
 
+test("review #105: a prose comment that mentions Chiche-Tracking is not a marker", () => {
+	const body = "\n## Contexto\nBody\n";
+	// Solo: el mismo resultado que el documento sin ese comentario.
+	const alone = `# Spec — X\n<!-- Nota: pasar a Chiche-Tracking -->\n${body}`;
+	assert.deepEqual(parseSddArtifact(alone), parseSddArtifact(`# Spec — X\n${body}`));
+	// El comentario literal del review lleva un Estado legacy: se lee como legacy, no como invalid.
+	const reviewed = parseSddArtifact(`# Spec — X\n<!-- Estado: draft. Nota: pasar a Chiche-Tracking -->\n${body}`);
+	assert.equal(reviewed.kind, "metadata");
+	assert.equal(reviewed.kind === "metadata" ? reviewed.format : undefined, "legacy");
+	assert.deepEqual(reviewed.diagnostics, []);
+
+	// Junto a un marker válido: válido, sin conflicto, y el upsert no lo bloquea ni borra la prosa.
+	const marker = "<!-- Chiche-Tracking: version=2; type=spec; state=draft; issue=#9; grill=none; superseded-by=none -->";
+	const prose = "<!-- Nota: pasar a Chiche-Tracking -->";
+	const withMarker = `# Spec — X\n${marker}\n${prose}\n${body}`;
+	assert.deepEqual(parseSddArtifact(withMarker), parseSddArtifact(`# Spec — X\n${marker}\n${body}`));
+	const upserted = upsertSddMetadata(withMarker, {
+		version: 1,
+		type: "spec",
+		state: "approved",
+		issue: "#9",
+		grill: null,
+		supersededBy: null,
+	});
+	assert.equal(upserted.ok, true);
+	assert.equal(upserted.document, withMarker.replace("state=draft", "state=approved"));
+
+	// Un Chiche-Tracking: con rótulo y mal formado sigue siendo inválido, nunca legacy.
+	const malformed = parseSddArtifact("# Spec — X\n<!-- Chiche-Tracking: issue=#9 -->\n");
+	assert.equal(malformed.kind, "invalid");
+	assert.equal(malformed.diagnostics[0]?.code, "missing-key");
+});
+
 test("does not let an unclosed initial comment push the marker past the preamble boundary", () => {
 	const metadata = {
 		version: 1,

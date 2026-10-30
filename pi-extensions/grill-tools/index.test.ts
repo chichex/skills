@@ -880,6 +880,63 @@ test("persist_sdd_spec keeps local content normative while archiving an existing
 	}
 });
 
+test("review #105: reintentar con una spec v1 contra el issue que ya tiene la misma spec en v2 deja el body intacto", { skip: !PI_PACKAGE_ROOT }, async () => {
+	const tool = tools.get("persist_sdd_spec");
+	assert.ok(tool);
+	const projectPath = join(sandbox, "v1-v2-retry-project");
+	mkdirSync(projectPath, { recursive: true });
+	const markdown = [
+		"# Spec — Marca v1 contra v2",
+		"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=#34; grill=none; superseded-by=none -->",
+		"",
+		"## Contexto",
+		"Body.",
+		"",
+	].join("\n");
+	const currentBody = markdown
+		.replace("<!-- SDD-Tracking: version=1; ", "<!-- Chiche-Tracking: version=2; ")
+		.replace("issue=#34", "issue=chichex/skills#34");
+	let remoteBody = currentBody;
+	const edits: string[] = [];
+	execHandler = async (command: string, args: string[]) => {
+		if (command === "git" && args[0] === "rev-parse") {
+			return { code: 0, stdout: `${projectPath}\n`, stderr: "" };
+		}
+		if (command === "git" && args[0] === "config") {
+			return { code: 0, stdout: "git@github.com:chichex/skills.git\n", stderr: "" };
+		}
+		if (command === "gh" && args[0] === "issue" && args[1] === "view") {
+			return { code: 0, stdout: JSON.stringify({ body: remoteBody }), stderr: "" };
+		}
+		if (command === "gh" && args[0] === "issue" && args[1] === "edit") {
+			remoteBody = readFileSync(args[args.indexOf("--body-file") + 1], "utf8");
+			edits.push(remoteBody);
+			return { code: 0, stdout: "", stderr: "" };
+		}
+		throw new Error(`unexpected command: ${command} ${args.join(" ")}`);
+	};
+	try {
+		const result = await tool.execute("retry-v1-v2", {
+			mode: "interactive",
+			repository: "chichex/skills",
+			projectPath,
+			documents: [{
+				id: "successor",
+				role: "successor",
+				markdown,
+				issueNumber: 34,
+				destinations: [{ kind: "issue", issueNumber: 34 }],
+			}],
+		}, undefined, undefined, { cwd: projectPath });
+		assert.equal(result.details.ok, true);
+		assert.equal(remoteBody, currentBody);
+		assert.doesNotMatch(remoteBody, /<details><summary>Body original<\/summary>/);
+		assert.ok(edits.every((body) => body === currentBody), "ningún edit cambia el body");
+	} finally {
+		execHandler = async (..._args: any[]) => ({ code: 0, stdout: "", stderr: "" });
+	}
+});
+
 test("persist_sdd_spec creates a staging issue and publishes only after binding its identity", { skip: !PI_PACKAGE_ROOT }, async () => {
 	const tool = tools.get("persist_sdd_spec");
 	assert.ok(tool);

@@ -408,6 +408,49 @@ test("#103 CA-2: deduplicates local and GitHub copies that carry Chiche-Tracking
 	assert.equal(otherIssue.outcome, "stop");
 });
 
+test("review #105: una copia local v1 y una copia issue v2 de la misma spec se fusionan; la marca es transporte", () => {
+	const local = canonicalSpec("approved", "fresh");
+	const v2Markdown = local.markdown
+		.replace("<!-- SDD-Tracking: version=1; ", "<!-- Chiche-Tracking: version=2; ")
+		.replace("issue=#11", "issue=chichex/skills#11");
+	assert.notEqual(v2Markdown, local.markdown);
+	assert.equal(normalizeNormativeSpecContent(v2Markdown, "chichex/skills", "issue"),
+		normalizeNormativeSpecContent(local.markdown, "chichex/skills", "local"));
+	const issueCopy = {
+		...local,
+		id: "issue-copy-v2",
+		location: "issue" as const,
+		path: "https://github.com/chichex/skills/issues/11",
+		hostIssue: issue(11),
+		markdown: v2Markdown,
+	};
+
+	const equivalent = resolveWorkflow(resolutionInput({ artifacts: [issueCopy, local] }));
+	assert.equal(equivalent.recommendedRoute, "run-existing-spec");
+	assert.equal(equivalent.artifacts.length, 2, "las dos referencias físicas quedan como evidencia");
+	assert.equal(equivalent.artifacts.find(({ id }) => id === local.id)?.primary, true, "la copia local es la primaria");
+	assert.equal(equivalent.artifacts.find(({ id }) => id === issueCopy.id)?.primary, false);
+
+	// Fuera de la marca, cualquier campo distinto sigue separando las copias.
+	for (const [name, markdown] of [
+		["state", v2Markdown.replace("state=approved", "state=implemented")],
+		["issue", v2Markdown.replace("issue=chichex/skills#11", "issue=chichex/skills#12")],
+		["grill", v2Markdown.replace("grill=none", "grill=g-1")],
+		["prose", v2Markdown.replace("Body.", "Body changed.")],
+	] as const) {
+		assert.notEqual(normalizeNormativeSpecContent(markdown, "chichex/skills", "issue"),
+			normalizeNormativeSpecContent(local.markdown, "chichex/skills", "local"), name);
+		const conflict = resolveWorkflow(resolutionInput({
+			artifacts: [local, { ...issueCopy, id: `issue-${name}`, markdown }],
+		}));
+		assert.equal(conflict.outcome, "stop", name);
+	}
+	// Un par inválido (SDD-Tracking con version=2) no se iguala con el v1.
+	const mismatched = local.markdown.replace("SDD-Tracking: version=1", "SDD-Tracking: version=2");
+	assert.notEqual(normalizeNormativeSpecContent(mismatched, "chichex/skills", "issue"),
+		normalizeNormativeSpecContent(local.markdown, "chichex/skills", "local"));
+});
+
 test("audits safely associated unknown metadata but blocks unsafe or conflicting metadata", () => {
 	const legacyUnknown = {
 		kind: "markdown" as const,

@@ -355,10 +355,18 @@ function markerLines(markdown: string): SourceLine[] {
 }
 
 // A canonical candidate declares version or type. Chiche-Tracking has no
-// historical form, so any Chiche-Tracking comment is a canonical candidate
-// and a malformed one is invalid instead of legacy.
+// historical form, so a comment labeled "Chiche-Tracking:" is a canonical
+// candidate and a malformed one is invalid instead of legacy. The rule is
+// anchored to the label: a comment that merely mentions the name in prose
+// ("<!-- Nota: pasar a Chiche-Tracking -->") is not a marker.
 function isCanonicalCandidate(line: SourceLine): boolean {
-	return /(?:^|[;\s])(?:version|type)\s*=/i.test(line.text) || /Chiche-Tracking/i.test(line.text);
+	return /(?:^|[;\s])(?:version|type)\s*=/i.test(line.text) || /^[ \t]*<!--\s*Chiche-Tracking\s*:/i.test(line.text);
+}
+
+// A historical marker is a non-canonical comment labeled "SDD-Tracking:".
+// Any other comment that mentions a marker name is prose and upsert keeps it.
+function isHistoricalMarker(line: SourceLine): boolean {
+	return !isCanonicalCandidate(line) && /^[ \t]*<!--\s*SDD-Tracking\s*:/i.test(line.text);
 }
 
 function absentState(): NormalizedStateResult {
@@ -910,9 +918,9 @@ export function upsertSddMetadata(markdown: string, metadata: SddMetadata): Upse
 		}]);
 	}
 
-	const trackingLines = markerLines(markdown);
+	const trackingLines = markerLines(markdown).filter((line) => isCanonicalCandidate(line) || isHistoricalMarker(line));
 	const canonical = trackingLines.filter(isCanonicalCandidate);
-	const historical = trackingLines.filter((line) => !isCanonicalCandidate(line));
+	const historical = trackingLines.filter(isHistoricalMarker);
 	let document: string;
 	if (canonical.length > 0) {
 		const retained = canonical[0];

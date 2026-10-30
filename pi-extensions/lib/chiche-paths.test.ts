@@ -197,9 +197,37 @@ test("CA-1: sdd-paths.ts reexporta chiche-paths.ts con aviso @deprecated", async
 	assert.equal(legacy.listSddArtifacts, listArtifacts);
 	assert.equal(legacy.isSddArtifactPath, isArtifactPath);
 	assert.equal(legacy.trackedSddArtifactDirs, trackedArtifactDirs);
-	assert.equal(legacy.localSddArtifactDir, localArtifactDir);
 	assert.equal(legacy.resolveGitCommonDir, resolveGitCommonDir);
 	assert.equal(legacy.resolveRepoWorktrees, resolveRepoWorktrees);
+	// El aviso dice sin vueltas que la forma de los dirs cambió.
+	assert.match(source, /resolveSddArtifactDirs[\s\S]*trackedSddArtifactDirs[\s\S]*cuatro lugares/);
+});
+
+test("review #105: el alias deprecado localSddArtifactDir conserva su resultado <common>/sdd/<kind>", () => {
+	assert.equal(legacy.localSddArtifactDir("/proyecto/.git", "specs"), "/proyecto/.git/sdd/specs");
+	assert.equal(legacy.localSddArtifactDir("/proyecto/.git", "grills"), "/proyecto/.git/sdd/grills");
+	assert.equal(localArtifactDir("/proyecto/.git", "specs"), "/proyecto/.git/chiche/specs");
+});
+
+test("review #105: un SddArtifactDirs con la forma vieja { tracked, local } se lee sin tirar y saltea los lugares que faltan", async (t) => {
+	const base = realpathSync(mkdtempSync(join(tmpdir(), "chiche-paths-old-shape-")));
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const old = { tracked: join(base, ".sdd", "specs"), local: join(base, ".git", "sdd", "specs") } as unknown as legacy.SddArtifactDirs;
+	assert.deepEqual(legacy.sddArtifactReadDirs(old), [
+		{ path: old.tracked, location: "tracked", brand: "chiche" },
+		{ path: old.local, location: "local", brand: "chiche" },
+	]);
+	assert.equal(legacy.isSddArtifactPath(old, join(old.tracked, "a.md")), true);
+	assert.equal(legacy.isSddArtifactPath(old, join(old.local, "a.md")), true);
+	assert.equal(legacy.isSddArtifactPath(old, join(base, "a.md")), false);
+	write(old.tracked, "a.md", "trackeado\n");
+	write(old.local, "a.md", "local\n");
+	write(old.local, "b.md", "local\n");
+	assert.deepEqual(await legacy.listSddArtifacts(old), [
+		{ name: "a.md", path: join(old.tracked, "a.md"), location: "tracked", brand: "chiche" },
+		{ name: "b.md", path: join(old.local, "b.md"), location: "local", brand: "chiche" },
+	]);
+	assert.equal(await legacy.resolveSddArtifactName(old, "a.md"), join(old.tracked, "a.md"));
 });
 
 // Los lugares que leen o escriben borradores resuelven las rutas con este

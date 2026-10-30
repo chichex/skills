@@ -638,12 +638,17 @@ function relevantArtifactEntries(
 	return allEntries.filter((_entry, index) => selected.has(index));
 }
 
+// La marca es transporte (issue #103, CA-2): un marker canónico
+// `SDD-Tracking: version=1` se compara como su `Chiche-Tracking: version=2`
+// con los mismos campos. Un par inválido (otra versión u otra forma) no se toca.
+const V1_CANONICAL_PREFIX = /^([ \t]*)<!-- SDD-Tracking: version=1(?=; | -->)/;
+
 function normalizeIssueMarkers(markdown: string, repository: string): string {
 	return markdown
 		.split("\n")
 		.map((line) => {
 			if (!/^[ \t]*<!--\s*(?:Chiche|SDD)-Tracking\s*:/i.test(line)) return line;
-			return line.replace(
+			return line.replace(V1_CANONICAL_PREFIX, "$1<!-- Chiche-Tracking: version=2").replace(
 				/(\bissue\s*=\s*)(#[1-9]\d*|[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+#[1-9]\d*)/i,
 				(_match, prefix: string, raw: string) => {
 					const normalized = normalizeIssueRef(raw, repository);
