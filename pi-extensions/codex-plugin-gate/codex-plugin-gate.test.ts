@@ -15,7 +15,7 @@ test("el plugin de Codex carga el set codex y no el set claude", async () => {
 	const claude = await readJson<{ name: string; skills: string[] }>(".claude-plugin/plugin.json");
 
 	assert.equal(codex.name, "chichex-skills");
-	assert.match(codex.version, /^\d+\.\d+\.\d+$/);
+	assert.equal(codex.version, (await readFile(repoFile("VERSION"), "utf8")).trim());
 	assert.equal(codex.skills, "./codex/");
 	assert.equal(claude.name, codex.name);
 	assert.deepEqual(claude.skills, ["./claude"]);

@@ -284,6 +284,19 @@ Para encadenar desde `issue-triage`, también deben estar instalados y habilitad
 
 **Alternativa legacy/manual de Pi:** `./install.sh pi` se conserva para compatibilidad, pero el Pi Package es la vía recomendada. Corré el instalador sólo con autorización explícita, porque actualiza el checkout y reemplaza las copias globales administradas; después ejecutá `/reload`. Las sesiones ya abiertas no reciben el código nuevo hasta recargar. No lo uses si el package nativo sigue instalado. Las instalaciones de Claude Code, Codex y OpenCode no cambian. Para la prueba interactiva usá una sesión persistida y repos descartables; los stages reales requieren un provider local/falso o consumo de proveedor explícitamente autorizado. El smoke autónomo usa configuración temporal y no ejecuta providers.
 
+## Versiones y releases
+
+La versión del repo vive en [`VERSION`](VERSION), una línea `MAJOR.MINOR.PATCH` (por ejemplo `2.0.0`). `package.json` y `.codex-plugin/plugin.json` repiten el mismo valor.
+
+- **En cada PR**, CI (`Versión semver`) exige que `VERSION` suba un paso semver respecto del branch base y que los dos manifests coincidan. Desde `2.0.0` valen `2.0.1`, `2.1.0` o `3.0.0`; `2.0.0`, `2.2.0` o `2.1` fallan.
+- **En cada push a `main`**, si pasan los checks, CI crea el tag `v<VERSION>` y su release con las notas que genera GitHub. Si el tag ya existe, no hace nada.
+
+Para validarlo antes de abrir el PR:
+
+```bash
+bash scripts/version.sh check --next-of "$(bash scripts/version.sh base origin/main)"
+```
+
 ## Créditos
 
 Dos de los **skills fundacionales** están **basados en** los skills de **[Matt Pocock](https://github.com/mattpocock)** — de su repo [mattpocock/skills](https://github.com/mattpocock/skills) (MIT):

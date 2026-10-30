@@ -286,6 +286,19 @@ Chaining from `issue-triage` also requires `grill`, `sdd-spec` and `sdd-run` to 
 
 **Pi legacy/manual alternative:** `./install.sh pi` remains available for compatibility, but the Pi Package is the recommended path. Run the installer only with explicit authorization because it updates the checkout and replaces the managed global copies; then run `/reload`. Already-open sessions do not receive the new code until they reload. Do not use it while the native package remains installed. Claude Code, Codex, and OpenCode installation behavior is unchanged. Interactive testing uses persisted sessions and disposable repositories; real stages require a local/fake provider or explicitly authorized provider usage. The autonomous smoke uses temporary configuration and no providers.
 
+## Versions and releases
+
+The repo version lives in [`VERSION`](VERSION), a single `MAJOR.MINOR.PATCH` line (for example `2.0.0`). `package.json` and `.codex-plugin/plugin.json` repeat the same value.
+
+- **On every PR**, CI (`Versión semver`) requires `VERSION` to move one semver step from the base branch and both manifests to match. From `2.0.0`, `2.0.1`, `2.1.0` or `3.0.0` pass; `2.0.0`, `2.2.0` or `2.1` fail.
+- **On every push to `main`**, once the checks pass, CI creates the `v<VERSION>` tag and its release with GitHub-generated notes. If the tag already exists, it does nothing.
+
+To check it before opening the PR:
+
+```bash
+bash scripts/version.sh check --next-of "$(bash scripts/version.sh base origin/main)"
+```
+
 ## Credits
 
 Two of the **foundational skills** are **based on** **[Matt Pocock](https://github.com/mattpocock)**'s skills — from his [mattpocock/skills](https://github.com/mattpocock/skills) repo (MIT):

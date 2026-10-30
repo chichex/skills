@@ -636,7 +636,8 @@ test("package manifest is deterministic, Git-only, and non-publishable", async (
 	const manifest = await readManifest();
 
 	assert.equal(manifest.name, "chichex-skills");
-	assert.equal(manifest.version, "0.0.0");
+	// VERSION es la fuente; scripts/version.sh exige el mismo valor en CI.
+	assert.equal(manifest.version, (await readFile(repoFile("VERSION"), "utf8")).trim());
 	assert.equal(manifest.private, true);
 	assert.equal(manifest.type, "module");
 	// >=22.19.0 es el engine que declara @earendil-works/pi-coding-agent: como el
