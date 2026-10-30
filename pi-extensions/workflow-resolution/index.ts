@@ -642,7 +642,7 @@ function normalizeIssueMarkers(markdown: string, repository: string): string {
 	return markdown
 		.split("\n")
 		.map((line) => {
-			if (!/^[ \t]*<!--\s*SDD-Tracking\s*:/i.test(line)) return line;
+			if (!/^[ \t]*<!--\s*(?:Chiche|SDD)-Tracking\s*:/i.test(line)) return line;
 			return line.replace(
 				/(\bissue\s*=\s*)(#[1-9]\d*|[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+#[1-9]\d*)/i,
 				(_match, prefix: string, raw: string) => {

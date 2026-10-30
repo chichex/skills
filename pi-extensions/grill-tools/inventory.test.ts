@@ -339,6 +339,53 @@ test("CA-8/10: imported source remains compatible after a persisted continuity s
 	assert.equal(result.entries[0]?.authority, "handoff");
 });
 
+test("#103 CA-3: a persisted handoff migrated to Chiche-Tracking v2 stays compatible with its snapshot", () => {
+	const v1 = handoffMarkdown({ id: "migrated", state: "finalized", body: "Confirmed facts." });
+	const v2 = v1.replace("<!-- SDD-Tracking: version=1; ", "<!-- Chiche-Tracking: version=2; ");
+	assert.notEqual(v2, v1);
+	const withoutMarker = v1.split("\n").filter((line) => !line.startsWith("<!-- SDD-Tracking")).join("\n");
+
+	const source = handoffMarkdown({ id: "imported-v1", state: "finalized", body: "Original confirmed facts." });
+	const persistedImport = `${source.replace("<!-- SDD-Tracking: version=1; ", "<!-- Chiche-Tracking: version=2; ").trim()}\n\n## Continuidad runtime importada\n\nNew confirmed facts.\n`;
+
+	const result = reconcileGrillInventory({
+		snapshots: [
+			snapshotFile(snapshot({ id: "migrated", topic: "Migrated", status: "finalized", handoffMarkdown: v1 }), "migrated.json"),
+			snapshotFile(snapshot({ id: "model", topic: "Model", status: "finalized", handoffMarkdown: withoutMarker.replace("migrated", "model") }), "model.json"),
+			snapshotFile(snapshot({
+				version: 5,
+				id: "imported-v1",
+				topic: "Imported v1",
+				status: "finalized",
+				handoffMarkdown: "New confirmed facts.",
+				importedHandoff: {
+					kind: "handoff-only",
+					sourcePath: `${ROOT}/.sdd/grills/imported-v1.md`,
+					markdown: source,
+					importedAt: "2026-09-29T11:00:00.000Z",
+					hadRuntimeSnapshot: false,
+				},
+			}), "imported-v1.json"),
+		],
+		handoffs: [
+			handoffFile(v2, `${ROOT}/.sdd/grills/migrated.md`),
+			handoffFile(
+				handoffMarkdown({ id: "model", state: "finalized", body: "Confirmed facts." })
+					.replace("<!-- SDD-Tracking: version=1; ", "<!-- Chiche-Tracking: version=2; "),
+				`${ROOT}/.sdd/grills/model.md`,
+			),
+			handoffFile(persistedImport, `${ROOT}/.sdd/grills/imported-v1.md`),
+		],
+	});
+
+	for (const id of ["migrated", "model", "imported-v1"]) {
+		const entry = result.entries.find((candidate) => candidate.grillId === id);
+		assert.equal(entry?.valid, true, id);
+		assert.deepEqual(entry?.diagnostics, [], id);
+		assert.equal(entry?.authority, "handoff", id);
+	}
+});
+
 test("CA-2/5: incompatible state, issue, or persisted content blocks only that identity", () => {
 	const stateMismatch = handoffMarkdown({ id: "state-mismatch", state: "finalized" });
 	const issueMismatch = handoffMarkdown({ id: "issue-mismatch", state: "paused", issue: "#8" });

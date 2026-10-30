@@ -5,6 +5,7 @@ import {
 	buildFreshnessEvidence,
 	inspectGrillSnapshot,
 	inspectMarkdownArtifact,
+	normalizeNormativeSpecContent,
 	resolveWorkflow,
 	selectWorkflowRoute,
 } from "./index.ts";
@@ -378,6 +379,35 @@ test("deduplicates only normatively equivalent local and GitHub spec copies", ()
 	}
 });
 
+test("#103 CA-2: deduplicates local and GitHub copies that carry Chiche-Tracking v2 with a qualified issue", () => {
+	const v1 = canonicalSpec("approved", "fresh");
+	const local = {
+		...v1,
+		markdown: v1.markdown.replace("<!-- SDD-Tracking: version=1; ", "<!-- Chiche-Tracking: version=2; "),
+	};
+	assert.notEqual(local.markdown, v1.markdown);
+	assert.equal(normalizeNormativeSpecContent(local.markdown.replace("issue=#11", "issue=chichex/skills#11"), "chichex/skills", "issue"),
+		normalizeNormativeSpecContent(local.markdown, "chichex/skills", "local"));
+	const issueCopy = {
+		...local,
+		id: "issue-copy-v2",
+		location: "issue" as const,
+		path: "https://github.com/chichex/skills/issues/11",
+		hostIssue: issue(11),
+		markdown: local.markdown.replace("issue=#11", "issue=chichex/skills#11"),
+	};
+
+	const equivalent = resolveWorkflow(resolutionInput({ artifacts: [issueCopy, local] }));
+	assert.equal(equivalent.recommendedRoute, "run-existing-spec");
+	assert.equal(equivalent.artifacts.find(({ id }) => id === local.id)?.primary, true, "local copy is primary");
+	assert.equal(equivalent.artifacts.find(({ id }) => id === issueCopy.id)?.primary, false);
+
+	const otherIssue = resolveWorkflow(resolutionInput({
+		artifacts: [local, { ...issueCopy, id: "issue-other", markdown: local.markdown.replace("issue=#11", "issue=other/repo#11") }],
+	}));
+	assert.equal(otherIssue.outcome, "stop");
+});
+
 test("audits safely associated unknown metadata but blocks unsafe or conflicting metadata", () => {
 	const legacyUnknown = {
 		kind: "markdown" as const,
@@ -414,7 +444,7 @@ test("audits safely associated unknown metadata but blocks unsafe or conflicting
 	}
 	assert.equal(
 		resolveWorkflow(resolutionInput({ artifacts: [invalidOnIssue] })).artifacts[0]?.diagnostics[0]?.code,
-		"unsupported-version",
+		"marker-version-mismatch",
 	);
 
 	const invalidLocal = { ...invalidOnIssue, id: "invalid-local", location: "local" as const, path: absent.path };

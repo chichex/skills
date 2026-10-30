@@ -939,7 +939,9 @@ test("persist_sdd_spec creates a staging issue and publishes only after binding 
 		);
 
 		assert.equal(result.details.ok, true);
-		assert.doesNotMatch(stagingBody, /SDD-Tracking/, "the creation body is not a transient spec");
+		assert.doesNotMatch(stagingBody, /(?:Chiche|SDD)-Tracking/, "the creation body is not a transient spec");
+		assert.match(publishedBody, /^<!-- Chiche-Tracking: version=2; type=spec; state=approved; issue=#77; grill=none; superseded-by=none -->$/m);
+		assert.doesNotMatch(publishedBody, /SDD-Tracking/, "the rewritten v1 marker migrates to v2 in place");
 		assert.match(publishedBody, /issue=#77/);
 		assert.doesNotMatch(publishedBody, /issue=none/);
 		assert.doesNotMatch(publishedBody, /<details>/, "staging is not archived into the final issue body");

@@ -196,7 +196,7 @@ async function collectWorkflowAssociations(
 
 	for (const issue of issues) {
 		const body = issue.body?.trim() ?? "";
-		if (!/^#\s+Spec\b/im.test(body) && !/SDD-Tracking:/i.test(body)) continue;
+		if (!/^#\s+Spec\b/im.test(body) && !/(?:Chiche|SDD)-Tracking:/i.test(body)) continue;
 		const artifact = inspectMarkdownArtifact({
 			kind: "markdown",
 			id: issue.url,

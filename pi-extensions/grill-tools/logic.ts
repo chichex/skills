@@ -3,7 +3,8 @@
 // Compone el handoff Markdown que Pi escribe en `<git-common-dir>/chiche/grills/`
 // del proyecto (fuera de git, en `.chiche/grills/`)
 // con el template comun de los harnesses, y le garantiza el marker
-// canonico SDD-Tracking v1 via sdd-artifacts. Sin I/O ni APIs de Pi: la
+// canonico Chiche-Tracking v2 via sdd-artifacts (un SDD-Tracking v1 previo
+// migra a v2 en su lugar). Sin I/O ni APIs de Pi: la
 // escritura a disco vive en index.ts.
 
 import { basename } from "node:path";
@@ -38,7 +39,7 @@ export interface HandoffPlan {
 	diagnostics: string[];
 }
 
-const MARKER_LINE = /^[ \t]*<!--\s*SDD-Tracking\s*:.*-->[ \t]*$/i;
+const MARKER_LINE = /^[ \t]*<!--\s*(?:Chiche|SDD)-Tracking\s*:.*-->[ \t]*$/i;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
 export function slugify(text: string): string {
