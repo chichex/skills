@@ -1178,8 +1178,10 @@ function assertNativePackageDocumentation(document: string): void {
 		"pi remove git:github.com/chichex/skills",
 		"./install.sh pi-clean --confirm",
 		"pi --use-theme claude-code",
-		".sdd/specs",
+		".chiche/grills",
 		".sdd/grills",
+		"<git-common-dir>/chiche/",
+		"<git-common-dir>/sdd/",
 	]) {
 		assert.ok(document.includes(literal), `missing package documentation: ${literal}`);
 	}

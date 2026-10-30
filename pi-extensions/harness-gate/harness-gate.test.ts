@@ -1062,7 +1062,7 @@ test("#84 CA-16, #103 CA-5: issue-triage resuelve el linaje en los cuatro lugare
 	}
 	for (const path of ["README.md", "README.en.md"]) {
 		const readme = await readRepoFile(path);
-		for (const literal of ["`<git-common-dir>/sdd/grills/`", "`<git-common-dir>/sdd/specs/`", "`git rev-parse --path-format=absolute --git-common-dir`"]) {
+		for (const literal of ["`<git-common-dir>/chiche/grills/`", "`<git-common-dir>/chiche/specs/`", "`<git-common-dir>/chiche/events.jsonl`", "`<git-common-dir>/sdd/events.jsonl`", "`git rev-parse --path-format=absolute --git-common-dir`"]) {
 			if (!readme.includes(literal)) problems.push(`${path}: no menciona ${literal}`);
 		}
 	}
