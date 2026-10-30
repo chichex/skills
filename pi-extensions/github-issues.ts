@@ -8,7 +8,7 @@ import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 import type { IssueListItem } from "./github-issue-selector";
 import { issueTriageFailureMessage } from "./github-consumer-logic.ts";
 import { selectManyMenu, selectMenu, type MenuItem } from "./lib/menu";
-import { listSddArtifacts, resolveSddArtifactDirs } from "./lib/sdd-paths.ts";
+import { listArtifacts, resolveArtifactDirs } from "./lib/chiche-paths.ts";
 import { requestIssueTriage } from "./workflow-orchestrator/controller.ts";
 import { inspectMarkdownArtifact, type ArtifactRef } from "./workflow-resolution/index.ts";
 
@@ -165,9 +165,11 @@ async function collectWorkflowAssociations(
 		}
 	}));
 
-	// Specs locales: `.sdd/specs/` trackeado y `<git-common-dir>/sdd/specs/`
-	// (spec #84); ante el mismo nombre gana la trackeada.
-	const specFiles = await listSddArtifacts(await resolveSddArtifactDirs(projectPath, "specs"));
+	// Specs locales: `.chiche/specs/` y `.sdd/specs/` trackeados y
+	// `<git-common-dir>/chiche/specs/` y `<git-common-dir>/sdd/specs/` (spec #84;
+	// issue #103, CA-1); ante el mismo nombre gana la trackeada y, dentro de cada
+	// par, chiche.
+	const specFiles = await listArtifacts(await resolveArtifactDirs(projectPath, "specs"));
 	await Promise.all(specFiles.map(async ({ path }) => {
 		try {
 			const [markdown, fileStat] = await Promise.all([readFile(path, "utf8"), stat(path)]);

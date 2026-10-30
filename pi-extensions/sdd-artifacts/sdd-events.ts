@@ -7,7 +7,7 @@
 import { mkdir, open } from "node:fs/promises";
 import { join } from "node:path";
 
-import { resolveGitCommonDir, type GitRunner } from "../lib/sdd-paths.ts";
+import { resolveGitCommonDir, type GitRunner } from "../lib/chiche-paths.ts";
 import {
 	decodeReference,
 	encodeReference,

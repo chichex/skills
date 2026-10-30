@@ -717,37 +717,78 @@ test("keeps recommendation and effective selection independent in serializable v
 	}
 });
 
-test("#84 CA-12: superseded-by=.sdd/specs/<x>.md se resuelve primero en el árbol trackeado y después en <git-common-dir>/sdd/specs", () => {
-	const localSpecsDir = "/workspace/main/.git/sdd/specs";
+// Los cuatro lugares de specs de un worktree linkeado cuyo common-dir es
+// /workspace/main/.git (issue #103, CA-1).
+const SPEC_DIRS = {
+	tracked: `${PROJECT_ROOT}/.chiche/specs`,
+	local: "/workspace/main/.git/chiche/specs",
+	legacyTracked: `${PROJECT_ROOT}/.sdd/specs`,
+	legacyLocal: "/workspace/main/.git/sdd/specs",
+};
+
+test("#84 CA-12: superseded-by=.sdd/specs/<x>.md se resuelve primero en el árbol trackeado y después en <git-common-dir>/chiche/specs y <git-common-dir>/sdd/specs", () => {
+	const specDirs = SPEC_DIRS;
 	const oldPath = `${PROJECT_ROOT}/.sdd/specs/issue-11-old.md`;
 	const old = specAt({ id: "old", path: oldPath, state: "superseded", supersededBy: ".sdd/specs/issue-11-next.md" });
-	const draftNext = specAt({ id: "draft-next", path: `${localSpecsDir}/issue-11-next.md`, state: "approved", fresh: "fresh" });
+	for (const localSpecsDir of [specDirs.local, specDirs.legacyLocal]) {
+		const draftNext = specAt({ id: "draft-next", path: `${localSpecsDir}/issue-11-next.md`, state: "approved", fresh: "fresh" });
 
-	const local = resolveWorkflow(resolutionInput({ localSpecsDir, artifacts: [old, draftNext] }));
-	assert.equal(local.code, "run-existing-spec", JSON.stringify(local.artifacts.map(({ id, diagnostics }) => ({ id, diagnostics }))));
-	assert.equal(local.artifacts.find(({ id }) => id === "draft-next")?.primary, true);
+		const local = resolveWorkflow(resolutionInput({ specDirs, artifacts: [old, draftNext] }));
+		assert.equal(local.code, "run-existing-spec", JSON.stringify(local.artifacts.map(({ id, diagnostics }) => ({ id, diagnostics }))));
+		assert.equal(local.artifacts.find(({ id }) => id === "draft-next")?.primary, true);
 
-	const withoutLocal = resolveWorkflow(resolutionInput({ artifacts: [old, draftNext] }));
-	assert.notEqual(withoutLocal.code, "run-existing-spec", "sin localSpecsDir el borrador del common-dir no es sucesor");
+		const withoutLocal = resolveWorkflow(resolutionInput({ artifacts: [old, draftNext] }));
+		assert.notEqual(withoutLocal.code, "run-existing-spec", "sin specDirs el borrador del common-dir no es sucesor");
 
-	// Con el mismo nombre en los dos lugares, el sucesor es el trackeado: no hay
-	// ambigüedad ni se usa el borrador.
-	const trackedNext = specAt({ id: "tracked-next", path: `${PROJECT_ROOT}/.sdd/specs/issue-11-next.md`, state: "approved", fresh: "fresh" });
-	const both = resolveWorkflow(resolutionInput({ localSpecsDir, artifacts: [old, trackedNext, draftNext] }));
-	const oldDiagnostics = both.artifacts.find(({ id }) => id === "old")?.diagnostics.map(({ code }) => code) ?? [];
-	assert.ok(!oldDiagnostics.includes("ambiguous-superseded-target"), JSON.stringify(oldDiagnostics));
-	assert.ok(!oldDiagnostics.includes("superseded-target-unusable"), JSON.stringify(oldDiagnostics));
-	const trackedOnly = resolveWorkflow(resolutionInput({ localSpecsDir, artifacts: [old, trackedNext] }));
-	assert.equal(trackedOnly.artifacts.find(({ id }) => id === "tracked-next")?.primary, true);
+		// Con el mismo nombre en el árbol y en el common-dir, el sucesor es el
+		// trackeado: no hay ambigüedad ni se usa el borrador.
+		const trackedNext = specAt({ id: "tracked-next", path: `${PROJECT_ROOT}/.sdd/specs/issue-11-next.md`, state: "approved", fresh: "fresh" });
+		const both = resolveWorkflow(resolutionInput({ specDirs, artifacts: [old, trackedNext, draftNext] }));
+		const oldDiagnostics = both.artifacts.find(({ id }) => id === "old")?.diagnostics.map(({ code }) => code) ?? [];
+		assert.ok(!oldDiagnostics.includes("ambiguous-superseded-target"), JSON.stringify(oldDiagnostics));
+		assert.ok(!oldDiagnostics.includes("superseded-target-unusable"), JSON.stringify(oldDiagnostics));
+		const trackedOnly = resolveWorkflow(resolutionInput({ specDirs, artifacts: [old, trackedNext] }));
+		assert.equal(trackedOnly.artifacts.find(({ id }) => id === "tracked-next")?.primary, true);
 
-	const draftOld = specAt({ id: "draft-old", path: `${localSpecsDir}/issue-11-old.md`, state: "superseded", supersededBy: ".sdd/specs/issue-11-next.md" });
-	const fromDraft = resolveWorkflow(resolutionInput({ localSpecsDir, artifacts: [draftOld, draftNext] }));
-	assert.equal(fromDraft.code, "run-existing-spec");
-	assert.equal(fromDraft.artifacts.find(({ id }) => id === "draft-next")?.primary, true);
+		const draftOld = specAt({ id: "draft-old", path: `${localSpecsDir}/issue-11-old.md`, state: "superseded", supersededBy: ".sdd/specs/issue-11-next.md" });
+		const fromDraft = resolveWorkflow(resolutionInput({ specDirs, artifacts: [draftOld, draftNext] }));
+		assert.equal(fromDraft.code, "run-existing-spec");
+		assert.equal(fromDraft.artifacts.find(({ id }) => id === "draft-next")?.primary, true);
+	}
 
 	const escape = resolveWorkflow(resolutionInput({
-		localSpecsDir,
+		specDirs,
 		artifacts: [specAt({ id: "escape", path: oldPath, state: "superseded", supersededBy: "../outside.md" })],
 	}));
 	assert.ok(escape.artifacts[0]?.diagnostics.some(({ code }) => code === "superseded-target-unusable"));
+});
+
+test("#103 CA-1: superseded-by=.sdd/specs/<x>.md y .chiche/specs/<x>.md resuelven por nombre en los cuatro lugares con su precedencia", () => {
+	const specDirs = SPEC_DIRS;
+	const name = "issue-11-next.md";
+	const at = (id: string, directory: string) => specAt({ id, path: `${directory}/${name}`, state: "approved", fresh: "fresh" });
+	const oldPath = `${PROJECT_ROOT}/.sdd/specs/issue-11-old.md`;
+	// Un perdedor apunta de vuelta a la predecesora: si ella lo eligiera, el
+	// linaje tendría un ciclo; si elige al ganador, el ganador es la única hoja.
+	const loser = (id: string, directory: string) => specAt({ id, path: `${directory}/${name}`, state: "superseded", supersededBy: oldPath });
+	const places: Array<[string, string]> = [
+		["chiche-tracked", specDirs.tracked],
+		["sdd-tracked", specDirs.legacyTracked],
+		["chiche-local", specDirs.local],
+		["sdd-local", specDirs.legacyLocal],
+	];
+	for (const reference of [`.sdd/specs/${name}`, `.chiche/specs/${name}`]) {
+		const old = specAt({ id: "old", path: oldPath, state: "superseded", supersededBy: reference });
+		for (let winner = 0; winner < places.length; winner += 1) {
+			const [winnerId, winnerDirectory] = places[winner]!;
+			const losers = places.slice(winner + 1).map(([id, directory]) => loser(id, directory));
+			const result = resolveWorkflow(resolutionInput({ specDirs, artifacts: [old, at(winnerId, winnerDirectory), ...losers] }));
+			assert.equal(result.code, "run-existing-spec", `${reference} · ${winnerId}: ${JSON.stringify(result.artifacts.map(({ id, diagnostics }) => ({ id, diagnostics })))}`);
+			assert.equal(result.artifacts.find(({ id }) => id === winnerId)?.primary, true, `${reference}: gana ${winnerId}`);
+		}
+	}
+	const chicheSource = specAt({ id: "old", path: `${specDirs.local}/issue-11-old.md`, state: "superseded", supersededBy: `.chiche/specs/${name}` });
+	const fromChicheDraft = resolveWorkflow(resolutionInput({ specDirs, artifacts: [chicheSource, at("sdd-local", specDirs.legacyLocal)] }));
+	assert.equal(fromChicheDraft.code, "run-existing-spec", "un borrador chiche referencia a uno sdd por su ruta lógica");
+	assert.equal(fromChicheDraft.artifacts.find(({ id }) => id === "sdd-local")?.primary, true);
 });

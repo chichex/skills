@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -455,10 +455,11 @@ test("startDirectRun stages a cross-project child under the selected spec projec
 	}
 });
 
-// Spec #84, CA-12: /sdd-run, launch_sdd_run y __sdd-dispatch aceptan una spec
-// en <git-common-dir>/sdd/specs/ desde el checkout principal y desde un
-// worktree linkeado. Repo git real; el repositorio de GitHub se inyecta.
-async function draftRepo(): Promise<{ base: string; main: string; linked: string; draft: string }> {
+// Spec #84, CA-12 e issue #103, CA-1: /sdd-run, launch_sdd_run y
+// __sdd-dispatch aceptan una spec en <git-common-dir>/chiche/specs/ (o, de antes
+// del renombre, en <git-common-dir>/sdd/specs/) desde el checkout principal y
+// desde un worktree linkeado. Repo git real; el repositorio de GitHub se inyecta.
+async function draftRepo(brand: "chiche" | "sdd" = "chiche"): Promise<{ base: string; main: string; linked: string; draft: string }> {
 	const { execFileSync } = await import("node:child_process");
 	const git = (cwd: string, ...args: string[]) => execFileSync("git", [
 		"-c", "user.name=sdd", "-c", "user.email=sdd@example.invalid", "-c", "commit.gpgsign=false", ...args,
@@ -476,7 +477,7 @@ async function draftRepo(): Promise<{ base: string; main: string; linked: string
 	git(main, "commit", "-q", "-m", "contrato");
 	const linked = join(base, "repo-wt");
 	git(main, "worktree", "add", "-q", "-b", "feature", linked);
-	const draftDirectory = join(main, ".git", "sdd", "specs");
+	const draftDirectory = join(main, ".git", brand, "specs");
 	await mkdir(draftDirectory, { recursive: true });
 	const draft = join(draftDirectory, "borrador.md");
 	await writeFile(draft, [
@@ -488,29 +489,65 @@ async function draftRepo(): Promise<{ base: string; main: string; linked: string
 	return { base, main, linked, draft };
 }
 
-test("#84 CA-12: /sdd-run acepta una spec en <git-common-dir>/sdd/specs desde el checkout principal y desde un worktree linkeado", async () => {
-	const { base, main, linked, draft } = await draftRepo();
+for (const brand of ["chiche", "sdd"] as const) {
+	test(`#84 CA-12: /sdd-run acepta una spec en <git-common-dir>/${brand}/specs desde el checkout principal y desde un worktree linkeado`, async () => {
+		const { base, main, linked, draft } = await draftRepo(brand);
+		try {
+			const dependencies = { async resolveRepository() { return "chichex/skills"; } };
+			for (const cwd of [main, linked]) {
+				for (const target of [".chiche/specs/borrador.md", ".sdd/specs/borrador.md", draft]) {
+					const result = await orchestrator.resolveDirectRunRequest(target, cwd, dependencies);
+					assert.equal(result.ok, true, `${cwd} · ${target}: ${result.ok ? "" : `${result.code}: ${result.message}`}`);
+					if (!result.ok) continue;
+					assert.equal(result.request.cwd, cwd);
+					assert.deepEqual(result.request.target, {
+						type: "spec",
+						canonicalReference: `chichex/skills:.${brand}/specs/borrador.md`,
+						path: draft,
+						issue: null,
+					});
+					assert.equal(orchestrator.describeDirectRun(result.request).skill.args, draft);
+					assert.equal(orchestrator.validateDirectRunRequest(result.request).ok, true);
+				}
+			}
+			for (const target of [".sdd/specs/no-existe.md", ".chiche/specs/no-existe.md"]) {
+				const missing = await orchestrator.resolveDirectRunRequest(target, linked, dependencies);
+				assert.equal(missing.ok, false, target);
+				if (!missing.ok) assert.equal(missing.code, "unreadable-spec");
+			}
+		} finally {
+			await rm(base, { recursive: true, force: true });
+		}
+	});
+}
+
+test("#103 CA-1: /sdd-run resuelve una ruta lógica por nombre con la precedencia .chiche/specs > .sdd/specs > <git-common-dir>/chiche/specs > <git-common-dir>/sdd/specs", async () => {
+	const { base, main, linked, draft } = await draftRepo("sdd");
 	try {
 		const dependencies = { async resolveRepository() { return "chichex/skills"; } };
+		const resolveFrom = async (cwd: string, target: string) => {
+			const result = await orchestrator.resolveDirectRunRequest(target, cwd, dependencies);
+			assert.equal(result.ok, true, `${cwd} · ${target}: ${result.ok ? "" : `${result.code}: ${result.message}`}`);
+			return result.ok && result.request.target.type === "spec" ? result.request.target : null;
+		};
+		const chicheDraft = join(main, ".git", "chiche", "specs", "borrador.md");
+		await mkdir(dirname(chicheDraft), { recursive: true });
+		await writeFile(chicheDraft, await readFile(draft, "utf8"), "utf8");
 		for (const cwd of [main, linked]) {
-			for (const target of [".sdd/specs/borrador.md", draft]) {
-				const result = await orchestrator.resolveDirectRunRequest(target, cwd, dependencies);
-				assert.equal(result.ok, true, `${cwd} · ${target}: ${result.ok ? "" : `${result.code}: ${result.message}`}`);
-				if (!result.ok) continue;
-				assert.equal(result.request.cwd, cwd);
-				assert.deepEqual(result.request.target, {
-					type: "spec",
-					canonicalReference: "chichex/skills:.sdd/specs/borrador.md",
-					path: draft,
-					issue: null,
-				});
-				assert.equal(orchestrator.describeDirectRun(result.request).skill.args, draft);
-				assert.equal(orchestrator.validateDirectRunRequest(result.request).ok, true);
-			}
+			const target = await resolveFrom(cwd, ".sdd/specs/borrador.md");
+			assert.equal(target?.path, chicheDraft, `${cwd}: en el empate local gana <git-common-dir>/chiche/specs`);
+			assert.equal(target?.canonicalReference, "chichex/skills:.chiche/specs/borrador.md");
 		}
-		const missing = await orchestrator.resolveDirectRunRequest(".sdd/specs/no-existe.md", linked, dependencies);
-		assert.equal(missing.ok, false);
-		if (!missing.ok) assert.equal(missing.code, "unreadable-spec");
+		const legacyTracked = join(linked, ".sdd", "specs", "borrador.md");
+		await mkdir(dirname(legacyTracked), { recursive: true });
+		await writeFile(legacyTracked, await readFile(draft, "utf8"), "utf8");
+		assert.equal((await resolveFrom(linked, ".chiche/specs/borrador.md"))?.path, legacyTracked, "un .sdd/specs del árbol gana a los borradores");
+		const tracked = join(linked, ".chiche", "specs", "borrador.md");
+		await mkdir(dirname(tracked), { recursive: true });
+		await writeFile(tracked, await readFile(draft, "utf8"), "utf8");
+		const winner = await resolveFrom(linked, ".sdd/specs/borrador.md");
+		assert.equal(winner?.path, tracked, ".chiche/specs del árbol gana a todo");
+		assert.equal(winner?.canonicalReference, "chichex/skills:.chiche/specs/borrador.md");
 	} finally {
 		await rm(base, { recursive: true, force: true });
 	}
@@ -526,12 +563,18 @@ test("#84 CA-12: el protocolo directo acepta un borrador del common-dir y sigue 
 		summary: "Run SDD spec Borrador.",
 		evidence: evidence(),
 	});
+	assert.equal(orchestrator.validateDirectRunRequest(request("/workspace/skills/.git/chiche/specs/borrador.md", "chichex/skills:.chiche/specs/borrador.md")).ok, true);
 	assert.equal(orchestrator.validateDirectRunRequest(request("/workspace/skills/.git/sdd/specs/borrador.md", "chichex/skills:.sdd/specs/borrador.md")).ok, true);
+	assert.equal(orchestrator.validateDirectRunRequest(request("/workspace/skills-wt/.chiche/specs/x.md", "chichex/skills:.chiche/specs/x.md")).ok, true);
 	assert.equal(orchestrator.validateDirectRunRequest(request("/workspace/skills-wt/.sdd/specs/x.md", "chichex/skills:.sdd/specs/x.md")).ok, true);
 	for (const [path, reference] of [
 		["/workspace/skills/.git/sdd/specs/borrador.md", "chichex/skills:.git/sdd/specs/borrador.md"],
+		["/workspace/skills/.git/chiche/specs/borrador.md", "chichex/skills:.sdd/specs/borrador.md"],
+		["/workspace/skills/.git/sdd/specs/borrador.md", "chichex/skills:.chiche/specs/borrador.md"],
 		["/workspace/otro/specs/x.md", "chichex/skills:.sdd/specs/x.md"],
 		["/workspace/skills/.git/sdd/grills/x.md", "chichex/skills:.sdd/specs/x.md"],
+		["/workspace/skills/.git/chiche/grills/x.md", "chichex/skills:.chiche/specs/x.md"],
+		["/workspace/skills/.git/otra/specs/x.md", "chichex/skills:.otra/specs/x.md"],
 	]) {
 		assert.equal(orchestrator.validateDirectRunRequest(request(path!, reference!)).ok, false, path);
 	}
@@ -552,8 +595,10 @@ function draftRequest(cwd: string, path: string, canonicalReference = "chichex/s
 test("review #86: el protocolo directo solo acepta borradores bajo un directorio .git", () => {
 	assert.equal(orchestrator.validateDirectRunRequest(draftRequest("/workspace/skills-wt", "/workspace/skills/.git/sdd/specs/borrador.md")).ok, true);
 	assert.equal(orchestrator.validateDirectRunRequest(draftRequest("/workspace/skills-wt", "/srv/repos/skills.git/sdd/specs/borrador.md")).ok, true, "repo bare");
+	assert.equal(orchestrator.validateDirectRunRequest(draftRequest("/workspace/skills-wt", "/srv/repos/skills.git/chiche/specs/borrador.md", "chichex/skills:.chiche/specs/borrador.md")).ok, true, "repo bare, chiche");
 	for (const [cwd, path, reference] of [
 		["/workspace/skills-wt", "/tmp/sdd/specs/borrador.md", undefined],
+		["/workspace/skills-wt", "/tmp/chiche/specs/borrador.md", "chichex/skills:.chiche/specs/borrador.md"],
 		["/workspace/skills-wt", "/workspace/otro/vendor/sdd/specs/borrador.md", undefined],
 		["/workspace/skills-wt", "/workspace/skills-wt/vendor/sdd/specs/borrador.md", undefined],
 	] as const) {
@@ -575,4 +620,17 @@ test("review #86: startFreshStage rechaza un borrador que no está en el common-
 	if (!foreign.ok) assert.equal(foreign.code, "invalid-direct-request");
 	const own = await launch("/workspace/skills/.git/sdd/specs/borrador.md");
 	assert.ok(own.ok || own.code !== "invalid-direct-request", JSON.stringify(own));
+	const launchChiche = (path: string) => {
+		const request = draftRequest("/workspace/skills-wt", path, "chichex/skills:.chiche/specs/borrador.md");
+		const descriptor = orchestrator.describeDirectRun(request as never);
+		return orchestrator.startFreshStage({ direct: { request, ...descriptor.direct }, skill: descriptor.skill }, {} as never, {
+			commands: [],
+			resolveGitCommonDir: async (cwd: string) => (cwd === "/workspace/skills-wt" ? "/workspace/skills/.git" : null),
+		} as never);
+	};
+	const foreignChiche = await launchChiche("/workspace/otro/.git/chiche/specs/borrador.md");
+	assert.equal(foreignChiche.ok, false);
+	if (!foreignChiche.ok) assert.equal(foreignChiche.code, "invalid-direct-request");
+	const ownChiche = await launchChiche("/workspace/skills/.git/chiche/specs/borrador.md");
+	assert.ok(ownChiche.ok || ownChiche.code !== "invalid-direct-request", JSON.stringify(ownChiche));
 });

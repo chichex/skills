@@ -1,7 +1,8 @@
 // Logica pura del handoff interoperable de grill (CA-6, issue #10).
 //
-// Compone el handoff Markdown que Pi escribe en `.sdd/grills/` del proyecto
-// con el template comun de los cuatro harnesses, y le garantiza el marker
+// Compone el handoff Markdown que Pi escribe en `<git-common-dir>/chiche/grills/`
+// del proyecto (fuera de git, en `.chiche/grills/`)
+// con el template comun de los harnesses, y le garantiza el marker
 // canonico SDD-Tracking v1 via sdd-artifacts. Sin I/O ni APIs de Pi: la
 // escritura a disco vive en index.ts.
 
