@@ -24,8 +24,9 @@ jobs:
           bash -n install.sh
           bash -n scripts/lint-frontmatter.sh
           bash -n scripts/drift-report.sh
+          bash -n scripts/version.sh
       - name: shellcheck
-        run: shellcheck install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh
+        run: shellcheck install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh scripts/version.sh
 
   frontmatter:
     name: Frontmatter de skills
@@ -34,6 +35,26 @@ jobs:
       - uses: actions/checkout@v4
       - name: Lint de frontmatter
         run: bash scripts/lint-frontmatter.sh
+
+  version:
+    name: Versión semver
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # VERSION es la fuente; package.json y .codex-plugin/plugin.json la repiten.
+      - name: VERSION válida y manifests sincronizados
+        run: bash scripts/version.sh check
+      # Cada PR sube VERSION un paso semver desde el branch base (patch, minor o
+      # major). Si el base todavía no tiene VERSION, cuenta el último tag vX.Y.Z.
+      - name: Salto semver desde el branch base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          base=$(bash scripts/version.sh base "origin/$BASE_REF")
+          bash scripts/version.sh check --next-of "$base"
 
   tests:
     name: Tests de extensiones Pi
@@ -99,3 +120,36 @@ jobs:
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
           exit "$status"
+
+  # Cada push a main crea el tag v<VERSION> y su release con notas generadas
+  # por GitHub, solo si pasaron los checks. Un re-run sobre el commit ya
+  # tageado no hace nada; un push con codigo nuevo sin subir VERSION falla.
+  # El grupo de concurrencia del workflow ya serializa los pushes a main; el
+  # del job es defensa explicita por si ese grupo cambia. Si GitHub cancela un
+  # run pendiente, el release siguiente acepta el salto y sus notas lo cubren.
+  release:
+    name: Release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [shell, frontmatter, version, tests, harness-gate, plugin-validate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Crear tag y release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          plan=$(bash scripts/version.sh plan-release "$GITHUB_SHA")
+          v=${plan#* }
+          if [ "${plan%% *}" = skip ]; then
+            echo "v$v ya apunta a este commit: no hay release nuevo" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh release create "v$v" --target "$GITHUB_SHA" --title "v$v" --generate-notes
+          echo "Release v$v creado" | tee -a "$GITHUB_STEP_SUMMARY"
