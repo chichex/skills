@@ -1445,7 +1445,7 @@ test("#84 CA-11 (review #86): fuera de git, un .chiche/specs o .sdd/specs symlin
 // #93: log de eventos SDD (events-v1) escrito por las tools de Pi.
 
 function eventLines(common: string): string[] {
-	const path = join(common, "sdd", "events.jsonl");
+	const path = join(common, "chiche", "events.jsonl");
 	let content = "";
 	try {
 		content = readFileSync(path, "utf8");
@@ -1581,7 +1581,7 @@ test("#93 CA-6: con el append roto, grill_session pause devuelve el mismo result
 	const id = created.details.snapshot.id;
 	t.after(() => removeStoredSnapshot(id));
 	await tool.execute("configure-broken", { action: "configure", sessionId: id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
-	const log = join(common, "sdd", "events.jsonl");
+	const log = join(common, "chiche", "events.jsonl");
 	mkdirSync(log, { recursive: true });
 
 	const broken = await tool.execute("pause-broken", { action: "pause", sessionId: id, summary: "Pausa" }, undefined, undefined, { cwd: main });
@@ -1826,7 +1826,7 @@ test("#93 CA-6: con el append roto, persist_sdd_spec devuelve el mismo resultado
 			destinations: [{ kind: "local", path: ".sdd/specs/log-roto.md" }],
 		}],
 	};
-	const log = join(common, "sdd", "events.jsonl");
+	const log = join(common, "chiche", "events.jsonl");
 	mkdirSync(log, { recursive: true });
 	const broken = await tool.execute("persist-broken", input, undefined, undefined, { cwd: main });
 	assert.equal(broken.details.ok, true, "la publicación sigue verificada");
