@@ -463,8 +463,8 @@ const GRILL_DESIGN_CAPTURES: RegExp[] = [
 	/mocks HTML[^\n]*bundle `design-sync\/`[^\n]*Claude Design[^\n]*Storybook/,
 	/nunca se inventa una captura/,
 	/viven en el scratch[^\n]*hasta guardar, pausar o finalizar/,
-	// Spec #84, CA-13: las capturas viven con el handoff en <git-common-dir>/sdd/grills/.
-	/`<git-common-dir>\/sdd\/grills\/<nombre-real-del-handoff>\/`[^\n]*mismo nombre base que el `\.md`[^\n]*sufijo de colisión/,
+	// Spec #84, CA-13 e issue #103, CA-5: las capturas viven con el handoff en <git-common-dir>/chiche/grills/.
+	/`<git-common-dir>\/chiche\/grills\/<nombre-real-del-handoff>\/`[^\n]*mismo nombre base que el `\.md`[^\n]*sufijo de colisión/,
 	/el handoff las referencia por ruta relativa/,
 	/navegador headless que `## Verificacion autonoma` del contrato declare/,
 	/Sin navegador disponible[^\n]*se le pide la captura al usuario[^\n]*o se registra la referencia por ruta, sin captura/,
@@ -681,10 +681,10 @@ test("CA-17: el contrato fecha los conteos nuevos y cita la corrida con Pi 0.85.
 	const commands = section(contract, /^## Comandos$/);
 	// Pi Package conserva su verificación del 14; frontmatter y drift se
 	// re-ejecutaron el 15 con el port de issue-triage a OpenCode, y la suite el
-	// 29 con el gate de versionado.
+	// 30 con la capa 1 del renombre a chiche.
 	const verifiedOn: Record<string, string> = {
 		"gate focalizado de Pi Package": "2026-10-14",
-		"tests de extensiones": "2026-10-29",
+		"tests de extensiones": "2026-10-30",
 		"lint de frontmatter": "2026-10-15",
 		"reporte de drift": "2026-10-15",
 	};

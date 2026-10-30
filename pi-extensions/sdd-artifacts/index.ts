@@ -29,10 +29,26 @@ export interface ProjectMetadata {
 
 export type SddMetadata = SpecMetadata | GrillMetadata | ProjectMetadata;
 
+// `version` en SddMetadata es la versión del esquema de campos, compartido
+// por los dos markers. La versión del marker leído vive en el ParseResult:
+// `Chiche-Tracking` siempre es v2 y `SDD-Tracking` siempre es v1
+// (docs/chiche-tracking-v2.md).
+export type MarkerName = "Chiche-Tracking" | "SDD-Tracking";
+export type MarkerVersion = 2 | 1;
+
+const MARKER_VERSIONS: Record<MarkerName, MarkerVersion> = {
+	"Chiche-Tracking": 2,
+	"SDD-Tracking": 1,
+};
+
+// La serialización escribe siempre el marker vigente.
+const CURRENT_MARKER: MarkerName = "Chiche-Tracking";
+
 export type DiagnosticCode =
 	| "invalid-metadata"
 	| "invalid-marker-syntax"
 	| "unsupported-version"
+	| "marker-version-mismatch"
 	| "unknown-type"
 	| "missing-key"
 	| "extra-key"
@@ -82,6 +98,8 @@ export type ParseResult =
 	| {
 		kind: "metadata";
 		format: "canonical";
+		markerName: MarkerName;
+		version: MarkerVersion;
 		metadata: SddMetadata;
 		raw: string;
 		state: NormalizedStateResult;
@@ -246,26 +264,21 @@ function validateMetadata(metadata: unknown): SerializationResult | undefined {
 	return undefined;
 }
 
+function formatMarker(metadata: SddMetadata, name: MarkerName): string {
+	const head = `<!-- ${name}: version=${MARKER_VERSIONS[name]}`;
+	if (metadata.type === "spec") {
+		return `${head}; type=spec; state=${metadata.state}; issue=${metadata.issue ?? "none"}; grill=${serializeOptionalReference(metadata.grill)}; superseded-by=${serializeOptionalReference(metadata.supersededBy)} -->`;
+	}
+	if (metadata.type === "grill") {
+		return `${head}; type=grill; state=${metadata.state}; issue=${metadata.issue ?? "none"}; grill=${encodeReference(metadata.grill)}; project=${encodeReference(metadata.project)} -->`;
+	}
+	return `${head}; type=project; generated-at=${metadata.generatedAt} -->`;
+}
+
 export function serializeSddMetadata(metadata: SddMetadata): SerializationResult {
 	const error = validateMetadata(metadata);
 	if (error) return error;
-
-	if (metadata.type === "spec") {
-		return {
-			ok: true,
-			marker: `<!-- SDD-Tracking: version=1; type=spec; state=${metadata.state}; issue=${metadata.issue ?? "none"}; grill=${serializeOptionalReference(metadata.grill)}; superseded-by=${serializeOptionalReference(metadata.supersededBy)} -->`,
-		};
-	}
-	if (metadata.type === "grill") {
-		return {
-			ok: true,
-			marker: `<!-- SDD-Tracking: version=1; type=grill; state=${metadata.state}; issue=${metadata.issue ?? "none"}; grill=${encodeReference(metadata.grill)}; project=${encodeReference(metadata.project)} -->`,
-		};
-	}
-	return {
-		ok: true,
-		marker: `<!-- SDD-Tracking: version=1; type=project; generated-at=${metadata.generatedAt} -->`,
-	};
+	return { ok: true, marker: formatMarker(metadata, CURRENT_MARKER) };
 }
 
 interface SourceLine {
@@ -321,7 +334,8 @@ function preambleLines(markdown: string): SourceLine[] {
 // indented, that is a single-line HTML comment with the "SDD-Tracking:"
 // label and a capturable payload. Used where we need actual field data out
 // of the marker (historical field extraction) — a comment that merely
-// mentions the name with broken syntax does not satisfy this.
+// mentions the name with broken syntax does not satisfy this. Only
+// SDD-Tracking has a historical (unversioned) form; Chiche-Tracking does not.
 const SDD_TRACKING_MARKER = /^[ \t]*<!--\s*SDD-Tracking\s*:\s*(.*?)\s*-->[ \t]*$/i;
 
 // Any entire line that is a well-formed single-line HTML comment. Used to
@@ -329,14 +343,22 @@ const SDD_TRACKING_MARKER = /^[ \t]*<!--\s*SDD-Tracking\s*:\s*(.*?)\s*-->[ \t]*$
 // from matching body prose that never was a comment at all.
 const SINGLE_LINE_COMMENT = /^[ \t]*<!--.*-->[ \t]*$/;
 
-// A line that is shaped like a marker comment and names "SDD-Tracking",
-// whether or not its internal syntax is actually well-formed. This is
-// intentionally loose so that a malformed canonical attempt (e.g. a missing
-// colon) still reaches parseCanonicalMarker and is reported as invalid,
-// instead of silently falling back to legacy interpretation. Bare prose
-// that merely mentions "SDD-Tracking" outside a comment never matches.
+// A line that is shaped like a marker comment and names "SDD-Tracking" or
+// "Chiche-Tracking", whether or not its internal syntax is actually
+// well-formed. This is intentionally loose so that a malformed canonical
+// attempt (e.g. a missing colon) still reaches parseCanonicalMarker and is
+// reported as invalid, instead of silently falling back to legacy
+// interpretation. Bare prose that merely mentions a marker name outside a
+// comment never matches.
 function markerLines(markdown: string): SourceLine[] {
-	return preambleLines(markdown).filter((line) => SINGLE_LINE_COMMENT.test(line.text) && /SDD-Tracking/i.test(line.text));
+	return preambleLines(markdown).filter((line) => SINGLE_LINE_COMMENT.test(line.text) && /(?:Chiche|SDD)-Tracking/i.test(line.text));
+}
+
+// A canonical candidate declares version or type. Chiche-Tracking has no
+// historical form, so any Chiche-Tracking comment is a canonical candidate
+// and a malformed one is invalid instead of legacy.
+function isCanonicalCandidate(line: SourceLine): boolean {
+	return /(?:^|[;\s])(?:version|type)\s*=/i.test(line.text) || /Chiche-Tracking/i.test(line.text);
 }
 
 function absentState(): NormalizedStateResult {
@@ -373,12 +395,13 @@ function canonicalDiagnostic(code: DiagnosticCode, message: string, raw: string)
 	return { code, message, raw };
 }
 
-function parseCanonicalMarker(raw: string): { metadata?: SddMetadata; diagnostics: SddDiagnostic[] } {
-	const wrapper = /^<!-- SDD-Tracking: (.+) -->$/.exec(raw);
-	if (!wrapper?.[1]) {
+function parseCanonicalMarker(raw: string): { metadata?: SddMetadata; markerName?: MarkerName; diagnostics: SddDiagnostic[] } {
+	const wrapper = /^<!-- (Chiche-Tracking|SDD-Tracking): (.+) -->$/.exec(raw);
+	if (!wrapper?.[1] || !wrapper[2]) {
 		return { diagnostics: [canonicalDiagnostic("invalid-marker-syntax", "Canonical marker wrapper is invalid", raw)] };
 	}
-	const pairs = wrapper[1].split("; ");
+	const markerName = wrapper[1] as MarkerName;
+	const pairs = wrapper[2].split("; ");
 	const entries: Array<[string, string]> = [];
 	for (const pair of pairs) {
 		const match = /^([a-z][a-z-]*)=([^;=\s]+)$/.exec(pair);
@@ -396,8 +419,21 @@ function parseCanonicalMarker(raw: string): { metadata?: SddMetadata; diagnostic
 	if (!values.has("version")) {
 		return { diagnostics: [canonicalDiagnostic("missing-key", "Missing canonical key: version", raw)] };
 	}
-	if (values.get("version") !== "1") {
-		return { diagnostics: [canonicalDiagnostic("unsupported-version", `Unsupported version: ${String(values.get("version"))}`, raw)] };
+	const version = values.get("version");
+	const expectedVersion = String(MARKER_VERSIONS[markerName]);
+	if (version !== expectedVersion) {
+		const otherName = (Object.keys(MARKER_VERSIONS) as MarkerName[])
+			.find((name) => name !== markerName && String(MARKER_VERSIONS[name]) === version);
+		if (otherName) {
+			return {
+				diagnostics: [canonicalDiagnostic(
+					"marker-version-mismatch",
+					`${markerName} requires version=${expectedVersion}, found version=${String(version)}`,
+					raw,
+				)],
+			};
+		}
+		return { diagnostics: [canonicalDiagnostic("unsupported-version", `Unsupported version: ${String(version)}`, raw)] };
 	}
 	const type = values.get("type");
 	if (type !== "spec" && type !== "grill" && type !== "project") {
@@ -464,12 +500,12 @@ function parseCanonicalMarker(raw: string): { metadata?: SddMetadata; diagnostic
 		}
 	}
 
-	const serialized = serializeSddMetadata(metadata);
-	if (!serialized.ok) return { diagnostics: serialized.diagnostics.map((diagnostic) => ({ ...diagnostic, raw })) };
-	if (serialized.marker !== raw) {
+	const invalid = validateMetadata(metadata);
+	if (invalid && !invalid.ok) return { diagnostics: invalid.diagnostics.map((diagnostic) => ({ ...diagnostic, raw })) };
+	if (formatMarker(metadata, markerName) !== raw) {
 		return { diagnostics: [canonicalDiagnostic("invalid-marker-syntax", "Canonical marker bytes are not deterministic", raw)] };
 	}
-	return { metadata, diagnostics: [] };
+	return { metadata, markerName, diagnostics: [] };
 }
 
 function normalizedLegacyText(value: string): string {
@@ -725,7 +761,7 @@ function parseLegacyArtifact(markdown: string): ParseResult {
 
 export function parseSddArtifact(markdown: string): ParseResult {
 	if (typeof markdown !== "string") throw new TypeError("markdown must be a string");
-	const candidates = markerLines(markdown).filter((line) => /(?:^|[;\s])(?:version|type)\s*=/i.test(line.text));
+	const candidates = markerLines(markdown).filter(isCanonicalCandidate);
 	if (candidates.length === 0) return parseLegacyArtifact(markdown);
 	const rawMarkers = candidates.map((candidate) => candidate.text);
 	if (new Set(rawMarkers).size > 1) {
@@ -741,7 +777,7 @@ export function parseSddArtifact(markdown: string): ParseResult {
 		? [{ code: "duplicate-canonical", message: "Canonical marker is duplicated", raw }]
 		: [];
 	const parsed = parseCanonicalMarker(raw);
-	if (!parsed.metadata) {
+	if (!parsed.metadata || !parsed.markerName) {
 		return {
 			kind: "invalid",
 			raw,
@@ -753,6 +789,8 @@ export function parseSddArtifact(markdown: string): ParseResult {
 	return {
 		kind: "metadata",
 		format: "canonical",
+		markerName: parsed.markerName,
+		version: MARKER_VERSIONS[parsed.markerName],
 		metadata,
 		raw,
 		state: metadata.type === "project"
@@ -873,8 +911,8 @@ export function upsertSddMetadata(markdown: string, metadata: SddMetadata): Upse
 	}
 
 	const trackingLines = markerLines(markdown);
-	const canonical = trackingLines.filter((line) => /(?:^|[;\s])(?:version|type)\s*=/i.test(line.text));
-	const historical = trackingLines.filter((line) => !/(?:^|[;\s])(?:version|type)\s*=/i.test(line.text));
+	const canonical = trackingLines.filter(isCanonicalCandidate);
+	const historical = trackingLines.filter((line) => !isCanonicalCandidate(line));
 	let document: string;
 	if (canonical.length > 0) {
 		const retained = canonical[0];

@@ -242,11 +242,22 @@ test("CA-9: spec-from-grill rejects unsafe, non-finalized, and diagnosed handoff
 	}
 });
 
-// Spec #84, CA-12: __sdd-dispatch acepta borradores en <git-common-dir>/sdd/
-// cuando recibe los dos lugares del repo; sin ellos, solo el árbol trackeado.
+// Spec #84, CA-12 e issue #103, CA-1: __sdd-dispatch acepta borradores en
+// <git-common-dir>/chiche/ y <git-common-dir>/sdd/ cuando recibe los cuatro
+// lugares del repo; sin ellos, solo los árboles trackeados .chiche/ y .sdd/.
 const DRAFT_DIRS = {
-	grills: { tracked: "/workspace/skills-wt/.sdd/grills", local: "/workspace/skills/.git/sdd/grills" },
-	specs: { tracked: "/workspace/skills-wt/.sdd/specs", local: "/workspace/skills/.git/sdd/specs" },
+	grills: {
+		tracked: "/workspace/skills-wt/.chiche/grills",
+		local: "/workspace/skills/.git/chiche/grills",
+		legacyTracked: "/workspace/skills-wt/.sdd/grills",
+		legacyLocal: "/workspace/skills/.git/sdd/grills",
+	},
+	specs: {
+		tracked: "/workspace/skills-wt/.chiche/specs",
+		local: "/workspace/skills/.git/chiche/specs",
+		legacyTracked: "/workspace/skills-wt/.sdd/specs",
+		legacyLocal: "/workspace/skills/.git/sdd/specs",
+	},
 };
 
 function draftResolution(route: "spec-from-grill" | "run-existing-spec", path: string) {
@@ -273,20 +284,25 @@ function draftResolution(route: "spec-from-grill" | "run-existing-spec", path: s
 }
 
 test("#84 CA-12: run-existing-spec y spec-from-grill aceptan borradores del common-dir con los dirs del repo", () => {
-	const spec = "/workspace/skills/.git/sdd/specs/issue-14.md";
-	const handoff = "/workspace/skills/.git/sdd/grills/final.md";
-	const run = orchestrator.resolveWorkflowDispatch(draftResolution("run-existing-spec", spec), DRAFT_DIRS);
-	assert.equal(run.ok, true, JSON.stringify(run));
-	if (run.ok) assert.deepEqual(run.request.skill, { name: "sdd-run", args: spec });
-	const fromGrill = orchestrator.resolveWorkflowDispatch(draftResolution("spec-from-grill", handoff), DRAFT_DIRS);
-	assert.equal(fromGrill.ok, true, JSON.stringify(fromGrill));
-	if (fromGrill.ok) assert.equal(fromGrill.request.skill.args, `--from-grill ${JSON.stringify(handoff)}`);
+	for (const brand of ["chiche", "sdd"]) {
+		const spec = `/workspace/skills/.git/${brand}/specs/issue-14.md`;
+		const handoff = `/workspace/skills/.git/${brand}/grills/final.md`;
+		const run = orchestrator.resolveWorkflowDispatch(draftResolution("run-existing-spec", spec), DRAFT_DIRS);
+		assert.equal(run.ok, true, JSON.stringify(run));
+		if (run.ok) assert.deepEqual(run.request.skill, { name: "sdd-run", args: spec });
+		const fromGrill = orchestrator.resolveWorkflowDispatch(draftResolution("spec-from-grill", handoff), DRAFT_DIRS);
+		assert.equal(fromGrill.ok, true, JSON.stringify(fromGrill));
+		if (fromGrill.ok) assert.equal(fromGrill.request.skill.args, `--from-grill ${JSON.stringify(handoff)}`);
 
-	assert.equal(orchestrator.resolveWorkflowDispatch(draftResolution("run-existing-spec", spec)).ok, false, "sin dirs, el common-dir queda afuera");
-	for (const outside of ["/workspace/skills/.git/sdd/specs/nested/x.md", "/workspace/otro/.git/sdd/specs/x.md"]) {
-		assert.equal(orchestrator.resolveWorkflowDispatch(draftResolution("run-existing-spec", outside), DRAFT_DIRS).ok, false, outside);
+		assert.equal(orchestrator.resolveWorkflowDispatch(draftResolution("run-existing-spec", spec)).ok, false, `${brand}: sin dirs, el common-dir queda afuera`);
+		assert.equal(orchestrator.resolveWorkflowDispatch(draftResolution("spec-from-grill", handoff)).ok, false, `${brand}: sin dirs, el handoff del common-dir queda afuera`);
+		for (const outside of [`/workspace/skills/.git/${brand}/specs/nested/x.md`, `/workspace/otro/.git/${brand}/specs/x.md`]) {
+			assert.equal(orchestrator.resolveWorkflowDispatch(draftResolution("run-existing-spec", outside), DRAFT_DIRS).ok, false, outside);
+		}
+		assert.equal(orchestrator.resolveWorkflowDispatch(draftResolution("spec-from-grill", `/workspace/skills/.git/${brand}/specs/final.md`), DRAFT_DIRS).ok, false);
 	}
-	assert.equal(orchestrator.resolveWorkflowDispatch(draftResolution("spec-from-grill", "/workspace/skills/.git/sdd/specs/final.md"), DRAFT_DIRS).ok, false);
+	const tracked = orchestrator.resolveWorkflowDispatch(draftResolution("spec-from-grill", "/workspace/skills-wt/.chiche/grills/final.md"));
+	assert.equal(tracked.ok, true, `sin dirs, un handoff en .chiche/grills del árbol sigue valiendo: ${JSON.stringify(tracked)}`);
 });
 
 test("#84 CA-12: resolveWorkflowDispatchForCwd resuelve el common-dir con git desde el principal y desde un worktree linkeado", async () => {
@@ -307,12 +323,14 @@ test("#84 CA-12: resolveWorkflowDispatchForCwd resuelve el common-dir con git de
 		git(main, "commit", "-q", "-m", "init");
 		const linked = join(base, "repo-wt");
 		git(main, "worktree", "add", "-q", "-b", "feature", linked);
-		const spec = join(main, ".git", "sdd", "specs", "issue-14.md");
-		for (const cwd of [main, linked]) {
-			const input = { ...draftResolution("run-existing-spec", spec), cwd };
-			const result = await orchestrator.resolveWorkflowDispatchForCwd(input);
-			assert.equal(result.ok, true, `${cwd}: ${JSON.stringify(result)}`);
-			if (result.ok) assert.equal(result.request.skill.args, spec);
+		for (const brand of ["chiche", "sdd"]) {
+			const spec = join(main, ".git", brand, "specs", "issue-14.md");
+			for (const cwd of [main, linked]) {
+				const input = { ...draftResolution("run-existing-spec", spec), cwd };
+				const result = await orchestrator.resolveWorkflowDispatchForCwd(input);
+				assert.equal(result.ok, true, `${brand} · ${cwd}: ${JSON.stringify(result)}`);
+				if (result.ok) assert.equal(result.request.skill.args, spec);
+			}
 		}
 	} finally {
 		await rm(base, { recursive: true, force: true });

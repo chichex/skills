@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import {
 	accessSync,
 	cpSync,
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
@@ -775,8 +776,9 @@ test("persist_sdd_spec exposes the parser-backed boundary and returns a receipt 
 	const tool = tools.get("persist_sdd_spec");
 	assert.ok(tool, "the executable Pi boundary is registered");
 	const projectPath = join(sandbox, "publication-project");
+	// Fuera de git, una spec nueva en la ruta lógica `.sdd/specs/` se escribe en `.chiche/specs/` (#103, CA-1).
 	const relativePath = ".sdd/specs/canonical.md";
-	const absolutePath = join(projectPath, relativePath);
+	const absolutePath = join(projectPath, ".chiche", "specs", "canonical.md");
 	mkdirSync(projectPath, { recursive: true });
 	const markdown = [
 		"# Spec — Canonical publication",
@@ -809,13 +811,14 @@ test("persist_sdd_spec exposes the parser-backed boundary and returns a receipt 
 	assert.equal(result.details.ok, true);
 	assert.equal(result.details.receipt.kind, "sdd-spec-publication");
 	assert.equal(readFileSync(absolutePath, "utf8"), markdown);
+	assert.equal(existsSync(join(projectPath, relativePath)), false, "nada nuevo en .sdd/specs");
 });
 
 test("persist_sdd_spec keeps local content normative while archiving an existing issue body idempotently in Ambos", { skip: !PI_PACKAGE_ROOT }, async () => {
 	const tool = tools.get("persist_sdd_spec");
 	assert.ok(tool);
 	const projectPath = join(sandbox, "ambos-publication-project");
-	const localPath = join(projectPath, ".sdd", "specs", "issue-33-canonical.md");
+	const localPath = join(projectPath, ".chiche", "specs", "issue-33-canonical.md");
 	mkdirSync(projectPath, { recursive: true });
 	let remoteBody = "Original request.\n";
 	execHandler = async (command: string, args: string[]) => {
@@ -936,7 +939,9 @@ test("persist_sdd_spec creates a staging issue and publishes only after binding 
 		);
 
 		assert.equal(result.details.ok, true);
-		assert.doesNotMatch(stagingBody, /SDD-Tracking/, "the creation body is not a transient spec");
+		assert.doesNotMatch(stagingBody, /(?:Chiche|SDD)-Tracking/, "the creation body is not a transient spec");
+		assert.match(publishedBody, /^<!-- Chiche-Tracking: version=2; type=spec; state=approved; issue=#77; grill=none; superseded-by=none -->$/m);
+		assert.doesNotMatch(publishedBody, /SDD-Tracking/, "the rewritten v1 marker migrates to v2 in place");
 		assert.match(publishedBody, /issue=#77/);
 		assert.doesNotMatch(publishedBody, /issue=none/);
 		assert.doesNotMatch(publishedBody, /<details>/, "staging is not archived into the final issue body");
@@ -946,8 +951,9 @@ test("persist_sdd_spec creates a staging issue and publishes only after binding 
 	}
 });
 
-// Spec #84 (CA-10, CA-11): los borradores van a <git-common-dir>/sdd/, fuera
-// de los working trees. Estos tests usan repos git reales con un worktree
+// Spec #84 (CA-10, CA-11) e issue #103 (CA-1): los borradores van a
+// <git-common-dir>/chiche/, fuera de los working trees, y se siguen leyendo de
+// <git-common-dir>/sdd/ y de los trackeados .chiche/ y .sdd/. Estos tests usan repos git reales con un worktree
 // linkeado, con rutas canónicas (realpath) para no depender de /var vs
 // /private/var en macOS.
 function git(cwd: string, ...args: string[]): string {
@@ -1043,7 +1049,7 @@ async function renderSpecs(cwd: string): Promise<string> {
 	return renders.join("\n");
 }
 
-test("#84 CA-10: grill_session pause y finalize escriben el handoff en <git-common-dir>/sdd/grills sin ensuciar ningún checkout", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+test("#84 CA-10: grill_session pause y finalize escriben el handoff en <git-common-dir>/chiche/grills sin ensuciar ningún checkout", { skip: !PI_PACKAGE_ROOT }, async (t) => {
 	const tool = tools.get("grill_session");
 	assert.ok(tool);
 	const { base, main, linked, common } = repoWithLinkedWorktree("pause");
@@ -1060,7 +1066,7 @@ test("#84 CA-10: grill_session pause y finalize escriben el handoff en <git-comm
 	await tool.execute("configure-local-handoff", { action: "configure", sessionId: id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
 
 	const paused = await tool.execute("pause-local-handoff", { action: "pause", sessionId: id, summary: "Pausa" }, undefined, undefined, { cwd: main });
-	assert.equal(dirname(paused.details.repoHandoffPath), join(common, "sdd", "grills"));
+	assert.equal(dirname(paused.details.repoHandoffPath), join(common, "chiche", "grills"));
 	assert.match(readFileSync(paused.details.repoHandoffPath, "utf8"), /state=paused/);
 	assert.equal(gitStatus(main), "", "checkout principal limpio después de pause");
 	assert.equal(gitStatus(linked), "", "worktree linkeado limpio después de pause");
@@ -1128,7 +1134,7 @@ test("review #90: grill_session pause escribe el handoff con decisiones y ramas 
 	assert.match(handoff, /^- Permisos: Roles — quién exporta$/m);
 });
 
-test("#84 CA-10: /grills y select_grill_session listan los dos lugares y no duplican el handoff local entre worktrees", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+test("#84 CA-10: /grills y select_grill_session listan los cuatro lugares y no duplican el handoff local entre worktrees", { skip: !PI_PACKAGE_ROOT }, async (t) => {
 	const { base, main, linked, common } = repoWithLinkedWorktree("listing");
 	t.after(() => rmSync(base, { recursive: true, force: true }));
 	const localDirectory = join(common, "sdd", "grills");
@@ -1136,6 +1142,15 @@ test("#84 CA-10: /grills y select_grill_session listan los dos lugares y no dupl
 	writeFileSync(join(localDirectory, "local.md"), canonicalHandoff("cero-residuos-local", "paused", "Handoff local compartido", main));
 	mkdirSync(join(main, ".sdd", "grills"), { recursive: true });
 	writeFileSync(join(main, ".sdd", "grills", "trackeado.md"), canonicalHandoff("cero-residuos-trackeado", "paused", "Handoff trackeado del principal", main));
+	// #103, CA-1: los lugares chiche se listan junto a los sdd y, en cada par,
+	// ante el mismo nombre gana chiche.
+	const chicheLocal = join(common, "chiche", "grills");
+	mkdirSync(chicheLocal, { recursive: true });
+	writeFileSync(join(chicheLocal, "local-chiche.md"), canonicalHandoff("cero-residuos-local-chiche", "paused", "Handoff local chiche", main));
+	writeFileSync(join(chicheLocal, "empate.md"), canonicalHandoff("cero-residuos-empate-chiche", "paused", "Empate local chiche", main));
+	writeFileSync(join(localDirectory, "empate.md"), canonicalHandoff("cero-residuos-empate-sdd", "paused", "Empate local sdd", main));
+	mkdirSync(join(main, ".chiche", "grills"), { recursive: true });
+	writeFileSync(join(main, ".chiche", "grills", "trackeado-chiche.md"), canonicalHandoff("cero-residuos-trackeado-chiche", "paused", "Handoff trackeado chiche", main));
 	// Una sesión en cada checkout los vuelve roots conocidos para el scope "all".
 	for (const [name, cwd] of [["cero-residuos-main", main], ["cero-residuos-linked", linked]] as const) {
 		const sessionDirectory = join(process.env.HOME!, ".pi", "agent", "sessions", name);
@@ -1148,13 +1163,17 @@ test("#84 CA-10: /grills y select_grill_session listan los dos lugares y no dupl
 		const all = await selectLabels(cwd, { status: "all", scope: "all", query: "cero-residuos" });
 		assert.equal(all.filter((label) => label.includes("Handoff local compartido")).length, 1, `${cwd}: el handoff local aparece una sola vez`);
 		assert.equal(all.filter((label) => label.includes("Handoff trackeado del principal")).length, 1, `${cwd}: el handoff trackeado aparece una sola vez`);
+		assert.equal(all.filter((label) => label.includes("Handoff local chiche")).length, 1, `${cwd}: el handoff local chiche aparece una sola vez`);
+		assert.equal(all.filter((label) => label.includes("Handoff trackeado chiche")).length, 1, `${cwd}: el handoff trackeado chiche aparece una sola vez`);
+		assert.equal(all.filter((label) => label.includes("Empate local chiche")).length, 1, `${cwd}: en el empate local gana chiche`);
+		assert.equal(all.filter((label) => label.includes("Empate local sdd")).length, 0, `${cwd}: el sdd del mismo nombre queda oculto`);
 	}
 	const current = await selectLabels(main, { status: "all", scope: "current-project", query: "cero-residuos" });
 	assert.ok(current.some((label) => label.includes("Handoff local compartido")), "el proyecto del handoff local lo ve en su scope");
 	assert.ok(current.some((label) => label.includes("Handoff trackeado del principal")));
 });
 
-test("#84 CA-11: persist_sdd_spec con destino local escribe en <git-common-dir>/sdd/specs desde el principal y desde el worktree", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+test("#84 CA-11: persist_sdd_spec con destino local escribe en <git-common-dir>/chiche/specs desde el principal y desde el worktree", { skip: !PI_PACKAGE_ROOT }, async (t) => {
 	const tool = tools.get("persist_sdd_spec");
 	assert.ok(tool);
 	const { base, main, linked, common } = repoWithLinkedWorktree("persist");
@@ -1174,13 +1193,14 @@ test("#84 CA-11: persist_sdd_spec con destino local escribe en <git-common-dir>/
 			{ cwd: projectPath },
 		);
 		assert.equal(result.details.ok, true, JSON.stringify(result.details.diagnostics));
-		assert.equal(readFileSync(join(common, "sdd", "specs", `${slug}.md`), "utf8"), markdown);
+		assert.equal(readFileSync(join(common, "chiche", "specs", `${slug}.md`), "utf8"), markdown);
+		assert.equal(existsSync(join(common, "sdd", "specs", `${slug}.md`)), false, `${slug}: nada nuevo en <git-common-dir>/sdd/specs`);
 		assert.equal(gitStatus(main), "", `${slug}: checkout principal limpio`);
 		assert.equal(gitStatus(linked), "", `${slug}: worktree linkeado limpio`);
 	}
 });
 
-test("#84 CA-11: el confinamiento de persist_sdd_spec acepta los dos directorios y rechaza cualquier otro", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+test("#84 CA-11: el confinamiento de persist_sdd_spec acepta los cuatro directorios y rechaza cualquier otro", { skip: !PI_PACKAGE_ROOT }, async (t) => {
 	const tool = tools.get("persist_sdd_spec");
 	assert.ok(tool);
 	const { base, main, common } = repoWithLinkedWorktree("confine");
@@ -1197,33 +1217,99 @@ test("#84 CA-11: el confinamiento de persist_sdd_spec acepta los dos directorios
 		undefined,
 		{ cwd: main },
 	);
-	for (const outside of [join(main, "specs", "x.md"), join(main, ".sdd", "grills", "x.md"), join(common, "sdd", "grills", "x.md"), join(common, "sdd", "specs", "sub", "x.md"), "specs/x.md"]) {
+	for (const outside of [
+		join(main, "specs", "x.md"),
+		join(main, ".sdd", "grills", "x.md"),
+		join(main, ".chiche", "grills", "x.md"),
+		join(common, "sdd", "grills", "x.md"),
+		join(common, "chiche", "grills", "x.md"),
+		join(common, "sdd", "specs", "sub", "x.md"),
+		join(common, "chiche", "specs", "sub", "x.md"),
+		"specs/x.md",
+		".chiche/grills/x.md",
+	]) {
 		await assert.rejects(persist(outside), /Local spec destination must be one Markdown file directly under/, `rechaza ${outside}`);
 	}
-	const local = await persist(join(common, "sdd", "specs", "absoluta-local.md"));
-	assert.equal(local.details.ok, true);
-	const tracked = await persist(join(main, ".sdd", "specs", "absoluta-trackeada.md"));
-	assert.equal(tracked.details.ok, true);
-	assert.equal(readFileSync(join(main, ".sdd", "specs", "absoluta-trackeada.md"), "utf8"), canonicalSpec("Confinada"));
+	for (const accepted of [
+		join(common, "chiche", "specs", "absoluta-local.md"),
+		join(common, "sdd", "specs", "absoluta-local-sdd.md"),
+		join(main, ".chiche", "specs", "absoluta-trackeada-chiche.md"),
+		join(main, ".sdd", "specs", "absoluta-trackeada.md"),
+	]) {
+		const result = await persist(accepted);
+		assert.equal(result.details.ok, true, accepted);
+		assert.equal(readFileSync(accepted, "utf8"), canonicalSpec("Confinada"), accepted);
+	}
 });
 
-test("#84 CA-11: /specs lista los dos lugares desde el principal y desde el worktree, y ante el mismo nombre gana el trackeado", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+test("#103 CA-1: una ruta lógica .chiche/specs o .sdd/specs actualiza en su lugar la spec existente y una nueva va a <git-common-dir>/chiche/specs", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("persist_sdd_spec");
+	assert.ok(tool);
+	const { base, main, common } = repoWithLinkedWorktree("by-name");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const persist = (path: string, title: string) => tool.execute(
+		"persist-by-name",
+		{
+			mode: "interactive",
+			repository: "local/repo",
+			projectPath: main,
+			documents: [{ id: "successor", role: "successor", markdown: canonicalSpec(title), destinations: [{ kind: "local", path }] }],
+		},
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	mkdirSync(join(main, ".sdd", "specs"), { recursive: true });
+	mkdirSync(join(main, ".chiche", "specs"), { recursive: true });
+	mkdirSync(join(common, "sdd", "specs"), { recursive: true });
+	writeFileSync(join(main, ".sdd", "specs", "trackeada-sdd.md"), canonicalSpec("Vieja"));
+	writeFileSync(join(main, ".chiche", "specs", "empate.md"), canonicalSpec("Vieja"));
+	writeFileSync(join(main, ".sdd", "specs", "empate.md"), canonicalSpec("Vieja"));
+	writeFileSync(join(common, "sdd", "specs", "local-sdd.md"), canonicalSpec("Vieja"));
+	const cases: Array<[string, string, string]> = [
+		[".sdd/specs/trackeada-sdd.md", join(main, ".sdd", "specs", "trackeada-sdd.md"), "una .sdd/specs existente se actualiza en su lugar"],
+		[".chiche/specs/trackeada-sdd.md", join(main, ".sdd", "specs", "trackeada-sdd.md"), "la ruta .chiche/ resuelve por nombre a la .sdd/ existente"],
+		[".sdd/specs/empate.md", join(main, ".chiche", "specs", "empate.md"), "ante el mismo nombre en el árbol gana .chiche/specs"],
+		[".sdd/specs/local-sdd.md", join(common, "sdd", "specs", "local-sdd.md"), "una spec de <git-common-dir>/sdd/specs se actualiza en su lugar"],
+		[".sdd/specs/nueva-sdd.md", join(common, "chiche", "specs", "nueva-sdd.md"), "una spec nueva con ruta .sdd/ va a <git-common-dir>/chiche/specs"],
+		[".chiche/specs/nueva-chiche.md", join(common, "chiche", "specs", "nueva-chiche.md"), "una spec nueva con ruta .chiche/ va a <git-common-dir>/chiche/specs"],
+	];
+	for (const [path, expected, why] of cases) {
+		const result = await persist(path, `Nueva ${path}`);
+		assert.equal(result.details.ok, true, `${why}: ${JSON.stringify(result.details.diagnostics)}`);
+		assert.equal(readFileSync(expected, "utf8"), canonicalSpec(`Nueva ${path}`), why);
+	}
+	assert.equal(readFileSync(join(main, ".sdd", "specs", "empate.md"), "utf8"), canonicalSpec("Vieja"), "el .sdd/specs perdedor del empate no se toca");
+	assert.equal(existsSync(join(common, "sdd", "specs", "nueva-sdd.md")), false, "nada nuevo en <git-common-dir>/sdd/specs");
+	assert.equal(existsSync(join(main, ".sdd", "specs", "nueva-sdd.md")), false, "nada nuevo en .sdd/specs");
+});
+
+test("#84 CA-11: /specs lista los cuatro lugares desde el principal y desde el worktree, y ante el mismo nombre gana el trackeado", { skip: !PI_PACKAGE_ROOT }, async (t) => {
 	const { base, main, linked, common } = repoWithLinkedWorktree("specs");
 	t.after(() => rmSync(base, { recursive: true, force: true }));
 	const localDirectory = join(common, "sdd", "specs");
+	const chicheLocal = join(common, "chiche", "specs");
 	mkdirSync(localDirectory, { recursive: true });
+	mkdirSync(chicheLocal, { recursive: true });
 	mkdirSync(join(main, ".sdd", "specs"), { recursive: true });
 	writeFileSync(join(main, ".sdd", "specs", "compartida.md"), canonicalSpec("Compartida trackeada"));
 	writeFileSync(join(localDirectory, "compartida.md"), canonicalSpec("Compartida local"));
 	writeFileSync(join(localDirectory, "solo-local.md"), canonicalSpec("Solo local"));
+	// #103, CA-1: el par chiche se lista junto al sdd y, en cada par, gana chiche.
+	writeFileSync(join(chicheLocal, "solo-chiche.md"), canonicalSpec("Solo chiche local"));
+	writeFileSync(join(chicheLocal, "empate-local.md"), canonicalSpec("Empate chiche local"));
+	writeFileSync(join(localDirectory, "empate-local.md"), canonicalSpec("Empate sdd local"));
 	for (const cwd of [main, linked]) {
 		const view = await renderSpecs(cwd);
 		assert.match(view, /Solo local/, `${cwd}: /specs muestra la spec local`);
+		assert.match(view, /Solo chiche local/, `${cwd}: /specs muestra la spec local de chiche`);
 		assert.doesNotMatch(view, /NOTIFY/, `${cwd}: sin errores`);
 	}
 	const fromMain = await renderSpecs(main);
 	assert.match(fromMain, /Compartida trackeada/);
 	assert.doesNotMatch(fromMain, /Compartida local/, "la trackeada gana ante el mismo nombre");
+	assert.match(fromMain, /Empate chiche local/);
+	assert.doesNotMatch(fromMain, /Empate sdd local/, "en el par local gana chiche ante el mismo nombre");
 });
 
 test("#84 CA-10 (review #86): una revisión local del mismo grill reemplaza al handoff trackeado y el grill sigue válido", { skip: !PI_PACKAGE_ROOT }, async (t) => {
@@ -1247,9 +1333,35 @@ test("#84 CA-10 (review #86): una revisión local del mismo grill reemplaza al h
 	git(main, "commit", "-q", "-m", "handoff commiteado");
 	await tool.execute("configure-shadowed", { action: "configure", sessionId: snapshot.id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
 	const paused = await tool.execute("pause-shadowed", { action: "pause", sessionId: snapshot.id, summary: "Nueva revisión" }, undefined, undefined, { cwd: main });
-	assert.equal(paused.details.repoHandoffPath, join(common, "sdd", "grills", names.primary));
+	assert.equal(paused.details.repoHandoffPath, join(common, "chiche", "grills", names.primary));
 	assert.equal(gitStatus(main), "");
 	const labels = (await selectLabels(main, { status: "all", scope: "current-project", query: snapshot.id })).filter((label) => label.includes("Handoff ya commiteado"));
+	assert.equal(labels.length, 1, labels.join(" | "));
+	assert.doesNotMatch(labels[0]!, /^!/, "el grill no queda BLOCKED por divergent-handoffs");
+});
+
+test("#103 CA-1: un handoff previo del mismo grill en <git-common-dir>/sdd/grills conserva su nombre y la revisión va a <git-common-dir>/chiche/grills", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("grill_session");
+	assert.ok(tool);
+	const { base, main, common } = repoWithLinkedWorktree("legacy-local");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const created = await tool.execute(
+		"create-legacy-local",
+		{ action: "create", topic: "Handoff previo al renombre", projectPath: main, estimate: { min: 1, likely: 2, max: 3 } },
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	const snapshot = created.details.snapshot;
+	t.after(() => removeStoredSnapshot(snapshot.id));
+	const names = handoffFileNames(snapshot);
+	mkdirSync(join(common, "sdd", "grills"), { recursive: true });
+	writeFileSync(join(common, "sdd", "grills", names.primary), canonicalHandoff(snapshot.id, "paused", "Handoff previo al renombre", main));
+	await tool.execute("configure-legacy-local", { action: "configure", sessionId: snapshot.id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
+	const paused = await tool.execute("pause-legacy-local", { action: "pause", sessionId: snapshot.id, summary: "Nueva revisión" }, undefined, undefined, { cwd: main });
+	assert.equal(paused.details.repoHandoffPath, join(common, "chiche", "grills", names.primary));
+	assert.equal(gitStatus(main), "");
+	const labels = (await selectLabels(main, { status: "all", scope: "current-project", query: snapshot.id })).filter((label) => label.includes("Handoff previo al renombre"));
 	assert.equal(labels.length, 1, labels.join(" | "));
 	assert.doesNotMatch(labels[0]!, /^!/, "el grill no queda BLOCKED por divergent-handoffs");
 });
@@ -1275,7 +1387,7 @@ test("#84 CA-10 (review #86): un handoff trackeado de otro grill con el mismo no
 	git(main, "commit", "-q", "-m", "handoff ajeno");
 	await tool.execute("configure-foreign", { action: "configure", sessionId: snapshot.id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
 	const paused = await tool.execute("pause-foreign", { action: "pause", sessionId: snapshot.id, summary: "Pausa" }, undefined, undefined, { cwd: main });
-	assert.equal(paused.details.repoHandoffPath, join(common, "sdd", "grills", names.fallback));
+	assert.equal(paused.details.repoHandoffPath, join(common, "chiche", "grills", names.fallback));
 	const labels = await selectLabels(main, { status: "all", scope: "current-project", query: "" });
 	assert.equal(labels.filter((label) => label.includes("Nombre compartido") && !label.startsWith("!")).length, 1, labels.join(" | "));
 	assert.equal(labels.filter((label) => label.includes("Grill ajeno") && !label.startsWith("!")).length, 1, labels.join(" | "));
@@ -1292,37 +1404,48 @@ test("#84 CA-10 (review #86): un handoff del common-dir cuyo Proyecto no es un w
 	assert.ok(label!.endsWith(`@ ${main}`), `${label} se atribuye a ${main}`);
 });
 
-test("#84 CA-11 (review #86): fuera de git, un .sdd/specs symlinkeado fuera del proyecto se rechaza", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+test("#84 CA-11 (review #86): fuera de git, un .chiche/specs o .sdd/specs symlinkeado fuera del proyecto se rechaza", { skip: !PI_PACKAGE_ROOT }, async (t) => {
 	const tool = tools.get("persist_sdd_spec");
 	assert.ok(tool);
 	const base = realpathSync(mkdtempSync(join(tmpdir(), "grill-tools-symlink-")));
 	t.after(() => rmSync(base, { recursive: true, force: true }));
 	const project = join(base, "proyecto");
 	const outside = join(base, "fuera");
+	const legacyOutside = join(base, "fuera-sdd");
+	mkdirSync(join(project, ".chiche"), { recursive: true });
 	mkdirSync(join(project, ".sdd"), { recursive: true });
 	mkdirSync(outside);
-	symlinkSync(outside, join(project, ".sdd", "specs"), "dir");
-	const result = await tool.execute(
+	mkdirSync(legacyOutside);
+	symlinkSync(outside, join(project, ".chiche", "specs"), "dir");
+	symlinkSync(legacyOutside, join(project, ".sdd", "specs"), "dir");
+	// Una spec ya existente en .sdd/specs se actualizaría en su lugar (#103, CA-1).
+	writeFileSync(join(legacyOutside, "vieja.md"), canonicalSpec("Vieja"));
+	const persist = (path: string) => tool.execute(
 		"persist-symlinked",
 		{
 			mode: "interactive",
 			repository: "local/proyecto",
 			projectPath: project,
-			documents: [{ id: "successor", role: "successor", markdown: canonicalSpec("Escapada"), destinations: [{ kind: "local", path: ".sdd/specs/escapada.md" }] }],
+			documents: [{ id: "successor", role: "successor", markdown: canonicalSpec("Escapada"), destinations: [{ kind: "local", path }] }],
 		},
 		undefined,
 		undefined,
 		{ cwd: project },
 	);
+	const result = await persist(".sdd/specs/escapada.md");
 	assert.equal(result.details.ok, false, "la publicación queda bloqueada");
-	assert.match(JSON.stringify(result.details.diagnostics), /resolves outside the project/);
+	assert.match(JSON.stringify(result.details.diagnostics), /Refusing a \.chiche\/specs directory that resolves outside the project/);
 	assert.deepEqual(readdirSync(outside), [], "no se escribe nada fuera del proyecto");
+	const legacy = await persist(".sdd/specs/vieja.md");
+	assert.equal(legacy.details.ok, false, "la actualización en su lugar queda bloqueada");
+	assert.match(JSON.stringify(legacy.details.diagnostics), /Refusing a \.sdd\/specs directory that resolves outside the project/);
+	assert.equal(readFileSync(join(legacyOutside, "vieja.md"), "utf8"), canonicalSpec("Vieja"), "la spec de afuera queda intacta");
 });
 
 // #93: log de eventos SDD (events-v1) escrito por las tools de Pi.
 
 function eventLines(common: string): string[] {
-	const path = join(common, "sdd", "events.jsonl");
+	const path = join(common, "chiche", "events.jsonl");
 	let content = "";
 	try {
 		content = readFileSync(path, "utf8");
@@ -1435,8 +1558,8 @@ test("#93 CA-4: si el handoff no se pudo escribir, pause no agrega ningún event
 	const id = created.details.snapshot.id;
 	t.after(() => removeStoredSnapshot(id));
 	await tool.execute("configure-blocked", { action: "configure", sessionId: id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
-	mkdirSync(join(common, "sdd"), { recursive: true });
-	writeFileSync(join(common, "sdd", "grills"), "no es un directorio\n");
+	mkdirSync(join(common, "chiche"), { recursive: true });
+	writeFileSync(join(common, "chiche", "grills"), "no es un directorio\n");
 
 	const paused = await tool.execute("pause-blocked", { action: "pause", sessionId: id, summary: "Pausa" }, undefined, undefined, { cwd: main });
 	assert.match(paused.content[0].text, /Repo handoff could not be written/);
@@ -1458,7 +1581,7 @@ test("#93 CA-6: con el append roto, grill_session pause devuelve el mismo result
 	const id = created.details.snapshot.id;
 	t.after(() => removeStoredSnapshot(id));
 	await tool.execute("configure-broken", { action: "configure", sessionId: id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
-	const log = join(common, "sdd", "events.jsonl");
+	const log = join(common, "chiche", "events.jsonl");
 	mkdirSync(log, { recursive: true });
 
 	const broken = await tool.execute("pause-broken", { action: "pause", sessionId: id, summary: "Pausa" }, undefined, undefined, { cwd: main });
@@ -1703,11 +1826,11 @@ test("#93 CA-6: con el append roto, persist_sdd_spec devuelve el mismo resultado
 			destinations: [{ kind: "local", path: ".sdd/specs/log-roto.md" }],
 		}],
 	};
-	const log = join(common, "sdd", "events.jsonl");
+	const log = join(common, "chiche", "events.jsonl");
 	mkdirSync(log, { recursive: true });
 	const broken = await tool.execute("persist-broken", input, undefined, undefined, { cwd: main });
 	assert.equal(broken.details.ok, true, "la publicación sigue verificada");
-	assert.equal(readFileSync(join(common, "sdd", "specs", "log-roto.md"), "utf8"), input.documents[0]!.markdown, "la spec queda escrita igual");
+	assert.equal(readFileSync(join(common, "chiche", "specs", "log-roto.md"), "utf8"), input.documents[0]!.markdown, "la spec queda escrita igual");
 	const brokenText: string = broken.content[0].text;
 	assert.equal(warningLines(brokenText).length, 1, "un aviso de una línea");
 

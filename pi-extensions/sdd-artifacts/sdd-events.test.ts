@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +9,7 @@ import test from "node:test";
 import {
 	appendSddEvent,
 	parseSddEventLine,
+	readSddEvents,
 	recordSddEvents,
 	serializeSddEvent,
 	type SddEvent,
@@ -89,7 +90,10 @@ function diagnosticOf(line: string): string {
 
 test("CA-1: el doc normativo fija ubicación, gramática, claves, catálogo, refs y best-effort", async () => {
 	const contract = await readContract();
-	assert.match(contract, /`<git-common-dir>\/sdd\/events\.jsonl`/);
+	assert.match(contract, /The log is the file `<git-common-dir>\/chiche\/events\.jsonl`/);
+	assert.match(contract, /also read `<git-common-dir>\/sdd\/events\.jsonl`/, "alias de lectura del lugar anterior");
+	assert.match(contract, /concatenate\s+both\s+files\s+ordered\s+by\s+`ts`: for\s+equal\s+`ts`, lines\s+from\s+`sdd\/` come\s+first/);
+	assert.match(contract, /Producers\s+never\s+write\s+to\s+`<git-common-dir>\/sdd\/`/);
 	assert.match(contract, /git rev-parse --path-format=absolute --git-common-dir/);
 	assert.match(contract, /UTF-8/);
 	assert.match(contract, /`LF`/);
@@ -311,8 +315,8 @@ function commonDirOf(repo: string): string {
 test("CA-7: 20 appends concurrentes dejan intactas las líneas previas y suman 20 líneas válidas completas", async (t) => {
 	const repo = gitRepo("concurrency");
 	t.after(() => rmSync(repo, { recursive: true, force: true }));
-	const log = join(commonDirOf(repo), "sdd", "events.jsonl");
-	mkdirSync(join(commonDirOf(repo), "sdd"), { recursive: true });
+	const log = join(commonDirOf(repo), "chiche", "events.jsonl");
+	mkdirSync(join(commonDirOf(repo), "chiche"), { recursive: true });
 	const previous = (await conformanceVectors()).slice(0, 3);
 	writeFileSync(log, `${previous.join("\n")}\n`, "utf8");
 
@@ -343,7 +347,7 @@ test("CA-6/7: appendSddEvent no lanza ante un destino que no se puede escribir n
 		rmSync(repo, { recursive: true, force: true });
 		rmSync(outside, { recursive: true, force: true });
 	});
-	mkdirSync(join(commonDirOf(repo), "sdd", "events.jsonl"), { recursive: true });
+	mkdirSync(join(commonDirOf(repo), "chiche", "events.jsonl"), { recursive: true });
 	const blocked = await appendSddEvent(repo, VECTOR_INPUTS[0]!);
 	assert.equal(blocked.ok, false);
 	const notGit = await appendSddEvent(outside, VECTOR_INPUTS[0]!);
@@ -357,7 +361,7 @@ test("recordSddEvents sella ts con el reloj inyectado y devuelve un aviso de una
 	const now = () => new Date("2026-10-14T18:19:20.987Z");
 	const fields = { event: "grill.paused" as const, issue: null, spec: null, previous: null, grill: "g-1", pr: [], reason: null };
 	assert.equal(await recordSddEvents(repo, "pi", [fields], { now }), null);
-	const log = join(commonDirOf(repo), "sdd", "events.jsonl");
+	const log = join(commonDirOf(repo), "chiche", "events.jsonl");
 	assert.equal(
 		readFileSync(log, "utf8"),
 		'{"v":1,"ts":"2026-10-14T18:19:20Z","harness":"pi","event":"grill.paused","issue":"none","spec":"none","previous":"none","grill":"g-1","pr":[],"reason":"none"}\n',
@@ -382,7 +386,7 @@ test("recordSddEvents (review #94) resuelve el common-dir una sola vez por lote"
 	const fields = { event: "grill.paused" as const, issue: null, spec: null, previous: null, grill: "g-1", pr: [], reason: null };
 	assert.equal(await recordSddEvents(repo, "pi", [fields, fields, fields], { runGit }), null);
 	assert.equal(calls.length, 1, "un solo git rev-parse para los 3 eventos");
-	assert.equal(readFileSync(join(common, "sdd", "events.jsonl"), "utf8").split("\n").length - 1, 3);
+	assert.equal(readFileSync(join(common, "chiche", "events.jsonl"), "utf8").split("\n").length - 1, 3);
 
 	calls.length = 0;
 	const outside = async (args: readonly string[]) => {
@@ -392,4 +396,61 @@ test("recordSddEvents (review #94) resuelve el common-dir una sola vez por lote"
 	const warning = await recordSddEvents(repo, "pi", [fields, fields], { runGit: outside });
 	assert.equal(calls.length, 1, "fuera de git también se consulta una vez");
 	assert.match(warning ?? "", /^SDD event log not updated \(2\/2 events\): no <git-common-dir>/);
+});
+
+// #103, CA-4: se escribe en <git-common-dir>/chiche/events.jsonl y se lee de
+// ahí y de <git-common-dir>/sdd/events.jsonl.
+
+test("CA-4 (#103): appendSddEvent escribe en chiche/events.jsonl y no crea sdd/", async (t) => {
+	const repo = gitRepo("chiche-append");
+	t.after(() => rmSync(repo, { recursive: true, force: true }));
+	const common = commonDirOf(repo);
+	const result = await appendSddEvent(repo, VECTOR_INPUTS[0]!);
+	assert.deepEqual(result, { ok: true, path: join(common, "chiche", "events.jsonl") });
+	assert.equal(readFileSync(join(common, "chiche", "events.jsonl"), "utf8"), `${(await conformanceVectors())[0]}\n`);
+	assert.equal(existsSync(join(common, "sdd")), false, "nada en sdd/");
+});
+
+test("CA-4 (#103): readSddEvents une chiche/ y sdd/ ordenados por ts; ante el mismo ts, sdd primero", async (t) => {
+	const repo = gitRepo("chiche-read");
+	t.after(() => rmSync(repo, { recursive: true, force: true }));
+	const common = commonDirOf(repo);
+	const [paused, finalized, , moved, approved] = await conformanceVectors();
+	mkdirSync(join(common, "sdd"), { recursive: true });
+	mkdirSync(join(common, "chiche"), { recursive: true });
+	// sdd: 12:00, basura, 13:05, v=2 y un segmento final sin LF que se ignora.
+	writeFileSync(join(common, "sdd", "events.jsonl"), `${paused}\nno json\n${moved}\n{"v":2}\n${approved}`, "utf8");
+	// chiche: 13:10, 12:30 y 13:05 (empata con moved de sdd).
+	const tie = moved!.replace('"harness":"pi"', '"harness":"claude"');
+	writeFileSync(join(common, "chiche", "events.jsonl"), `${approved}\n${finalized}\n${tie}\n`, "utf8");
+
+	const events = await readSddEvents(repo);
+	assert.deepEqual(
+		events.map((event) => `${event.ts} ${event.harness} ${event.event}`),
+		[
+			"2026-10-14T12:00:00Z claude grill.paused",
+			"2026-10-14T12:30:05Z pi grill.finalized",
+			"2026-10-14T13:05:00Z pi spec.moved",
+			"2026-10-14T13:05:00Z claude spec.moved",
+			"2026-10-14T13:10:00Z opencode spec.approved",
+		],
+	);
+});
+
+test("CA-4 (#103): readSddEvents lee un solo archivo, ninguno o fuera de git sin lanzar", async (t) => {
+	const repo = gitRepo("chiche-read-partial");
+	const outside = realpathSync(mkdtempSync(join(tmpdir(), "sdd-events-read-outside-")));
+	t.after(() => {
+		rmSync(repo, { recursive: true, force: true });
+		rmSync(outside, { recursive: true, force: true });
+	});
+	const common = commonDirOf(repo);
+	assert.deepEqual(await readSddEvents(repo), [], "sin archivos");
+	const [paused] = await conformanceVectors();
+	mkdirSync(join(common, "sdd"), { recursive: true });
+	writeFileSync(join(common, "sdd", "events.jsonl"), `${paused}\n`, "utf8");
+	assert.deepEqual(await readSddEvents(repo), [VECTOR_INPUTS[0]], "solo el sdd/ previo");
+	mkdirSync(join(common, "chiche", "events.jsonl"), { recursive: true });
+	assert.deepEqual(await readSddEvents(repo), [VECTOR_INPUTS[0]], "un chiche/events.jsonl ilegible se saltea");
+	assert.deepEqual(await readSddEvents(outside), [], "fuera de git");
 });

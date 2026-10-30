@@ -1,8 +1,9 @@
 // Gate anti-drift del log de eventos SDD (issue #93, CA-8 a CA-12).
 //
 // grill, sdd-spec, sdd-run y sdd-land registran sus transiciones en
-// <git-common-dir>/sdd/events.jsonl con el formato events-v1
-// (docs/sdd-events-v1.md). Este gate lee los 16 SKILL.md reales: exige el
+// <git-common-dir>/chiche/events.jsonl con el formato events-v1
+// (docs/sdd-events-v1.md); los lectores suman el <git-common-dir>/sdd/events.jsonl
+// previo (issue #103, CA-4). Este gate lee los 16 SKILL.md reales: exige el
 // bloque `sdd-events` idéntico byte a byte, el literal del harness fuera del
 // bloque y cada evento en su punto de transición. Además corre con bash y con
 // sh el comando canónico del bloque en repos git temporales y valida la línea
@@ -12,7 +13,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,7 +21,7 @@ import { test } from "node:test";
 
 import type { Harness } from "../harness-gate/interaction.ts";
 import { HARNESSES, escapeRegExp, fencedBlocks, firstDifference } from "../harness-gate/interaction.ts";
-import { parseSddEventLine, serializeSddEvent, type SddEvent } from "../sdd-artifacts/sdd-events.ts";
+import { parseSddEventLine, readSddEvents, serializeSddEvent, type SddEvent } from "../sdd-artifacts/sdd-events.ts";
 
 const SKILLS = ["grill", "sdd-spec", "sdd-run", "sdd-land"] as const;
 type Skill = (typeof SKILLS)[number];
@@ -146,7 +147,8 @@ test("CA-8: el bloque trae el puntero al formato, el comando canónico, la regla
 	const block = await referenceBlock();
 	assert.deepEqual(missing(block, [
 		/`docs\/sdd-events-v1\.md`/,
-		/`<git-common-dir>\/sdd\/events\.jsonl`/,
+		/`<git-common-dir>\/chiche\/events\.jsonl`/,
+		/El log se escribe en `<git-common-dir>\/chiche\/`/,
 		/Un fallo del append nunca frena ni hace fallar el skill/,
 		/termina con exit 0/,
 		/el reporte del skill lo nombra en una línea/,
@@ -157,7 +159,9 @@ test("CA-8: el bloque trae el puntero al formato, el comando canónico, la regla
 	]), []);
 	const command = await canonicalCommand();
 	assert.match(command, /git rev-parse --path-format=absolute --git-common-dir/);
-	assert.match(command, />> "\$dir\/sdd\/events\.jsonl"/);
+	assert.match(command, /mkdir -p "\$dir\/chiche" &&/);
+	assert.match(command, />> "\$dir\/chiche\/events\.jsonl"/);
+	assert.doesNotMatch(block, /\/sdd\//, "el bloque no nombra el lugar sdd/ del common-dir");
 	assert.match(command, /date -u \+%Y-%m-%dT%H:%M:%SZ/);
 	assert.match(command, /\bok && dir=\$\(git rev-parse/, "la validación corre antes de resolver el common-dir y del append");
 	for (const placeholder of PLACEHOLDERS) {
@@ -296,7 +300,7 @@ test("CA-9 (review #95): en Codex, el append pide escalación desde el primer in
 		}
 	}
 	const doc = await readRepoFile("docs/harness-interaction-differences.md");
-	if (!/^En Codex, el sandbox por defecto[^\n]*El append del log de eventos \(`<git-common-dir>\/sdd\/events\.jsonl`\) de `grill`, `sdd-spec`, `sdd-run` y `sdd-land` también pide escalación en Codex, desde el primer intento[^\n]*sin permiso, el evento se saltea con el aviso y nunca cae a `\.sdd\/`/m.test(doc)) {
+	if (!/^En Codex, el sandbox por defecto[^\n]*El append del log de eventos \(`<git-common-dir>\/chiche\/events\.jsonl`\) de `grill`, `sdd-spec`, `sdd-run` y `sdd-land` también pide escalación en Codex, desde el primer intento[^\n]*sin permiso, el evento se saltea con el aviso y nunca cae a `\.sdd\/`/m.test(doc)) {
 		problems.push("docs/harness-interaction-differences.md: falta el append del log de eventos (con sdd-land) en la diferencia de Codex");
 	}
 	assert.deepEqual(problems, []);
@@ -342,12 +346,12 @@ function runCommand(
 }
 
 function logBytes(common: string): string | null {
-	const path = join(common, "sdd", "events.jsonl");
+	const path = join(common, "chiche", "events.jsonl");
 	return existsSync(path) ? readFileSync(path, "utf8") : null;
 }
 
 function logLines(common: string): string[] {
-	const content = readFileSync(join(common, "sdd", "events.jsonl"), "utf8");
+	const content = readFileSync(join(common, "chiche", "events.jsonl"), "utf8");
 	assert.ok(content.endsWith("\n"), "termina en LF");
 	return content.slice(0, -1).split("\n");
 }
@@ -395,7 +399,8 @@ test("CA-10: el comando agrega una línea válida, también desde un worktree en
 	const second = parseSddEventLine(lines[1] ?? "");
 	assert.equal(second.kind, "event", lines[1]);
 	assert.deepEqual(second.kind === "event" ? second.event.pr : [], [101, 102]);
-	assert.equal(existsSync(join(common, "worktrees", "repo-wt", "sdd")), false, "nada en el gitdir del worktree");
+	assert.equal(existsSync(join(common, "worktrees", "repo-wt", "chiche")), false, "nada en el gitdir del worktree");
+	assert.equal(existsSync(join(common, "sdd")), false, "nada en sdd/ del common-dir");
 
 	assert.equal(status(main), "", "checkout principal limpio");
 	assert.equal(status(linked), "", "worktree enlazado limpio");
@@ -409,13 +414,14 @@ test("CA-10: con el destino no escribible o fuera de git, el comando termina con
 		rmSync(base, { recursive: true, force: true });
 		rmSync(outside, { recursive: true, force: true });
 	});
-	mkdirSync(join(common, "sdd", "events.jsonl"), { recursive: true });
+	mkdirSync(join(common, "chiche", "events.jsonl"), { recursive: true });
 
 	const blocked = runCommand(command, main, STARTED);
 	assert.equal(blocked.status, 0, "exit 0 aunque el append falle");
 	assert.match(blocked.stderr, /aviso: no se registró el evento SDD run\.started/);
-	assert.ok(statSync(join(common, "sdd", "events.jsonl")).isDirectory());
-	assert.deepEqual(readdirSync(join(common, "sdd", "events.jsonl")), []);
+	assert.ok(statSync(join(common, "chiche", "events.jsonl")).isDirectory());
+	assert.deepEqual(readdirSync(join(common, "chiche", "events.jsonl")), []);
+	assert.equal(existsSync(join(common, "sdd")), false, "sin caer a sdd/ del common-dir");
 	assert.equal(status(main), "", "sin caer al working tree");
 	assert.equal(status(linked), "", "sin caer al working tree del worktree");
 
@@ -480,6 +486,7 @@ test("CA-10 (review #95): un valor inválido cae en el aviso con exit 0 y no esc
 		}
 	}
 	assert.deepEqual(problems, []);
+	assert.equal(existsSync(join(common, "sdd")), false, "nada en sdd/ del common-dir");
 	assert.equal(status(main), "", "sin caer al working tree");
 });
 
@@ -520,6 +527,36 @@ test("CA-10 (review #95): la guarda de 1024 bytes, con LC_ALL=C, cuenta bytes: e
 	assert.equal(overBorder.status, 0);
 	assert.match(overBorder.stderr, /aviso: no se registró el evento SDD run\.started/);
 	assert.equal(logLines(common).length, 1, "un byte más no agrega la línea");
+});
+
+test("CA-4 (#103): la lectura une el chiche/events.jsonl del comando con un sdd/events.jsonl previo, ordenada por ts", async (t) => {
+	const command = await canonicalCommand();
+	const { base, main, linked, common } = repoWithLinkedWorktree("read-both");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const legacy = (ts: string, event: Partial<SddEvent>): string => {
+		const serialized = serializeSddEvent({ v: 1, ts, harness: "pi", event: "run.started", issue: "#93", spec: "#93", previous: null, grill: null, pr: [], reason: null, ...event });
+		assert.ok(serialized.ok);
+		return serialized.line;
+	};
+	// El log previo al renombre: uno anterior y uno posterior a cualquier `date` real.
+	mkdirSync(join(common, "sdd"));
+	const before = legacy("2000-01-01T00:00:00Z", {});
+	const after = legacy("9999-12-31T23:59:59Z", { event: "run.committed" });
+	writeFileSync(join(common, "sdd", "events.jsonl"), `${before}\n${after}\n`, "utf8");
+
+	const run = runCommand(command, linked, { ...STARTED, event: "run.pr-opened", grill: "none", pr: "101" });
+	assert.equal(run.status, 0, run.stderr);
+	assert.equal(run.stderr, "");
+	assert.equal(logLines(common).length, 1, "el append va a chiche/events.jsonl");
+	assert.equal(readFileSync(join(common, "sdd", "events.jsonl"), "utf8"), `${before}\n${after}\n`, "sdd/events.jsonl queda intacto");
+
+	for (const cwd of [main, linked]) {
+		const events = await readSddEvents(cwd);
+		assert.deepEqual(events.map((event) => `${event.harness} ${event.event}`), ["pi run.started", "claude run.pr-opened", "pi run.committed"], cwd);
+		assert.deepEqual(events.map((event) => event.ts), [...events.map((event) => event.ts)].sort(), "ordenados por ts");
+	}
+	assert.equal(status(main), "", "checkout principal limpio");
+	assert.equal(status(linked), "", "worktree enlazado limpio");
 });
 
 // ---------------------------------------------------------------------------

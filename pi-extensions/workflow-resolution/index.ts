@@ -1,6 +1,6 @@
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import { trackedSddArtifactDirs } from "../lib/sdd-paths.ts";
+import { artifactReadDirs, isArtifactPath, trackedArtifactDirs, type ArtifactDirs } from "../lib/chiche-paths.ts";
 
 import {
 	parseSddArtifact,
@@ -395,14 +395,17 @@ export interface WorkflowResolutionInput {
 	repository: string;
 	cwd: string;
 	/**
-	 * `<git-common-dir>/sdd/specs` del repo de `cwd` (spec #84, CA-12). Un
-	 * `superseded-by=.sdd/specs/<x>.md` se resuelve primero en el árbol
-	 * trackeado y, si no hay sucesor ahí, en este directorio. `resolveWorkflow`
-	 * es el núcleo de referencia de la doctrina de `issue-triage`: en producción
-	 * el agente arma el `WorkflowResolutionV1` siguiendo esa doctrina y ningún
-	 * flujo de runtime llena todavía este campo.
+	 * Los cuatro lugares de specs del repo de `cwd`, como los devuelve
+	 * `resolveArtifactDirs(cwd, "specs")` (spec #84, CA-12; issue #103, CA-1).
+	 * Un `superseded-by=.chiche/specs/<x>.md` o `.sdd/specs/<x>.md` se resuelve
+	 * por nombre con la precedencia de lectura: `.chiche/specs`, `.sdd/specs`,
+	 * `<git-common-dir>/chiche/specs` y `<git-common-dir>/sdd/specs`. Sin este
+	 * campo solo cuentan los dos lugares trackeados. `resolveWorkflow` es el
+	 * núcleo de referencia de la doctrina de `issue-triage`: en producción el
+	 * agente arma el `WorkflowResolutionV1` siguiendo esa doctrina y ningún flujo
+	 * de runtime llena todavía este campo.
 	 */
-	localSpecsDir?: string;
+	specDirs?: ArtifactDirs;
 	sources: IssueRef[];
 	canonicalIssue: IssueRef | null;
 	canonicalIssueUsable: boolean;
@@ -639,7 +642,7 @@ function normalizeIssueMarkers(markdown: string, repository: string): string {
 	return markdown
 		.split("\n")
 		.map((line) => {
-			if (!/^[ \t]*<!--\s*SDD-Tracking\s*:/i.test(line)) return line;
+			if (!/^[ \t]*<!--\s*(?:Chiche|SDD)-Tracking\s*:/i.test(line)) return line;
 			return line.replace(
 				/(\bissue\s*=\s*)(#[1-9]\d*|[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+#[1-9]\d*)/i,
 				(_match, prefix: string, raw: string) => {
@@ -763,38 +766,39 @@ function pathInsideProject(path: string, projectRoot: string): boolean {
 	return relation === "" || (!relation.startsWith("..") && !isAbsolute(relation));
 }
 
-// Candidatos de un sucesor local, en dos niveles (spec #84, CA-12): `tracked`
-// son las rutas dentro del proyecto (la referencia contra la raíz y contra el
-// directorio de la spec fuente) y `local` es la misma ruta lógica
-// `.sdd/specs/<x>.md` en `<git-common-dir>/sdd/specs`. Una referencia que
-// escapa de los dos lugares no tiene candidatos (null).
+// Candidatos de un sucesor local, en niveles de precedencia (spec #84, CA-12;
+// issue #103, CA-1). Una ruta lógica `.chiche/specs/<x>.md` o
+// `.sdd/specs/<x>.md` se resuelve por nombre: un nivel por lugar, en el orden
+// de lectura de los cuatro lugares; el primer nivel suma la referencia contra
+// el directorio de cada spec fuente trackeada. Cualquier otra referencia es un
+// solo nivel: contra la raíz y contra el directorio de la fuente. Una
+// referencia que escapa del proyecto y de los lugares de borradores no tiene
+// candidatos (null).
 function successorPaths(
 	reference: string,
 	sourcePaths: string[],
 	input: WorkflowResolutionInput,
-): { tracked: Set<string>; local: Set<string> } | null {
+): Set<string>[] | null {
 	const projectRoot = resolve(input.cwd);
-	const localDir = input.localSpecsDir ? resolve(input.localSpecsDir) : null;
-	const allowed = (path: string) => pathInsideProject(path, projectRoot)
-		|| (localDir !== null && dirname(path) === localDir);
-	const tracked = new Set<string>();
-	const local = new Set<string>();
+	const dirs = input.specDirs ?? trackedArtifactDirs(projectRoot, "specs");
+	const places = artifactReadDirs(dirs);
+	const draftDirectories = places.filter(({ location }) => location === "local").map(({ path }) => resolve(path));
+	const allowed = (path: string) => pathInsideProject(path, projectRoot) || isArtifactPath(dirs, path);
 	if (isAbsolute(reference)) {
 		const path = resolve(reference);
-		(localDir !== null && dirname(path) === localDir ? local : tracked).add(path);
-	} else {
-		const logical = resolve(projectRoot, reference);
-		tracked.add(logical);
-		for (const sourcePath of sourcePaths) {
-			// Un borrador del common-dir referencia a otro por su ruta lógica.
-			if (localDir !== null && dirname(resolve(sourcePath)) === localDir) continue;
-			tracked.add(resolve(dirname(sourcePath), reference));
-		}
-		if (localDir !== null && dirname(logical) === trackedSddArtifactDirs(projectRoot, "specs").tracked) {
-			local.add(join(localDir, basename(logical)));
-		}
+		return allowed(path) ? [new Set([path])] : null;
 	}
-	return [...tracked, ...local].every(allowed) ? { tracked, local } : null;
+	const logical = resolve(projectRoot, reference);
+	const named = dirname(logical) === resolve(dirs.tracked) || dirname(logical) === resolve(dirs.legacyTracked);
+	const tiers = named
+		? places.map(({ path }) => new Set([join(path, basename(logical))]))
+		: [new Set([logical])];
+	for (const sourcePath of sourcePaths) {
+		// Un borrador del common-dir referencia a otro por su ruta lógica.
+		if (draftDirectories.includes(dirname(resolve(sourcePath)))) continue;
+		tiers[0]!.add(resolve(dirname(sourcePath), reference));
+	}
+	return tiers.every((tier) => [...tier].every(allowed)) ? tiers : null;
 }
 
 function issueReferenceFromSuccessor(reference: string, repository: string): IssueRef | null {
@@ -837,8 +841,7 @@ function resolveSuccessor(
 		.map((entry) => entry.candidate.path);
 	const paths = successorPaths(reference, sourcePaths, input);
 	if (paths === null) return { kind: "unusable" };
-	for (const candidates of [paths.tracked, paths.local]) {
-		if (candidates.size === 0) continue;
+	for (const candidates of paths) {
 		const matches = nodes
 			.map((node, index) => ({ node, index }))
 			.filter(({ node }) => node.entries.some(({ candidate }) =>

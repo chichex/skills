@@ -7,7 +7,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { localSddArtifactDir, resolveGitCommonDir, trackedSddArtifactDirs } from "../lib/sdd-paths.ts";
+import { artifactReadDirs, localArtifactDir, resolveGitCommonDir, trackedArtifactDirs } from "../lib/chiche-paths.ts";
 import { parseSddArtifact } from "../sdd-artifacts/index.ts";
 import { inspectMarkdownArtifact } from "../workflow-resolution/index.ts";
 import {
@@ -345,25 +345,42 @@ export async function resolveDirectRunRequest(
 	}
 
 	// CA-7 defines relative spec targets against the project root, regardless of
-	// the subdirectory from which the Pi session was opened. Spec #84 (CA-12):
-	// a borrador lives in <git-common-dir>/sdd/specs/, shared by every worktree
-	// of the repo; the logical path `.sdd/specs/<x>.md` resolves first in the
-	// tracked tree and then there.
+	// the subdirectory from which the Pi session was opened. Spec #84 (CA-12) and
+	// issue #103 (CA-1): a borrador lives in <git-common-dir>/chiche/specs/ (or,
+	// before the rename, in <git-common-dir>/sdd/specs/), shared by every
+	// worktree of the repo. The logical paths `.chiche/specs/<x>.md` and
+	// `.sdd/specs/<x>.md` resolve by name with the read precedence:
+	// `.chiche/specs`, `.sdd/specs`, <git-common-dir>/chiche/specs and
+	// <git-common-dir>/sdd/specs.
 	const commonDirPort = dependencies.resolveGitCommonDir ?? ((root: string) => resolveGitCommonDir(root));
-	let draftDirectory: string | null = null;
+	let specDirs = trackedArtifactDirs(originRoot, "specs");
 	try {
 		const commonDir = await commonDirPort(originRoot);
 		if (commonDir) {
-			const directory = localSddArtifactDir(commonDir, "specs");
-			draftDirectory = await realpathPort(directory).catch(() => directory);
+			specDirs = { ...specDirs, local: localArtifactDir(commonDir, "specs"), legacyLocal: localArtifactDir(commonDir, "specs", "sdd") };
 		}
 	} catch {
-		draftDirectory = null;
+		specDirs = trackedArtifactDirs(originRoot, "specs");
+	}
+	const places = artifactReadDirs(specDirs);
+	// Canonical draft directory -> its logical directory (`.chiche/specs` or `.sdd/specs`).
+	const draftDirectories = new Map<string, string>();
+	for (const place of places.filter(({ location }) => location === "local")) {
+		const directory = await realpathPort(place.path).catch(() => place.path);
+		const logical = relative(originRoot, place.brand === "chiche" ? specDirs.tracked : specDirs.legacyTracked);
+		draftDirectories.set(directory, logical.split(sep).join("/"));
 	}
 	let candidate = isAbsolute(target) ? resolve(target) : resolve(originRoot, target);
-	if (!isAbsolute(target) && draftDirectory && dirname(candidate) === trackedSddArtifactDirs(originRoot, "specs").tracked) {
-		const tracked = await statPort(candidate).then((entry) => entry.isFile(), () => false);
-		if (!tracked) candidate = join(draftDirectory, basename(candidate));
+	if (!isAbsolute(target) && (dirname(candidate) === specDirs.tracked || dirname(candidate) === specDirs.legacyTracked)) {
+		const name = basename(candidate);
+		candidate = join(specDirs.local, name);
+		for (const place of places) {
+			const path = join(place.path, name);
+			if (await statPort(path).then((entry) => entry.isFile(), () => false)) {
+				candidate = path;
+				break;
+			}
+		}
 	}
 	let path: string;
 	let root: string;
@@ -373,9 +390,10 @@ export async function resolveDirectRunRequest(
 		path = await realpathPort(candidate);
 		const fileStats = await statPort(path);
 		if (!fileStats.isFile()) throw new Error("target is not a regular file");
-		if (draftDirectory && dirname(path) === draftDirectory && path.endsWith(".md")) {
+		const draftLogical = path.endsWith(".md") ? draftDirectories.get(dirname(path)) : undefined;
+		if (draftLogical !== undefined) {
 			root = originRoot;
-			artifactPath = `.sdd/specs/${basename(path)}`;
+			artifactPath = `${draftLogical}/${basename(path)}`;
 		} else {
 			root = await realpathPort(await gitRootPort(dirname(path)));
 			const relationship = relative(root, path);

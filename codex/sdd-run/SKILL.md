@@ -70,7 +70,7 @@ Si la superficie está `sin sistema`, aplica la doctrina mínima de `$design-sys
 ## Log de eventos
 
 <!-- sdd-events:start -->
-Las transiciones de este skill se registran en `<git-common-dir>/sdd/events.jsonl`, el log local append-only del formato `events-v1` (normativo en `docs/sdd-events-v1.md` del repo de estos skills). Cada evento es una línea que agrega este comando, con los valores entre `<>` reemplazados: `issue` es `#NN`, `owner/repo#NN` o `none`; `spec`, `previous` y `grill` van sin codificar (`.sdd/specs/<slug>.md`, `#NN`, `<fecha>-<slug>` o `none`) y el comando los percent-encodea; `previous` es `none` salvo en `spec.moved`; `pr` son números separados por coma y sin espacios, o vacío; `reason` es `none` salvo en `run.failed`.
+Las transiciones de este skill se registran en `<git-common-dir>/chiche/events.jsonl`, el log local append-only del formato `events-v1` (normativo en `docs/sdd-events-v1.md` del repo de estos skills). Cada evento es una línea que agrega este comando, con los valores entre `<>` reemplazados: `issue` es `#NN`, `owner/repo#NN` o `none`; `spec`, `previous` y `grill` van sin codificar (`.sdd/specs/<slug>.md`, `#NN`, `<fecha>-<slug>` o `none`) y el comando los percent-encodea; `previous` es `none` salvo en `spec.moved`; `pr` son números separados por coma y sin espacios, o vacío; `reason` es `none` salvo en `run.failed`.
 
 ```bash
 (
@@ -95,16 +95,16 @@ Las transiciones de este skill se registran en `<git-common-dir>/sdd/events.json
       *) false ;;
     esac
   }
-  ok && dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && mkdir -p "$dir/sdd" &&
+  ok && dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && mkdir -p "$dir/chiche" &&
     line=$(printf '{"v":1,"ts":"%s","harness":"%s","event":"%s","issue":"%s","spec":"%s","previous":"%s","grill":"%s","pr":[%s],"reason":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$harness" "$event" "$issue" "$(enc "$spec")" "$(enc "$previous")" "$(enc "$grillref")" "$pr" "$reason") &&
-    [ ${#line} -lt 1024 ] && printf '%s\n' "$line" >> "$dir/sdd/events.jsonl" ||
+    [ ${#line} -lt 1024 ] && printf '%s\n' "$line" >> "$dir/chiche/events.jsonl" ||
     echo "aviso: no se registró el evento SDD $event" >&2
 )
 ```
 
 - **Best-effort.** Un fallo del append nunca frena ni hace fallar el skill: el comando termina con exit 0 y avisa por stderr, y el reporte del skill lo nombra en una línea.
 - **Validación barata.** Antes del append, `ok` revisa el harness, el evento del catálogo, `issue`, `pr` sin espacios, refs no vacías y sin un `<...>` sin reemplazar, y los invariantes del catálogo: un valor inválido cae en el mismo aviso y no escribe nada, porque los consumidores saltean en silencio una línea inválida.
-- **Solo en el common-dir.** El log se escribe en `<git-common-dir>/sdd/`, nunca dentro del working tree: fuera de un repo git, o si el harness no puede escribir ahí, el evento se saltea con el aviso, sin caer a `.sdd/`.
+- **Solo en el common-dir.** El log se escribe en `<git-common-dir>/chiche/`, nunca dentro del working tree: fuera de un repo git, o si el harness no puede escribir ahí, el evento se saltea con el aviso, sin caer a `.sdd/`.
 <!-- sdd-events:end -->
 
 En Codex, `<harness>` es `codex`.
@@ -117,7 +117,7 @@ En este skill, `spec` es `#NN` si la spec vive en un issue y si no su ruta lógi
 
 Dispara SOLO cuando los argumentos vienen vacíos. Si trajo spec, issue o flags, saltear.
 
-Listar las specs de `.sdd/specs/` y `<git-common-dir>/sdd/specs/` con su estado y verificabilidad (leer el header y la sección Verificabilidad de cada una):
+Listar las specs de `.chiche/specs/`, `.sdd/specs/`, `<git-common-dir>/chiche/specs/` y `<git-common-dir>/sdd/specs/` con su estado y verificabilidad (leer el header y la sección Verificabilidad de cada una):
 
 ```text
 $sdd-run implementa una spec hasta que cada criterio este verificado, y termina en un PR
@@ -142,13 +142,13 @@ Si hay una sola spec candidata (estado `draft` o `aprobada`), usarla directo inf
    - **Referencia de base**: resolver `--base` o el branch default del contrato — nunca asumir `main`. Si existe su remote-tracking branch, hacer `git fetch` y usar esa referencia remota actualizada (`<remote>/<base>`) como `<base-ref>`; la branch local no es autoridad para el run. Sin remote-tracking, usar el ref local explícito y dejar anotado que la entrega puede degradar a `--no-pr`.
    - **Bloqueos reales**: abortar sólo si no se puede resolver o actualizar `<base-ref>`, ya existe la branch/path de destino, o el estado Git compartido impide crear un worktree aislado. Un checkout sucio, detached HEAD, una base local divergida o una operación a medias en el checkout original no bloquean por sí solos mientras el worktree nuevo pueda nacer de `<base-ref>` sin tocar ese estado.
    - **Artefactos de entrada del workflow**: formar un conjunto explícito de paths sucios ligados a esta cadena: la spec target local; `.sdd/project.md` si el contrato leído tiene cambios; el handoff canónico cuyo `grill=<ref>` aparece en la spec y specs predecesoras que apunten a la target con `superseded-by`; y `CONTEXT.md`, `CONTEXT-MAP.md` o archivos de `docs/adr/` sólo cuando la spec o ese handoff los identifiquen como salida de la misma cadena. Resolver la identidad por markers y referencias, no por "todo lo que esté bajo `.sdd/`" ni por cercanía temporal.
-   - **Borradores del common-dir**: los artefactos de entrada se toman de `<git-common-dir>/sdd/` (la salida de `git rev-parse --path-format=absolute --git-common-dir`, fuera del working tree): la spec target, el handoff canónico, su carpeta de capturas y las specs predecesoras, con la misma identidad por markers y referencias. Por compatibilidad, también los que sigan sin trackear en `.sdd/` del checkout original. Se copian al worktree con el mismo nombre, bajo `.sdd/grills/` y `.sdd/specs/`, y entran en el PRIMER commit. El commit se verifica con `git show --name-status HEAD`, que lista cada copia, pero las copias de `<git-common-dir>/sdd/` se borran recién después del push del branch (o con el PR abierto): solo esas, porque los de `.sdd/` del checkout original no se tocan. Con `--no-pr`, o si el run termina antes del push, se conservan y el reporte las nombra. Si el harness no puede escribir en `<git-common-dir>/sdd/`, su capa de interacción dice cómo pedir permiso o caer a `.sdd/` del cwd.
+   - **Borradores del common-dir**: los artefactos de entrada se toman de `<git-common-dir>/chiche/` y de `<git-common-dir>/sdd/` (la salida de `git rev-parse --path-format=absolute --git-common-dir`, fuera del working tree): la spec target, el handoff canónico, su carpeta de capturas y las specs predecesoras, con la misma identidad por markers y referencias. Por compatibilidad, también los que sigan sin trackear en `.chiche/` o `.sdd/` del checkout original. Se copian al worktree con el mismo nombre, bajo `.sdd/grills/` y `.sdd/specs/`, y entran en el PRIMER commit. El commit se verifica con `git show --name-status HEAD`, que lista cada copia, pero las copias de `<git-common-dir>/chiche/` y de `<git-common-dir>/sdd/` se borran recién después del push del branch (o con el PR abierto): solo esas, porque los de `.chiche/` y `.sdd/` del checkout original no se tocan. Con `--no-pr`, o si el run termina antes del push, se conservan y el reporte las nombra. Si el harness no puede escribir en `<git-common-dir>/chiche/` o `<git-common-dir>/sdd/`, su capa de interacción dice cómo pedir permiso o caer a `.chiche/` del cwd.
    - **Cambios locales restantes**: listarlos como **excluidos del run**; no abortan, no se copian y no entran al PR. Si al planificar contra `<base-ref>` aparece que uno de ellos era necesario, tratarlo como un prerrequisito faltante o una desviación de la spec según la Fase 3, nunca importarlo en silencio.
 
    Crear desde `<base-ref>` el worktree y branch `sdd/<slug>` con `git worktree add --lock --reason "sdd-run <slug>" ../<repo>-sdd-<slug> -b sdd/<slug> <base-ref>`: el lock (`locked sdd-run <slug>` en `git worktree list --porcelain`) dice que el worktree tiene dueño: las otras sesiones no lo remueven mientras siga bloqueado, y `$sdd-land` solo lo remueve, limpio, cuando su branch ya se mergeó. Reproducir allí el snapshot working-tree exacto de los artefactos de entrada — altas, modificaciones o bajas — y validar antes de commitear que ningún path excluido apareció. Si se importó al menos uno, agruparlos como PRIMER commit (`sdd: incorporar artefactos de entrada de <slug>`); si no, no crear un commit vacío. Con `#NN` no hay spec local que importar, pero el contrato, handoff o documentación de su linaje siguen pudiendo entrar. El checkout original queda intacto y puede seguir sucio; TODO el run continúa únicamente en el worktree, que sí debe quedar limpio después del commit de entrada.
 <!-- sdd-run-dirty-checkout:end -->
 
-En Codex, el sandbox por defecto deja `.git/` en solo lectura (`mkdir: .git/sdd: Operation not permitted`): pedir escalación para escribir en `<git-common-dir>/sdd/`, donde se borran las copias; sin permiso, dejarlas y decirlo en el reporte. Los borradores que `$grill` y `$sdd-spec` hayan dejado en `.sdd/` del cwd entran por la compatibilidad de los artefactos sin trackear.
+En Codex, el sandbox por defecto deja `.git/` en solo lectura (`mkdir: .git/chiche: Operation not permitted`): pedir escalación para escribir en `<git-common-dir>/chiche/` y `<git-common-dir>/sdd/`, donde se borran las copias; sin permiso, dejarlas y decirlo en el reporte. Los borradores que `$grill` y `$sdd-spec` hayan dejado en `.chiche/` o `.sdd/` del cwd entran por la compatibilidad de los artefactos sin trackear.
 
 Con el worktree y el branch creados (con stack, después de `gh stack init`), registrar `run.started` (ver «Log de eventos»).
 

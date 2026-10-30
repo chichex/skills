@@ -29,7 +29,9 @@ function makeSnapshot(overrides: Partial<HandoffSnapshot> = {}): HandoffSnapshot
 	};
 }
 
-const MARKER_LINE = /^<!--\s*SDD-Tracking\s*:.*-->$/i;
+// Cuenta ambos nombres: un handoff que conserva un SDD-Tracking viejo junto al
+// Chiche-Tracking nuevo tiene dos markers.
+const MARKER_LINE = /^<!--\s*(?:Chiche|SDD)-Tracking\s*:.*-->$/i;
 
 function markerCount(markdown: string): number {
 	return markdown.split("\n").filter((line) => MARKER_LINE.test(line.trim())).length;
@@ -173,6 +175,8 @@ test("planGrillHandoff (paused) produce un documento canonico e idempotente", ()
 		assert.fail("el handoff pausado debe llevar marker canonico");
 	}
 	assert.deepEqual(parsed.metadata, grillMetadataFromSnapshot(snapshot));
+	assert.equal(parsed.markerName, "Chiche-Tracking");
+	assert.equal(parsed.version, 2);
 	assert.equal(parsed.state.value, "paused");
 
 	const again = planGrillHandoff(snapshot, plan.content);
@@ -237,8 +241,40 @@ test("planGrillHandoff reemplaza un marker previo del modelo con los valores aut
 	if (parsed.kind !== "metadata" || parsed.format !== "canonical" || parsed.metadata.type !== "grill") {
 		assert.fail("el marker del modelo debe quedar reemplazado por uno canonico");
 	}
+	assert.equal(parsed.markerName, "Chiche-Tracking", "el marker v1 del modelo migra a v2 en su lugar");
 	assert.equal(parsed.metadata.grill, snapshot.id);
 	assert.equal(parsed.metadata.state, "finalized");
+	assert.equal(
+		plan.content.split("\n")[1],
+		`<!-- Chiche-Tracking: version=2; type=grill; state=finalized; issue=none; grill=${snapshot.id}; project=%2Fworkspace%2Fdemo -->`,
+	);
+});
+
+test("planGrillHandoff se recupera de markers Chiche-Tracking v2 divergentes del modelo sin duplicar", () => {
+	const handoffMarkdown = [
+		"# Grill — Rate limit por IP",
+		"<!-- Chiche-Tracking: version=2; type=grill; state=paused; issue=none; grill=uno; project=%2Fa -->",
+		"<!-- SDD-Tracking: version=1; type=grill; state=finalized; issue=none; grill=dos; project=%2Fb -->",
+		"<!-- Chiche-Tracking: version=1; type=grill; state=finalized; issue=none; grill=tres; project=%2Fc -->",
+		"",
+		"## Handoff",
+		"Contrato.",
+	].join("\n");
+	const snapshot = makeSnapshot({ status: "finalized", handoffMarkdown });
+	const plan = planGrillHandoff(snapshot, null);
+	assert.deepEqual(plan.diagnostics, ["conflicting-canonical"]);
+	assert.equal(markerCount(plan.content), 1);
+	assert.equal(
+		plan.content,
+		[
+			"# Grill — Rate limit por IP",
+			`<!-- Chiche-Tracking: version=2; type=grill; state=finalized; issue=none; grill=${snapshot.id}; project=%2Fworkspace%2Fdemo -->`,
+			"",
+			"## Handoff",
+			"Contrato.",
+			"",
+		].join("\n"),
+	);
 });
 
 test("planGrillHandoff se recupera de markers divergentes del modelo sin duplicar", () => {
@@ -352,4 +388,22 @@ test("CA-8: pause y finalize preservan el handoff importado completo junto con l
 	assert.match(finalized.content, /Confirmed source fact\./);
 	assert.match(finalized.content, /New final contract\./);
 	assert.equal(markerCount(finalized.content), 1);
+
+	// El handoff revisado del modelo trae su propio marker v2: la continuidad
+	// importada lo descarta y el documento sigue con un solo marker.
+	const finalizedWithV2 = planGrillHandoff({
+		...imported,
+		status: "finalized",
+		handoffMarkdown: [
+			"# Grill — Revised",
+			"<!-- Chiche-Tracking: version=2; type=grill; state=finalized; issue=none; grill=otro; project=%2Fx -->",
+			"",
+			"## Handoff",
+			"New final contract.",
+			"",
+		].join("\n"),
+	}, paused.content);
+	assert.deepEqual(finalizedWithV2.diagnostics, []);
+	assert.equal(markerCount(finalizedWithV2.content), 1);
+	assert.doesNotMatch(finalizedWithV2.content, /grill=otro/);
 });

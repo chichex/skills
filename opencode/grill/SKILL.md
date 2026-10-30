@@ -27,7 +27,7 @@ Hacer exactamente una pregunta por vez en el modo pregunta a pregunta.
 
 Si un gate tiene más opciones de las que admite la llamada (4 por pregunta), poné como opciones las primeras según el orden recomendado, nombrá el resto en el texto visible de la pregunta y dejá que se elijan vía "Other". Vale para la reanudación y la confirmación del cierre.
 
-No depender de extensiones de Pi ni de tools inexistentes. Persistir sesiones únicamente como Markdown en `<git-common-dir>/sdd/grills/` (ver **Persistencia y reanudación**), mediante ediciones normales de archivos. No crear el directorio hasta que el usuario elija guardar o pausar una sesión.
+No depender de extensiones de Pi ni de tools inexistentes. Persistir sesiones únicamente como Markdown en `<git-common-dir>/chiche/grills/` (ver **Persistencia y reanudación**), mediante ediciones normales de archivos. No crear el directorio hasta que el usuario elija guardar o pausar una sesión.
 
 ## Principios
 
@@ -43,7 +43,7 @@ No depender de extensiones de Pi ni de tools inexistentes. Persistir sesiones ú
 Antes de entrevistar:
 
 1. Explorá el codebase cuando el tema dependa de él y resolvé todos los hechos comprobables relevantes. Los hechos los averigua el agente, nunca el usuario: si más adelante una pregunta de la frontera necesita un hecho del entorno todavía sin comprobar, se averigua sin frenar la ronda (ver «Entrevista por rondas»).
-2. Buscá `CONTEXT-MAP.md`, `CONTEXT.md`, `docs/adr/` y handoffs previos en `.sdd/grills/` y `<git-common-dir>/sdd/grills/`. Leé los relevantes para entender vocabulario y decisiones ya tomadas; son solo lectura, este skill nunca los escribe.
+2. Buscá `CONTEXT-MAP.md`, `CONTEXT.md`, `docs/adr/` y handoffs previos en `.chiche/grills/`, `.sdd/grills/`, `<git-common-dir>/chiche/grills/` y `<git-common-dir>/sdd/grills/`. Leé los relevantes para entender vocabulario y decisiones ya tomadas; son solo lectura, este skill nunca los escribe.
 3. Construí un árbol provisional de decisiones con secciones y dependencias explícitas: qué pregunta desbloquea a cuáles.
 4. Estimá preguntas mínimas, probables y máximas. La cifra operativa es la probable; presentala como estimación, no como promesa — una respuesta puede abrir o cerrar ramas.
 5. Diagnosticá la modalidad recomendada:
@@ -89,7 +89,7 @@ Un bloque es una sección coherente del árbol de decisiones. La entrevista va p
 
 Las ramas se preguntan únicamente cuando el inventario y el repo no las resuelven: una pantalla que ya existe en los mocks, o un componente que ya está en el UI kit, es un hecho, no una decisión. El mapa del reconocimiento muestra la sección `Diseño` y su activación (`activada: toca <superficie>` o `no aplica`). Los pedidos sin UI no ven ninguna pregunta nueva. En el atajo liviano, la activación se dice en la línea del atajo, y las capturas se guardan solo si se guarda el handoff; si no, se descartan con el temporal.
 
-**Capturas de referencia.** El agente renderiza con el navegador del harness las referencias renderizables del inventario —mocks HTML, bundle `design-sync/`, el Design de Claude Design, Storybook— para las pantallas que el tema toca: en Claude Code con Playwright MCP (`browser_navigate` a la ruta o URL, `browser_take_screenshot`); en los demás harnesses, con el navegador headless que `## Verificacion autonoma` del contrato declare. Un proyecto de Claude Design se materializa primero con `DesignSync` `get_file` en el temporal y se navega por `file://`. Sin navegador disponible, se le pide la captura al usuario o se registra la referencia por ruta, sin captura. Las capturas que el usuario adjunte como archivo o ruta se guardan tal cual. Sin referencia renderizable ni adjunta, nunca se inventa una captura: la rama lo registra como hecho. Las capturas viven en el scratch, un directorio temporal fuera del repo (ej. `mktemp -d`), hasta guardar, pausar o finalizar; recién ahí se copian a `<git-common-dir>/sdd/grills/<nombre-real-del-handoff>/`, con el mismo nombre base que el `.md` que quedó escrito (en Pi, incluido el sufijo de colisión que agrega la tool), y el handoff las referencia por ruta relativa (`<nombre-real-del-handoff>/<pantalla>.png`). Al guardar, pausar o finalizar, el scratch se borra solo si la copia salió bien (`cp -R -- "<scratch>/." "<destino>/" && rm -rf -- "<scratch>"`): si la copia falla, se conserva y el reporte nombra su ruta y las capturas que no se copiaron, porque las adjuntas o las de Claude Design no siempre se vuelven a renderizar. Al cerrar sin guardar, el comando de cierre empieza con `trap 'rm -rf -- "<scratch>"' EXIT`, que borra el scratch aunque ese comando falle.
+**Capturas de referencia.** El agente renderiza con el navegador del harness las referencias renderizables del inventario —mocks HTML, bundle `design-sync/`, el Design de Claude Design, Storybook— para las pantallas que el tema toca: en Claude Code con Playwright MCP (`browser_navigate` a la ruta o URL, `browser_take_screenshot`); en los demás harnesses, con el navegador headless que `## Verificacion autonoma` del contrato declare. Un proyecto de Claude Design se materializa primero con `DesignSync` `get_file` en el temporal y se navega por `file://`. Sin navegador disponible, se le pide la captura al usuario o se registra la referencia por ruta, sin captura. Las capturas que el usuario adjunte como archivo o ruta se guardan tal cual. Sin referencia renderizable ni adjunta, nunca se inventa una captura: la rama lo registra como hecho. Las capturas viven en el scratch, un directorio temporal fuera del repo (ej. `mktemp -d`), hasta guardar, pausar o finalizar; recién ahí se copian a `<git-common-dir>/chiche/grills/<nombre-real-del-handoff>/`, con el mismo nombre base que el `.md` que quedó escrito (en Pi, incluido el sufijo de colisión que agrega la tool), y el handoff las referencia por ruta relativa (`<nombre-real-del-handoff>/<pantalla>.png`). Al guardar, pausar o finalizar, el scratch se borra solo si la copia salió bien (`cp -R -- "<scratch>/." "<destino>/" && rm -rf -- "<scratch>"`): si la copia falla, se conserva y el reporte nombra su ruta y las capturas que no se copiaron, porque las adjuntas o las de Claude Design no siempre se vuelven a renderizar. Al cerrar sin guardar, el comando de cierre empieza con `trap 'rm -rf -- "<scratch>"' EXIT`, que borra el scratch aunque ese comando falle.
 
 **Handoff.** Mientras la sesión está `paused`, las decisiones de diseño viven en `## Decisiones resueltas` con prefijo `Diseño:`, y la ruta de cada captura va en la decisión `Diseño:` que la usa. Con la rama activada, el contrato visible del cierre incluye el diseño, y el handoff `finalized` lo persiste en `## Diseño`. Si un handoff trae más de un `## Diseño` (una revisión importada), el vigente es el último.
 <!-- grill-design:end -->
@@ -141,10 +141,10 @@ Por cada decisión:
 ## Persistencia y reanudación
 
 <!-- grill-drafts:start -->
-**Dónde viven los borradores.** El handoff, el cuestionario y la carpeta de capturas se escriben en `<git-common-dir>/sdd/grills/`, fuera del working tree: `<git-common-dir>` es la salida de `git rev-parse --path-format=absolute --git-common-dir`, el mismo directorio para todos los worktrees del repo, así que `git status` queda limpio en cada uno. Fuera de un repo git, en `.sdd/grills/` del cwd. Para leer o retomar se miran los dos lugares: `.sdd/grills/` del árbol, con lo que un PR ya commiteó, y `<git-common-dir>/sdd/grills/`; ante el mismo nombre gana el del árbol. El borrador no se ve en el editor ni viaja con un clon nuevo, así que cada vez que se guarda, pausa o finaliza, el reporte imprime su ruta absoluta. Si el harness no puede escribir en `<git-common-dir>/sdd/`, su capa de interacción dice cómo pedir permiso o caer a `.sdd/` del cwd.
+**Dónde viven los borradores.** El handoff, el cuestionario y la carpeta de capturas se escriben en `<git-common-dir>/chiche/grills/`, fuera del working tree: `<git-common-dir>` es la salida de `git rev-parse --path-format=absolute --git-common-dir`, el mismo directorio para todos los worktrees del repo, así que `git status` queda limpio en cada uno. Fuera de un repo git, en `.chiche/grills/` del cwd. Para leer o retomar se miran los cuatro lugares, en este orden: `.chiche/grills/` y `.sdd/grills/` del árbol, con lo que un PR ya commiteó, y `<git-common-dir>/chiche/grills/` y `<git-common-dir>/sdd/grills/`; ante el mismo nombre gana el trackeado sobre el local y `chiche` sobre `sdd`. Todo guardado se escribe en `<git-common-dir>/chiche/grills/`, aunque el handoff retomado venga de otro de los cuatro lugares. El borrador no se ve en el editor ni viaja con un clon nuevo, así que cada vez que se guarda, pausa o finaliza, el reporte imprime su ruta absoluta. Si el harness no puede escribir en `<git-common-dir>/chiche/`, su capa de interacción dice cómo pedir permiso o caer a `.chiche/` del cwd.
 <!-- grill-drafts:end -->
 
-Para pausar o guardar, escribir `<git-common-dir>/sdd/grills/<fecha>-<slug>.md` con:
+Para pausar o guardar, escribir `<git-common-dir>/chiche/grills/<fecha>-<slug>.md` con:
 
 ```markdown
 # Grill — <tema>
@@ -175,7 +175,7 @@ Al pausar o guardar, con el handoff ya escrito, registrar `grill.paused` (ver **
 
 Para retomar:
 
-1. Si no se indicó una ruta, listar por fecha los handoffs de los dos lugares (`.sdd/grills/*.md` y `<git-common-dir>/sdd/grills/*.md`).
+1. Si no se indicó una ruta, listar por fecha los handoffs de los cuatro lugares (`.chiche/grills/*.md`, `.sdd/grills/*.md`, `<git-common-dir>/chiche/grills/*.md` y `<git-common-dir>/sdd/grills/*.md`).
 2. Pedir elegir solo si hay más de un candidato razonable; si hay más de los que entran como opciones, los más recientes van como opciones y el resto vía "Other".
 3. Leer el archivo completo y contrastar sus hechos con el estado actual del repo. Los handoffs viejos pueden traer una sección `## Modo`: ignorarla, ya no existe.
 4. Si existe un `<fecha>-<slug>-cuestionario.md` con respuestas completadas, leerlo e incorporar cada respuesta como decisión resuelta; repreguntar solo lo ambiguo.
@@ -184,7 +184,7 @@ Para retomar:
 
 ## Exportar cuestionario
 
-Al pausar y en el cierre, ofrecer exportar las decisiones pendientes como `<git-common-dir>/sdd/grills/<fecha>-<slug>-cuestionario.md`: un cuestionario autocontenido para un tercero sin agente, pensado para pegar en un Google Doc y discutir con un stakeholder.
+Al pausar y en el cierre, ofrecer exportar las decisiones pendientes como `<git-common-dir>/chiche/grills/<fecha>-<slug>-cuestionario.md`: un cuestionario autocontenido para un tercero sin agente, pensado para pegar en un Google Doc y discutir con un stakeholder.
 
 Por cada decisión pendiente incluir:
 
@@ -201,13 +201,13 @@ Cuando todos los bloques estén resueltos:
 
 1. Mostrar en el chat un contrato autocontenido con tema, alcance, hechos, decisiones agrupadas por bloque y enumeradas, restricciones, no-objetivos, supuestos, riesgos, preguntas deliberadamente diferidas y contexto recomendado para la spec.
 2. Pedir una confirmación explícita y autocontenida: confirmar, ajustar una decisión, pausar, exportar cuestionario para un stakeholder (ver **Exportar cuestionario**) o confirmar y crear spec SDD.
-3. Tras confirmar, guardar el mismo contenido como handoff `finalized` en `<git-common-dir>/sdd/grills/<fecha>-<slug>.md` e informar la ruta absoluta. Con el handoff `finalized` escrito, registrar `grill.finalized` (ver **Log de eventos**).
+3. Tras confirmar, guardar el mismo contenido como handoff `finalized` en `<git-common-dir>/chiche/grills/<fecha>-<slug>.md` e informar la ruta absoluta. Con el handoff `finalized` escrito, registrar `grill.finalized` (ver **Log de eventos**).
 4. Si pidió crear spec, cargar `sdd-spec` y continuar con `--from-grill <ruta-del-handoff>`.
 
 ## Log de eventos
 
 <!-- sdd-events:start -->
-Las transiciones de este skill se registran en `<git-common-dir>/sdd/events.jsonl`, el log local append-only del formato `events-v1` (normativo en `docs/sdd-events-v1.md` del repo de estos skills). Cada evento es una línea que agrega este comando, con los valores entre `<>` reemplazados: `issue` es `#NN`, `owner/repo#NN` o `none`; `spec`, `previous` y `grill` van sin codificar (`.sdd/specs/<slug>.md`, `#NN`, `<fecha>-<slug>` o `none`) y el comando los percent-encodea; `previous` es `none` salvo en `spec.moved`; `pr` son números separados por coma y sin espacios, o vacío; `reason` es `none` salvo en `run.failed`.
+Las transiciones de este skill se registran en `<git-common-dir>/chiche/events.jsonl`, el log local append-only del formato `events-v1` (normativo en `docs/sdd-events-v1.md` del repo de estos skills). Cada evento es una línea que agrega este comando, con los valores entre `<>` reemplazados: `issue` es `#NN`, `owner/repo#NN` o `none`; `spec`, `previous` y `grill` van sin codificar (`.sdd/specs/<slug>.md`, `#NN`, `<fecha>-<slug>` o `none`) y el comando los percent-encodea; `previous` es `none` salvo en `spec.moved`; `pr` son números separados por coma y sin espacios, o vacío; `reason` es `none` salvo en `run.failed`.
 
 ```bash
 (
@@ -232,16 +232,16 @@ Las transiciones de este skill se registran en `<git-common-dir>/sdd/events.json
       *) false ;;
     esac
   }
-  ok && dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && mkdir -p "$dir/sdd" &&
+  ok && dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && mkdir -p "$dir/chiche" &&
     line=$(printf '{"v":1,"ts":"%s","harness":"%s","event":"%s","issue":"%s","spec":"%s","previous":"%s","grill":"%s","pr":[%s],"reason":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$harness" "$event" "$issue" "$(enc "$spec")" "$(enc "$previous")" "$(enc "$grillref")" "$pr" "$reason") &&
-    [ ${#line} -lt 1024 ] && printf '%s\n' "$line" >> "$dir/sdd/events.jsonl" ||
+    [ ${#line} -lt 1024 ] && printf '%s\n' "$line" >> "$dir/chiche/events.jsonl" ||
     echo "aviso: no se registró el evento SDD $event" >&2
 )
 ```
 
 - **Best-effort.** Un fallo del append nunca frena ni hace fallar el skill: el comando termina con exit 0 y avisa por stderr, y el reporte del skill lo nombra en una línea.
 - **Validación barata.** Antes del append, `ok` revisa el harness, el evento del catálogo, `issue`, `pr` sin espacios, refs no vacías y sin un `<...>` sin reemplazar, y los invariantes del catálogo: un valor inválido cae en el mismo aviso y no escribe nada, porque los consumidores saltean en silencio una línea inválida.
-- **Solo en el common-dir.** El log se escribe en `<git-common-dir>/sdd/`, nunca dentro del working tree: fuera de un repo git, o si el harness no puede escribir ahí, el evento se saltea con el aviso, sin caer a `.sdd/`.
+- **Solo en el common-dir.** El log se escribe en `<git-common-dir>/chiche/`, nunca dentro del working tree: fuera de un repo git, o si el harness no puede escribir ahí, el evento se saltea con el aviso, sin caer a `.sdd/`.
 <!-- sdd-events:end -->
 
 En opencode, `<harness>` es `opencode`.

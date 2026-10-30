@@ -11,7 +11,7 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, and **SHOULD** are normative
 
 ## Location
 
-The log is the file `<git-common-dir>/sdd/events.jsonl`, where
+The log is the file `<git-common-dir>/chiche/events.jsonl`, where
 `<git-common-dir>` is the output of
 `git rev-parse --path-format=absolute --git-common-dir` run from any worktree of
 the repository. Every worktree of a clone therefore shares one log, and the log
@@ -21,7 +21,12 @@ Producers MUST NOT write the log anywhere else. In particular, a producer that
 cannot resolve `<git-common-dir>` (outside a Git repository) or cannot write
 there (for example, inside a sandbox) MUST skip the event instead of falling
 back to a path inside the working tree. A producer creates
-`<git-common-dir>/sdd/` and the file when they do not exist.
+`<git-common-dir>/chiche/` and the file when they do not exist.
+
+Consumers also read `<git-common-dir>/sdd/events.jsonl`, the location of the
+log before the suite was renamed to chiche, and concatenate both files ordered
+by `ts`: for equal `ts`, lines from `sdd/` come first, and the lines of one file
+keep their file order. Producers never write to `<git-common-dir>/sdd/`.
 
 The log is local to one clone on one machine. It is not synchronized, and
 events produced on another machine never appear in it.

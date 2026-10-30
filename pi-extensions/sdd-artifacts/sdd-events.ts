@@ -1,13 +1,15 @@
 // Log local de eventos SDD (events-v1, issue #93). El formato normativo vive en
 // docs/sdd-events-v1.md: una línea JSON canónica por evento en
-// <git-common-dir>/sdd/events.jsonl, append-only y best-effort. Este módulo
-// serializa, parsea (parseo total, nunca lanza) y agrega líneas; las
-// referencias `spec`/`grill` usan el mismo codec `<ref>` que SDD-Tracking v1.
+// <git-common-dir>/chiche/events.jsonl, append-only y best-effort. Este módulo
+// serializa, parsea (parseo total, nunca lanza), agrega líneas y lee el log,
+// que suma el <git-common-dir>/sdd/events.jsonl previo al renombre (issue #103,
+// CA-4); las referencias `spec`/`grill` usan el mismo codec `<ref>` que
+// SDD-Tracking v1.
 
-import { mkdir, open } from "node:fs/promises";
+import { mkdir, open, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { resolveGitCommonDir, type GitRunner } from "../lib/sdd-paths.ts";
+import { resolveGitCommonDir, type GitRunner } from "../lib/chiche-paths.ts";
 import {
 	decodeReference,
 	encodeReference,
@@ -89,6 +91,9 @@ export const SDD_EVENT_KEYS = ["v", "ts", "harness", "event", "issue", "spec", "
 /** Tope de una línea, contando su LF final. */
 export const SDD_EVENT_MAX_LINE_BYTES = 1024;
 export const SDD_EVENTS_FILE = "events.jsonl";
+/** Directorio del log bajo `<git-common-dir>`: se escribe en el primero; se leen los dos. */
+export const SDD_EVENTS_DIR = "chiche";
+export const SDD_EVENTS_LEGACY_DIR = "sdd";
 
 const TIMESTAMP = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\dZ$/;
 
@@ -345,7 +350,7 @@ function notGitMessage(projectRoot: string): string {
 	return `no <git-common-dir> for ${projectRoot}: not a Git repository`;
 }
 
-// Un solo write en modo append (O_APPEND) sobre `<commonDir>/sdd/events.jsonl`,
+// Un solo write en modo append (O_APPEND) sobre `<commonDir>/chiche/events.jsonl`,
 // con el common-dir ya resuelto. Nunca lanza.
 async function appendToCommonDir(commonDir: string, event: SddEvent): Promise<SddEventAppendResult> {
 	try {
@@ -354,7 +359,7 @@ async function appendToCommonDir(commonDir: string, event: SddEvent): Promise<Sd
 			const [first] = serialized.diagnostics;
 			return { ok: false, message: `invalid event (${first?.code}): ${first?.message}` };
 		}
-		const directory = join(commonDir, "sdd");
+		const directory = join(commonDir, SDD_EVENTS_DIR);
 		await mkdir(directory, { recursive: true });
 		const path = join(directory, SDD_EVENTS_FILE);
 		const bytes = new TextEncoder().encode(`${serialized.line}\n`);
@@ -372,7 +377,7 @@ async function appendToCommonDir(commonDir: string, event: SddEvent): Promise<Sd
 }
 
 /**
- * Agrega una línea a `<git-common-dir>/sdd/events.jsonl` de `projectRoot` con
+ * Agrega una línea a `<git-common-dir>/chiche/events.jsonl` de `projectRoot` con
  * un solo write en modo append (O_APPEND), sin lock. Nunca lanza: fuera de git,
  * sin permiso o con `events.jsonl` como directorio devuelve `ok: false` y no
  * escribe en ningún otro lugar.
@@ -385,6 +390,42 @@ export async function appendSddEvent(
 	const commonDir = await resolveGitCommonDir(projectRoot, options.runGit);
 	if (commonDir === null) return { ok: false, message: notGitMessage(projectRoot) };
 	return appendToCommonDir(commonDir, event);
+}
+
+// Eventos válidos de un archivo, en orden de archivo. Saltea las líneas
+// inválidas o de otra versión y el segmento final sin LF (un append en curso);
+// un archivo ausente o ilegible no aporta nada.
+async function readEventFile(path: string): Promise<SddEvent[]> {
+	let content: string;
+	try {
+		content = await readFile(path, "utf8");
+	} catch {
+		return [];
+	}
+	const lines = content.split("\n").slice(0, -1);
+	const events: SddEvent[] = [];
+	for (const line of lines) {
+		const parsed = parseSddEventLine(line);
+		if (parsed.kind === "event") events.push(parsed.event);
+	}
+	return events;
+}
+
+/**
+ * Lee el log de `projectRoot`: `<git-common-dir>/sdd/events.jsonl` y
+ * `<git-common-dir>/chiche/events.jsonl`, unidos y ordenados por `ts`. El orden
+ * es estable: ante el mismo `ts` va primero `sdd/` y, dentro de cada archivo,
+ * el orden de append. Nunca lanza: fuera de git devuelve `[]`.
+ */
+export async function readSddEvents(projectRoot: string, options: { runGit?: GitRunner } = {}): Promise<SddEvent[]> {
+	const commonDir = await resolveGitCommonDir(projectRoot, options.runGit);
+	if (commonDir === null) return [];
+	const events = [
+		...await readEventFile(join(commonDir, SDD_EVENTS_LEGACY_DIR, SDD_EVENTS_FILE)),
+		...await readEventFile(join(commonDir, SDD_EVENTS_DIR, SDD_EVENTS_FILE)),
+	];
+	// `ts` tiene ancho fijo: el orden de strings es el cronológico.
+	return events.sort((left, right) => (left.ts < right.ts ? -1 : left.ts > right.ts ? 1 : 0));
 }
 
 /**
