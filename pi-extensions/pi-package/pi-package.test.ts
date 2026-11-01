@@ -79,6 +79,10 @@ const EXPECTED_SKILLS = [
 	"./pi/design-system/SKILL.md",
 	"./pi/grill/SKILL.md",
 	"./pi/issue-triage/SKILL.md",
+	"./pi/sdd-init/SKILL.md",
+	"./pi/sdd-land/SKILL.md",
+	"./pi/sdd-run/SKILL.md",
+	"./pi/sdd-spec/SKILL.md",
 	"./pi/tdd/SKILL.md",
 ];
 

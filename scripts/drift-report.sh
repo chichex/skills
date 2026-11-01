@@ -58,5 +58,7 @@ done
 
 echo
 echo "> **Nota:** la divergencia esperada entre copias es la capa de interacción de cada harness — tools y forma de invocación (AskUserQuestion / request_user_input / ask_user_question + ask_user_questions / gates en texto plano; \`/nombre\`, \`\$nombre\`, \`/skill:nombre\`). Una divergencia grande en la doctrina del skill (el qué y el flujo) amerita revisión manual."
+echo
+echo "> Las filas \`sdd-*\` son alias deprecados de \`chiche-*\`: cada alias se compara solo con sus copias en los otros harnesses, nunca con \`chiche-*\`."
 
 exit 0

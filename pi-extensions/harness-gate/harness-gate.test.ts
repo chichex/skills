@@ -826,6 +826,81 @@ test(".sdd/project.md lleva el marker canonico type=project", async () => {
 	);
 });
 
+// --- #103 CA-7: alias deprecados sdd-<x> -------------------------------------
+
+const ALIAS_SUFFIXES = ["init", "spec", "run", "land"] as const;
+const ALIAS_MAX_LINES = 25;
+
+// Problemas de un alias `sdd-<suffix>`: tope de lineas, frontmatter, aviso
+// literal e invocacion del `chiche-<suffix>` con el prefijo del harness.
+function aliasProblems(path: string, text: string, suffix: string, prefix: string): string[] {
+	const problems: string[] = [];
+	const lines = text.replace(/\n$/, "").split("\n");
+	if (lines.length > ALIAS_MAX_LINES) problems.push(`${path}: ${lines.length} lineas, el alias no puede superar ${ALIAS_MAX_LINES}`);
+	const frontmatter = text.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? "";
+	if (!new RegExp(`^name: sdd-${suffix}$`, "m").test(frontmatter)) problems.push(`${path}: name no es sdd-${suffix}`);
+	if (!new RegExp(`^description: .*alias deprecado de chiche-${suffix}\\b`, "m").test(frontmatter)) {
+		problems.push(`${path}: la description no dice "alias deprecado de chiche-${suffix}"`);
+	}
+	const notice = `sdd-${suffix} es un alias deprecado: usá chiche-${suffix}`;
+	if (lines.filter((line) => line.trim() === notice).length !== 1) problems.push(`${path}: falta una sola linea "${notice}"`);
+	if (!text.includes(`\`${prefix}chiche-${suffix}\``)) problems.push(`${path}: no carga \`${prefix}chiche-${suffix}\``);
+	return problems;
+}
+
+test("#103 CA-7: cada sdd-<x> es un alias mínimo de chiche-<x>, idéntico entre los cinco harnesses", async () => {
+	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
+	const problems: string[] = [];
+	for (const suffix of ALIAS_SUFFIXES) {
+		const normalized = new Map<Harness, string>();
+		for (const harness of HARNESSES) {
+			const path = `${harness}/sdd-${suffix}/SKILL.md`;
+			const text = await readRepoFile(path).catch(() => null);
+			if (text === null) {
+				problems.push(`${path}: falta el alias`);
+				continue;
+			}
+			problems.push(...aliasProblems(path, text, suffix, prefixes[harness]));
+			normalized.set(harness, normalizeInvocations(text, prefixes[harness]));
+		}
+		const reference = normalized.get("claude");
+		for (const [harness, body] of normalized) {
+			if (reference !== undefined && body !== reference) {
+				problems.push(`${harness}/sdd-${suffix}/SKILL.md difiere de claude: ${firstDifference(reference, body)}`);
+			}
+		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("#103 CA-7: en Codex el sidecar de cada alias apaga la invocación implícita", async () => {
+	for (const suffix of ALIAS_SUFFIXES) {
+		const sidecar = await readRepoFile(`codex/sdd-${suffix}/agents/openai.yaml`);
+		assert.match(sidecar, /^\s+allow_implicit_invocation: false$/m, `codex/sdd-${suffix}`);
+		assert.match(sidecar, new RegExp(`\\$chiche-${suffix}\\b`), `codex/sdd-${suffix} apunta a $chiche-${suffix}`);
+	}
+});
+
+test("autotest: un alias de 26 líneas o sin aviso literal falla con diagnóstico", () => {
+	const valid = [
+		"---",
+		"name: sdd-run",
+		"description: alias deprecado de chiche-run.",
+		"---",
+		"",
+		"sdd-run es un alias deprecado: usá chiche-run",
+		"",
+		"Cargá `/chiche-run`.",
+	];
+	assert.deepEqual(aliasProblems("x", `${valid.join("\n")}\n`, "run", "/"), []);
+	const long = [...valid, ...Array.from({ length: 26 - valid.length }, () => "relleno")];
+	assert.deepEqual(aliasProblems("x", `${long.join("\n")}\n`, "run", "/"), ["x: 26 lineas, el alias no puede superar 25"]);
+	const silent = valid.filter((line) => !line.startsWith("sdd-run es"));
+	assert.deepEqual(aliasProblems("x", silent.join("\n"), "run", "/"), [
+		'x: falta una sola linea "sdd-run es un alias deprecado: usá chiche-run"',
+	]);
+});
+
 // --- Autotests del gate: puede fallar y con que diagnostico ------------------
 
 test("autotest: una divergencia entre harnesses se reporta con la linea que difiere", () => {

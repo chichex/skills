@@ -1,5 +1,5 @@
 interface:
-  display_name: "SDD Run"
+  display_name: "Chiche Run"
   short_description: "Implementá y verificá una spec SDD"
   default_prompt: "Usá $chiche-run para ejecutar esta spec SDD de punta a punta."
 policy:
