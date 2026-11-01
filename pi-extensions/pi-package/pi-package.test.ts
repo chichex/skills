@@ -58,6 +58,7 @@ interface IsolatedPiEnvironment {
 interface PiCommand {
 	name: string;
 	source: string;
+	description?: string;
 }
 
 const REPO_ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
@@ -106,10 +107,16 @@ const EXPECTED_EXTENSION_COMMANDS = [
 	"issues",
 	"llama",
 	"prs",
+	"sdd-run",
 	"specs",
 	"subagents",
 	"visual-footer",
 ];
+
+// Las cuatro etapas que renombró el issue #103: cada una existe como
+// `chiche-<etapa>` y como alias deprecado `sdd-<etapa>` (skill de Pi; el
+// comando de extensión es solo `run`).
+const RENAMED_STAGES = ["init", "spec", "run", "land"] as const;
 
 const EXPECTED_SKILL_COMMANDS = EXPECTED_SKILLS.map((path) => `skill:${path.split("/").at(-2)}`).sort();
 const EXPECTED_COMMANDS = [...EXPECTED_EXTENSION_COMMANDS, ...EXPECTED_SKILL_COMMANDS].sort();
@@ -635,6 +642,31 @@ function assertExpectedPackageCommands(commands: PiCommand[]): void {
 		commands.filter((command) => command.source === "skill").map((command) => command.name).sort(),
 		EXPECTED_SKILL_COMMANDS,
 	);
+	assertRenamedStageCommands(commands);
+}
+
+// Issue #103, S11: get_commands expone `skill:chiche-*` y, marcados como alias
+// deprecados, `skill:sdd-*`; el comando de extensión `/sdd-run` también.
+function assertRenamedStageCommands(commands: PiCommand[]): void {
+	const byName = new Map(commands.map((command) => [command.name, command]));
+	for (const stage of RENAMED_STAGES) {
+		const current = byName.get(`skill:chiche-${stage}`);
+		const alias = byName.get(`skill:sdd-${stage}`);
+		assert.equal(current?.source, "skill", `skill:chiche-${stage} falta en get_commands`);
+		assert.equal(alias?.source, "skill", `skill:sdd-${stage} falta en get_commands`);
+		assert.match(
+			alias?.description ?? "",
+			new RegExp(`^alias deprecado de chiche-${stage}\\.`),
+			`skill:sdd-${stage} debe declararse alias de chiche-${stage}`,
+		);
+		assert.doesNotMatch(current?.description ?? "", /alias/i, `skill:chiche-${stage} no es un alias`);
+	}
+	const run = byName.get("chiche-run");
+	const runAlias = byName.get("sdd-run");
+	assert.equal(run?.source, "extension");
+	assert.equal(runAlias?.source, "extension", "/sdd-run falta como comando de extensión");
+	assert.match(runAlias?.description ?? "", /^alias deprecado de chiche-run\b/);
+	assert.doesNotMatch(run?.description ?? "", /alias/i, "/chiche-run no es un alias");
 }
 
 test("package manifest is deterministic, Git-only, and non-publishable", async () => {

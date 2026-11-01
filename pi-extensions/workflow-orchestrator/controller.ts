@@ -476,14 +476,24 @@ export function createWorkflowController(
 			}
 		},
 	});
+	const launchRun = async (args: string, context: ExtensionCommandContext): Promise<void> => {
+		await context.waitForIdle();
+		const result = await controller.launchSddRun(args, context);
+		if (!result.ok && !("originPreserved" in result && !result.originPreserved)) {
+			notify(context, `SDD run launch failed (${result.code}): ${result.message}`);
+		}
+	};
 	pi.registerCommand("chiche-run", {
 		description: "Run an SDD spec target in a fresh linked session: /chiche-run <ruta|#NN|owner/repo#NN|GitHub issue URL>",
+		handler: launchRun,
+	});
+	// Issue #103, S11: el nombre viejo sigue andando como alias deprecado de
+	// /chiche-run: avisa y delega en el mismo handler con los mismos argumentos.
+	pi.registerCommand("sdd-run", {
+		description: "alias deprecado de chiche-run: usá /chiche-run <ruta|#NN|owner/repo#NN|GitHub issue URL>",
 		async handler(args, context) {
-			await context.waitForIdle();
-			const result = await controller.launchSddRun(args, context);
-			if (!result.ok && !("originPreserved" in result && !result.originPreserved)) {
-				notify(context, `SDD run launch failed (${result.code}): ${result.message}`);
-			}
+			notify(context, "sdd-run es un alias deprecado: usá chiche-run", "info");
+			await launchRun(args, context);
 		},
 	});
 	pi.registerCommand("grill", {

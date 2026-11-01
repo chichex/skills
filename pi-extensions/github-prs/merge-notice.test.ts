@@ -15,6 +15,7 @@ test("CA-21: tras el merge sugiere /skill:chiche-land --clean-only y nombra el b
 	assert.match(notice, /remoto `sdd\/cero-residuos\/1-chiche-land`/);
 	assert.match(notice, /local `sdd\/cero-residuos\/1-chiche-land`/);
 	assert.match(notice, /no borra nada/);
+	assert.doesNotMatch(notice, /skill:sdd-|sdd-land/, "sugiere chiche-land, nunca el alias sdd-land");
 });
 
 test("CA-21: sin branch local nombra solo el remoto", () => {

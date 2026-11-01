@@ -142,6 +142,7 @@ test("dispatch maps every actionable route to one canonical downstream skill and
 		assert.equal(result.ok, true, route);
 		if (!result.ok) continue;
 		assert.equal(result.request.skill.name, skill, route);
+		assert.doesNotMatch(result.request.skill.name, /^sdd-/, `${route} nunca despacha un alias sdd-*`);
 		assert.equal(result.request.skill.args, expectedArgs, route);
 	}
 });

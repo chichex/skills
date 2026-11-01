@@ -7,7 +7,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { artifactReadDirs, localArtifactDir, resolveGitCommonDir, trackedArtifactDirs } from "../lib/chiche-paths.ts";
+import { artifactReadDirs, localArtifactDir, resolveArtifactName, resolveGitCommonDir, trackedArtifactDirs } from "../lib/chiche-paths.ts";
 import { parseSddArtifact } from "../chiche-artifacts/index.ts";
 import { inspectMarkdownArtifact } from "../workflow-resolution/index.ts";
 import {
@@ -372,15 +372,7 @@ export async function resolveDirectRunRequest(
 	}
 	let candidate = isAbsolute(target) ? resolve(target) : resolve(originRoot, target);
 	if (!isAbsolute(target) && (dirname(candidate) === specDirs.tracked || dirname(candidate) === specDirs.legacyTracked)) {
-		const name = basename(candidate);
-		candidate = join(specDirs.local, name);
-		for (const place of places) {
-			const path = join(place.path, name);
-			if (await statPort(path).then((entry) => entry.isFile(), () => false)) {
-				candidate = path;
-				break;
-			}
-		}
+		candidate = await resolveArtifactName(specDirs, basename(candidate));
 	}
 	let path: string;
 	let root: string;
