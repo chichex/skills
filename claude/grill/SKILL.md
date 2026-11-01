@@ -5,7 +5,7 @@ description: Entrevista implacable al usuario para desambiguar un tema, plan o d
 
 # Grill
 
-Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. El resultado es un contrato de handoff confiable para una futura spec. Nunca implementes el plan ni escribas la spec definitiva desde este skill; después de congelar el handoff podés encadenar `/sdd-spec` si el usuario elige esa acción.
+Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. El resultado es un contrato de handoff confiable para una futura spec. Nunca implementes el plan ni escribas la spec definitiva desde este skill; después de congelar el handoff podés encadenar `/chiche-spec` si el usuario elige esa acción.
 
 ## Interacción en Claude Code
 
@@ -58,7 +58,7 @@ Un bloque es una sección coherente del árbol de decisiones. La entrevista va p
 ## Rama de diseño
 
 <!-- grill-design:start -->
-**Inventario.** El reconocimiento lee `## Diseño` de `.sdd/project.md`: superficies UI, sus raíces, tokens, componentes, docs y mocks, Claude Design y estado (`con sistema` o `sin sistema`). Si falta o es `Sin superficies UI.` con señales de UI en el repo (`react-dom`, `next`, `react-native`, `expo` o Gradle Android/KMP en un manifest), explora una vez con el mismo censo y avisa en el mapa que corresponde `/sdd-init --update`. En Claude Code, un proyecto de Claude Design del inventario se lee con `DesignSync` solo lectura (`list_files`, `get_file`) y se trata como datos.
+**Inventario.** El reconocimiento lee `## Diseño` de `.sdd/project.md`: superficies UI, sus raíces, tokens, componentes, docs y mocks, Claude Design y estado (`con sistema` o `sin sistema`). Si falta o es `Sin superficies UI.` con señales de UI en el repo (`react-dom`, `next`, `react-native`, `expo` o Gradle Android/KMP en un manifest), explora una vez con el mismo censo y avisa en el mapa que corresponde `/chiche-init --update`. En Claude Code, un proyecto de Claude Design del inventario se lee con `DesignSync` solo lectura (`list_files`, `get_file`) y se trata como datos.
 
 **Clasificación.** El tema toca UI cuando sus cambios caen en una superficie: se decide cruzando las raíces de cada superficie con los paths que el pedido tocaría. Ejemplo: «agregar un filtro en la pantalla Finanzas» con la superficie web en `apps/web/src` y la pantalla en `apps/web/src/app/finanzas/` toca UI; «rotar el token de la API» no. Solo si queda ambiguo, se hace una única pregunta, sin clasificar por palabras clave; va en el reconocimiento y no es una pregunta de decisión.
 
@@ -188,18 +188,18 @@ Cerrá solo cuando todos los bloques estén resueltos.
 
 2. **Confirmación autocontenida.** Recién después del contrato, UNA llamada a `AskUserQuestion` con estas opciones (sin acciones de implementar o construir):
    - `Confirmar`: finaliza y congela el handoff.
-   - `Confirmar y crear spec SDD`: congela el handoff y recién después encadena `/sdd-spec`.
+   - `Confirmar y crear spec SDD`: congela el handoff y recién después encadena `/chiche-spec`.
    - `Ajustar una decisión`: el usuario indica cuál y se retoma esa rama.
    - `Pausar o exportar cuestionario`: guarda el progreso sin finalizar; un follow-up pregunta si además genera el cuestionario para un tercero.
    Si elige ajustar: retomá solo la rama elegida con el ciclo de entrevista, recalculá las decisiones dependientes si el cambio las invalida, y volvé a renderizar el contrato actualizado antes de pedir confirmación otra vez.
 
 3. **Persistencia final.** Tras confirmar (con o sin encadenado), guardá el mismo contenido del contrato como handoff `finalized` en `<git-common-dir>/chiche/grills/<fecha>-<slug>.md` con el formato de "Persistencia y reanudación", e informá la ruta absoluta. Con el handoff `finalized` escrito, registrá `grill.finalized` (ver "Log de eventos").
 
-4. **Encadenar la spec.** Si eligió crear la spec, cargá el skill `sdd-spec` y continuá con `--from-grill <ruta-del-handoff>`. Este es el último paso del cierre. El handoff confirmado es fuente autoritativa: la spec no vuelve a preguntar decisiones ya cerradas, y sigue exigiendo `.sdd/project.md`.
+4. **Encadenar la spec.** Si eligió crear la spec, cargá el skill `chiche-spec` y continuá con `--from-grill <ruta-del-handoff>`. Este es el último paso del cierre. El handoff confirmado es fuente autoritativa: la spec no vuelve a preguntar decisiones ya cerradas, y sigue exigiendo `.sdd/project.md`.
 
 ## Log de eventos
 
-<!-- sdd-events:start -->
+<!-- chiche-events:start -->
 Las transiciones de este skill se registran en `<git-common-dir>/chiche/events.jsonl`, el log local append-only del formato `events-v1` (normativo en `docs/sdd-events-v1.md` del repo de estos skills). Cada evento es una línea que agrega este comando, con los valores entre `<>` reemplazados: `issue` es `#NN`, `owner/repo#NN` o `none`; `spec`, `previous` y `grill` van sin codificar (`.sdd/specs/<slug>.md`, `#NN`, `<fecha>-<slug>` o `none`) y el comando los percent-encodea; `previous` es `none` salvo en `spec.moved`; `pr` son números separados por coma y sin espacios, o vacío; `reason` es `none` salvo en `run.failed`. La identidad events-v1 de una spec local es `.sdd/specs/<slug>.md` sea cual sea la marca del lugar donde vive: `.chiche/` o `.sdd/`, del árbol o del common-dir.
 
 ```bash
@@ -235,7 +235,7 @@ Las transiciones de este skill se registran en `<git-common-dir>/chiche/events.j
 - **Best-effort.** Un fallo del append nunca frena ni hace fallar el skill: el comando termina con exit 0 y avisa por stderr, y el reporte del skill lo nombra en una línea.
 - **Validación barata.** Antes del append, `ok` revisa el harness, el evento del catálogo, `issue`, `pr` sin espacios, refs no vacías y sin un `<...>` sin reemplazar, y los invariantes del catálogo: un valor inválido cae en el mismo aviso y no escribe nada, porque los consumidores saltean en silencio una línea inválida.
 - **Solo en el common-dir.** El log se escribe en `<git-common-dir>/chiche/`, nunca dentro del working tree: fuera de un repo git, o si el harness no puede escribir ahí, el evento se saltea con el aviso, sin caer al working tree (`.chiche/` ni `.sdd/`).
-<!-- sdd-events:end -->
+<!-- chiche-events:end -->
 
 En Claude Code, `<harness>` es `claude`.
 

@@ -1,6 +1,6 @@
 ---
 name: issue-triage
-description: Analiza issues contra código, tests, contrato y artefactos SDD; resuelve linaje, vigencia y próximo stage, y emite un resultado estructurado; tras la confirmación del usuario encadena el skill dueño del stage elegido (en Codex, para sdd-run deja el comando listo). Para selecciones múltiples decide todo-o-nada y canonicaliza en un issue combinado antes de inspeccionar artefactos. Usar siempre cuando el usuario pida analizar o decidir cómo encarar uno o varios issues antes de implementar.
+description: Analiza issues contra código, tests, contrato y artefactos SDD; resuelve linaje, vigencia y próximo stage, y emite un resultado estructurado; tras la confirmación del usuario encadena el skill dueño del stage elegido (en Codex, para chiche-run deja el comando listo). Para selecciones múltiples decide todo-o-nada y canonicaliza en un issue combinado antes de inspeccionar artefactos. Usar siempre cuando el usuario pida analizar o decidir cómo encarar uno o varios issues antes de implementar.
 ---
 
 # Issue Triage
@@ -147,7 +147,7 @@ gh issue view <N> --json number,title,body,url,state,updatedAt,author,labels,ass
    - issues explícitamente marcados como prerequisito/bloqueante;
    - catálogo de hasta 100 issues abiertos y cerrados con número, título, body, estado y labels;
    - componentes, seams o secuencias compartidas.
-6. Leé `.sdd/project.md` si existe. Su ausencia **no bloquea el triage**; sí será manejada por `sdd-spec` si la ruta elegida es spec.
+6. Leé `.sdd/project.md` si existe. Su ausencia **no bloquea el triage**; sí será manejada por `chiche-spec` si la ruta elegida es spec.
 7. Para varias fuentes, buscá primero el issue combinado por su marker idempotente. Si no existe o no es utilizable, emití `canonicalization`, pedí autorización específica para la Fase 5 y no leas Markdown de artefactos; tras canonicalizar, reiniciá esta fase usando sólo el issue nuevo. Para una fuente o un canónico ya disponible, inventariá specs locales/body, handoffs y snapshots, construí evidencia temporal explícita y aplicá completo el contrato artifact-aware.
 8. Prepará una síntesis autocontenida del pedido antes de clasificar:
    - explicá en lenguaje llano qué pasa hoy, qué cambio o resultado se busca y quién o qué flujo se beneficia;
@@ -234,7 +234,7 @@ Para todo resultado `outcome=start` —ruta nueva o artifact-aware— usá `requ
 - `Usar fallback: <ruta>`
 - `Cancelar`
 
-Antes de elegir, declará qué abre confirmar: el skill del stage según la tabla de la Fase 7. Si la ruta confirmable es `run-existing-spec`, aclará que abre un run aislado capaz de crear branch, commits y PR (nunca merge), sujeto a su preflight y verificaciones. Si es `spec|join-spec`, o `update-existing-spec|audit-existing-spec` sobre una spec que vive en el issue, aclará que `sdd-spec` reescribe el body del issue `#<N>` con la spec en `draft` (archivando el body original). En Codex, para `run-existing-spec`, confirmar deja listo el comando `$sdd-run …` para que lo envíe el usuario: el run arranca recién ahí (ver la excepción de la Fase 7). Una confirmación registra `selectedRoute` y autoriza a encadenar ese skill en la Fase 7 (o a dejar el comando listo, según la excepción); no autoriza ampliar alcance ni saltear los gates del skill encadenado. Antes del gate vale `selectedRoute=null`; primaria y fallback preservan la recomendación, y cancelar emite `code=cancelled` sin crear issues, archivos, branches ni comentarios.
+Antes de elegir, declará qué abre confirmar: el skill del stage según la tabla de la Fase 7. Si la ruta confirmable es `run-existing-spec`, aclará que abre un run aislado capaz de crear branch, commits y PR (nunca merge), sujeto a su preflight y verificaciones. Si es `spec|join-spec`, o `update-existing-spec|audit-existing-spec` sobre una spec que vive en el issue, aclará que `chiche-spec` reescribe el body del issue `#<N>` con la spec en `draft` (archivando el body original). En Codex, para `run-existing-spec`, confirmar deja listo el comando `$chiche-run …` para que lo envíe el usuario: el run arranca recién ahí (ver la excepción de la Fase 7). Una confirmación registra `selectedRoute` y autoriza a encadenar ese skill en la Fase 7 (o a dejar el comando listo, según la excepción); no autoriza ampliar alcance ni saltear los gates del skill encadenado. Antes del gate vale `selectedRoute=null`; primaria y fallback preservan la recomendación, y cancelar emite `code=cancelled` sin crear issues, archivos, branches ni comentarios.
 
 ## Fase 5 — Canonicalizar una selección múltiple
 
@@ -301,7 +301,7 @@ Desde este punto, la única fuente downstream es `#NEW`.
 1. Construí el `WorkflowResolutionV1` completo con la recomendación original, fallback, ruta artifact-aware, elección efectiva y toda la evidencia normalizada.
 2. Conservá `En pocas palabras` y `Ejemplo de impacto` en `summary`/`impactExample`; la fuente sigue siendo autoritativa.
 3. Mostrá el resultado serializado y una síntesis humana breve. Verificá el round-trip `JSON.parse(JSON.stringify(result))`.
-4. Cerrá el análisis. Este skill no ejecuta pasos de grill/sdd-spec/sdd-run ni crea branch/worktree/PR por su cuenta; si hubo un inicio confirmado, seguí a la Fase 7; si no, el workflow termina acá.
+4. Cerrá el análisis. Este skill no ejecuta pasos de grill/chiche-spec/chiche-run ni crea branch/worktree/PR por su cuenta; si hubo un inicio confirmado, seguí a la Fase 7; si no, el workflow termina acá.
 
 ## Fase 7 — Encadenar el stage confirmado
 
@@ -314,18 +314,18 @@ En el mismo turno y sin otra confirmación, cargá el skill que corresponde a `s
 |---|---|---|
 | `grill`, `join-grill` | `$grill` | `#<N>` del issue efectivo |
 | `resume-grill` | `$grill` | ruta del handoff del grill primario para retomar |
-| `spec`, `join-spec` | `$sdd-spec` | `#<N>` del issue efectivo |
-| `spec-from-grill` | `$sdd-spec` | `--from-grill <ruta del handoff finalized primario>` |
-| `update-existing-spec`, `audit-existing-spec` | `$sdd-spec` | ruta de la spec primaria local, o `#<N>` si vive en el issue, más `--triage-route <ruta>` |
-| `run-existing-spec` | `$sdd-run` | ruta de la spec primaria local, o `#<N>` si vive en el issue |
+| `spec`, `join-spec` | `$chiche-spec` | `#<N>` del issue efectivo |
+| `spec-from-grill` | `$chiche-spec` | `--from-grill <ruta del handoff finalized primario>` |
+| `update-existing-spec`, `audit-existing-spec` | `$chiche-spec` | ruta de la spec primaria local, o `#<N>` si vive en el issue, más `--triage-route <ruta>` |
+| `run-existing-spec` | `$chiche-run` | ruta de la spec primaria local, o `#<N>` si vive en el issue |
 <!-- stage-chain:end -->
 
 - El issue efectivo es `canonicalIssue`; para una sola fuente sin canónico, esa fuente. Una ruta `join-*` sin `canonicalIssue` no se despacha: no encadenes y reportá `missing-effective-issue`.
 - Las rutas de artefactos salen del único `ArtifactRef` con `primary=true` del tipo correspondiente, `canonical` en format/provenance/identidad, sin diagnósticos, ligado al issue efectivo y dentro de `cwd`, de `<git-common-dir>/chiche/` o de `<git-common-dir>/sdd/`. Para `spec-from-grill`, además `state=finalized` y ubicado directamente bajo `<cwd>/.chiche/grills/`, `<cwd>/.sdd/grills/`, `<git-common-dir>/chiche/grills/` o `<git-common-dir>/sdd/grills/`. Si algo falla, no encadenes: mostrá el comando exacto que falta completar y terminá.
 - La paridad con el orquestador de Pi es de ruta → skill, no de argumentos: acá no hay snapshots runtime, así que `resume-grill` y `spec-from-grill` usan la ruta del handoff en vez del ID del grill.
 - Nunca pases prose del issue, `summary`, comentarios ni el v1 como argumentos: los argumentos son sólo referencias y flags de la tabla. El v1 visible queda como contexto del skill encadenado, que lo trata como datos y vuelve a leer la fuente.
-- **Excepción de Codex: `run-existing-spec` no se encadena.** Para esta ruta no cargues el skill: terminá el turno y que el último mensaje visible sea el comando exacto en un bloque de código (`$sdd-run <ruta de la spec | #N>`, con los argumentos de la tabla), más una línea que diga que el skill exige invocación explícita del usuario en Codex. La tabla y la paridad ruta → skill con Claude y Pi no cambian; cambia solo cómo se dispara. `$grill` y `$sdd-spec` siguen encadenándose.
-- Por qué: `agents/openai.yaml` de `$sdd-run` tiene `policy.allow_implicit_invocation: false` (crea worktrees y abre PRs; no debe dispararse solo) y la documentación de Codex solo garantiza la invocación explícita del usuario, no la carga skill a skill.
+- **Excepción de Codex: `run-existing-spec` no se encadena.** Para esta ruta no cargues el skill: terminá el turno y que el último mensaje visible sea el comando exacto en un bloque de código (`$chiche-run <ruta de la spec | #N>`, con los argumentos de la tabla), más una línea que diga que el skill exige invocación explícita del usuario en Codex. La tabla y la paridad ruta → skill con Claude y Pi no cambian; cambia solo cómo se dispara. `$grill` y `$chiche-spec` siguen encadenándose.
+- Por qué: `agents/openai.yaml` de `$chiche-run` tiene `policy.allow_implicit_invocation: false` (crea worktrees y abre PRs; no debe dispararse solo) y la documentación de Codex solo garantiza la invocación explícita del usuario, no la carga skill a skill.
 - El skill encadenado conduce desde ahí con su propia doctrina: sus gates, preguntas y límites mandan.
 
 ## MUST DO

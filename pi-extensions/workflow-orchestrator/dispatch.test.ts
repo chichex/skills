@@ -41,7 +41,7 @@ test("dispatch follows selectedRoute rather than the original recommendation", (
 		ok: true,
 		request: {
 			resolution: resolution(),
-			skill: { name: "sdd-spec", args: "#14" },
+			skill: { name: "chiche-spec", args: "#14" },
 		},
 	});
 });
@@ -73,8 +73,8 @@ test("dispatch maps every actionable route to one canonical downstream skill and
 	const cases = [
 		["grill", "grill", "new", [], "grill", "#14"],
 		["join-grill", "grill", "new", [], "grill", "#14"],
-		["spec", "spec", "new", [], "sdd-spec", "#14"],
-		["join-spec", "spec", "new", [], "sdd-spec", "#14"],
+		["spec", "spec", "new", [], "chiche-spec", "#14"],
+		["join-spec", "spec", "new", [], "chiche-spec", "#14"],
 		["resume-grill", "grill", "resume", [artifact("grill")], "grill", "--resume \"grill-leaf-14\""],
 		[
 			"spec-from-grill",
@@ -95,7 +95,7 @@ test("dispatch maps every actionable route to one canonical downstream skill and
 					primary: false,
 				}),
 			],
-			"sdd-spec",
+			"chiche-spec",
 			"--from-grill \"grill-leaf-14\"",
 		],
 		[
@@ -103,7 +103,7 @@ test("dispatch maps every actionable route to one canonical downstream skill and
 			"spec",
 			"update",
 			[artifact("spec", { state: "draft" })],
-			"sdd-spec",
+			"chiche-spec",
 			"/workspace/skills/.sdd/specs/issue-14.md",
 		],
 		[
@@ -111,7 +111,7 @@ test("dispatch maps every actionable route to one canonical downstream skill and
 			"spec",
 			"update",
 			[artifact("spec", { freshness: "unknown" })],
-			"sdd-spec",
+			"chiche-spec",
 			"/workspace/skills/.sdd/specs/issue-14.md",
 		],
 		[
@@ -119,7 +119,7 @@ test("dispatch maps every actionable route to one canonical downstream skill and
 			"run-existing-spec",
 			null,
 			[artifact("spec")],
-			"sdd-run",
+			"chiche-run",
 			"/workspace/skills/.sdd/specs/issue-14.md",
 		],
 	] as const;
@@ -289,7 +289,7 @@ test("#84 CA-12: run-existing-spec y spec-from-grill aceptan borradores del comm
 		const handoff = `/workspace/skills/.git/${brand}/grills/final.md`;
 		const run = orchestrator.resolveWorkflowDispatch(draftResolution("run-existing-spec", spec), DRAFT_DIRS);
 		assert.equal(run.ok, true, JSON.stringify(run));
-		if (run.ok) assert.deepEqual(run.request.skill, { name: "sdd-run", args: spec });
+		if (run.ok) assert.deepEqual(run.request.skill, { name: "chiche-run", args: spec });
 		const fromGrill = orchestrator.resolveWorkflowDispatch(draftResolution("spec-from-grill", handoff), DRAFT_DIRS);
 		assert.equal(fromGrill.ok, true, JSON.stringify(fromGrill));
 		if (fromGrill.ok) assert.equal(fromGrill.request.skill.args, `--from-grill ${JSON.stringify(handoff)}`);

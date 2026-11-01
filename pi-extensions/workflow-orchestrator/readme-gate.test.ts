@@ -7,7 +7,7 @@ const readmeCases = [
 		path: "../../README.md",
 		patterns: [
 			/\*\*`workflow-orchestrator`\*\*/,
-			/`\/issues`[\s\S]*`\/grills`[\s\S]*`\/specs`[\s\S]*`\/sdd-run`/,
+			/`\/issues`[\s\S]*`\/grills`[\s\S]*`\/specs`[\s\S]*`\/chiche-run`/,
 			/grill.*spec.*misma sesi[oó]n/is,
 			/spec.*run.*sesi[oó]n hija/is,
 			/cross-project|otro proyecto/i,
@@ -22,14 +22,14 @@ const readmeCases = [
 			/proyecto actual[\s\S]*proyectos conocidos[\s\S]*sin (?:recorrer|escanear).*disco/i,
 			/handoff pausado[\s\S]*importa[\s\S]*Retomar/i,
 			/ruta hist[oó]rica[\s\S]*advertencia/i,
-			/handoff finalizado[\s\S]*ruta absoluta[\s\S]*`sdd-spec --from-grill/i,
+			/handoff finalizado[\s\S]*ruta absoluta[\s\S]*`chiche-spec --from-grill/i,
 		],
 	},
 	{
 		path: "../../README.en.md",
 		patterns: [
 			/\*\*`workflow-orchestrator`\*\*/,
-			/`\/issues`[\s\S]*`\/grills`[\s\S]*`\/specs`[\s\S]*`\/sdd-run`/,
+			/`\/issues`[\s\S]*`\/grills`[\s\S]*`\/specs`[\s\S]*`\/chiche-run`/,
 			/grill.*spec.*same session/is,
 			/spec.*run.*child session/is,
 			/cross-project|another project/i,
@@ -44,7 +44,7 @@ const readmeCases = [
 			/current project[\s\S]*known projects[\s\S]*(?:never scans|without scanning).*disk/i,
 			/paused handoff[\s\S]*imports[\s\S]*Resume/i,
 			/historical path[\s\S]*warning/i,
-			/finalized handoff[\s\S]*absolute path[\s\S]*`sdd-spec --from-grill/i,
+			/finalized handoff[\s\S]*absolute path[\s\S]*`chiche-spec --from-grill/i,
 		],
 	},
 ] as const;

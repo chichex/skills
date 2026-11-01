@@ -1,9 +1,9 @@
 ---
 name: design-system
-description: "Genera DESIGN_SYSTEM.md para una superficie UI sin sistema de diseño: una ronda de dirección visual y un doc con tokens de diseño, componentes base y reglas, enganchado en el contrato. No escribe código. Usar cuando el usuario pida un design system, un sistema de diseño, tokens de diseño, definir la dirección visual o generar DESIGN_SYSTEM.md, y cuando sdd-init lo encadene al terminar el contrato."
+description: "Genera DESIGN_SYSTEM.md para una superficie UI sin sistema de diseño: una ronda de dirección visual y un doc con tokens de diseño, componentes base y reglas, enganchado en el contrato. No escribe código. Usar cuando el usuario pida un design system, un sistema de diseño, tokens de diseño, definir la dirección visual o generar DESIGN_SYSTEM.md, y cuando chiche-init lo encadene al terminar el contrato."
 ---
 
-Escribe el documento de diseño de una superficie UI que todavía no tiene sistema: dirección visual, tokens con valores, componentes base, estados y reglas. El doc es la fuente que siguen `/grill`, `/sdd-spec` y `/sdd-run` cuando un pedido toca esa superficie; el código (tokens en código, componentes, temas) nace en el primer run que toque UI, siguiendo el doc.
+Escribe el documento de diseño de una superficie UI que todavía no tiene sistema: dirección visual, tokens con valores, componentes base, estados y reglas. El doc es la fuente que siguen `/grill`, `/chiche-spec` y `/chiche-run` cuando un pedido toca esa superficie; el código (tokens en código, componentes, temas) nace en el primer run que toque UI, siguiendo el doc.
 
 Tres ideas fuerza:
 
@@ -21,7 +21,7 @@ Tres ideas fuerza:
 - `<raíz de la superficie>` — directorio de la superficie a documentar (el del manifest que la detecta); saltea la elección de superficie de la Fase 1.
 - `--no-link` — saltea el enganche de la Fase 5: escribe el doc y no toca ningún otro archivo.
 
-`/sdd-init` lo invoca sin flags al terminar el contrato, y nunca con `--assume`: este skill no tiene modo desatendido.
+`/chiche-init` lo invoca sin flags al terminar el contrato, y nunca con `--assume`: este skill no tiene modo desatendido.
 
 ## Fase 1 — Detección de superficies y elementos existentes
 
@@ -119,7 +119,7 @@ Enganche idempotente, solo en archivos que ya existen en la raíz del repo; el s
 
 Confirmar con una pregunta de selección múltiple cuáles editar:
 
-1. **`.sdd/project.md`** — fila de la superficie en `## Diseño` de `.sdd/project.md` con las columnas `| Superficie | Raices | Tokens | Componentes | Docs y mocks | Claude Design | Estado |`: en la rama de generación `Docs y mocks` cita `<raíz>/DESIGN_SYSTEM.md`, `Tokens` y `Componentes` quedan `— (en DESIGN_SYSTEM.md)` hasta que un run los materialice, y `Estado` queda `con sistema`; en la de registro, cada columna sale del inventario. Reemplaza el sentinel `Sin superficies UI.` por la tabla si está, actualiza la fila de la superficie en su lugar si existe; si la sección no existe, no toca nada y sugiere `/sdd-init --update`.
+1. **`.sdd/project.md`** — fila de la superficie en `## Diseño` de `.sdd/project.md` con las columnas `| Superficie | Raices | Tokens | Componentes | Docs y mocks | Claude Design | Estado |`: en la rama de generación `Docs y mocks` cita `<raíz>/DESIGN_SYSTEM.md`, `Tokens` y `Componentes` quedan `— (en DESIGN_SYSTEM.md)` hasta que un run los materialice, y `Estado` queda `con sistema`; en la de registro, cada columna sale del inventario. Reemplaza el sentinel `Sin superficies UI.` por la tabla si está, actualiza la fila de la superficie en su lugar si existe; si la sección no existe, no toca nada y sugiere `/chiche-init --update`.
 2. **`CLAUDE.md`** — una línea `@DESIGN_SYSTEM.md` al final de `CLAUDE.md`, con la ruta relativa de la superficie (ej. `@apps/web/DESIGN_SYSTEM.md`).
 3. **`AGENTS.md`** — al final de `AGENTS.md`, este bloque (Codex y Pi no expanden imports `@`):
 
@@ -141,7 +141,7 @@ Design system: <raíz>/DESIGN_SYSTEM.md (<generado|regenerado>) | no generado: <
 - superficie: <nombre> (<raíz>) · direccion: <slug | — en registro>
 - ajustes de este proyecto: <preservados, N lineas|vacios, primera generacion | — en registro>
 - enganche: <no intentado> | .sdd/project.md <agregado|actualizado|ya estaba|omitido|sin seccion|no existe> · CLAUDE.md <agregado|ya estaba|omitido|no existe> · AGENTS.md <agregado|ya estaba|omitido|no existe>
-- siguiente paso: el primer /sdd-run que toque UI materializa los tokens en código siguiendo el doc
+- siguiente paso: el primer /chiche-run que toque UI materializa los tokens en código siguiendo el doc
 ```
 
 <!-- commit-pr-close:start -->
@@ -151,13 +151,13 @@ Después del reporte, preguntar `Commit + PR (Recomendado)` / `Dejar sin commite
 
 `Commit + PR`:
 
-1. Comprobar la aptitud igual que `/sdd-run`: hay remote y `gh` autenticado, y `## Limites` de `.sdd/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
+1. Comprobar la aptitud igual que `/chiche-run`: hay remote y `gh` autenticado, y `## Limites` de `.sdd/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
 2. Revisar cada path que esta corrida escribió. Uno nuevo, ausente en `origin/<default>`, se copia. Uno que ya existía se copia solo si `HEAD:<path>` del checkout es igual a `origin/<default>:<path>` y el path no tenía cambios antes de la corrida; si no, el cierre queda en `Dejar sin commitear` con el motivo, para no meter cambios ajenos en el PR ni revertir lo que `origin/<default>` ya cambió.
 3. `git fetch origin` y crear el worktree con lock, con el branch `chore/design-system-<YYYY-MM-DD>` nacido de `origin/<default>`: `git worktree add --lock --reason "design-system <YYYY-MM-DD>" ../<repo>-design-system-<YYYY-MM-DD> -b chore/design-system-<YYYY-MM-DD> origin/<default>`. Si el branch o el path ya existen, usar en los dos el primer sufijo libre (`-2`, `-3`…).
 4. Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR con `gh pr create --base <default> --title "chore(design-system): <YYYY-MM-DD>" --body-file <archivo>`.
 5. `git worktree unlock` y después `git worktree remove` del worktree.
 
-Si el push o `gh pr create` fallan después del commit, el cierre queda como commit local sin PR: el reporte nombra el branch, el motivo y el comando para seguir (`git push -u origin <branch>` y el `gh pr create` del paso 4). La copia idéntica que queda en el checkout principal no se toca: después del merge, `/sdd-land` la reconoce como `ya aterrizado` y la resuelve sin preguntar. `Dejar sin commitear` no toca nada. El reporte suma la línea `- cierre: <PR #<n> <url> | commit local sin PR en <branch> (<motivo>) · <comando> | sin commitear (<motivo>)>`. En modo desatendido, si el skill lo tiene, no se pregunta y el cierre queda en `Dejar sin commitear`. Si un skill encadena a otro (`/sdd-init` encadena `/coding-policies` y `/design-system`), el cierre lo ofrece una sola vez el que encadenó, con todos los paths escritos.
+Si el push o `gh pr create` fallan después del commit, el cierre queda como commit local sin PR: el reporte nombra el branch, el motivo y el comando para seguir (`git push -u origin <branch>` y el `gh pr create` del paso 4). La copia idéntica que queda en el checkout principal no se toca: después del merge, `/chiche-land` la reconoce como `ya aterrizado` y la resuelve sin preguntar. `Dejar sin commitear` no toca nada. El reporte suma la línea `- cierre: <PR #<n> <url> | commit local sin PR en <branch> (<motivo>) · <comando> | sin commitear (<motivo>)>`. En modo desatendido, si el skill lo tiene, no se pregunta y el cierre queda en `Dejar sin commitear`. Si un skill encadena a otro (`/chiche-init` encadena `/coding-policies` y `/design-system`), el cierre lo ofrece una sola vez el que encadenó, con todos los paths escritos.
 <!-- commit-pr-close:end -->
 
 ## MUST DO

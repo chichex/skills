@@ -7,7 +7,7 @@ import {
 	type ArtifactType,
 	type NormalizedArtifactState,
 	type StateProvenance,
-} from "../sdd-artifacts/index.ts";
+} from "../chiche-artifacts/index.ts";
 
 export interface IssueRef {
 	repository: string;

@@ -104,7 +104,7 @@ test("issue targets require an SDD-aware project and reject unsafe integers befo
 		assert.deepEqual(withoutContract, {
 			ok: false,
 			code: "missing-contract",
-			message: `Create a canonical .sdd/project.md in ${root} before launching sdd-run`,
+			message: `Create a canonical .sdd/project.md in ${root} before launching chiche-run`,
 		});
 		assert.equal(issueLookups, 0, "the contract gate runs before any GitHub issue lookup");
 
@@ -150,7 +150,7 @@ test("the generic lifecycle cannot bypass strict DirectRunRequestV1 validation",
 			canonicalReference: request.target.canonicalReference,
 			issueNumber: request.target.issue.number,
 		},
-		skill: { name: "sdd-run", args: "#14" },
+		skill: { name: "chiche-run", args: "#14" },
 	}, {} as never, { commands: [] });
 	assert.equal(result.ok, false);
 	if (!result.ok) assert.equal(result.code, "invalid-direct-request");
@@ -158,7 +158,7 @@ test("the generic lifecycle cannot bypass strict DirectRunRequestV1 validation",
 
 test("direct target resolution normalizes #NN and local/cross-project canonical specs without inventing issues", async () => {
 	assert.equal(typeof (orchestrator as Record<string, unknown>).resolveDirectRunRequest, "function");
-	const temporary = await mkdtemp(join(tmpdir(), "direct-sdd-run-"));
+	const temporary = await mkdtemp(join(tmpdir(), "direct-chiche-run-"));
 	try {
 		const projectA = await realpath(temporary);
 		const projectB = join(projectA, "project-b");
@@ -296,7 +296,7 @@ test("URL-like non-issue targets fail clearly instead of becoming fabricated loc
 	assert.equal(pathReads, 0);
 });
 
-test("startDirectRun creates a fresh linked child whose first message is materialized sdd-run plus request v1", async () => {
+test("startDirectRun creates a fresh linked child whose first message is materialized chiche-run plus request v1", async () => {
 	assert.equal(typeof (orchestrator as Record<string, unknown>).startDirectRun, "function");
 	const temporary = await mkdtemp(join(tmpdir(), "direct-sdd-child-"));
 	try {
@@ -304,12 +304,12 @@ test("startDirectRun creates a fresh linked child whose first message is materia
 		const sessionDirectory = join(project, "sessions");
 		const originFile = join(sessionDirectory, "origin.jsonl");
 		const childFile = join(sessionDirectory, "child.jsonl");
-		const skillPath = join(project, "skills", "sdd-run", "SKILL.md");
+		const skillPath = join(project, "skills", "chiche-run", "SKILL.md");
 		const specPath = join(project, ".sdd", "specs", "local.md");
 		await mkdir(dirname(skillPath), { recursive: true });
 		await mkdir(dirname(specPath), { recursive: true });
 		await mkdir(sessionDirectory, { recursive: true });
-		await writeFile(skillPath, "---\nname: sdd-run\ndescription: Run\n---\n# SDD run\n", "utf8");
+		await writeFile(skillPath, "---\nname: chiche-run\ndescription: Run\n---\n# SDD run\n", "utf8");
 		await writeFile(specPath, "# Spec — Local\n", "utf8");
 		await writeFile(originFile, "{}\n", "utf8");
 		const request = specRequest();
@@ -345,7 +345,7 @@ test("startDirectRun creates a fresh linked child whose first message is materia
 						cwd: project,
 						contextFiles: [],
 						skills: [{
-							name: "sdd-run",
+							name: "chiche-run",
 							description: "Run",
 							filePath: skillPath,
 							sourceInfo: { path: skillPath, scope: "temporary" },
@@ -360,7 +360,7 @@ test("startDirectRun creates a fresh linked child whose first message is materia
 		};
 
 		const result = await orchestrator.startDirectRun(request, context as never, {
-			commands: [{ name: "skill:sdd-run", source: "skill", sourceInfo: { path: skillPath } }],
+			commands: [{ name: "skill:chiche-run", source: "skill", sourceInfo: { path: skillPath } }],
 			stripSkillFrontmatter: fakeStripFrontmatter,
 			resolveGitRoot: async () => project,
 		});
@@ -369,8 +369,8 @@ test("startDirectRun creates a fresh linked child whose first message is materia
 		assert.equal(result.target.sessionId, "child-id");
 		assert.equal(result.target.artifactPath, specPath);
 		assert.equal(sessionName, "SDD run-existing-spec · chichex/skills/local.md");
-		assert.doesNotMatch(kickoff, /\/skill:sdd-run|origin transcript/i);
-		assert.match(kickoff, new RegExp(`<skill name="sdd-run" location="${skillPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}">`));
+		assert.doesNotMatch(kickoff, /\/skill:chiche-run|origin transcript/i);
+		assert.match(kickoff, new RegExp(`<skill name="chiche-run" location="${skillPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}">`));
 		const envelope = kickoff.match(/<workflow-launch version="1">\n([\s\S]+)\n<\/workflow-launch>$/)?.[1];
 		assert.ok(envelope);
 		assert.deepEqual(JSON.parse(envelope), request);
@@ -387,13 +387,13 @@ test("startDirectRun stages a cross-project child under the selected spec projec
 		const originSessions = join(origin, "sessions");
 		const originFile = join(originSessions, "origin.jsonl");
 		const childFile = join(target, "sessions", "child.jsonl");
-		const skillPath = join(origin, "global-skills", "sdd-run", "SKILL.md");
+		const skillPath = join(origin, "global-skills", "chiche-run", "SKILL.md");
 		const specPath = join(target, ".sdd", "specs", "local.md");
 		await mkdir(dirname(originFile), { recursive: true });
 		await mkdir(dirname(skillPath), { recursive: true });
 		await mkdir(dirname(specPath), { recursive: true });
 		await writeFile(originFile, "{}\n", "utf8");
-		await writeFile(skillPath, "---\nname: sdd-run\ndescription: Run\n---\n# Run\n", "utf8");
+		await writeFile(skillPath, "---\nname: chiche-run\ndescription: Run\n---\n# Run\n", "utf8");
 		await writeFile(specPath, "# Spec — Target\n", "utf8");
 		const request = specRequest();
 		request.repo = "owner/target";
@@ -420,7 +420,7 @@ test("startDirectRun stages a cross-project child under the selected spec projec
 						cwd: target,
 						contextFiles: [{ path: join(target, "AGENTS.md"), content: "target" }],
 						skills: [{
-							name: "sdd-run",
+							name: "chiche-run",
 							description: "Run",
 							filePath: skillPath,
 							sourceInfo: { path: skillPath, scope: "global" },
@@ -433,7 +433,7 @@ test("startDirectRun stages a cross-project child under the selected spec projec
 			},
 		};
 		const result = await orchestrator.startDirectRun(request, context as never, {
-			commands: [{ name: "skill:sdd-run", source: "skill", sourceInfo: { path: skillPath } }],
+			commands: [{ name: "skill:chiche-run", source: "skill", sourceInfo: { path: skillPath } }],
 			stripSkillFrontmatter: fakeStripFrontmatter,
 			resolveGitRoot: async () => target,
 			stageCrossProjectSession: async (input: unknown) => {
@@ -455,7 +455,7 @@ test("startDirectRun stages a cross-project child under the selected spec projec
 	}
 });
 
-// Spec #84, CA-12 e issue #103, CA-1: /sdd-run, launch_sdd_run y
+// Spec #84, CA-12 e issue #103, CA-1: /chiche-run, launch_sdd_run y
 // __sdd-dispatch aceptan una spec en <git-common-dir>/chiche/specs/ (o, de antes
 // del renombre, en <git-common-dir>/sdd/specs/) desde el checkout principal y
 // desde un worktree linkeado. Repo git real; el repositorio de GitHub se inyecta.
@@ -490,7 +490,7 @@ async function draftRepo(brand: "chiche" | "sdd" = "chiche"): Promise<{ base: st
 }
 
 for (const brand of ["chiche", "sdd"] as const) {
-	test(`#84 CA-12: /sdd-run acepta una spec en <git-common-dir>/${brand}/specs desde el checkout principal y desde un worktree linkeado`, async () => {
+	test(`#84 CA-12: /chiche-run acepta una spec en <git-common-dir>/${brand}/specs desde el checkout principal y desde un worktree linkeado`, async () => {
 		const { base, main, linked, draft } = await draftRepo(brand);
 		try {
 			const dependencies = { async resolveRepository() { return "chichex/skills"; } };
@@ -521,7 +521,7 @@ for (const brand of ["chiche", "sdd"] as const) {
 	});
 }
 
-test("#103 CA-1: /sdd-run resuelve una ruta lógica por nombre con la precedencia .chiche/specs > .sdd/specs > <git-common-dir>/chiche/specs > <git-common-dir>/sdd/specs", async () => {
+test("#103 CA-1: /chiche-run resuelve una ruta lógica por nombre con la precedencia .chiche/specs > .sdd/specs > <git-common-dir>/chiche/specs > <git-common-dir>/sdd/specs", async () => {
 	const { base, main, linked, draft } = await draftRepo("sdd");
 	try {
 		const dependencies = { async resolveRepository() { return "chichex/skills"; } };

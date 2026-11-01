@@ -3,7 +3,7 @@
 // Compone el handoff Markdown que Pi escribe en `<git-common-dir>/chiche/grills/`
 // del proyecto (fuera de git, en `.chiche/grills/`)
 // con el template comun de los harnesses, y le garantiza el marker
-// canonico Chiche-Tracking v2 via sdd-artifacts (un SDD-Tracking v1 previo
+// canonico Chiche-Tracking v2 via chiche-artifacts (un SDD-Tracking v1 previo
 // migra a v2 en su lugar). Sin I/O ni APIs de Pi: la
 // escritura a disco vive en index.ts.
 
@@ -14,7 +14,7 @@ import {
 	upsertSddMetadata,
 	type GrillMetadata,
 	type IssueReference,
-} from "../sdd-artifacts/index.ts";
+} from "../chiche-artifacts/index.ts";
 import type { ImportedHandoffSource } from "./inventory.ts";
 
 export interface HandoffSnapshot {

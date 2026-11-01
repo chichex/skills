@@ -8,7 +8,7 @@ import {
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { artifactReadDirs, localArtifactDir, resolveGitCommonDir, trackedArtifactDirs } from "../lib/chiche-paths.ts";
-import { parseSddArtifact } from "../sdd-artifacts/index.ts";
+import { parseSddArtifact } from "../chiche-artifacts/index.ts";
 import { inspectMarkdownArtifact } from "../workflow-resolution/index.ts";
 import {
 	describeDirectRun,
@@ -265,7 +265,7 @@ export async function isSddProject(
 function contractFailure(root: string): ResolveDirectRunResult {
 	return resolverFailure(
 		"missing-contract",
-		`Create a canonical .sdd/project.md in ${root} before launching sdd-run`,
+		`Create a canonical .sdd/project.md in ${root} before launching chiche-run`,
 	);
 }
 
@@ -275,7 +275,7 @@ export async function resolveDirectRunRequest(
 	dependencies: ResolveDirectRunDependencies = {},
 ): Promise<ResolveDirectRunResult> {
 	const target = rawTarget.trim();
-	if (target === "") return resolverFailure("missing-target", "Use /sdd-run <ruta|#NN|owner/repo#NN|GitHub issue URL>");
+	if (target === "") return resolverFailure("missing-target", "Use /chiche-run <ruta|#NN|owner/repo#NN|GitHub issue URL>");
 	const gitRootPort = dependencies.resolveGitRoot ?? defaultGitRoot;
 	const repositoryPort = dependencies.resolveRepository ?? defaultRepository;
 	const realpathPort = dependencies.realpath ?? realpathDefault;

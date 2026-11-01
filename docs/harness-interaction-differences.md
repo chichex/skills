@@ -27,7 +27,7 @@ En Pi, la misma extensión agrega además `ask_user_questions` como variante bat
 
 En opencode, `question` es una tool built-in registrada solo para los clientes `app`, `cli` y `desktop` (o con `OPENCODE_ENABLE_QUESTION_TOOL`); en cualquier otro cliente no existe y el gate se formula en texto plano. Acepta un array `questions` (cada una con `header`, `question`, `options` y `multiple` opcional) sin tope declarado de preguntas ni de opciones, agrega sola la respuesta libre y pide la recomendada primera con `(Recommended)`. En Codex, `request_user_input` acepta de 1 a 3 preguntas por llamada, de 2 a 3 opciones cada una, sin selección múltiple, y solo está disponible en algunos modos de colaboración.
 
-En Codex, el sandbox por defecto (`codex sandbox -P :workspace`, verificado en Codex 0.146.0) puede escribir en el working tree pero no en `.git/`: da `mkdir: .git/sdd: Operation not permitted`. Los skills que escriben borradores en `<git-common-dir>/chiche/` (`grill`, `sdd-spec`, y `sdd-run` al borrar las copias de `<git-common-dir>/chiche/` y `<git-common-dir>/sdd/`) piden escalación en Codex; sin permiso, escriben en `.sdd/` del cwd y lo dicen en el reporte, y esos borradores los resuelve `sdd-land` en su Fase 5. Es capa de interacción: la doctrina compartida solo dice que el harness que no puede escribir ahí sigue la suya. El append del log de eventos (`<git-common-dir>/chiche/events.jsonl`) de `grill`, `sdd-spec`, `sdd-run` y `sdd-land` también pide escalación en Codex, desde el primer intento porque el comando canónico termina con exit 0 aunque el append falle y Codex no ve un comando denegado que reintentar; sin permiso, el evento se saltea con el aviso y nunca cae a `.sdd/`.
+En Codex, el sandbox por defecto (`codex sandbox -P :workspace`, verificado en Codex 0.146.0) puede escribir en el working tree pero no en `.git/`: da `mkdir: .git/sdd: Operation not permitted`. Los skills que escriben borradores en `<git-common-dir>/chiche/` (`grill`, `chiche-spec`, y `chiche-run` al borrar las copias de `<git-common-dir>/chiche/` y `<git-common-dir>/sdd/`) piden escalación en Codex; sin permiso, escriben en `.sdd/` del cwd y lo dicen en el reporte, y esos borradores los resuelve `chiche-land` en su Fase 5. Es capa de interacción: la doctrina compartida solo dice que el harness que no puede escribir ahí sigue la suya. El append del log de eventos (`<git-common-dir>/chiche/events.jsonl`) de `grill`, `chiche-spec`, `chiche-run` y `chiche-land` también pide escalación en Codex, desde el primer intento porque el comando canónico termina con exit 0 aunque el append falle y Codex no ve un comando denegado que reintentar; sin permiso, el evento se saltea con el aviso y nunca cae a `.sdd/`.
 
 ## Qué normaliza el gate
 
@@ -35,7 +35,7 @@ Sobre los templates de artefactos (bloques de código con marker
 `SDD-Tracking` y el template de `## Resultado de ejecucion`), la única
 transformación permitida antes de exigir igualdad byte a byte entre
 harnesses es la fila `invocacion`: cada referencia a un skill del repo con
-el prefijo del harness (`/sdd-spec`, `$sdd-spec`, `/skill:sdd-spec`) se
+el prefijo del harness (`/chiche-spec`, `$chiche-spec`, `/skill:chiche-spec`) se
 reduce a un token común. Todo otro byte divergente en un template es drift
 y hace fallar CI.
 

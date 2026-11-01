@@ -146,7 +146,7 @@ gh issue view <N> --json number,title,body,url,state,updatedAt,author,labels,ass
    - issues explícitamente marcados como prerequisito/bloqueante;
    - catálogo de hasta 100 issues abiertos y cerrados con número, título, body, estado y labels;
    - componentes, seams o secuencias compartidas.
-6. Leé `.sdd/project.md` si existe. Su ausencia **no bloquea el triage**; sí será manejada por `sdd-spec` si la ruta elegida es spec.
+6. Leé `.sdd/project.md` si existe. Su ausencia **no bloquea el triage**; sí será manejada por `chiche-spec` si la ruta elegida es spec.
 7. Para varias fuentes, buscá primero el issue combinado por su marker idempotente. Si no existe o no es utilizable, emití `canonicalization`, pedí autorización específica para la Fase 5 y no leas Markdown de artefactos; tras canonicalizar, reiniciá esta fase usando sólo el issue nuevo. Para una fuente o un canónico ya disponible, inventariá specs locales/body, handoffs y snapshots, construí evidencia temporal explícita y aplicá completo el contrato artifact-aware.
 8. Prepará una síntesis autocontenida del pedido antes de clasificar:
    - explicá en lenguaje llano qué pasa hoy, qué cambio o resultado se busca y quién o qué flujo se beneficia;
@@ -301,7 +301,7 @@ Desde este punto, la única fuente downstream es `#NEW`.
 2. Conservá `En pocas palabras` y `Ejemplo de impacto` en `summary`/`impactExample`; la fuente sigue siendo autoritativa. Verificá el round-trip `JSON.parse(JSON.stringify(result))`.
 3. Si la tool `submit_workflow_resolution` está activa —sólo ocurre durante un intento iniciado por `/issues`— mostrá el resultado v1 serializado y una síntesis humana breve de recomendación, fallback y elección efectiva antes de invocarla **exactamente una vez** con el objeto v1 completo. Esa señal terminal entrega el resultado al consumidor; no cargues ni ejecutes el stage por tu cuenta. Si la invocación falla, reportá un fallo de handoff del orquestador conservando el resultado visible y pedí reintentar desde `/issues`; no hagas una segunda invocación, no lo presentes como modo manual ni afirmes que el triage terminó correctamente.
 4. Si `submit_workflow_resolution` no está activa desde el inicio (invocación manual de `/skill:issue-triage`), usá el fallback manual: mostrá el resultado v1 serializado y una síntesis humana breve, como hasta ahora.
-5. Terminá el workflow. No cargues ni invoques grill/sdd-spec/sdd-run, no cambies sesión y no crees branch/worktree/PR.
+5. Terminá el workflow. No cargues ni invoques grill/chiche-spec/chiche-run, no cambies sesión y no crees branch/worktree/PR.
 
 ## MUST DO
 

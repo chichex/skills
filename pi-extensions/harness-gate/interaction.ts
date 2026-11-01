@@ -18,10 +18,10 @@ export const SKILL_NAMES = [
 	"design-system",
 	"issue-triage",
 	"code-review",
-	"sdd-init",
-	"sdd-land",
-	"sdd-spec",
-	"sdd-run",
+	"chiche-init",
+	"chiche-land",
+	"chiche-spec",
+	"chiche-run",
 	"grill",
 	"tdd",
 ].sort((a, b) => b.length - a.length);
@@ -70,7 +70,7 @@ export function escapeRegExp(text: string): string {
 }
 
 // Reduce cada invocacion de un skill del repo con el prefijo del harness
-// (`/sdd-spec`, `$sdd-spec`, `/skill:sdd-spec`) a un token comun.
+// (`/chiche-spec`, `$chiche-spec`, `/skill:chiche-spec`) a un token comun.
 export function normalizeInvocations(text: string, prefix: string): string {
 	const names = SKILL_NAMES.map(escapeRegExp).join("|");
 	const pattern = new RegExp(

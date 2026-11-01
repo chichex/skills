@@ -18,8 +18,8 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { after, before, test } from "node:test";
 
-import { parseSddArtifact } from "../sdd-artifacts/index.ts";
-import { parseSddEventLine, type SddEvent } from "../sdd-artifacts/sdd-events.ts";
+import { parseSddArtifact } from "../chiche-artifacts/index.ts";
+import { parseSddEventLine, type SddEvent } from "../chiche-artifacts/sdd-events.ts";
 import { handoffFileNames } from "./logic.ts";
 import { snapshotStorageStem } from "./runtime-import.ts";
 
@@ -56,7 +56,7 @@ let commands = new Map<string, RegisteredCommand>();
 let grillEvents: any[] = [];
 let sentMessages: Array<{ content: string; options?: unknown }> = [];
 let appendedEntries: Array<{ type: string; data: unknown }> = [];
-let availableSkills = new Set(["grill", "sdd-spec"]);
+let availableSkills = new Set(["grill", "chiche-spec"]);
 let failMessageQueue = false;
 let skillPaths = new Map<string, string>();
 let execHandler = async (..._args: any[]) => ({ code: 0, stdout: "", stderr: "" });
@@ -85,7 +85,7 @@ before(async () => {
 	previousHome = process.env.HOME;
 	process.env.HOME = join(sandbox, "home");
 	mkdirSync(process.env.HOME, { recursive: true });
-	for (const name of ["grill", "sdd-spec"]) {
+	for (const name of ["grill", "chiche-spec"]) {
 		const path = join(sandbox, "skills", name, "SKILL.md");
 		mkdirSync(dirname(path), { recursive: true });
 		writeFileSync(path, `---\nname: ${name}\ndescription: Test ${name}\n---\n# ${name}\n`, "utf8");
@@ -584,7 +584,7 @@ test("CA-7/8: resume imports the exact logical identity and complete handoff bef
 	}
 });
 
-test("CA-9: finalized handoff-only queues sdd-spec by validated absolute path without importing", async () => {
+test("CA-9: finalized handoff-only queues chiche-spec by validated absolute path without importing", async () => {
 	const tool = tools.get("select_grill_session");
 	assert.ok(tool);
 	const projectPath = join(sandbox, "spec source with spaces");
@@ -782,7 +782,7 @@ test("persist_sdd_spec exposes the parser-backed boundary and returns a receipt 
 	mkdirSync(projectPath, { recursive: true });
 	const markdown = [
 		"# Spec — Canonical publication",
-		"<!-- Generada por /skill:sdd-spec. Estado: aprobada -->",
+		"<!-- Generada por /skill:chiche-spec. Estado: aprobada -->",
 		"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; grill=none; superseded-by=none -->",
 		"",
 		"## Contexto",
@@ -841,7 +841,7 @@ test("persist_sdd_spec keeps local content normative while archiving an existing
 	try {
 		const markdown = [
 			"# Spec — Ambos publication",
-			"<!-- Generada por /skill:sdd-spec. Estado: aprobada -->",
+			"<!-- Generada por /skill:chiche-spec. Estado: aprobada -->",
 			"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=#33; grill=none; superseded-by=none -->",
 			"",
 			"## Contexto",
@@ -970,7 +970,7 @@ test("persist_sdd_spec creates a staging issue and publishes only after binding 
 	try {
 		const markdown = [
 			"# Spec — New issue publication",
-			"<!-- Generada por /skill:sdd-spec. Estado: aprobada -->",
+			"<!-- Generada por /skill:chiche-spec. Estado: aprobada -->",
 			"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; grill=none; superseded-by=none -->",
 			"",
 			"## Contexto",
@@ -1042,7 +1042,7 @@ function gitStatus(cwd: string): string {
 function canonicalSpec(title: string): string {
 	return [
 		`# Spec — ${title}`,
-		"<!-- Generada por /skill:sdd-spec. Estado: aprobada -->",
+		"<!-- Generada por /skill:chiche-spec. Estado: aprobada -->",
 		"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; grill=none; superseded-by=none -->",
 		"",
 		"## Contexto",
@@ -1665,7 +1665,7 @@ function lifecycleSpec(title: string, state: "draft" | "approved" | "superseded"
 	const human = state === "draft" ? "draft" : state === "approved" ? "aprobada" : `reemplazada por ${decodeURIComponent(supersededBy)}`;
 	return [
 		`# Spec — ${title}`,
-		`<!-- Generada por /skill:sdd-spec. Estado: ${human} -->`,
+		`<!-- Generada por /skill:chiche-spec. Estado: ${human} -->`,
 		`<!-- SDD-Tracking: version=1; type=spec; state=${state}; issue=none; grill=${grill}; superseded-by=${supersededBy} -->`,
 		"",
 		"## Contexto",

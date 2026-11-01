@@ -1,9 +1,9 @@
 // Gate anti-drift de los productores SDD (issue #10).
 //
 // Extrae los templates de artefactos con marker SDD-Tracking de los 16
-// SKILL.md ({claude,codex,opencode,pi} × {sdd-init,sdd-spec,sdd-run,grill}),
+// SKILL.md ({claude,codex,opencode,pi} × {chiche-init,chiche-spec,chiche-run,grill}),
 // valida cada template contra el contrato docs/sdd-tracking-v1.md usando el
-// parser de referencia (sdd-artifacts), y exige igualdad byte a byte entre
+// parser de referencia (chiche-artifacts), y exige igualdad byte a byte entre
 // harnesses tolerando SOLO las diferencias documentadas en
 // docs/harness-interaction-differences.md.
 
@@ -13,7 +13,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import { parseSddArtifact } from "../sdd-artifacts/index.ts";
+import { parseSddArtifact } from "../chiche-artifacts/index.ts";
 import type { Fence, Harness } from "./interaction.ts";
 import {
 	HARNESSES,
@@ -24,34 +24,34 @@ import {
 	parseInteractionTable,
 } from "./interaction.ts";
 
-const SKILLS = ["sdd-init", "sdd-spec", "sdd-run", "grill"] as const;
+const SKILLS = ["chiche-init", "chiche-spec", "chiche-run", "grill"] as const;
 type Skill = (typeof SKILLS)[number];
 
 type TemplateType = "spec" | "grill" | "project";
 
 // Cuantos templates de marker exige cada skill, por tipo de artefacto.
 const EXPECTED_TEMPLATES: Record<Skill, Record<TemplateType, number>> = {
-	"sdd-init": { spec: 0, grill: 0, project: 1 },
-	"sdd-spec": { spec: 2, grill: 0, project: 0 },
-	"sdd-run": { spec: 1, grill: 0, project: 0 },
+	"chiche-init": { spec: 0, grill: 0, project: 1 },
+	"chiche-spec": { spec: 2, grill: 0, project: 0 },
+	"chiche-run": { spec: 1, grill: 0, project: 0 },
 	grill: { spec: 0, grill: 1, project: 0 },
 };
 
 // Forma que debe declarar cada template, en orden de aparicion.
 const EXPECTED_SHAPES: Record<Skill, RegExp[]> = {
-	"sdd-init": [/type=project; generated-at=<YYYY-MM-DD>/],
-	"sdd-spec": [
+	"chiche-init": [/type=project; generated-at=<YYYY-MM-DD>/],
+	"chiche-spec": [
 		/type=spec; state=<draft\|approved>; .*superseded-by=none/,
 		/type=spec; state=superseded; .*superseded-by=<ref>/,
 	],
-	"sdd-run": [/type=spec; state=implemented; .*superseded-by=none/],
+	"chiche-run": [/type=spec; state=implemented; .*superseded-by=none/],
 	grill: [/type=grill; state=<paused\|finalized>; /],
 };
 
 const EXPECTED_ARTIFACT_TYPE: Record<Skill, TemplateType> = {
-	"sdd-init": "project",
-	"sdd-spec": "spec",
-	"sdd-run": "spec",
+	"chiche-init": "project",
+	"chiche-spec": "spec",
+	"chiche-run": "spec",
 	grill: "grill",
 };
 
@@ -103,8 +103,8 @@ const SDD_SPEC_PUBLICATION_DOCTRINE = [
 	/receipt exitoso[\s\S]*`Spec lista`/i,
 ];
 
-// Issue #45: sdd-spec avanza sin preguntar y cierra con un menú; doctrina
-// idéntica entre harnesses dentro del bloque `sdd-spec-flow`.
+// Issue #45: chiche-spec avanza sin preguntar y cierra con un menú; doctrina
+// idéntica entre harnesses dentro del bloque `chiche-spec-flow`.
 const SDD_SPEC_FLOW_DOCTRINE = [
 	/inferencias nuevas[\s\S]*`\[ASSUMED\]`[\s\S]*sin preguntar/i,
 	/decisiones del handoff[\s\S]*confirmadas/i,
@@ -117,7 +117,7 @@ const SDD_SPEC_FLOW_DOCTRINE = [
 	/staging no-SDD/,
 	/`Llevar a issue`/,
 	/`Solicitar cambios`/,
-	/`sdd-run con subagente`[\s\S]*solo[\s\S]*subagentes/i,
+	/`chiche-run con subagente`[\s\S]*solo[\s\S]*subagentes/i,
 	/`state=approved`[\s\S]*antes de lanzar/i,
 	/comments[\s\S]*posteriores[\s\S]*última publicación/i,
 	/--paginate/,
@@ -126,8 +126,8 @@ const SDD_SPEC_FLOW_DOCTRINE = [
 	/`--assume`[\s\S]*sin menú/i,
 ];
 
-// Issue #45: sdd-run imprime el plan y sigue, desvía sin preguntar cuando no
-// cambia el alcance y ofrece code review post-PR. Bloque `sdd-run-flow`.
+// Issue #45: chiche-run imprime el plan y sigue, desvía sin preguntar cuando no
+// cambia el alcance y ofrece code review post-PR. Bloque `chiche-run-flow`.
 const SDD_RUN_FLOW_DOCTRINE = [
 	/imprimir el plan y seguir/i,
 	/choca con la spec o con una política/i,
@@ -199,9 +199,9 @@ const GRILL_FACT_EXPLORATION: Record<Harness, RegExp> = {
 	antigravity: /`invoke_subagent`[\s\S]{0,80}`research`[\s\S]{0,80}background/,
 };
 
-// Stacks de PRs por spec (issue #66, CA-1/CA-2): `sdd-spec` propone el corte
+// Stacks de PRs por spec (issue #66, CA-1/CA-2): `chiche-spec` propone el corte
 // en capas dentro de la spec; doctrina idéntica entre harnesses dentro del
-// bloque `sdd-spec-delivery`.
+// bloque `chiche-spec-delivery`.
 const SDD_SPEC_DELIVERY_DOCTRINE = [
 	/`## Plan de entrega`[\s\S]*`\| Capa \| Etapa \| CAs \| Justificacion \|`/,
 	/cada capa es un grupo coherente de CAs[\s\S]*tests dan verde solos[\s\S]*regresión completa/i,
@@ -210,9 +210,9 @@ const SDD_SPEC_DELIVERY_DOCTRINE = [
 	/propuesta se escribe sin preguntar[\s\S]*`Solicitar cambios`/i,
 ];
 
-// Stacks de PRs por spec (issue #66, CA-3 a CA-9): `sdd-run` entrega un stack
+// Stacks de PRs por spec (issue #66, CA-3 a CA-9): `chiche-run` entrega un stack
 // nativo de GitHub cuando el Plan de entrega tiene 2 o más capas. Bloque
-// `sdd-run-stack`, idéntico entre harnesses.
+// `chiche-run-stack`, idéntico entre harnesses.
 const SDD_RUN_STACK_DOCTRINE = [
 	// CA-3: preflight
 	/`## Plan de entrega` de 2 o más capas[\s\S]*`gh` ≥ 2\.90\.0[\s\S]*`git` ≥ 2\.36[\s\S]*`github\/gh-stack`[\s\S]*`gh extension list`/,
@@ -468,14 +468,14 @@ test("templates byte-equivalentes entre harnesses tras normalizar la invocacion"
 			const templates = censusTemplates(markdown).markerFences.map((fence) =>
 				normalizeInvocations(fence.content, prefixes[harness]),
 			);
-			if (skill === "sdd-run") {
+			if (skill === "chiche-run") {
 				const resultado = fencedBlocks(markdown).find((fence) =>
 					/^## Resultado de ejecucion/.test(fence.content),
 				);
 				if (resultado) {
 					templates.push(normalizeInvocations(resultado.content, prefixes[harness]));
 				} else {
-					divergences.push(`sdd-run: ${harness} no instruye el template de ## Resultado de ejecucion`);
+					divergences.push(`chiche-run: ${harness} no instruye el template de ## Resultado de ejecucion`);
 				}
 			}
 			byHarness.set(harness, templates);
@@ -485,62 +485,62 @@ test("templates byte-equivalentes entre harnesses tras normalizar la invocacion"
 	assert.deepEqual(divergences, []);
 });
 
-test("sdd-run tolera el checkout sucio, importa artefactos del workflow y aísla el resto en cada harness", async () => {
+test("chiche-run tolera el checkout sucio, importa artefactos del workflow y aísla el resto en cada harness", async () => {
 	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
 	const byHarness = new Map<Harness, string[]>();
 	for (const harness of HARNESSES) {
-		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
-		const doctrine = delimitedDoctrine(markdown, "sdd-run-dirty-checkout");
+		const markdown = await readRepoFile(`${harness}/chiche-run/SKILL.md`);
+		const doctrine = delimitedDoctrine(markdown, "chiche-run-dirty-checkout");
 		for (const expected of SDD_RUN_DIRTY_CHECKOUT_DOCTRINE) {
-			assert.match(doctrine, expected, `${harness}/sdd-run/SKILL.md no declara ${expected}`);
+			assert.match(doctrine, expected, `${harness}/chiche-run/SKILL.md no declara ${expected}`);
 		}
 		assert.doesNotMatch(
 			markdown,
 			/Única excepción — el spec target sin comitear|CUALQUIER otro path sucio[\s\S]{0,160}abort|cambios pendientes o estado a medias = abort/i,
-			`${harness}/sdd-run/SKILL.md todavía bloquea el workflow por suciedad ordinaria`,
+			`${harness}/chiche-run/SKILL.md todavía bloquea el workflow por suciedad ordinaria`,
 		);
 		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
 	}
-	assert.deepEqual(compareTemplates("sdd-run dirty checkout", byHarness), []);
+	assert.deepEqual(compareTemplates("chiche-run dirty checkout", byHarness), []);
 });
 
-test("sdd-run remedia feedback del PR de forma automática, opt-in y segura en cada harness", async () => {
+test("chiche-run remedia feedback del PR de forma automática, opt-in y segura en cada harness", async () => {
 	for (const harness of HARNESSES) {
-		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
+		const markdown = await readRepoFile(`${harness}/chiche-run/SKILL.md`);
 		for (const doctrine of FEEDBACK_REMEDIATION_DOCTRINE) {
-			assert.match(markdown, doctrine, `${harness}/sdd-run/SKILL.md no declara ${doctrine}`);
+			assert.match(markdown, doctrine, `${harness}/chiche-run/SKILL.md no declara ${doctrine}`);
 		}
 		assert.match(
 			markdown,
 			FEEDBACK_REMEDIATION_QUESTION_STYLE[harness],
-			`${harness}/sdd-run/SKILL.md no usa el gate de remediación propio del harness`,
+			`${harness}/chiche-run/SKILL.md no usa el gate de remediación propio del harness`,
 		);
 		assert.doesNotMatch(
 			markdown,
 			/no editar código[\s\S]*turno nuevo/i,
-			`${harness}/sdd-run/SKILL.md todavía obliga a detenerse después de detectar feedback`,
+			`${harness}/chiche-run/SKILL.md todavía obliga a detenerse después de detectar feedback`,
 		);
 	}
 });
 
-test("sdd-spec exige la postcondición canónica antes de cualquier éxito observable en cada harness", async () => {
+test("chiche-spec exige la postcondición canónica antes de cualquier éxito observable en cada harness", async () => {
 	const commonDoctrine = new Map<Harness, string[]>();
 	for (const harness of HARNESSES) {
-		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
-		const doctrine = delimitedDoctrine(markdown, "sdd-spec-publication-gate");
+		const markdown = await readRepoFile(`${harness}/chiche-spec/SKILL.md`);
+		const doctrine = delimitedDoctrine(markdown, "chiche-spec-publication-gate");
 		for (const expected of SDD_SPEC_PUBLICATION_DOCTRINE) {
-			assert.match(doctrine, expected, `${harness}/sdd-spec/SKILL.md no declara ${expected}`);
+			assert.match(doctrine, expected, `${harness}/chiche-spec/SKILL.md no declara ${expected}`);
 		}
-		const doctrineStart = markdown.indexOf("<!-- sdd-spec-publication-gate:start -->");
+		const doctrineStart = markdown.indexOf("<!-- chiche-spec-publication-gate:start -->");
 		const reportStart = markdown.indexOf("## Reporte");
 		assert.ok(doctrineStart >= 0 && reportStart >= 0 && doctrineStart < reportStart,
-			`${harness}/sdd-spec/SKILL.md declara el gate después del reporte de éxito`);
+			`${harness}/chiche-spec/SKILL.md declara el gate después del reporte de éxito`);
 		if (harness === "pi") {
 			assert.match(doctrine, /`persist_sdd_spec`[\s\S]*`details\.receipt`/,
 				"Pi debe ejecutar el boundary y comprobar su receipt estructurado");
 		} else {
 			assert.doesNotMatch(markdown, /`persist_sdd_spec`/,
-				`${harness}/sdd-spec/SKILL.md no debe depender del runtime exclusivo de Pi`);
+				`${harness}/chiche-spec/SKILL.md no debe depender del runtime exclusivo de Pi`);
 		}
 		const normalizedDoctrine = harness === "pi"
 			? doctrine.replace(
@@ -550,174 +550,174 @@ test("sdd-spec exige la postcondición canónica antes de cualquier éxito obser
 			: doctrine;
 		commonDoctrine.set(harness, [normalizedDoctrine]);
 	}
-	assert.deepEqual(compareTemplates("sdd-spec publication doctrine", commonDoctrine), []);
+	assert.deepEqual(compareTemplates("chiche-spec publication doctrine", commonDoctrine), []);
 });
 
-test("sdd-spec avanza sin preguntar inferencias ni mecanismo y cierra con menú en cada harness", async () => {
+test("chiche-spec avanza sin preguntar inferencias ni mecanismo y cierra con menú en cada harness", async () => {
 	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
 	const byHarness = new Map<Harness, string[]>();
 	for (const harness of HARNESSES) {
-		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
-		assert.doesNotMatch(markdown, /¿Alguna inferencia a revisar\?/, `${harness}/sdd-spec/SKILL.md todavía pregunta las inferencias`);
-		assert.doesNotMatch(markdown, /¿Con qué lo verificamos\?/, `${harness}/sdd-spec/SKILL.md todavía pregunta el mecanismo`);
-		assert.doesNotMatch(markdown, /¿Con qué intensidad\?/, `${harness}/sdd-spec/SKILL.md todavía pregunta la intensidad`);
-		const doctrine = delimitedDoctrine(markdown, "sdd-spec-flow");
+		const markdown = await readRepoFile(`${harness}/chiche-spec/SKILL.md`);
+		assert.doesNotMatch(markdown, /¿Alguna inferencia a revisar\?/, `${harness}/chiche-spec/SKILL.md todavía pregunta las inferencias`);
+		assert.doesNotMatch(markdown, /¿Con qué lo verificamos\?/, `${harness}/chiche-spec/SKILL.md todavía pregunta el mecanismo`);
+		assert.doesNotMatch(markdown, /¿Con qué intensidad\?/, `${harness}/chiche-spec/SKILL.md todavía pregunta la intensidad`);
+		const doctrine = delimitedDoctrine(markdown, "chiche-spec-flow");
 		for (const expected of SDD_SPEC_FLOW_DOCTRINE) {
-			assert.match(doctrine, expected, `${harness}/sdd-spec/SKILL.md no declara ${expected}`);
+			assert.match(doctrine, expected, `${harness}/chiche-spec/SKILL.md no declara ${expected}`);
 		}
-		const flowStart = markdown.indexOf("<!-- sdd-spec-flow:start -->");
+		const flowStart = markdown.indexOf("<!-- chiche-spec-flow:start -->");
 		const reportStart = markdown.indexOf("## Reporte");
 		assert.ok(flowStart >= 0 && reportStart >= 0 && flowStart < reportStart,
-			`${harness}/sdd-spec/SKILL.md declara el flujo después del reporte`);
+			`${harness}/chiche-spec/SKILL.md declara el flujo después del reporte`);
 		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
 	}
-	assert.deepEqual(compareTemplates("sdd-spec flow", byHarness), []);
+	assert.deepEqual(compareTemplates("chiche-spec flow", byHarness), []);
 });
 
-test("sdd-spec no contradice que `Llevar a issue` conserva el .md, y Pi revierte la aprobación cancelada", async () => {
+test("chiche-spec no contradice que `Llevar a issue` conserva el .md, y Pi revierte la aprobación cancelada", async () => {
 	for (const harness of HARNESSES) {
-		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
+		const markdown = await readRepoFile(`${harness}/chiche-spec/SKILL.md`);
 		for (const line of markdown.split("\n")) {
 			if (/(?:no crea además una|sin crear una) copia en `\.sdd\/specs\/`/.test(line)) {
-				assert.match(line, /Llevar a issue/, `${harness}/sdd-spec/SKILL.md niega la copia local sin exceptuar Llevar a issue`);
+				assert.match(line, /Llevar a issue/, `${harness}/chiche-spec/SKILL.md niega la copia local sin exceptuar Llevar a issue`);
 			}
 		}
-		assert.doesNotMatch(delimitedDoctrine(markdown, "sdd-spec-publication-gate"), /`Ambos`/,
-			`${harness}/sdd-spec/SKILL.md nombra una opción \`Ambos\` que ya no existe`);
+		assert.doesNotMatch(delimitedDoctrine(markdown, "chiche-spec-publication-gate"), /`Ambos`/,
+			`${harness}/chiche-spec/SKILL.md nombra una opción \`Ambos\` que ya no existe`);
 	}
-	const pi = await readRepoFile("pi/sdd-spec/SKILL.md");
+	const pi = await readRepoFile("pi/chiche-spec/SKILL.md");
 	assert.match(pi, /`mode: "assume"`[\s\S]*`draft`[\s\S]*`mode: "interactive"`[\s\S]*`approved`/,
 		"Pi declara qué mode del runtime publica draft y cuál aprueba");
 	assert.match(pi, /cancel[\s\S]{0,200}revert[\s\S]{0,200}`draft`/i, "Pi revierte a draft si se cancela Ejecutar ahora");
 });
 
-test("sdd-spec lanza el run con subagente implementer en background en Claude y en Pi, nunca en codex ni opencode", async () => {
-	const claude = await readRepoFile("claude/sdd-spec/SKILL.md");
+test("chiche-spec lanza el run con subagente implementer en background en Claude y en Pi, nunca en codex ni opencode", async () => {
+	const claude = await readRepoFile("claude/chiche-spec/SKILL.md");
 	assert.match(claude, /subagent_type: "implementer"/);
 	assert.match(claude, /run_in_background/);
 	assert.match(claude, /`general-purpose`[\s\S]*(anunci|avis)/i);
 	assert.match(claude, /--assume/);
 	for (const harness of HARNESSES.filter((candidate) => candidate !== "claude")) {
-		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
-		assert.doesNotMatch(markdown, /subagent_type/, `${harness}/sdd-spec/SKILL.md no debe depender de subagentes de Claude`);
+		const markdown = await readRepoFile(`${harness}/chiche-spec/SKILL.md`);
+		assert.doesNotMatch(markdown, /subagent_type/, `${harness}/chiche-spec/SKILL.md no debe depender de subagentes de Claude`);
 	}
 	// Issue #44 CA-9/CA-12: Pi lanza la tool `subagent` con el agente bundleado
-	// `implementer` en background y el task `/skill:sdd-run <target> --assume`.
-	const pi = await readRepoFile("pi/sdd-spec/SKILL.md");
-	assert.match(pi, /agent: "implementer"/, "pi/sdd-spec lanza el implementer bundleado");
-	assert.match(pi, /background: true/, "pi/sdd-spec lanza el subagente en background");
-	assert.match(pi, /`sdd-run con subagente`[\s\S]*--assume/, "pi/sdd-spec corre sdd-run desatendido en el hijo");
-	assert.doesNotMatch(pi, /Pi no tiene subagentes/, "pi/sdd-spec ya tiene subagentes");
-	assert.match(pi, PI_SCOUT_EXPLORATION, "pi/sdd-spec explora con scouts");
-	assert.match(pi, PI_SCOUT_BUDGET_SPEC, "pi/sdd-spec acota los scouts: cantidad, exhaustividad, task cerrado y timeout");
+	// `implementer` en background y el task `/skill:chiche-run <target> --assume`.
+	const pi = await readRepoFile("pi/chiche-spec/SKILL.md");
+	assert.match(pi, /agent: "implementer"/, "pi/chiche-spec lanza el implementer bundleado");
+	assert.match(pi, /background: true/, "pi/chiche-spec lanza el subagente en background");
+	assert.match(pi, /`chiche-run con subagente`[\s\S]*--assume/, "pi/chiche-spec corre chiche-run desatendido en el hijo");
+	assert.doesNotMatch(pi, /Pi no tiene subagentes/, "pi/chiche-spec ya tiene subagentes");
+	assert.match(pi, PI_SCOUT_EXPLORATION, "pi/chiche-spec explora con scouts");
+	assert.match(pi, PI_SCOUT_BUDGET_SPEC, "pi/chiche-spec acota los scouts: cantidad, exhaustividad, task cerrado y timeout");
 	for (const harness of ["codex", "opencode"] as const) {
-		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
-		assert.doesNotMatch(markdown, /agent: "implementer"|background: true/, `${harness}/sdd-spec/SKILL.md no tiene subagentes`);
+		const markdown = await readRepoFile(`${harness}/chiche-spec/SKILL.md`);
+		assert.doesNotMatch(markdown, /agent: "implementer"|background: true/, `${harness}/chiche-spec/SKILL.md no tiene subagentes`);
 	}
 });
 
-test("sdd-run imprime el plan y sigue, desvía sin preguntar y ofrece code review post-PR en cada harness", async () => {
+test("chiche-run imprime el plan y sigue, desvía sin preguntar y ofrece code review post-PR en cada harness", async () => {
 	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
 	const byHarness = new Map<Harness, string[]>();
 	for (const harness of HARNESSES) {
-		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
-		assert.doesNotMatch(markdown, /¿Con qué intensidad la corremos\?/, `${harness}/sdd-run/SKILL.md todavía pregunta la intensidad`);
-		assert.doesNotMatch(markdown, /Interactivo: decirlo y preguntar si seguir/, `${harness}/sdd-run/SKILL.md todavía pregunta por specs en draft`);
-		assert.doesNotMatch(markdown, /`Aprobar \(Recomendado\)` \/ `Ajustar`/, `${harness}/sdd-run/SKILL.md todavía frena en el gate del plan`);
-		const doctrine = delimitedDoctrine(markdown, "sdd-run-flow");
+		const markdown = await readRepoFile(`${harness}/chiche-run/SKILL.md`);
+		assert.doesNotMatch(markdown, /¿Con qué intensidad la corremos\?/, `${harness}/chiche-run/SKILL.md todavía pregunta la intensidad`);
+		assert.doesNotMatch(markdown, /Interactivo: decirlo y preguntar si seguir/, `${harness}/chiche-run/SKILL.md todavía pregunta por specs en draft`);
+		assert.doesNotMatch(markdown, /`Aprobar \(Recomendado\)` \/ `Ajustar`/, `${harness}/chiche-run/SKILL.md todavía frena en el gate del plan`);
+		const doctrine = delimitedDoctrine(markdown, "chiche-run-flow");
 		for (const expected of SDD_RUN_FLOW_DOCTRINE) {
-			assert.match(doctrine, expected, `${harness}/sdd-run/SKILL.md no declara ${expected}`);
+			assert.match(doctrine, expected, `${harness}/chiche-run/SKILL.md no declara ${expected}`);
 		}
 		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
 	}
-	assert.deepEqual(compareTemplates("sdd-run flow", byHarness), []);
+	assert.deepEqual(compareTemplates("chiche-run flow", byHarness), []);
 	for (const harness of HARNESSES) {
-		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
-		assert.match(markdown, CODE_REVIEW_BRANCH[harness], `${harness}/sdd-run/SKILL.md no gatea su rama de Code review`);
+		const markdown = await readRepoFile(`${harness}/chiche-run/SKILL.md`);
+		assert.match(markdown, CODE_REVIEW_BRANCH[harness], `${harness}/chiche-run/SKILL.md no gatea su rama de Code review`);
 		if (harness === "codex" || harness === "opencode") {
-			assert.match(markdown, CODE_REVIEW_OFFER_QUALIFIED, `${harness}/sdd-run/SKILL.md ofrece Code review sin calificarlo como GHA-only`);
+			assert.match(markdown, CODE_REVIEW_OFFER_QUALIFIED, `${harness}/chiche-run/SKILL.md ofrece Code review sin calificarlo como GHA-only`);
 		}
 		if (harness === "pi") {
 			// Issue #44 CA-10/CA-12: Pi tiene subagentes via la tool `subagent`.
-			assert.doesNotMatch(markdown, CODE_REVIEW_OFFER_QUALIFIED, "pi/sdd-run/SKILL.md ya no califica Code review como GHA-only");
-			assert.doesNotMatch(markdown, /sin subagentes/i, "pi/sdd-run/SKILL.md ya no se declara sin subagentes");
-			assert.match(markdown, /agent: "reviewer"[\s\S]*background: true[\s\S]*`\/skill:code-review <PR>`/, "pi/sdd-run lanza el reviewer bundleado en background");
-			assert.match(markdown, /sin GHA y sin la tool[\s\S]*no aparece|tool `subagent` no est[aá] registrada[\s\S]*no aparece/i, "pi/sdd-run omite la opcion sin GHA ni tool");
-			assert.match(markdown, PI_SCOUT_EXPLORATION, "pi/sdd-run explora con scouts en la Fase 2");
-			assert.match(markdown, PI_SCOUT_BUDGET_RUN, "pi/sdd-run verifica inline por default y acota los scouts de la Fase 2");
-			assert.match(markdown, PI_SCOUT_BUDGET_RUN_OVERFLOW, "pi/sdd-run resuelve el choque entre el tope de 2 scouts y un blast radius de mas de 2 areas");
+			assert.doesNotMatch(markdown, CODE_REVIEW_OFFER_QUALIFIED, "pi/chiche-run/SKILL.md ya no califica Code review como GHA-only");
+			assert.doesNotMatch(markdown, /sin subagentes/i, "pi/chiche-run/SKILL.md ya no se declara sin subagentes");
+			assert.match(markdown, /agent: "reviewer"[\s\S]*background: true[\s\S]*`\/skill:code-review <PR>`/, "pi/chiche-run lanza el reviewer bundleado en background");
+			assert.match(markdown, /sin GHA y sin la tool[\s\S]*no aparece|tool `subagent` no est[aá] registrada[\s\S]*no aparece/i, "pi/chiche-run omite la opcion sin GHA ni tool");
+			assert.match(markdown, PI_SCOUT_EXPLORATION, "pi/chiche-run explora con scouts en la Fase 2");
+			assert.match(markdown, PI_SCOUT_BUDGET_RUN, "pi/chiche-run verifica inline por default y acota los scouts de la Fase 2");
+			assert.match(markdown, PI_SCOUT_BUDGET_RUN_OVERFLOW, "pi/chiche-run resuelve el choque entre el tope de 2 scouts y un blast radius de mas de 2 areas");
 		}
 		if (harness !== "claude") {
-			assert.doesNotMatch(markdown, /subagent_type/, `${harness}/sdd-run/SKILL.md no debe depender de subagentes de Claude`);
+			assert.doesNotMatch(markdown, /subagent_type/, `${harness}/chiche-run/SKILL.md no debe depender de subagentes de Claude`);
 		}
 		// Hallazgo 2: con `--assume` la política de dependencias `preguntar` no puede frenar.
-		assert.match(markdown, /`preguntar` → [^\n]*`--assume`/, `${harness}/sdd-run/SKILL.md frena con --assume ante deps 'preguntar'`);
+		assert.match(markdown, /`preguntar` → [^\n]*`--assume`/, `${harness}/chiche-run/SKILL.md frena con --assume ante deps 'preguntar'`);
 	}
-	const claude = await readRepoFile("claude/sdd-run/SKILL.md");
+	const claude = await readRepoFile("claude/chiche-run/SKILL.md");
 	assert.match(claude, /subagent_type: "reviewer"/, "Claude lanza el review con el subagente reviewer");
 	assert.match(claude, /`\/code-review --comment`/, "Claude nombra el code review nativo");
 });
 
-test("sdd-spec propone el Plan de entrega en el template y el criterio de corte, sin '2+ specs encadenadas', en cada harness", async () => {
+test("chiche-spec propone el Plan de entrega en el template y el criterio de corte, sin '2+ specs encadenadas', en cada harness", async () => {
 	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
 	const byHarness = new Map<Harness, string[]>();
 	for (const harness of HARNESSES) {
-		const markdown = await readRepoFile(`${harness}/sdd-spec/SKILL.md`);
-		assert.doesNotMatch(markdown, /2\+ specs encadenadas/, `${harness}/sdd-spec/SKILL.md todavía parte por tamaño en specs encadenadas`);
+		const markdown = await readRepoFile(`${harness}/chiche-spec/SKILL.md`);
+		assert.doesNotMatch(markdown, /2\+ specs encadenadas/, `${harness}/chiche-spec/SKILL.md todavía parte por tamaño en specs encadenadas`);
 		const template = censusTemplates(markdown).markerFences[0]?.content ?? "";
 		assert.match(
 			template,
 			/## Comportamiento esperado\n[^#]*\n## Plan de entrega\n[^#]*\| Capa \| Etapa \| CAs \| Justificacion \|\n[^#]*\n## Fuera de alcance\n/,
-			`${harness}/sdd-spec/SKILL.md: el template no lleva ## Plan de entrega entre Comportamiento esperado y Fuera de alcance con la tabla Capa/Etapa/CAs/Justificacion`,
+			`${harness}/chiche-spec/SKILL.md: el template no lleva ## Plan de entrega entre Comportamiento esperado y Fuera de alcance con la tabla Capa/Etapa/CAs/Justificacion`,
 		);
-		const doctrine = delimitedDoctrine(markdown, "sdd-spec-delivery");
+		const doctrine = delimitedDoctrine(markdown, "chiche-spec-delivery");
 		for (const expected of SDD_SPEC_DELIVERY_DOCTRINE) {
-			assert.match(doctrine, expected, `${harness}/sdd-spec/SKILL.md no declara ${expected}`);
+			assert.match(doctrine, expected, `${harness}/chiche-spec/SKILL.md no declara ${expected}`);
 		}
 		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
 	}
-	assert.deepEqual(compareTemplates("sdd-spec delivery", byHarness), []);
+	assert.deepEqual(compareTemplates("chiche-spec delivery", byHarness), []);
 });
 
-test("sdd-run entrega un stack de PRs por capas con preflight, verificación por capa y force acotado en cada harness", async () => {
+test("chiche-run entrega un stack de PRs por capas con preflight, verificación por capa y force acotado en cada harness", async () => {
 	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
 	const byHarness = new Map<Harness, string[]>();
 	for (const harness of HARNESSES) {
-		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
-		const doctrine = delimitedDoctrine(markdown, "sdd-run-stack");
+		const markdown = await readRepoFile(`${harness}/chiche-run/SKILL.md`);
+		const doctrine = delimitedDoctrine(markdown, "chiche-run-stack");
 		for (const expected of SDD_RUN_STACK_DOCTRINE) {
-			assert.match(doctrine, expected, `${harness}/sdd-run/SKILL.md no declara ${expected}`);
+			assert.match(doctrine, expected, `${harness}/chiche-run/SKILL.md no declara ${expected}`);
 		}
 		// CA-6: el template de resultado lleva la columna Capa.
 		const resultado = fencedBlocks(markdown).find((fence) => /^## Resultado de ejecucion/.test(fence.content));
 		assert.match(
 			resultado?.content ?? "",
 			/\| CA \| Capa \| Estado \| Evidencia \|\n\|---\|---\|---\|---\|\n\| CA-1 \| 1\/1 \|/,
-			`${harness}/sdd-run/SKILL.md: el template de Resultado de ejecucion no lleva la columna Capa`,
+			`${harness}/chiche-run/SKILL.md: el template de Resultado de ejecucion no lleva la columna Capa`,
 		);
 		// Remediación de review PR #67: con 2 o más capas el push lo hace gh stack submit.
 		const phase5 = markdown.match(/## Fase 5 — PR\n([\s\S]*?)(?=\n## )/)?.[1] ?? "";
 		assert.match(
 			phase5,
 			/con 2 o más capas el push lo hace `gh stack submit`[\s\S]*solo verifica aptitud y Limites[\s\S]*no ejecuta `git push -u origin sdd\/<slug>`/,
-			`${harness}/sdd-run/SKILL.md: Fase 5 paso 1 sigue ordenando git push -u con 2 o más capas`,
+			`${harness}/chiche-run/SKILL.md: Fase 5 paso 1 sigue ordenando git push -u con 2 o más capas`,
 		);
-		// CA-10: el reporte sugiere sdd-land y lista los PRs por capa.
+		// CA-10: el reporte sugiere chiche-land y lista los PRs por capa.
 		const report = fencedBlocks(markdown).find((fence) => /^Run completo:/.test(fence.content));
-		assert.ok(report, `${harness}/sdd-run/SKILL.md no instruye el bloque Run completo`);
-		assert.match(report.content, new RegExp(`siguiente paso: ${escapeRegExp(prefixes[harness])}sdd-land <stack\\|PR>`), `${harness}/sdd-run/SKILL.md: Run completo sin la línea siguiente paso`);
-		assert.match(report.content, /PRs por capa/, `${harness}/sdd-run/SKILL.md: Run completo no lista los PRs por capa`);
+		assert.ok(report, `${harness}/chiche-run/SKILL.md no instruye el bloque Run completo`);
+		assert.match(report.content, new RegExp(`siguiente paso: ${escapeRegExp(prefixes[harness])}chiche-land <stack\\|PR>`), `${harness}/chiche-run/SKILL.md: Run completo sin la línea siguiente paso`);
+		assert.match(report.content, /PRs por capa/, `${harness}/chiche-run/SKILL.md: Run completo no lista los PRs por capa`);
 		// CA-9: MUST DO y MUST NOT DO nombran el force acotado.
 		for (const heading of ["MUST DO", "MUST NOT DO"]) {
 			const section = markdown.match(new RegExp(`## ${heading}\\n([\\s\\S]*?)(?=\\n## |$)`))?.[1] ?? "";
-			assert.match(section, /--force-with-lease[\s\S]*`gh stack (?:push|sync|rebase)`/, `${harness}/sdd-run/SKILL.md ## ${heading} no acota el force a gh stack`);
+			assert.match(section, /--force-with-lease[\s\S]*`gh stack (?:push|sync|rebase)`/, `${harness}/chiche-run/SKILL.md ## ${heading} no acota el force a gh stack`);
 		}
 		byHarness.set(harness, [
 			normalizeInvocations(doctrine, prefixes[harness]),
 			normalizeInvocations(report.content, prefixes[harness]),
 		]);
 	}
-	assert.deepEqual(compareTemplates("sdd-run stack", byHarness), []);
+	assert.deepEqual(compareTemplates("chiche-run stack", byHarness), []);
 });
 
 const RIESGO_DE_MERGE_TEMPLATE = [
@@ -726,25 +726,25 @@ const RIESGO_DE_MERGE_TEMPLATE = [
 	"Si sale mal, le pega a: <usuarios, sistemas o flujos afectados, una frase>",
 ].join("\n");
 
-test("sdd-run pide el loop rojo antes de tocar código y la sección Riesgo de merge en el body del PR", async () => {
+test("chiche-run pide el loop rojo antes de tocar código y la sección Riesgo de merge en el body del PR", async () => {
 	for (const harness of HARNESSES) {
-		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
+		const markdown = await readRepoFile(`${harness}/chiche-run/SKILL.md`);
 		const risk = fencedBlocks(markdown).filter((fence) => /^## Riesgo de merge/.test(fence.content));
-		assert.equal(risk.length, 1, `${harness}/sdd-run/SKILL.md: debe traer un solo template de Riesgo de merge`);
-		assert.equal(risk[0]?.content, RIESGO_DE_MERGE_TEMPLATE, `${harness}/sdd-run/SKILL.md: el template de Riesgo de merge no es byte-idéntico`);
+		assert.equal(risk.length, 1, `${harness}/chiche-run/SKILL.md: debe traer un solo template de Riesgo de merge`);
+		assert.equal(risk[0]?.content, RIESGO_DE_MERGE_TEMPLATE, `${harness}/chiche-run/SKILL.md: el template de Riesgo de merge no es byte-idéntico`);
 		// El template fenced lleva su propio "## " en columna 0: la subsección se delimita por la Fase 6, no por el primer "\n## ".
 		const risk5 = markdown.match(/### Riesgo de merge en el body\n([\s\S]*?)(?=\n## Fase 6)/)?.[1] ?? "";
-		assert.match(risk5, /es `no` y el body no dice cómo se vuelve atrás[^\n]*`--draft`/, `${harness}/sdd-run/SKILL.md: la regla de draft por riesgo sin rollback no está en la subsección`);
-		assert.match(risk5, /PR de abajo[\s\S]*capas superiores/, `${harness}/sdd-run/SKILL.md: no distingue PR de abajo y capas superiores`);
-		assert.match(risk5, /el draft va a la capa que no se revierte/, `${harness}/sdd-run/SKILL.md: no dice qué capa del stack sale en draft`);
-		assert.match(risk5, /antes de `## Riesgo de merge`[\s\S]*conserva esa sección/, `${harness}/sdd-run/SKILL.md: no protege la sección ante la Fase 6`);
-		assert.match(risk5, /`pendiente tuyo`/, `${harness}/sdd-run/SKILL.md: el draft por riesgo no se reporta`);
+		assert.match(risk5, /es `no` y el body no dice cómo se vuelve atrás[^\n]*`--draft`/, `${harness}/chiche-run/SKILL.md: la regla de draft por riesgo sin rollback no está en la subsección`);
+		assert.match(risk5, /PR de abajo[\s\S]*capas superiores/, `${harness}/chiche-run/SKILL.md: no distingue PR de abajo y capas superiores`);
+		assert.match(risk5, /el draft va a la capa que no se revierte/, `${harness}/chiche-run/SKILL.md: no dice qué capa del stack sale en draft`);
+		assert.match(risk5, /antes de `## Riesgo de merge`[\s\S]*conserva esa sección/, `${harness}/chiche-run/SKILL.md: no protege la sección ante la Fase 6`);
+		assert.match(risk5, /`pendiente tuyo`/, `${harness}/chiche-run/SKILL.md: el draft por riesgo no se reporta`);
 		const budget = markdown.match(/\n3\. \*\*Presupuesto por CA\*\*[^\n]*(?:\n   [^\n]*)*/)?.[0] ?? "";
-		assert.match(budget, /loop rojo/, `${harness}/sdd-run/SKILL.md: el presupuesto por CA no exige el loop rojo`);
-		assert.match(budget, /no cuentan/, `${harness}/sdd-run/SKILL.md: sin loop rojo los intentos no cuentan`);
-		assert.match(budget, /después de implementarlo/, `${harness}/sdd-run/SKILL.md: el loop rojo no está acotado a CAs rotos`);
-		assert.match(budget, /sin loop rojo»[^\n]*se sigue con los demás/, `${harness}/sdd-run/SKILL.md: falta el tope cuando no se arma el loop`);
-		assert.match(markdown, /salvo la FALLA «sin loop rojo»/, `${harness}/sdd-run/SKILL.md: Timeouts no exceptúa la FALLA sin loop rojo`);
+		assert.match(budget, /loop rojo/, `${harness}/chiche-run/SKILL.md: el presupuesto por CA no exige el loop rojo`);
+		assert.match(budget, /no cuentan/, `${harness}/chiche-run/SKILL.md: sin loop rojo los intentos no cuentan`);
+		assert.match(budget, /después de implementarlo/, `${harness}/chiche-run/SKILL.md: el loop rojo no está acotado a CAs rotos`);
+		assert.match(budget, /sin loop rojo»[^\n]*se sigue con los demás/, `${harness}/chiche-run/SKILL.md: falta el tope cuando no se arma el loop`);
+		assert.match(markdown, /salvo la FALLA «sin loop rojo»/, `${harness}/chiche-run/SKILL.md: Timeouts no exceptúa la FALLA sin loop rojo`);
 	}
 });
 
@@ -836,7 +836,7 @@ test("autotest: una divergencia entre harnesses se reporta con la linea que difi
 		["pi", ["# Spec — <titulo>\nlinea comun"]],
 		["antigravity", ["# Spec — <titulo>\nlinea comun"]],
 	]);
-	const divergences = compareTemplates("sdd-spec", byHarness);
+	const divergences = compareTemplates("chiche-spec", byHarness);
 	assert.equal(divergences.length, 1);
 	assert.match(divergences[0] ?? "", /opencode/);
 	assert.match(divergences[0] ?? "", /DIVERGENTE/);
@@ -873,12 +873,12 @@ test("autotest: un marker legacy dentro de un template se clasifica como legacy"
 });
 
 test("autotest: la normalizacion reduce las tres sintaxis de invocacion al mismo token", () => {
-	const claude = normalizeInvocations("<!-- Generada por /sdd-spec el <fecha>. -->", "/");
-	const codex = normalizeInvocations("<!-- Generada por $sdd-spec el <fecha>. -->", "$");
-	const pi = normalizeInvocations("<!-- Generada por /skill:sdd-spec el <fecha>. -->", "/skill:");
+	const claude = normalizeInvocations("<!-- Generada por /chiche-spec el <fecha>. -->", "/");
+	const codex = normalizeInvocations("<!-- Generada por $chiche-spec el <fecha>. -->", "$");
+	const pi = normalizeInvocations("<!-- Generada por /skill:chiche-spec el <fecha>. -->", "/skill:");
 	assert.equal(claude, codex);
 	assert.equal(codex, pi);
-	assert.match(claude, /«skill:sdd-spec»/);
+	assert.match(claude, /«skill:chiche-spec»/);
 	assert.equal(normalizeInvocations("archivo en .sdd/grills/x.md", "/"), "archivo en .sdd/grills/x.md");
 	assert.match(
 		normalizeInvocations("invoca `/coding-policies go`", "/"),
@@ -896,8 +896,8 @@ test("autotest: la normalizacion reduce las tres sintaxis de invocacion al mismo
 const COMMON_DIR_COMMAND = /`git rev-parse --path-format=absolute --git-common-dir`/;
 const DRAFTS_PRECEDENCE = /ante el mismo nombre gana el trackeado sobre el local y `chiche` sobre `sdd`/;
 // Decisión humana del review de #86: Codex no escribe en `.git/` con su sandbox por defecto.
-// Review de #105 (F3): mientras sdd-run copie al worktree bajo `.sdd/` (CA-14 es de la capa 3), el
-// fallback sin escalación sigue en `.sdd/` del cwd para que la Fase 5 de sdd-land lo empareje.
+// Review de #105 (F3): mientras chiche-run copie al worktree bajo `.sdd/` (CA-14 es de la capa 3), el
+// fallback sin escalación sigue en `.sdd/` del cwd para que la Fase 5 de chiche-land lo empareje.
 const CODEX_NEUTRAL_LINE = /Si el harness no puede escribir en `<git-common-dir>\/chiche\/`, su capa de interacción dice cómo pedir permiso o caer a `\.sdd\/` del cwd/;
 const SDD_RUN_NEUTRAL_LINE = /Si el harness no puede escribir en `<git-common-dir>\/chiche\/` o `<git-common-dir>\/sdd\/`, su capa de interacción dice cómo pedir permiso o caer a `\.sdd\/` del cwd/;
 
@@ -960,7 +960,7 @@ const ISSUE_TRIAGE_DRAFTS_DOCTRINE = [
 ];
 
 // Ningún bloque de borradores conserva la doctrina de dos lugares ni un
-// fallback a `.chiche/` del cwd, que sdd-run todavía no copia (review de #105, F3).
+// fallback a `.chiche/` del cwd, que chiche-run todavía no copia (review de #105, F3).
 const DRAFTS_STALE = [/los dos lugares/, /gana el del árbol/, /caer a `\.chiche\/` del cwd/];
 
 async function draftsBlocks(skill: string, block: string, patterns: RegExp[]): Promise<string[]> {
@@ -1017,14 +1017,14 @@ test("#84 CA-13, #103 CA-5: grill escribe handoff, cuestionario y capturas en <g
 	assert.deepEqual(problems, []);
 });
 
-test("#84 CA-14, #103 CA-5: sdd-spec escribe la spec local en <git-common-dir>/chiche/specs y su Fase 0 lista los cuatro lugares en los cinco harnesses", async () => {
-	const problems = await draftsBlocks("sdd-spec", "sdd-spec-drafts", SDD_SPEC_DRAFTS_DOCTRINE);
+test("#84 CA-14, #103 CA-5: chiche-spec escribe la spec local en <git-common-dir>/chiche/specs y su Fase 0 lista los cuatro lugares en los cinco harnesses", async () => {
+	const problems = await draftsBlocks("chiche-spec", "chiche-spec-drafts", SDD_SPEC_DRAFTS_DOCTRINE);
 	for (const harness of HARNESSES) {
-		const file = `${harness}/sdd-spec/SKILL.md`;
+		const file = `${harness}/chiche-spec/SKILL.md`;
 		const markdown = await readRepoFile(file);
-		const flow = delimitedDoctrine(markdown, "sdd-spec-flow");
-		if (!/`<git-common-dir>\/chiche\/specs\/<slug>\.md`/.test(flow)) problems.push(`${file}: el destino local de sdd-spec-flow no es <git-common-dir>/chiche/specs/<slug>.md`);
-		if (/`<git-common-dir>\/sdd\/specs\/(?:issue-NN-)?<slug>\.md`/.test(flow)) problems.push(`${file}: sdd-spec-flow todavía escribe en <git-common-dir>/sdd/specs/`);
+		const flow = delimitedDoctrine(markdown, "chiche-spec-flow");
+		if (!/`<git-common-dir>\/chiche\/specs\/<slug>\.md`/.test(flow)) problems.push(`${file}: el destino local de chiche-spec-flow no es <git-common-dir>/chiche/specs/<slug>.md`);
+		if (/`<git-common-dir>\/sdd\/specs\/(?:issue-NN-)?<slug>\.md`/.test(flow)) problems.push(`${file}: chiche-spec-flow todavía escribe en <git-common-dir>/sdd/specs/`);
 		if (!/`local` = `<git-common-dir>\/chiche\/specs\/`/.test(markdown)) problems.push(`${file}: --out local no apunta a <git-common-dir>/chiche/specs/`);
 		if (/`local` = `\.sdd\/specs\/`/.test(markdown)) problems.push(`${file}: --out local todavía apunta a .sdd/specs/`);
 		if (!/Revisar `\.chiche\/specs\/`, `\.sdd\/specs\/`, `<git-common-dir>\/chiche\/specs\/` y `<git-common-dir>\/sdd\/specs\/`/.test(markdown)) problems.push(`${file}: la búsqueda de una spec previa no mira los cuatro lugares`);
@@ -1038,16 +1038,16 @@ test("#84 CA-14, #103 CA-5: sdd-spec escribe la spec local en <git-common-dir>/c
 	assert.deepEqual(problems, []);
 });
 
-test("#84 CA-15, #103 CA-5: sdd-run toma los artefactos de entrada de <git-common-dir>/chiche/ y <git-common-dir>/sdd/, los commitea en el worktree y borra las copias", async () => {
+test("#84 CA-15, #103 CA-5: chiche-run toma los artefactos de entrada de <git-common-dir>/chiche/ y <git-common-dir>/sdd/, los commitea en el worktree y borra las copias", async () => {
 	const problems: string[] = [];
 	for (const harness of HARNESSES) {
-		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
-		const doctrine = delimitedDoctrine(markdown, "sdd-run-dirty-checkout");
+		const markdown = await readRepoFile(`${harness}/chiche-run/SKILL.md`);
+		const doctrine = delimitedDoctrine(markdown, "chiche-run-dirty-checkout");
 		for (const pattern of [...SDD_RUN_DRAFTS_DOCTRINE, /checkout original queda intacto/i]) {
-			if (!pattern.test(doctrine)) problems.push(`${harness}/sdd-run/SKILL.md (sdd-run-dirty-checkout) no declara ${pattern}`);
+			if (!pattern.test(doctrine)) problems.push(`${harness}/chiche-run/SKILL.md (chiche-run-dirty-checkout) no declara ${pattern}`);
 		}
 		if (!/Listar las specs de `\.chiche\/specs\/`, `\.sdd\/specs\/`, `<git-common-dir>\/chiche\/specs\/` y `<git-common-dir>\/sdd\/specs\/`/.test(markdown)) {
-			problems.push(`${harness}/sdd-run/SKILL.md: la Fase 0 no lista las specs de los cuatro lugares`);
+			problems.push(`${harness}/chiche-run/SKILL.md: la Fase 0 no lista las specs de los cuatro lugares`);
 		}
 	}
 	assert.deepEqual(problems, []);
@@ -1076,9 +1076,9 @@ test("#84 review #86, #103 CA-5, review #105: en Codex, escribir en <git-common-
 	const problems: string[] = [];
 	const shared = /En Codex, el sandbox por defecto deja `\.git\/` en solo lectura \(`mkdir: \.git\/chiche: Operation not permitted`\): pedir escalación para escribir en `<git-common-dir>\/chiche\/`/;
 	const fallback: Record<string, RegExp> = {
-		grill: /sin permiso, escribir en `\.sdd\/` del cwd y decirlo en el reporte[^\n]*`\$sdd-land`/,
-		"sdd-spec": /sin permiso, escribir en `\.sdd\/` del cwd y decirlo en el reporte[^\n]*`\$sdd-land`/,
-		"sdd-run": /pedir escalación para escribir en `<git-common-dir>\/chiche\/` y `<git-common-dir>\/sdd\/`, donde se borran las copias; sin permiso, dejarlas y decirlo en el reporte\. Los borradores que `\$grill` y `\$sdd-spec` hayan dejado en `\.sdd\/` del cwd entran/,
+		grill: /sin permiso, escribir en `\.sdd\/` del cwd y decirlo en el reporte[^\n]*`\$chiche-land`/,
+		"chiche-spec": /sin permiso, escribir en `\.sdd\/` del cwd y decirlo en el reporte[^\n]*`\$chiche-land`/,
+		"chiche-run": /pedir escalación para escribir en `<git-common-dir>\/chiche\/` y `<git-common-dir>\/sdd\/`, donde se borran las copias; sin permiso, dejarlas y decirlo en el reporte\. Los borradores que `\$grill` y `\$chiche-spec` hayan dejado en `\.sdd\/` del cwd entran/,
 	};
 	for (const [skill, pattern] of Object.entries(fallback)) {
 		const codex = await readRepoFile(`codex/${skill}/SKILL.md`);
@@ -1110,18 +1110,18 @@ interface MarkerUpdateRule {
 	harnesses?: readonly Harness[];
 }
 
-const MARKER_UPDATE_RULES: Record<"grill" | "sdd-spec" | "sdd-run", MarkerUpdateRule[]> = {
+const MARKER_UPDATE_RULES: Record<"grill" | "chiche-spec" | "chiche-run", MarkerUpdateRule[]> = {
 	grill: [
 		{ anchor: /Guardar de nuevo hace upsert/, full: true, harnesses: ["claude", "codex", "opencode", "antigravity"] },
 		{ anchor: /En Pi lo escribe y actualiza la tool/, full: false, harnesses: ["pi"] },
 	],
-	"sdd-spec": [
+	"chiche-spec": [
 		{ anchor: /`--triage-route update-existing-spec\|audit-existing-spec` exige un target explícito/, full: false, harnesses: ["claude", "codex", "opencode", "antigravity"] },
 		{ anchor: /Re-correr sobre la misma spec hace upsert/, full: true },
 		{ anchor: /la opción upsertea el marker/, full: false },
 		{ anchor: /Ser idempotente: re-correr sobre el mismo pedido/, full: false },
 	],
-	"sdd-run": [
+	"chiche-run": [
 		{ anchor: /Actualizar la spec \(único artefacto que el run modifica/, full: false },
 		{ anchor: /La transición preserva la identidad/, full: true },
 		{ anchor: /Mantener la identidad del marker/, full: false },
@@ -1181,18 +1181,18 @@ test("autotest: unlockBeforeEveryRemove rechaza un unlock ajeno cerca y un remov
 	assert.equal(unlockBeforeEveryRemove("con `git worktree unlock` y después `git worktree remove`."), true);
 });
 
-test("#84 CA-17: sdd-run crea su worktree con --lock --reason y lo desbloquea antes de removerlo", async () => {
+test("#84 CA-17: chiche-run crea su worktree con --lock --reason y lo desbloquea antes de removerlo", async () => {
 	const problems: string[] = [];
 	for (const harness of HARNESSES) {
-		const file = `${harness}/sdd-run/SKILL.md`;
+		const file = `${harness}/chiche-run/SKILL.md`;
 		const markdown = await readRepoFile(file);
-		if (!/`git worktree add --lock --reason "sdd-run <slug>" \.\.\/<repo>-sdd-<slug> -b sdd\/<slug> <base-ref>`/.test(delimitedDoctrine(markdown, "sdd-run-dirty-checkout"))) problems.push(`${file}: el worktree del PR único no nace con --lock --reason "sdd-run <slug>"`);
-		if (!/`git worktree add --lock --reason "sdd-run <slug>" \.\.\/<repo>-sdd-<slug> -b sdd\/<slug>\/1-<etapa> <base-ref>`/.test(delimitedDoctrine(markdown, "sdd-run-stack"))) problems.push(`${file}: el worktree del stack no nace con --lock --reason "sdd-run <slug>"`);
+		if (!/`git worktree add --lock --reason "chiche-run <slug>" \.\.\/<repo>-sdd-<slug> -b sdd\/<slug> <base-ref>`/.test(delimitedDoctrine(markdown, "chiche-run-dirty-checkout"))) problems.push(`${file}: el worktree del PR único no nace con --lock --reason "chiche-run <slug>"`);
+		if (!/`git worktree add --lock --reason "chiche-run <slug>" \.\.\/<repo>-sdd-<slug> -b sdd\/<slug>\/1-<etapa> <base-ref>`/.test(delimitedDoctrine(markdown, "chiche-run-stack"))) problems.push(`${file}: el worktree del stack no nace con --lock --reason "chiche-run <slug>"`);
 		if (!unlockBeforeEveryRemove(markdown)) problems.push(`${file}: algún git worktree remove no va precedido de git worktree unlock`);
 		if (!/retenerlo bloqueado para la Fase 6[^\n]*el reporte lo dice/.test(markdown)) problems.push(`${file}: el worktree retenido para la Fase 6 no queda bloqueado ni lo dice el reporte`);
-		if (!/- worktree: <removido \| conservado bloqueado \(`sdd-run <slug>`\) en <ruta>>/.test(markdown)) problems.push(`${file}: el reporte no dice si el worktree quedó bloqueado`);
-		if (!/`[/$](?:skill:)?sdd-land` solo lo remueve, limpio, cuando su branch ya se mergeó/.test(markdown)) problems.push(`${file}: contradice la excepción de sdd-land para el lock de sdd-run`);
-		if (!/Si el worktree ya no existe porque `[/$](?:skill:)?sdd-land` lo removió tras el merge, es una salida normal y no se reintenta/.test(markdown)) problems.push(`${file}: la Fase 6 no tolera el worktree removido por sdd-land`);
+		if (!/- worktree: <removido \| conservado bloqueado \(`chiche-run <slug>`\) en <ruta>>/.test(markdown)) problems.push(`${file}: el reporte no dice si el worktree quedó bloqueado`);
+		if (!/`[/$](?:skill:)?chiche-land` solo lo remueve, limpio, cuando su branch ya se mergeó/.test(markdown)) problems.push(`${file}: contradice la excepción de chiche-land para el lock de chiche-run`);
+		if (!/Si el worktree ya no existe porque `[/$](?:skill:)?chiche-land` lo removió tras el merge, es una salida normal y no se reintenta/.test(markdown)) problems.push(`${file}: la Fase 6 no tolera el worktree removido por chiche-land`);
 	}
 	assert.deepEqual(problems, []);
 });
@@ -1224,11 +1224,11 @@ test("#84 CA-18: code-review y grill limpian sus temporales con trap", async () 
 	assert.deepEqual(problems, []);
 });
 
-test("#84 CA-20: sdd-init, coding-policies y design-system cierran con Commit + PR en los cuatro harnesses", async () => {
+test("#84 CA-20: chiche-init, coding-policies y design-system cierran con Commit + PR en los cuatro harnesses", async () => {
 	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
 	const problems: string[] = [];
 	let reference: string | null = null;
-	for (const skill of ["sdd-init", "coding-policies", "design-system"] as const) {
+	for (const skill of ["chiche-init", "coding-policies", "design-system"] as const) {
 		for (const harness of HARNESSES) {
 			const file = `${harness}/${skill}/SKILL.md`;
 			const markdown = await readRepoFile(file);
@@ -1247,11 +1247,11 @@ test("#84 CA-20: sdd-init, coding-policies y design-system cierran con Commit + 
 				new RegExp(`\`gh pr create --base <default> --title "chore\\(${skill}\\): <YYYY-MM-DD>" --body-file <archivo>\``),
 				/el cierre queda como commit local sin PR: el reporte nombra el branch, el motivo y el comando para seguir/,
 				/En modo desatendido, si el skill lo tiene, no se pregunta y el cierre queda en `Dejar sin commitear`/,
-				/Si un skill encadena a otro \(`[/$](?:skill:)?sdd-init` encadena `[/$](?:skill:)?coding-policies` y `[/$](?:skill:)?design-system`\), el cierre lo ofrece una sola vez el que encadenó/,
+				/Si un skill encadena a otro \(`[/$](?:skill:)?chiche-init` encadena `[/$](?:skill:)?coding-policies` y `[/$](?:skill:)?design-system`\), el cierre lo ofrece una sola vez el que encadenó/,
 			]) {
 				if (!pattern.test(block)) problems.push(`${file} (commit-pr-close): falta ${pattern}`);
 			}
-			// Solo los slots del nombre del skill; la regla de encadenado nombra sdd-init a propósito.
+			// Solo los slots del nombre del skill; la regla de encadenado nombra chiche-init a propósito.
 			const normalized = normalizeInvocations(block, prefixes[harness])
 				.replaceAll(`"${skill} <YYYY-MM-DD>"`, `"<skill> <YYYY-MM-DD>"`)
 				.replaceAll(`<repo>-${skill}-`, "<repo>-<skill>-")
@@ -1264,7 +1264,7 @@ test("#84 CA-20: sdd-init, coding-policies y design-system cierran con Commit + 
 		}
 	}
 	for (const harness of HARNESSES) {
-		const file = `${harness}/sdd-init/SKILL.md`;
+		const file = `${harness}/chiche-init/SKILL.md`;
 		if (/^- No commitear nada\.$/m.test(await readRepoFile(file))) problems.push(`${file}: MUST NOT DO todavía prohíbe todo commit`);
 	}
 	assert.deepEqual(problems, []);

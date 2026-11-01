@@ -10,7 +10,7 @@
 // Next.js, React Native y Kotlin Multiplatform estructuralmente validas y
 // sincronizadas byte a byte desde una unica fuente
 // canonica, integracion con
-// sdd-init (CA-9) y documentacion (CA-10). No observa la conducta del agente
+// chiche-init (CA-9) y documentacion (CA-10). No observa la conducta del agente
 // al ejecutar el skill: eso es protocolo humano (CA-5, CA-7).
 
 import assert from "node:assert/strict";
@@ -150,10 +150,10 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/idempotente: en `CLAUDE\.md` y `AGENTS\.md`, verificando antes que `<ruta>` no esté ya presente[^\n]*en `\.sdd\/project\.md`, comparando la fila entera/,
 	/\*\*CLAUDE\.md\*\* — agregar al final una línea `@<ruta>`/,
 	/«agents-link»/,
-	/\| coding-policies \| <ruta> \(<stacks>\) \| guia — sin gate: «skill:sdd-run» la sigue al generar, la juzga el reviewer \|/,
+	/\| coding-policies \| <ruta> \(<stacks>\) \| guia — sin gate: «skill:chiche-run» la sigue al generar, la juzga el reviewer \|/,
 	/reemplazando el sentinel "Sin politicas activas"/,
 	/actualizando la fila en su lugar si ya existe/,
-	/sin tocar nada si la sección no existe[^\n]*«skill:sdd-init» --update/,
+	/sin tocar nada si la sección no existe[^\n]*«skill:chiche-init» --update/,
 	/^## Fase 5 — Reporte$/m,
 	/^Coding policies listas: <ruta> \(<generado\|regenerado>\)$/m,
 	/^- baseline: clean-code@<version> \(incluida\)$/m,
@@ -491,11 +491,11 @@ export function detectFixtureStacks(files: DetectionFile[]): StackId[] {
 	return STACK_ORDER.filter((id) => detected.has(id));
 }
 
-// Integracion con sdd-init (CA-9), sobre el SKILL.md con invocaciones normalizadas.
+// Integracion con chiche-init (CA-9), sobre el SKILL.md con invocaciones normalizadas.
 const SDD_INIT_DOCTRINE: RegExp[] = [
 	/^- \*\*Coding policies del proyecto\*\*: si existe `\.sdd\/coding-policies\.md`[^\n]*escribir sin preguntar la fila `guia`[^\n]*también con `--assume`/m,
 	/o si la fila `coding-policies` ya presente en `## Politicas de generacion` apunta a un archivo existente, porque el skill acepta `--out`/,
-	/\| coding-policies \| <ruta> \(<stacks del marker>\) \| guia — sin gate: «skill:sdd-run» la sigue al generar, la juzga el reviewer \|/,
+	/\| coding-policies \| <ruta> \(<stacks del marker>\) \| guia — sin gate: «skill:chiche-run» la sigue al generar, la juzga el reviewer \|/,
 	/[Ss]i no existe, sumar al menú la opción `Generar coding policies`[^\n]*invoca `«skill:coding-policies»`; nunca con `--assume`/,
 	/^\| Coding policies \| existe `\.sdd\/coding-policies\.md` pero `## Politicas de generacion` no tiene la fila `coding-policies` — no entra al menú: la Fase 3\.5 la escribe sin preguntar y el reporte la lista como `referenciado` \|$/m,
 	/^- coding-policies: <referenciado\|generado\|no existe \(ofrecido\)\|--assume: no ofrecido>$/m,
@@ -1019,23 +1019,23 @@ test(`${SKILL}: las secciones condicionales guardan cada regla`, async () => {
 	}
 });
 
-// --- CA-9: integracion con sdd-init ------------------------------------------
+// --- CA-9: integracion con chiche-init ------------------------------------------
 
-test("sdd-init integra coding-policies en los cuatro harnesses sin tocar el template del contrato", async () => {
+test("chiche-init integra coding-policies en los cuatro harnesses sin tocar el template del contrato", async () => {
 	const bullets = new Map<Harness, string>();
 	for (const harness of HARNESSES) {
-		const markdown = await readRepoFile(`${harness}/sdd-init/SKILL.md`);
+		const markdown = await readRepoFile(`${harness}/chiche-init/SKILL.md`);
 		const normalized = normalizeInvocations(markdown, (await invocationPrefixes())[harness]);
 		for (const expected of SDD_INIT_DOCTRINE) {
-			assert.match(normalized, expected, `${harness}/sdd-init/SKILL.md no declara ${expected}`);
+			assert.match(normalized, expected, `${harness}/chiche-init/SKILL.md no declara ${expected}`);
 		}
 		const bullet = normalized.match(/^- \*\*Coding policies del proyecto\*\*:[^\n]*$/m)?.[0] ?? "";
 		bullets.set(harness, bullet);
 		const contractTemplate = fencedBlocks(markdown).find((fence) => /type=project; generated-at=/.test(fence.content));
-		assert.ok(contractTemplate, `${harness}/sdd-init/SKILL.md conserva el template del contrato`);
+		assert.ok(contractTemplate, `${harness}/chiche-init/SKILL.md conserva el template del contrato`);
 		assert.doesNotMatch(contractTemplate.content, /coding-policies/, `${harness}: el template del contrato no cambia`);
 	}
-	assert.deepEqual(compareAcrossHarnesses("sdd-init coding-policies", bullets), []);
+	assert.deepEqual(compareAcrossHarnesses("chiche-init coding-policies", bullets), []);
 });
 
 // --- CA-10: documentacion ----------------------------------------------------

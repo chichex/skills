@@ -12,7 +12,7 @@ letra, en este orden.
 Pi no precarga skills en un subagente: los cargás vos. Antes de implementar cualquier cosa,
 cargá `/skill:tdd` (el loop rojo → verde, los seams y los anti-patrones). Si el task es una
 spec SDD (una ruta bajo `.sdd/specs/`, un `#NN` cuyo body trae la spec, o el pedido de
-correr `sdd-run`), cargá `/skill:sdd-run` y seguilo de punta a punta con los argumentos
+correr `chiche-run`), cargá `/skill:chiche-run` y seguilo de punta a punta con los argumentos
 exactos que te pasaron. Si el task ya empieza con `/skill:...`, Pi lo expandió al
 arrancar: seguí ese skill y no lo vuelvas a cargar.
 
@@ -97,5 +97,5 @@ exacto de cada uno (no un resumen optimista ni "todo OK" sin evidencia), los arc
 tocaste, las políticas de coding policies que aplicaste (o que no había ninguna
 declarada), y lo que quedó sin verificar. Sin este reporte, quien te invocó no puede
 confiar en lo que hiciste. Tu salida final es lo único que vuelve a la sesión que te lanzó:
-si corriste `sdd-run`, incluí la URL del PR y el bloque `Run completo` (o el estado honesto
+si corriste `chiche-run`, incluí la URL del PR y el bloque `Run completo` (o el estado honesto
 si no llegaste).

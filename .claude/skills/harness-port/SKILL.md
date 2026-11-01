@@ -48,7 +48,7 @@ Todo el resto del cuerpo es byte a byte idéntico.
 
 ### Invocación y referencias cruzadas
 
-Toda invocación de skill dentro del texto se traduce a la sintaxis del harness destino, **incluso dentro de backticks**: `$sdd-init --assume` (codex) ⇄ `/skill:sdd-init --assume` (pi) ⇄ `/sdd-init --assume` (claude y opencode). Aplica al bloque `## Argumentos`, a la Fase 0 — Lanzador, a la description del frontmatter y a cada referencia cruzada a otro skill del repo. Es la ÚNICA traducción permitida dentro de backticks.
+Toda invocación de skill dentro del texto se traduce a la sintaxis del harness destino, **incluso dentro de backticks**: `$chiche-init --assume` (codex) ⇄ `/skill:chiche-init --assume` (pi) ⇄ `/chiche-init --assume` (claude y opencode). Aplica al bloque `## Argumentos`, a la Fase 0 — Lanzador, a la description del frontmatter y a cada referencia cruzada a otro skill del repo. Es la ÚNICA traducción permitida dentro de backticks.
 
 ## Extras por harness
 

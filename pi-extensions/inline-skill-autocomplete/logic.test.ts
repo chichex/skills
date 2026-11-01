@@ -45,22 +45,22 @@ test("replaces an inline partial token and positions the cursor after one space"
 			["implement /skill:sd-old later"],
 			0,
 			19,
-			"skill:sdd-run",
+			"skill:chiche-run",
 			"/skill:sd",
 		),
 		{
-			lines: ["implement /skill:sdd-run later"],
+			lines: ["implement /skill:chiche-run later"],
 			cursorLine: 0,
-			cursorCol: 25,
+			cursorCol: 28,
 		},
 	);
 });
 
 test("promotes a known inline skill so Pi can expand it", () => {
-	const known = new Set(["sdd-run", "grill"]);
+	const known = new Set(["chiche-run", "grill"]);
 	assert.equal(
-		promoteInlineSkillInvocation("implement this /skill:sdd-run", known),
-		"/skill:sdd-run implement this",
+		promoteInlineSkillInvocation("implement this /skill:chiche-run", known),
+		"/skill:chiche-run implement this",
 	);
 	assert.equal(
 		promoteInlineSkillInvocation("please /skill:grill this design", known),
@@ -69,7 +69,7 @@ test("promotes a known inline skill so Pi can expand it", () => {
 });
 
 test("leaves leading and unknown skill commands alone", () => {
-	const known = new Set(["sdd-run"]);
-	assert.equal(promoteInlineSkillInvocation("/skill:sdd-run implement this", known), undefined);
+	const known = new Set(["chiche-run"]);
+	assert.equal(promoteInlineSkillInvocation("/skill:chiche-run implement this", known), undefined);
 	assert.equal(promoteInlineSkillInvocation("implement /skill:not-installed", known), undefined);
 });

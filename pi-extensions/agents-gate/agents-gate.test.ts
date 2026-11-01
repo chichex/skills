@@ -3,10 +3,10 @@
 //
 // Censa agents/*.md sobre archivos TRACKEADOS en git (no el working tree),
 // valida el frontmatter de cada agente y verifica los textos doctrinales que
-// las CA-1 a CA-3, CA-11 y CA-12 exigen en claude/sdd-run/SKILL.md,
+// las CA-1 a CA-3, CA-11 y CA-12 exigen en claude/chiche-run/SKILL.md,
 // .claude-plugin/plugin.json, ambos READMEs, harness-port y el contrato. Falla con diagnostico nombrando el archivo
 // ante cada forma de drift. No hay extension Pi en este directorio: es
-// solo-tests, igual que pi-extensions/sdd-land-gate.
+// solo-tests, igual que pi-extensions/chiche-land-gate.
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -376,10 +376,10 @@ test("CA-9: censo de agents/*.md sobre archivos trackeados en git contra la list
 	assert.deepEqual(divergences, [], `censo de agents/: ${divergences.join("; ")}`);
 });
 
-test("CA-1: agents/implementer.md tiene frontmatter valido, skills: [chichex-skills:tdd, chichex-skills:sdd-run] y body en orden", async () => {
+test("CA-1: agents/implementer.md tiene frontmatter valido, skills: [chichex-skills:tdd, chichex-skills:chiche-run] y body en orden", async () => {
 	const markdown = await readRepoFile("agents/implementer.md");
-	// Hallazgo 1 del review de PR #46: `sdd-run con subagente` necesita el skill precargado.
-	const verdict = validateAgentFrontmatter("implementer", markdown, ["chichex-skills:tdd", "chichex-skills:sdd-run"]);
+	// Hallazgo 1 del review de PR #46: `chiche-run con subagente` necesita el skill precargado.
+	const verdict = validateAgentFrontmatter("implementer", markdown, ["chichex-skills:tdd", "chichex-skills:chiche-run"]);
 	assert.deepEqual(verdict.problems, [], `agents/implementer.md: ${verdict.problems.join("; ")}`);
 
 	const parts = splitFrontmatter(markdown);
@@ -476,32 +476,32 @@ test("CA-11: READMEs, harness-port y el contrato documentan el layer de agentes"
 	assert.match(contract, /## Decisiones humanas\n/);
 });
 
-test("CA-12: sdd-run nombra Explore + tool Agent en la Fase 2, sin agregar un tipo custom", async () => {
-	const markdown = await readRepoFile("claude/sdd-run/SKILL.md");
+test("CA-12: chiche-run nombra Explore + tool Agent en la Fase 2, sin agregar un tipo custom", async () => {
+	const markdown = await readRepoFile("claude/chiche-run/SKILL.md");
 	// Issue #45: la Fase 6 lanza el subagente `reviewer` para el code review
 	// post-PR; la restricción aplica solo a la exploración de la Fase 2.
 	const phase2 = markdown.match(/## Fase 2 —[\s\S]*?(?=\n## Fase 3 —)/)?.[0] ?? "";
-	assert.ok(phase2, "claude/sdd-run/SKILL.md tiene Fase 2");
+	assert.ok(phase2, "claude/chiche-run/SKILL.md tiene Fase 2");
 	assert.doesNotMatch(phase2, /subagents en repos grandes\)/);
 	assert.match(phase2, /subagents `Explore` con la tool `Agent`/);
 	assert.doesNotMatch(phase2, /`implementer`|`reviewer`/);
 });
 
-test("issue #66 CA-9, CA-10, CA-24: sdd-run acota el force a gh stack, sugiere sdd-land y el contrato y el plugin reconocen sdd-land", async () => {
-	const markdown = await readRepoFile("claude/sdd-run/SKILL.md");
+test("issue #66 CA-9, CA-10, CA-24: chiche-run acota el force a gh stack, sugiere chiche-land y el contrato y el plugin reconocen chiche-land", async () => {
+	const markdown = await readRepoFile("claude/chiche-run/SKILL.md");
 	assert.match(markdown, /único force permitido es el `--force-with-lease`[\s\S]*`gh stack push`[\s\S]*`gh stack sync`[\s\S]*`gh stack rebase`/);
-	assert.match(markdown, /siguiente paso: \/sdd-land <stack\|PR>/);
+	assert.match(markdown, /siguiente paso: \/chiche-land <stack\|PR>/);
 
 	const plugin = JSON.parse(await readRepoFile(".claude-plugin/plugin.json")) as { description: string };
-	assert.match(plugin.description, /sdd-land/, "plugin.json nombra sdd-land");
+	assert.match(plugin.description, /chiche-land/, "plugin.json nombra chiche-land");
 	const marketplace = JSON.parse(await readRepoFile(".claude-plugin/marketplace.json")) as {
 		plugins: Array<{ name: string; description: string }>;
 	};
-	assert.match(marketplace.plugins.find((entry) => entry.name === "chichex-skills")?.description ?? "", /sdd-land/, "marketplace.json nombra sdd-land");
+	assert.match(marketplace.plugins.find((entry) => entry.name === "chichex-skills")?.description ?? "", /chiche-land/, "marketplace.json nombra chiche-land");
 
 	const contract = await readRepoFile(".sdd/project.md");
-	assert.match(contract, /salvo `\/sdd-land` invocado por el humano, que confirma el plan antes de mergear/, "contrato: excepción de merge para sdd-land en ## Limites");
-	assert.match(contract, /node --test pi-extensions\/sdd-land-gate\/sdd-land-gate\.test\.ts/, "contrato: fila del gate de sdd-land");
+	assert.match(contract, /salvo `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear/, "contrato: excepción de merge para chiche-land en ## Limites");
+	assert.match(contract, /node --test pi-extensions\/chiche-land-gate\/chiche-land-gate\.test\.ts/, "contrato: fila del gate de chiche-land");
 	assert.match(contract, /gh-stack/, "contrato: versión de gh-stack verificada en ## Gaps");
 	// Literales que pi-package.test.ts assertea sobre el mismo archivo.
 	assert.match(contract, /## Politicas de generacion\nSin politicas activas\./);
@@ -770,7 +770,7 @@ test("autotest: declarar agents en plugin.json falla con diagnostico", () => {
 
 test("autotest: un agents/ de scratch bajo claude/, opencode/ o pi/ se detecta; los sidecars de codex no", () => {
 	const paths = [
-		"claude/sdd-run/agents/scratch.md",
+		"claude/chiche-run/agents/scratch.md",
 		"opencode/grill/agents/scratch.yaml",
 		"pi/tdd/agents/scratch.md",
 		// Hallazgo #8 del review de PR #43: profundidad 1 (directo bajo el
@@ -785,7 +785,7 @@ test("autotest: un agents/ de scratch bajo claude/, opencode/ o pi/ se detecta; 
 	];
 	assert.deepEqual(forbiddenAgentDirs(paths).sort(), [
 		"claude/agents/x.md",
-		"claude/sdd-run/agents/scratch.md",
+		"claude/chiche-run/agents/scratch.md",
 		"opencode/grill/agents/scratch.yaml",
 		"pi/tdd/agents/scratch.md",
 	]);
@@ -836,12 +836,12 @@ test("issue #44 CA-7: el port Pi de implementer conserva la doctrina ordenada de
 
 	// Capa Pi: sin `skills:` en el frontmatter (Pi lo ignora), la precarga va
 	// por invocacion en el body: /skill:tdd antes de implementar y
-	// /skill:sdd-run cuando el task es una spec.
+	// /skill:chiche-run cuando el task es una spec.
 	assert.match(
 		body,
 		/`\/skill:tdd`[\s\S]{0,200}antes de (implementar|tocar)|antes de (implementar|tocar)[\s\S]{0,200}`\/skill:tdd`/i,
 	);
-	assert.match(body, /`\/skill:sdd-run`[\s\S]{0,200}spec|spec[\s\S]{0,200}`\/skill:sdd-run`/i);
+	assert.match(body, /`\/skill:chiche-run`[\s\S]{0,200}spec|spec[\s\S]{0,200}`\/skill:chiche-run`/i);
 	assert.doesNotMatch(markdown, /subagent_type|tool `Agent`|tool `Skill`|chichex-skills:/, "sin restos de la capa de Claude Code");
 
 	const finalReport = body.slice(body.search(/reporte final/i));
@@ -1050,30 +1050,30 @@ test("install.sh poda los skills administrados retirados y respeta los no admini
 // Issue #82: run con subagente — modelo y effort elegibles con recomendado
 // =============================================================================
 
-// Doctrina de claude/sdd-run/SKILL.md (CA-1 a CA-7 de la spec #82) y del
-// parrafo Claude de claude/sdd-spec/SKILL.md (CA-8). Vive FUERA de los bloques
-// compartidos entre harnesses (sdd-run-flow, sdd-run-stack,
-// sdd-run-dirty-checkout, sdd-spec-flow) y fuera de la Fase 2, que CA-12 de
+// Doctrina de claude/chiche-run/SKILL.md (CA-1 a CA-7 de la spec #82) y del
+// parrafo Claude de claude/chiche-spec/SKILL.md (CA-8). Vive FUERA de los bloques
+// compartidos entre harnesses (chiche-run-flow, chiche-run-stack,
+// chiche-run-dirty-checkout, chiche-spec-flow) y fuera de la Fase 2, que CA-12 de
 // este gate y harness-gate ya acotan. Cada lista se evalua sobre la porcion del
 // SKILL.md que le corresponde (ver sliceSddRunSkill); un patron ausente se
 // reporta como `<archivo>: falta <patron> en <seccion>`.
 
-const SDD_RUN_SKILL = "claude/sdd-run/SKILL.md";
-const SDD_SPEC_SKILL = "claude/sdd-spec/SKILL.md";
+const SDD_RUN_SKILL = "claude/chiche-run/SKILL.md";
+const SDD_SPEC_SKILL = "claude/chiche-spec/SKILL.md";
 
 const SDD_RUN_SUBAGENT_SYNTAX =
-	"/sdd-run [.sdd/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>] [--subagent] [--model M] [--effort E]";
+	"/chiche-run [.sdd/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>] [--subagent] [--model M] [--effort E]";
 const SDD_RUN_SUBAGENT_HEADING = "## Run con subagente (solo con --subagent, --model o --effort)";
-const SDD_RUN_SHARED_BLOCKS = ["sdd-run-flow", "sdd-run-stack", "sdd-run-design", "sdd-run-dirty-checkout"];
+const SDD_RUN_SHARED_BLOCKS = ["chiche-run-flow", "chiche-run-stack", "chiche-run-design", "chiche-run-dirty-checkout"];
 
 function escapeRegExp(text: string): string {
 	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// CA-1: flags en ## Argumentos (antes del bloque sdd-run-flow).
+// CA-1: flags en ## Argumentos (antes del bloque chiche-run-flow).
 const SUBAGENT_ARGUMENTS_DOCTRINE: RegExp[] = [
 	new RegExp(`^${escapeRegExp(SDD_RUN_SUBAGENT_SYNTAX)}$`, "m"),
-	/`--subagent`[^\n]*delega el run completo[^\n]*`implementer`[^\n]*background[^\n]*`\/sdd-run <target> --assume`/,
+	/`--subagent`[^\n]*delega el run completo[^\n]*`implementer`[^\n]*background[^\n]*`\/chiche-run <target> --assume`/,
 	/`--model M`[^\n]*`sonnet`[^\n]*`opus`[^\n]*`fable`[^\n]*`haiku`/,
 	/`--effort E`[^\n]*`low`[^\n]*`medium`[^\n]*`high`[^\n]*`xhigh`[^\n]*`max`/,
 	/sin `--subagent` implican `--subagent`/,
@@ -1083,11 +1083,11 @@ const SUBAGENT_ARGUMENTS_DOCTRINE: RegExp[] = [
 
 // CA-1: atajo del lanzador de la Fase 0.
 const SUBAGENT_LAUNCHER_SHORTCUT =
-	/Atajo: \/sdd-run <spec\|#NN> \[--assume\] \[--no-pr\] \[--subagent\] \[--model M\] \[--effort E\] saltea este menu\./;
+	/Atajo: \/chiche-run <spec\|#NN> \[--assume\] \[--no-pr\] \[--subagent\] \[--model M\] \[--effort E\] saltea este menu\./;
 
 // Review #83 (h3): la Fase 0 dispara sin target; los flags sin target pasan por
 // el lanzador (antes decia «Si trajo spec, issue o flags, saltear», que
-// contradecia a «/sdd-run --subagent sin target pasa por la Fase 0»).
+// contradecia a «/chiche-run --subagent sin target pasa por la Fase 0»).
 const SUBAGENT_LAUNCHER_PHRASE =
 	/Dispara cuando no hay target\. Si trajo spec o issue, saltear; flags sin target \(`--subagent`, `--model`, `--effort`, `--assume`…\) pasan por el lanzador igual para elegir la spec/;
 
@@ -1104,9 +1104,9 @@ const SUBAGENT_LAUNCHER_DOCTRINE: RegExp[] = [
 	/ni crea worktree/,
 	/no ofrece la Fase 6/,
 	/`--no-pr`[^\n]*`--base`[^\n]*propagan/,
-	/`\/sdd-init --assume`/,
-	/ofrecer `\/sdd-spec <target>`/,
-	/`\/sdd-spec <target> --assume`/,
+	/`\/chiche-init --assume`/,
+	/ofrecer `\/chiche-spec <target>`/,
+	/`\/chiche-spec <target> --assume`/,
 	/gh extension install github\/gh-stack/,
 ];
 
@@ -1152,7 +1152,7 @@ const SUBAGENT_LAUNCH_DOCTRINE: RegExp[] = [
 	/subagent_type: "implementer"/,
 	/run_in_background: true/,
 	/pide explícitamente pasar `effort`/,
-	/`\/sdd-run <target> --assume`/,
+	/`\/chiche-run <target> --assume`/,
 	/subagente: <modelo> · <effort>/,
 	/subagente: modelo de la sesión · <effort>/,
 	/`general-purpose`[^\n]*anunciarlo/,
@@ -1172,18 +1172,18 @@ const SUBAGENT_TRACE_DOCTRINE: RegExp[] = [
 
 // CA-7: ownership coherente con la sesion lanzadora.
 const SUBAGENT_OWNERSHIP_DOCTRINE: RegExp[] = [
-	/`implementer` lanzado por `--subagent` o por `sdd-run con subagente`/,
+	/`implementer` lanzado por `--subagent` o por `chiche-run con subagente`/,
 	/NO delegar "completar toda la spec"/,
 	/La sesión que lanza con `--subagent` no es el agente que corre/,
 ];
 
-// CA-8: el parrafo Claude de sdd-spec (fuera de sdd-spec-flow) reusa la
+// CA-8: el parrafo Claude de chiche-spec (fuera de chiche-spec-flow) reusa la
 // doctrina y conserva los literales que harness-gate ya exige.
 const SDD_SPEC_SUBAGENT_DOCTRINE: RegExp[] = [
 	// Review #83 (h1): la opcion dice como se llega a la seccion: cargando
-	// sdd-run con --subagent en esta sesion (sin el flag correria inline).
-	/carga el skill `sdd-run` sobre el target con `--subagent` \(`\/sdd-run <target> --subagent`\)/,
-	/sigue la sección «Run con subagente» de `sdd-run`/,
+	// chiche-run con --subagent en esta sesion (sin el flag correria inline).
+	/carga el skill `chiche-run` sobre el target con `--subagent` \(`\/chiche-run <target> --subagent`\)/,
+	/sigue la sección «Run con subagente» de `chiche-run`/,
 	/dos preguntas/,
 	/subagent_type: "implementer"/,
 	/run_in_background/,
@@ -1210,7 +1210,7 @@ export interface SddRunSubagentSlices {
 
 export function sliceSddRunSkill(markdown: string): SddRunSubagentSlices {
 	return {
-		argumentos: sliceBetween(markdown, /^## Argumentos$/m, /\n(?:## |<!-- sdd-run-flow:start -->)/),
+		argumentos: sliceBetween(markdown, /^## Argumentos$/m, /\n(?:## |<!-- chiche-run-flow:start -->)/),
 		fase0: sliceBetween(markdown, /^## Fase 0 /m, /\n## /),
 		section: sliceBetween(markdown, /^## Run con subagente/m, /\n## /),
 		ownership: sliceBetween(markdown, /^### Ownership y tareas$/m, /\n##/),
@@ -1222,7 +1222,7 @@ export function missingPatterns(path: string, text: string | null, patterns: Reg
 	return patterns.filter((pattern) => !pattern.test(text)).map((pattern) => `${path}: falta ${pattern} en ${where}`);
 }
 
-// CA-2: la seccion vive entre `<!-- sdd-run-stack:end -->` y `## Fase 0`, fuera
+// CA-2: la seccion vive entre `<!-- chiche-run-stack:end -->` y `## Fase 0`, fuera
 // de todo bloque compartido y sin contener markers de bloque.
 export function checkSubagentSectionPlacement(path: string, markdown: string): string[] {
 	const heading = markdown.search(/^## Run con subagente/m);
@@ -1233,9 +1233,9 @@ export function checkSubagentSectionPlacement(path: string, markdown: string): s
 	}
 	const fase0 = markdown.search(/^## Fase 0 /m);
 	if (fase0 === -1 || heading > fase0) problems.push(`${path}: ## Run con subagente debe ir antes de ## Fase 0`);
-	const stackEnd = markdown.indexOf("<!-- sdd-run-stack:end -->");
+	const stackEnd = markdown.indexOf("<!-- chiche-run-stack:end -->");
 	if (stackEnd === -1 || heading < stackEnd) {
-		problems.push(`${path}: ## Run con subagente debe ir después de ## Entrega por capas (marker sdd-run-stack:end)`);
+		problems.push(`${path}: ## Run con subagente debe ir después de ## Entrega por capas (marker chiche-run-stack:end)`);
 	}
 	for (const block of SDD_RUN_SHARED_BLOCKS) {
 		const start = markdown.indexOf(`<!-- ${block}:start -->`);
@@ -1244,7 +1244,7 @@ export function checkSubagentSectionPlacement(path: string, markdown: string): s
 			problems.push(`${path}: ## Run con subagente está dentro del bloque compartido ${block}`);
 		}
 	}
-	if (/<!-- sdd-run-/.test(sliceSddRunSkill(markdown).section ?? "")) {
+	if (/<!-- chiche-run-/.test(sliceSddRunSkill(markdown).section ?? "")) {
 		problems.push(`${path}: ## Run con subagente contiene un marker de bloque compartido`);
 	}
 	return problems;
@@ -1297,8 +1297,8 @@ export function syntheticSddRunSkill({
 		"",
 		"La sesión que recibe `--subagent` es **lanzadora, no corredora**: resuelve el target (leyendo el body con `gh issue view` cuando es issue), imprime la traza con el recomendado, pregunta lo que falte, imprime la traza con la elección final y lanza el subagente; no ejecuta ninguna fase del run más allá de las precondiciones de la Fase 1 (pasos 1 a 3) y el preflight de stack, ni crea worktree ni branch, y no ofrece la Fase 6. `--no-pr` y `--base` se propagan tal cual al prompt del subagente.",
 		"",
-		"- Contrato: si falta, interactivo → ofrecer `/sdd-init`; `--assume` → correr `/sdd-init --assume`.",
-		"- Spec: si el target no resuelve a una spec SDD, interactivo → frenar y ofrecer `/sdd-spec <target>`; `--assume` → encadenar `/sdd-spec <target> --assume`.",
+		"- Contrato: si falta, interactivo → ofrecer `/chiche-init`; `--assume` → correr `/chiche-init --assume`.",
+		"- Spec: si el target no resuelve a una spec SDD, interactivo → frenar y ofrecer `/chiche-spec <target>`; `--assume` → encadenar `/chiche-spec <target> --assume`.",
 		"- Stack: con 2 o más capas, preflight de stack; interactivo → ofrecer `gh extension install github/gh-stack`; `--assume` → frenar con el comando exacto.",
 		"",
 		"- **Conteo de CAs**: ids únicos `CA-N` en los headings de `## Comportamiento esperado`; si da 0, las filas `| CA-N |` de `## Plan de verificacion`; si ambos dan 0, el recomendado es `opus` con el aviso «no pude contar CAs».",
@@ -1311,7 +1311,7 @@ export function syntheticSddRunSkill({
 		"- Con `--assume` nunca se pregunta.",
 		"- `Modelo de la sesión` significa no pasar `model` a la tool `Agent` (hereda el de la sesión o `CLAUDE_CODE_SUBAGENT_MODEL`); `effort` se pasa siempre. Antes de preguntar, chequear `printenv CLAUDE_CODE_SUBAGENT_MODEL`: si está definida, la opción, la traza y la línea `subagente:` dicen `modelo heredado (CLAUDE_CODE_SUBAGENT_MODEL=<valor>)` en vez de `modelo de la sesión`.",
 		'- Lanzar la tool `Agent` con `subagent_type: "implementer"`, `run_in_background: true`, `model` y `effort`. Este skill pide explícitamente pasar `effort`.',
-		"- El prompt pide `/sdd-run <target> --assume` y la línea `subagente: <modelo> · <effort>` (con `Modelo de la sesión`, `subagente: modelo de la sesión · <effort>`).",
+		"- El prompt pide `/chiche-run <target> --assume` y la línea `subagente: <modelo> · <effort>` (con `Modelo de la sesión`, `subagente: modelo de la sesión · <effort>`).",
 		"- Si el tipo `implementer` no está disponible, usar `general-purpose` y anunciarlo. Si la tool no acepta `effort`, anunciarlo y lanzar sin él.",
 		"- Traza: `Subagente implementer: modelo <m> (<escalón>: <N> CAs · <k> capas) · effort <e> · verificabilidad: ALTA <a> · MEDIA/BAJA <b> · NULA <c>`.",
 		"- Con el fallback la traza nombra el tipo real: `Subagente general-purpose: modelo <m> …`.",
@@ -1320,15 +1320,15 @@ export function syntheticSddRunSkill({
 		"",
 	].join("\n");
 	const fase0 = [
-		"## Fase 0 — Lanzador (solo con `/sdd-run` pelado)",
+		"## Fase 0 — Lanzador (solo con `/chiche-run` pelado)",
 		"",
 		"```text",
-		"Atajo: /sdd-run <spec|#NN> [--assume] [--no-pr] [--subagent] [--model M] [--effort E] saltea este menu.",
+		"Atajo: /chiche-run <spec|#NN> [--assume] [--no-pr] [--subagent] [--model M] [--effort E] saltea este menu.",
 		"```",
 		"",
 	].join("\n");
 	return [
-		"---\nname: sdd-run\ndescription: sintético\n---",
+		"---\nname: chiche-run\ndescription: sintético\n---",
 		"",
 		"## Argumentos",
 		"",
@@ -1337,26 +1337,26 @@ export function syntheticSddRunSkill({
 		"```",
 		"",
 		"- `--assume` — cero preguntas.",
-		"- `--subagent` — delega el run completo a un subagente `implementer` en background que corre `/sdd-run <target> --assume`; la sesión queda libre.",
+		"- `--subagent` — delega el run completo a un subagente `implementer` en background que corre `/chiche-run <target> --assume`; la sesión queda libre.",
 		"- `--model M` — modelo del subagente; `M` es un alias de la tool `Agent`: `sonnet`, `opus`, `fable` o `haiku`.",
 		"- `--effort E` — effort del subagente; `E` es `low`, `medium`, `high`, `xhigh` o `max`.",
 		"- `--model` o `--effort` sin `--subagent` implican `--subagent`.",
 		"- `--model`/`--effort` con un valor fuera de su lista o sin valor: interactivo → se trata como ausente, se avisa y se pregunta; `--assume` → abortar con diagnóstico antes de preguntar y antes de lanzar.",
 		"",
-		"<!-- sdd-run-flow:start -->",
+		"<!-- chiche-run-flow:start -->",
 		"### Flujo sin fricción",
-		"<!-- sdd-run-flow:end -->",
+		"<!-- chiche-run-flow:end -->",
 		"",
-		"<!-- sdd-run-stack:start -->",
+		"<!-- chiche-run-stack:start -->",
 		"## Entrega por capas",
-		"<!-- sdd-run-stack:end -->",
+		"<!-- chiche-run-stack:end -->",
 		"",
 		sectionAfterFase0 ? fase0 + section : section + fase0,
 		"## Fase 3 — Implementar",
 		"",
 		"### Ownership y tareas",
 		"",
-		'- El agente que corre el run (la sesión principal, o el `implementer` lanzado por `--subagent` o por `sdd-run con subagente` de `sdd-spec`) conserva ownership. NO delegar "completar toda la spec".',
+		'- El agente que corre el run (la sesión principal, o el `implementer` lanzado por `--subagent` o por `chiche-run con subagente` de `chiche-spec`) conserva ownership. NO delegar "completar toda la spec".',
 		"- La sesión que lanza con `--subagent` no es el agente que corre.",
 		"",
 		"### Timeouts",
@@ -1364,7 +1364,7 @@ export function syntheticSddRunSkill({
 	].join("\n");
 }
 
-test("issue #82 CA-1: sdd-run declara --subagent, --model M y --effort E en ## Argumentos y en el atajo de la Fase 0", async () => {
+test("issue #82 CA-1: chiche-run declara --subagent, --model M y --effort E en ## Argumentos y en el atajo de la Fase 0", async () => {
 	const markdown = await readRepoFile(SDD_RUN_SKILL);
 	const slices = sliceSddRunSkill(markdown);
 	const problems = [
@@ -1432,41 +1432,41 @@ test("issue #82 CA-7: Ownership y tareas nombra al implementer lanzado por --sub
 // Review #83 (h9): la funcion compuesta que validan los autotests corre tambien
 // sobre el SKILL.md real, asi una lista sumada a checkSddRunSubagentDoctrine y
 // no a un test por CA sigue gateando el archivo real.
-test("issue #82 CA-10: checkSddRunSubagentDoctrine corre sobre el claude/sdd-run/SKILL.md real sin hallazgos", async () => {
+test("issue #82 CA-10: checkSddRunSubagentDoctrine corre sobre el claude/chiche-run/SKILL.md real sin hallazgos", async () => {
 	const markdown = await readRepoFile(SDD_RUN_SKILL);
 	const problems = checkSddRunSubagentDoctrine(SDD_RUN_SKILL, markdown);
 	assert.deepEqual(problems, [], problems.join("\n"));
 });
 
-test("issue #82 CA-8: el párrafo Claude de sdd-spec reusa la sección Run con subagente de sdd-run fuera de sdd-spec-flow", async () => {
+test("issue #82 CA-8: el párrafo Claude de chiche-spec reusa la sección Run con subagente de chiche-run fuera de chiche-spec-flow", async () => {
 	const markdown = await readRepoFile(SDD_SPEC_SKILL);
-	const flowEnd = markdown.indexOf("<!-- sdd-spec-flow:end -->");
-	const gateStart = markdown.indexOf("<!-- sdd-spec-publication-gate:start -->");
-	assert.ok(flowEnd !== -1 && gateStart !== -1 && flowEnd < gateStart, `${SDD_SPEC_SKILL}: markers sdd-spec-flow:end y sdd-spec-publication-gate:start`);
+	const flowEnd = markdown.indexOf("<!-- chiche-spec-flow:end -->");
+	const gateStart = markdown.indexOf("<!-- chiche-spec-publication-gate:start -->");
+	assert.ok(flowEnd !== -1 && gateStart !== -1 && flowEnd < gateStart, `${SDD_SPEC_SKILL}: markers chiche-spec-flow:end y chiche-spec-publication-gate:start`);
 	const claudeParagraph = markdown.slice(flowEnd, gateStart);
 	const problems = missingPatterns(SDD_SPEC_SKILL, claudeParagraph, SDD_SPEC_SUBAGENT_DOCTRINE, "párrafo Claude del menú final");
 	assert.deepEqual(problems, [], problems.join("\n"));
-	const flow = markdown.match(/<!-- sdd-spec-flow:start -->([\s\S]*?)<!-- sdd-spec-flow:end -->/)?.[1] ?? "";
-	assert.doesNotMatch(flow, /Run con subagente|`effort`|subagent_type/, `${SDD_SPEC_SKILL}: el bloque compartido sdd-spec-flow no debe ganar la doctrina Claude`);
+	const flow = markdown.match(/<!-- chiche-spec-flow:start -->([\s\S]*?)<!-- chiche-spec-flow:end -->/)?.[1] ?? "";
+	assert.doesNotMatch(flow, /Run con subagente|`effort`|subagent_type/, `${SDD_SPEC_SKILL}: el bloque compartido chiche-spec-flow no debe ganar la doctrina Claude`);
 });
 
 test("issue #82 CA-11: READMEs y contrato documentan --subagent, modelo/effort con recomendado, y el contrato lleva el conteo real del gate", async () => {
 	const readmeEs = await readRepoFile("README.md");
 	const readmeEn = await readRepoFile("README.en.md");
-	const rowEs = readmeEs.match(/^\| \*\*`sdd-run`\*\* \|.*$/m)?.[0] ?? "";
-	const rowEn = readmeEn.match(/^\| \*\*`sdd-run`\*\* \|.*$/m)?.[0] ?? "";
-	assert.ok(rowEs, "README.md: fila sdd-run");
-	assert.ok(rowEn, "README.en.md: fila sdd-run");
+	const rowEs = readmeEs.match(/^\| \*\*`chiche-run`\*\* \|.*$/m)?.[0] ?? "";
+	const rowEn = readmeEn.match(/^\| \*\*`chiche-run`\*\* \|.*$/m)?.[0] ?? "";
+	assert.ok(rowEs, "README.md: fila chiche-run");
+	assert.ok(rowEn, "README.en.md: fila chiche-run");
 	for (const pattern of [/--subagent/, /modelo[^|]*effort/i, /recomendado/i, /`--model`\/`--effort`/, /`xhigh`/]) {
-		assert.match(rowEs, pattern, `README.md fila sdd-run: falta ${pattern}`);
+		assert.match(rowEs, pattern, `README.md fila chiche-run: falta ${pattern}`);
 	}
 	for (const pattern of [/--subagent/, /model[^|]*effort/i, /recommended/i, /`--model`\/`--effort`/, /`xhigh`/]) {
-		assert.match(rowEn, pattern, `README.en.md fila sdd-run: falta ${pattern}`);
+		assert.match(rowEn, pattern, `README.en.md fila chiche-run: falta ${pattern}`);
 	}
-	const specRowEs = readmeEs.match(/^\| \*\*`sdd-spec`\*\* \|.*$/m)?.[0] ?? "";
-	const specRowEn = readmeEn.match(/^\| \*\*`sdd-spec`\*\* \|.*$/m)?.[0] ?? "";
-	assert.match(specRowEs, /`sdd-run con subagente`[^|]*misma elección/i, "README.md fila sdd-spec: el menú de Claude usa la misma elección de modelo y effort");
-	assert.match(specRowEn, /`sdd-run con subagente`[^|]*same[^|]*(choice|selection)/i, "README.en.md fila sdd-spec: the Claude menu uses the same model/effort choice");
+	const specRowEs = readmeEs.match(/^\| \*\*`chiche-spec`\*\* \|.*$/m)?.[0] ?? "";
+	const specRowEn = readmeEn.match(/^\| \*\*`chiche-spec`\*\* \|.*$/m)?.[0] ?? "";
+	assert.match(specRowEs, /`chiche-run con subagente`[^|]*misma elección/i, "README.md fila chiche-spec: el menú de Claude usa la misma elección de modelo y effort");
+	assert.match(specRowEn, /`chiche-run con subagente`[^|]*same[^|]*(choice|selection)/i, "README.en.md fila chiche-spec: the Claude menu uses the same model/effort choice");
 
 	const contract = await readRepoFile(".sdd/project.md");
 	const gateRow = contract.match(/^\| gate anti-drift de agentes de plugin \|.*$/m)?.[0] ?? "";

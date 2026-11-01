@@ -83,7 +83,7 @@ jobs:
       # --trust-plugin: sin TTY no hay prompt de confianza; es nuestro propio repo.
       # --allow-tools Write: Write es un tool gateado y el caso de adherencia
       # escribe la spec. --scaffold: el caso de adherencia copia su fixture al
-      # workspace con evals/adherence-sdd-spec/scaffold.sh. --no-publish: el
+      # workspace con evals/adherence-chiche-spec/scaffold.sh. --no-publish: el
       # reporte HTML queda en el artifact.
       - name: Correr la suite
         env:

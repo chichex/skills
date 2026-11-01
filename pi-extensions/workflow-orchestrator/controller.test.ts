@@ -104,7 +104,7 @@ test("workflow orchestrator exposes a controller without globally activating the
 		["launch_sdd_run", "launch_grill"],
 		"only explicitly confirmed direct launch tools are global; terminal triage remains lazy",
 	);
-	assert.deepEqual(commands, ["__sdd-dispatch", "sdd-run", "grill"]);
+	assert.deepEqual(commands, ["__sdd-dispatch", "chiche-run", "grill"]);
 	assert.ok(events.includes("agent_settled"));
 	assert.ok(events.includes("before_agent_start"));
 	assert.ok(events.includes("resources_discover"));
@@ -346,7 +346,7 @@ test("terminal resolution is one-shot and hands an opaque same-session receipt t
 	assert.equal(starts.length, 1);
 	assert.deepEqual(starts[0], {
 		resolution: workflowResolution(),
-		skill: { name: "sdd-spec", args: "#14" },
+		skill: { name: "chiche-spec", args: "#14" },
 	});
 
 	await internal.handler("opaque-receipt", commandContext);
@@ -578,7 +578,7 @@ test("a consumer extension requests triage through the shared event bus without 
 	assert.match(sent[0]!, /#14$/);
 });
 
-test("/sdd-run validates its target and calls the shared direct launcher from a fresh command context", async () => {
+test("/chiche-run validates its target and calls the shared direct launcher from a fresh command context", async () => {
 	const commands = new Map<string, { handler: (args: string, context: unknown) => Promise<void> }>();
 	const resolved: Array<{ target: string; cwd: string }> = [];
 	const starts: unknown[] = [];
@@ -613,7 +613,7 @@ test("/sdd-run validates its target and calls the shared direct launcher from a 
 		ui: { notify(message: string) { notifications.push(message); } },
 	};
 
-	await commands.get("sdd-run")!.handler("  #14  ", context);
+	await commands.get("chiche-run")!.handler("  #14  ", context);
 	assert.equal(waited, 1);
 	assert.deepEqual(resolved, [{ target: "#14", cwd: "/workspace/skills" }]);
 	assert.deepEqual(starts, [directRunRequest()]);

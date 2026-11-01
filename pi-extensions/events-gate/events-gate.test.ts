@@ -1,13 +1,13 @@
 // Gate anti-drift del log de eventos SDD (issue #93, CA-8 a CA-12).
 //
-// grill, sdd-spec, sdd-run y sdd-land registran sus transiciones en
+// grill, chiche-spec, chiche-run y chiche-land registran sus transiciones en
 // <git-common-dir>/chiche/events.jsonl con el formato events-v1
 // (docs/sdd-events-v1.md); los lectores suman el <git-common-dir>/sdd/events.jsonl
 // previo (issue #103, CA-4). Este gate lee los 16 SKILL.md reales: exige el
-// bloque `sdd-events` idéntico byte a byte, el literal del harness fuera del
+// bloque `chiche-events` idéntico byte a byte, el literal del harness fuera del
 // bloque y cada evento en su punto de transición. Además corre con bash y con
 // sh el comando canónico del bloque en repos git temporales y valida la línea
-// con parseSddEventLine. Es solo-tests (sin index.ts), como sdd-land-gate y
+// con parseSddEventLine. Es solo-tests (sin index.ts), como chiche-land-gate y
 // design-gate. Que un agente siga la doctrina en una sesión real es prueba
 // humana (CA-13).
 
@@ -21,9 +21,9 @@ import { test } from "node:test";
 
 import type { Harness } from "../harness-gate/interaction.ts";
 import { HARNESSES, escapeRegExp, fencedBlocks, firstDifference } from "../harness-gate/interaction.ts";
-import { parseSddEventLine, readSddEvents, serializeSddEvent, type SddEvent } from "../sdd-artifacts/sdd-events.ts";
+import { parseSddEventLine, readSddEvents, serializeSddEvent, type SddEvent } from "../chiche-artifacts/sdd-events.ts";
 
-const SKILLS = ["grill", "sdd-spec", "sdd-run", "sdd-land"] as const;
+const SKILLS = ["grill", "chiche-spec", "chiche-run", "chiche-land"] as const;
 type Skill = (typeof SKILLS)[number];
 
 const HARNESS_LABELS: Record<Harness, string> = {
@@ -103,9 +103,9 @@ async function eventBlocks(): Promise<{ blocks: Map<string, string>; problems: s
 	for (const skill of SKILLS) {
 		for (const harness of HARNESSES) {
 			const path = `${harness}/${skill}/SKILL.md`;
-			const block = delimitedBlock(await skillFile(harness, skill), "sdd-events");
+			const block = delimitedBlock(await skillFile(harness, skill), "chiche-events");
 			if (block === null) {
-				problems.push(`${path}: falta el bloque <!-- sdd-events:start/end -->`);
+				problems.push(`${path}: falta el bloque <!-- chiche-events:start/end -->`);
 				continue;
 			}
 			blocks.set(path, block);
@@ -115,8 +115,8 @@ async function eventBlocks(): Promise<{ blocks: Map<string, string>; problems: s
 }
 
 async function referenceBlock(): Promise<string> {
-	const block = delimitedBlock(await skillFile("claude", "grill"), "sdd-events");
-	assert.ok(block, "claude/grill trae el bloque sdd-events");
+	const block = delimitedBlock(await skillFile("claude", "grill"), "chiche-events");
+	assert.ok(block, "claude/grill trae el bloque chiche-events");
 	return block;
 }
 
@@ -133,7 +133,7 @@ function missing(text: string, patterns: RegExp[]): string[] {
 // ---------------------------------------------------------------------------
 // CA-8: bloque compartido y literal del harness
 
-test("CA-8: el bloque sdd-events está en los 20 SKILL.md y es idéntico byte a byte", async () => {
+test("CA-8: el bloque chiche-events está en los 20 SKILL.md y es idéntico byte a byte", async () => {
 	const { blocks, problems } = await eventBlocks();
 	const reference = blocks.get("claude/grill/SKILL.md") ?? "";
 	for (const [path, block] of blocks) {
@@ -179,7 +179,7 @@ test("CA-8: el literal del harness va fuera del bloque, en una sola línea por a
 	for (const skill of SKILLS) {
 		for (const harness of HARNESSES) {
 			const path = `${harness}/${skill}/SKILL.md`;
-			const outside = withoutBlock(await skillFile(harness, skill), "sdd-events");
+			const outside = withoutBlock(await skillFile(harness, skill), "chiche-events");
 			const lines = [...outside.matchAll(linePattern)];
 			if (lines.length !== 1) {
 				problems.push(`${path}: ${lines.length} líneas de harness (se espera 1)`);
@@ -244,10 +244,10 @@ test("review #105 (F4): ningún log de eventos llama ruta lógica a la identidad
 	assert.deepEqual(problems, []);
 });
 
-test("CA-9: sdd-spec registra spec.published con receipt, spec.approved en el menú y spec.superseded por predecesora", async () => {
+test("CA-9: chiche-spec registra spec.published con receipt, spec.approved en el menú y spec.superseded por predecesora", async () => {
 	const problems: string[] = [];
 	for (const harness of ["claude", "codex", "opencode", "antigravity"] as const) {
-		const events = section(await skillFile(harness, "sdd-spec"), /^Log de eventos$/);
+		const events = section(await skillFile(harness, "chiche-spec"), /^Log de eventos$/);
 		problems.push(...missing(events, [
 			/receipt de cada publicación/,
 			/`spec\.published` cuando la spec queda `draft`/,
@@ -257,21 +257,21 @@ test("CA-9: sdd-spec registra spec.published con receipt, spec.approved en el me
 			/si no su identidad events-v1 `\.sdd\/specs\/<slug>\.md`/,
 			/`issue` y `grill` son los del marker de cada documento publicado, sin codificar \(una predecesora lleva los suyos, no los de la sucesora\)/,
 			/Una publicación sin receipt no registra nada/,
-		]).map((problem) => `${harness}/sdd-spec: ${problem}`));
+		]).map((problem) => `${harness}/chiche-spec: ${problem}`));
 	}
-	const pi = section(await skillFile("pi", "sdd-spec"), /^Log de eventos$/);
+	const pi = section(await skillFile("pi", "chiche-spec"), /^Log de eventos$/);
 	problems.push(...missing(pi, [
 		/`spec\.published`, `spec\.moved`, `spec\.approved` y `spec\.superseded` los registra `persist_sdd_spec`/,
 		/`spec\.moved` al `Llevar a issue` y `spec\.approved` solo en la transición/,
 		/este skill no corre el comando, ni lo repone a mano si la tool avisa/,
-	]).map((problem) => `pi/sdd-spec: ${problem}`));
+	]).map((problem) => `pi/chiche-spec: ${problem}`));
 	assert.deepEqual(problems, []);
 });
 
-test("CA-9: sdd-run registra run.started, run.pr-opened, run.committed y run.failed en sus fases, y la Fase 6 no emite", async () => {
+test("CA-9: chiche-run registra run.started, run.pr-opened, run.committed y run.failed en sus fases, y la Fase 6 no emite", async () => {
 	const problems: string[] = [];
 	for (const harness of HARNESSES) {
-		const markdown = await skillFile(harness, "sdd-run");
+		const markdown = await skillFile(harness, "chiche-run");
 		const checks: Array<[string, string, RegExp]> = [
 			["Fase 1", section(markdown, /^Fase 1 — /), /worktree y el branch[^\n]*`gh stack init`[^\n]*`run\.started`/],
 			["Fase 5", section(markdown, /^Fase 5 — /), /`gh pr create`[^\n]*`gh stack submit`[^\n]*`run\.pr-opened`[^\n]*orden de capa/],
@@ -283,28 +283,28 @@ test("CA-9: sdd-run registra run.started, run.pr-opened, run.committed y run.fai
 			["Log de eventos", section(markdown, /^Log de eventos$/), /si no su identidad events-v1 `\.sdd\/specs\/<slug>\.md`/],
 		];
 		for (const [where, text, pattern] of checks) {
-			if (!pattern.test(text)) problems.push(`${harness}/sdd-run «${where}»: falta ${pattern}`);
+			if (!pattern.test(text)) problems.push(`${harness}/chiche-run «${where}»: falta ${pattern}`);
 		}
 	}
 	assert.deepEqual(problems, []);
 });
 
-test("CA-9: sdd-land registra un land.merged por cada PR cuyo merge verificó", async () => {
+test("CA-9: chiche-land registra un land.merged por cada PR cuyo merge verificó", async () => {
 	const problems: string[] = [];
 	for (const harness of HARNESSES) {
-		const markdown = await skillFile(harness, "sdd-land");
+		const markdown = await skillFile(harness, "chiche-land");
 		if (!/Por cada PR cuyo merge verificó, registrar un `land\.merged`/.test(section(markdown, /^Fase 3 — /))) {
-			problems.push(`${harness}/sdd-land: la Fase 3 no registra land.merged por PR verificado`);
+			problems.push(`${harness}/chiche-land: la Fase 3 no registra land.merged por PR verificado`);
 		}
 		const events = section(markdown, /^Log de eventos$/);
 		if (!/`--dry-run` y `--clean-only` no registran nada/.test(events)) {
-			problems.push(`${harness}/sdd-land: «Log de eventos» no excluye --dry-run y --clean-only`);
+			problems.push(`${harness}/chiche-land: «Log de eventos» no excluye --dry-run y --clean-only`);
 		}
 		if (!/en un stack, el issue del `Refs`\/`Closes` del stack para todos sus PRs: la línea `spec en #<PR>` nombra un PR, no un issue/.test(events)) {
-			problems.push(`${harness}/sdd-land: «Log de eventos» no fija el issue de land.merged en un stack`);
+			problems.push(`${harness}/chiche-land: «Log de eventos» no fija el issue de land.merged en un stack`);
 		}
 		if (!/Un PR que queda `en cola` al vencer `--wait` y que la cola mergea después no registra `land\.merged`/.test(events)) {
-			problems.push(`${harness}/sdd-land: «Log de eventos» no documenta la pérdida del merge queue`);
+			problems.push(`${harness}/chiche-land: «Log de eventos» no documenta la pérdida del merge queue`);
 		}
 	}
 	assert.deepEqual(problems, []);
@@ -315,15 +315,15 @@ test("CA-9 (review #95): en Codex, el append pide escalación desde el primer in
 	const escalation = /^En Codex, el sandbox por defecto deja `\.git\/` en solo lectura y el comando termina con exit 0 aunque el append falle: correrlo pidiendo escalación desde el primer intento; sin permiso, saltear el evento con el aviso, sin caer a `\.sdd\/`\.$/m;
 	for (const skill of SKILLS) {
 		for (const harness of HARNESSES) {
-			const outside = withoutBlock(await skillFile(harness, skill), "sdd-events");
+			const outside = withoutBlock(await skillFile(harness, skill), "chiche-events");
 			const has = escalation.test(outside);
 			if (harness === "codex" && !has) problems.push(`codex/${skill}/SKILL.md: falta la escalación del append`);
 			if (harness !== "codex" && has) problems.push(`${harness}/${skill}/SKILL.md: la escalación del append es solo de Codex`);
 		}
 	}
 	const doc = await readRepoFile("docs/harness-interaction-differences.md");
-	if (!/^En Codex, el sandbox por defecto[^\n]*El append del log de eventos \(`<git-common-dir>\/chiche\/events\.jsonl`\) de `grill`, `sdd-spec`, `sdd-run` y `sdd-land` también pide escalación en Codex, desde el primer intento[^\n]*sin permiso, el evento se saltea con el aviso y nunca cae a `\.sdd\/`/m.test(doc)) {
-		problems.push("docs/harness-interaction-differences.md: falta el append del log de eventos (con sdd-land) en la diferencia de Codex");
+	if (!/^En Codex, el sandbox por defecto[^\n]*El append del log de eventos \(`<git-common-dir>\/chiche\/events\.jsonl`\) de `grill`, `chiche-spec`, `chiche-run` y `chiche-land` también pide escalación en Codex, desde el primer intento[^\n]*sin permiso, el evento se saltea con el aviso y nunca cae a `\.sdd\/`/m.test(doc)) {
+		problems.push("docs/harness-interaction-differences.md: falta el append del log de eventos (con chiche-land) en la diferencia de Codex");
 	}
 	assert.deepEqual(problems, []);
 });

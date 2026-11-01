@@ -239,7 +239,7 @@ const CONSUMERS = [
 	"../workflow-orchestrator/dispatch.ts",
 	"../workflow-orchestrator/direct-launch.ts",
 	"../workflow-resolution/index.ts",
-	"../sdd-artifacts/sdd-events.ts",
+	"../chiche-artifacts/sdd-events.ts",
 	"../workflow-orchestrator/lifecycle.ts",
 ] as const;
 

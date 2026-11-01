@@ -70,15 +70,15 @@ const EXPECTED_PEERS = {
 };
 
 const EXPECTED_SKILLS = [
+	"./pi/chiche-init/SKILL.md",
+	"./pi/chiche-land/SKILL.md",
+	"./pi/chiche-run/SKILL.md",
+	"./pi/chiche-spec/SKILL.md",
 	"./pi/code-review/SKILL.md",
 	"./pi/coding-policies/SKILL.md",
 	"./pi/design-system/SKILL.md",
 	"./pi/grill/SKILL.md",
 	"./pi/issue-triage/SKILL.md",
-	"./pi/sdd-init/SKILL.md",
-	"./pi/sdd-land/SKILL.md",
-	"./pi/sdd-run/SKILL.md",
-	"./pi/sdd-spec/SKILL.md",
 	"./pi/tdd/SKILL.md",
 ];
 
@@ -95,12 +95,12 @@ const EXPECTED_THEMES = ["./pi-themes/claude-code.json"];
 
 const EXPECTED_EXTENSION_COMMANDS = [
 	"__sdd-dispatch",
+	"chiche-run",
 	"grill",
 	"grills",
 	"issues",
 	"llama",
 	"prs",
-	"sdd-run",
 	"specs",
 	"subagents",
 	"visual-footer",
@@ -404,7 +404,7 @@ function validatePiPackage(manifest: PiPackageManifest, inventory: ProductionInv
 			problems.push("manifest extensions: paths must be sorted and match the tree exactly");
 		}
 		for (const path of extensions) {
-			if (/\.test\.ts$|\/lib\/|\/sdd-artifacts\/|\/workflow-resolution\//.test(path)) {
+			if (/\.test\.ts$|\/lib\/|\/chiche-artifacts\/|\/workflow-resolution\//.test(path)) {
 				problems.push(`manifest extensions: helper or test entrypoint rejected ${path}`);
 			}
 			if (!inventory.factoryCandidates.includes(path)) {
@@ -685,11 +685,11 @@ test("inventory gate diagnoses omitted resources, false modules, public metadata
 	const withHelper = structuredClone(manifest);
 	(withHelper.pi as Record<string, unknown>).extensions = [
 		...inventory.factories,
-		"./pi-extensions/sdd-artifacts/index.ts",
+		"./pi-extensions/chiche-artifacts/index.ts",
 	];
 	assert.ok(
 		validatePiPackage(withHelper, inventory).some(
-			(problem) => problem.includes("helper or test entrypoint rejected ./pi-extensions/sdd-artifacts/index.ts"),
+			(problem) => problem.includes("helper or test entrypoint rejected ./pi-extensions/chiche-artifacts/index.ts"),
 		),
 	);
 

@@ -476,8 +476,8 @@ export function createWorkflowController(
 			}
 		},
 	});
-	pi.registerCommand("sdd-run", {
-		description: "Run an SDD spec target in a fresh linked session: /sdd-run <ruta|#NN|owner/repo#NN|GitHub issue URL>",
+	pi.registerCommand("chiche-run", {
+		description: "Run an SDD spec target in a fresh linked session: /chiche-run <ruta|#NN|owner/repo#NN|GitHub issue URL>",
 		async handler(args, context) {
 			await context.waitForIdle();
 			const result = await controller.launchSddRun(args, context);

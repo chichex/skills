@@ -24,8 +24,8 @@ import {
 	type ArtifactDirs,
 	type ArtifactKind,
 } from "../lib/chiche-paths.ts";
-import { parseSddArtifact } from "../sdd-artifacts/index.ts";
-import { recordSddEvents, type SddEventFields } from "../sdd-artifacts/sdd-events.ts";
+import { parseSddArtifact } from "../chiche-artifacts/index.ts";
+import { recordSddEvents, type SddEventFields } from "../chiche-artifacts/sdd-events.ts";
 import {
 	persistSpecPublication,
 	readPriorSpecPublication,
@@ -33,7 +33,7 @@ import {
 	specPublicationEvents,
 	type SpecPublicationDestination,
 	type SpecPublicationPorts,
-} from "../sdd-artifacts/spec-publication.ts";
+} from "../chiche-artifacts/spec-publication.ts";
 import { requestSddRun } from "../workflow-orchestrator/controller.ts";
 import {
 	continueWithMaterializedSkill,
@@ -167,7 +167,7 @@ const GrillSessionParams = Type.Object({
 	),
 	summary: Type.Optional(Type.String()),
 	handoffMarkdown: Type.Optional(Type.String({ description: "Required for finalize" })),
-	continueWithSpec: Type.Optional(Type.Boolean({ description: "After finalize, materialize sdd-spec --from-grill in this session" })),
+	continueWithSpec: Type.Optional(Type.Boolean({ description: "After finalize, materialize chiche-spec --from-grill in this session" })),
 });
 
 const SpecPublicationDestinationParams = Type.Object({
@@ -241,7 +241,7 @@ async function writeAtomic(path: string, content: string): Promise<void> {
 // `.chiche/grills/`.
 // El snapshot JSON global sigue siendo la fuente de verdad runtime; este
 // archivo es el artefacto SDD que consumen los otros harnesses y el handoff
-// materializado de sdd-spec --from-grill. Nunca rompe la accion que lo
+// materializado de chiche-spec --from-grill. Nunca rompe la accion que lo
 // invoca: ante un proyecto inexistente devuelve el error como texto.
 type RepoHandoffOutcome = { path: string; diagnostics: string[]; content: string } | { error: string };
 
@@ -470,7 +470,7 @@ async function ensureSafeSpecDestination(projectPath: string, dirs: ArtifactDirs
 }
 
 async function withTemporaryBody<T>(body: string, operation: (path: string) => Promise<T>): Promise<T> {
-	const directory = await mkdtemp(join(tmpdir(), "sdd-spec-publication-"));
+	const directory = await mkdtemp(join(tmpdir(), "chiche-spec-publication-"));
 	const path = join(directory, "body.md");
 	try {
 		await writeFile(path, body, "utf8");
@@ -1062,11 +1062,11 @@ async function performGrillAction(
 		const argument = `--from-grill ${JSON.stringify(sourceTarget)}`;
 		const continuation = await continueWithMaterializedSkill(
 			pi,
-			"sdd-spec",
+			"chiche-spec",
 			argument,
 			{ deliverAs: "followUp" },
 		);
-		if (!continuation.ok) throw new Error(`Could not materialize sdd-spec: ${continuation.message}`);
+		if (!continuation.ok) throw new Error(`Could not materialize chiche-spec: ${continuation.message}`);
 		return { action, sourceTarget, transition: continuation };
 	}
 
@@ -1328,7 +1328,7 @@ export default function grillTools(pi: ExtensionAPI) {
 		name: "persist_sdd_spec",
 		label: "Persist SDD spec",
 		description:
-			"Validate, persist, reread, and compare canonical sdd-spec lifecycle mutations. Returns a receipt only after every requested destination passes the parser-backed postcondition. Use only as directed by sdd-spec.",
+			"Validate, persist, reread, and compare canonical chiche-spec lifecycle mutations. Returns a receipt only after every requested destination passes the parser-backed postcondition. Use only as directed by chiche-spec.",
 		parameters: PersistSddSpecParams,
 		executionMode: "sequential",
 
@@ -1607,14 +1607,14 @@ export default function grillTools(pi: ExtensionAPI) {
 				const continuation = params.continueWithSpec
 					? await continueWithMaterializedSkill(
 						pi,
-						"sdd-spec",
+						"chiche-spec",
 						`--from-grill ${JSON.stringify(snapshot.id)}`,
 						{ deliverAs: "followUp" },
 					)
 					: undefined;
 				const continuationNote = continuation
 					? continuation.ok
-						? "\nNext stage: canonical sdd-spec queued in this session."
+						? "\nNext stage: canonical chiche-spec queued in this session."
 						: `\nNext stage could not be materialized: ${continuation.message}`
 					: "";
 				return {
@@ -1804,7 +1804,7 @@ export default function grillTools(pi: ExtensionAPI) {
 							: "Resumed grill session in this conversation.",
 						outcome.snapshot,
 					)
-					: `${inventoryInspectionMarkdown(selected)}\n\nCanonical sdd-spec queued in this session.`;
+					: `${inventoryInspectionMarkdown(selected)}\n\nCanonical chiche-spec queued in this session.`;
 				return {
 					content: [{ type: "text", text }],
 					details: {
