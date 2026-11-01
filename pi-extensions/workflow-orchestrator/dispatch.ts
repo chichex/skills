@@ -2,11 +2,11 @@ import { isAbsolute, relative, resolve } from "node:path";
 
 import { isGrillHandoffCandidatePath } from "../grill-tools/inventory.ts";
 import {
-	isSddArtifactPath,
-	resolveSddArtifactDirs,
-	trackedSddArtifactDirs,
-	type SddArtifactDirs,
-} from "../lib/sdd-paths.ts";
+	isArtifactPath,
+	resolveArtifactDirs,
+	trackedArtifactDirs,
+	type ArtifactDirs,
+} from "../lib/chiche-paths.ts";
 import type {
 	ArtifactRef,
 	WorkflowResolutionV1,
@@ -15,10 +15,10 @@ import type { StartFreshStageRequest } from "./lifecycle.ts";
 import { validateWorkflowResolution } from "./protocol.ts";
 import { isConfirmedCoherentStart } from "./route-contract.ts";
 
-/** Los dos lugares de borradores del repo de `resolution.cwd` (spec #84, CA-12). */
+/** Los cuatro lugares de borradores del repo de `resolution.cwd` (spec #84, CA-12; issue #103, CA-1). */
 export interface WorkflowDispatchDirs {
-	grills: SddArtifactDirs;
-	specs: SddArtifactDirs;
+	grills: ArtifactDirs;
+	specs: ArtifactDirs;
 }
 
 export type WorkflowDispatchResult =
@@ -77,9 +77,9 @@ function validatedGrill(
 	return canonicalArtifact(grill) ? grill : null;
 }
 
-function directHandoffPath(dirs: SddArtifactDirs, path: string): boolean {
+function directHandoffPath(dirs: ArtifactDirs, path: string): boolean {
 	if (!isAbsolute(path) || !isGrillHandoffCandidatePath(path)) return false;
-	return isSddArtifactPath(dirs, path);
+	return isArtifactPath(dirs, path);
 }
 
 function validatedFinalizedGrillSource(
@@ -129,9 +129,10 @@ function validatedSpec(
 	if (!spec || !canonicalArtifact(spec) || !spec.issue || !sameIssue(spec.issue, issue)) return null;
 	if (spec.location === "local") {
 		if (!isAbsolute(spec.path)) return null;
+		// Un borrador vive directamente bajo <git-common-dir>/chiche/specs o
+		// <git-common-dir>/sdd/specs; fuera de git esos lugares son los trackeados.
 		const inProject = pathInside(resolution.cwd, spec.path);
-		const draft = resolve(dirs.specs.local) !== resolve(dirs.specs.tracked) && isSddArtifactPath(dirs.specs, spec.path);
-		return inProject || draft ? spec : null;
+		return inProject || isArtifactPath(dirs.specs, spec.path) ? spec : null;
 	}
 	return spec.location === "issue" ? spec : null;
 }
@@ -161,8 +162,8 @@ export function resolveWorkflowDispatch(input: unknown, sddDirs?: WorkflowDispat
 		return failure("not-actionable", "Resolution is not a confirmed coherent start");
 	}
 	const dirs = sddDirs ?? {
-		grills: trackedSddArtifactDirs(resolution.cwd, "grills"),
-		specs: trackedSddArtifactDirs(resolution.cwd, "specs"),
+		grills: trackedArtifactDirs(resolution.cwd, "grills"),
+		specs: trackedArtifactDirs(resolution.cwd, "specs"),
 	};
 
 	const issue = effectiveIssue(resolution);
@@ -214,10 +215,10 @@ export function resolveWorkflowDispatch(input: unknown, sddDirs?: WorkflowDispat
 }
 
 /**
- * Igual que resolveWorkflowDispatch, pero resuelve con git los dos lugares de
- * borradores del repo de `cwd` (spec #84, CA-12): así una spec o un handoff en
- * <git-common-dir>/sdd/ se aceptan desde el checkout principal y desde un
- * worktree linkeado.
+ * Igual que resolveWorkflowDispatch, pero resuelve con git los cuatro lugares
+ * de borradores del repo de `cwd` (spec #84, CA-12; issue #103, CA-1): así una
+ * spec o un handoff en <git-common-dir>/chiche/ o <git-common-dir>/sdd/ se
+ * aceptan desde el checkout principal y desde un worktree linkeado.
  */
 export async function resolveWorkflowDispatchForCwd(input: unknown): Promise<WorkflowDispatchResult> {
 	const cwd = typeof input === "object" && input !== null && typeof (input as { cwd?: unknown }).cwd === "string"
@@ -225,8 +226,8 @@ export async function resolveWorkflowDispatchForCwd(input: unknown): Promise<Wor
 		: null;
 	if (cwd === null || !isAbsolute(cwd)) return resolveWorkflowDispatch(input);
 	const [grills, specs] = await Promise.all([
-		resolveSddArtifactDirs(cwd, "grills"),
-		resolveSddArtifactDirs(cwd, "specs"),
+		resolveArtifactDirs(cwd, "grills"),
+		resolveArtifactDirs(cwd, "specs"),
 	]);
 	return resolveWorkflowDispatch(input, { grills, specs });
 }

@@ -348,6 +348,14 @@ test("creates a non-SDD staging issue before publishing and rereading the identi
 	}, ports);
 
 	assert.equal(parseSddArtifact(staging).kind, "absent", "the creation body is not an SDD artifact");
+	assert.equal(
+		published,
+		initial.replace(
+			"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; ",
+			"<!-- Chiche-Tracking: version=2; type=spec; state=approved; issue=#88; ",
+		),
+		"linking the created issue rewrites the v1 marker as v2 in place (#103 CA-3)",
+	);
 	const parsedPublished = parseSddArtifact(published);
 	assert.equal(parsedPublished.kind, "metadata");
 	assert.equal(

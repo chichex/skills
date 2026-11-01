@@ -1,6 +1,6 @@
 // Escritura atómica de los artefactos de grill-tools: escribe un `.tmp` al lado
 // y lo renombra. Si la escritura o el rename fallan, borra el `.tmp` (spec #84,
-// CA-10) para no dejar residuos en `.sdd/` ni en `<git-common-dir>/sdd/`.
+// CA-10) para no dejar residuos en `.chiche/` ni en `<git-common-dir>/chiche/`.
 
 import { randomUUID } from "node:crypto";
 import { rename, rm, writeFile } from "node:fs/promises";

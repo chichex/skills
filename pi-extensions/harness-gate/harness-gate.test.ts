@@ -110,9 +110,10 @@ const SDD_SPEC_FLOW_DOCTRINE = [
 	/decisiones del handoff[\s\S]*confirmadas/i,
 	/mecanismo[\s\S]*propuesto[\s\S]*alternativas[\s\S]*sin preguntar/i,
 	/`--out`[\s\S]*fuerza/i,
-	/SDD-Tracking in:body/,
-	// Spec #84, CA-14: el destino local es el common-dir, fuera del working tree.
-	/`<git-common-dir>\/sdd\/specs\/<slug>\.md`/,
+	// Review de #105 (F7): Pi publica las issue-specs nuevas con `Chiche-Tracking`, así que se buscan las dos marcas.
+	/`gh issue list --state all --limit 50 --search "SDD-Tracking in:body"` o `gh issue list --state all --limit 50 --search "Chiche-Tracking in:body"` devuelve al menos uno/,
+	// Spec #84, CA-14 e issue #103, CA-5: el destino local es el common-dir de chiche, fuera del working tree.
+	/`<git-common-dir>\/chiche\/specs\/<slug>\.md`/,
 	/staging no-SDD/,
 	/`Llevar a issue`/,
 	/`Solicitar cambios`/,
@@ -886,96 +887,150 @@ test("autotest: la normalizacion reduce las tres sintaxis de invocacion al mismo
 	);
 });
 
-// Spec #84 (CA-13 a CA-16): los borradores de planificación viven en
-// <git-common-dir>/sdd/, fuera del working tree, y el árbol trackeado `.sdd/`
-// sigue siendo el segundo lugar de lectura. Cada skill lleva un bloque
-// delimitado idéntico entre harnesses con esa doctrina.
+// Spec #84 (CA-13 a CA-16) e issue #103 (CA-1, CA-5): los borradores de
+// planificación se escriben en <git-common-dir>/chiche/, fuera del working
+// tree, y se leen de cuatro lugares: los trackeados `.chiche/` y `.sdd/` y los
+// locales <git-common-dir>/chiche/ y <git-common-dir>/sdd/. Ante el mismo
+// nombre gana el trackeado sobre el local y chiche sobre sdd. Cada skill lleva
+// un bloque delimitado byte a byte idéntico entre harnesses con esa doctrina.
 const COMMON_DIR_COMMAND = /`git rev-parse --path-format=absolute --git-common-dir`/;
+const DRAFTS_PRECEDENCE = /ante el mismo nombre gana el trackeado sobre el local y `chiche` sobre `sdd`/;
 // Decisión humana del review de #86: Codex no escribe en `.git/` con su sandbox por defecto.
-const CODEX_NEUTRAL_LINE = /Si el harness no puede escribir en `<git-common-dir>\/sdd\/`, su capa de interacción dice cómo pedir permiso o caer a `\.sdd\/` del cwd/;
+// Review de #105 (F3): mientras sdd-run copie al worktree bajo `.sdd/` (CA-14 es de la capa 3), el
+// fallback sin escalación sigue en `.sdd/` del cwd para que la Fase 5 de sdd-land lo empareje.
+const CODEX_NEUTRAL_LINE = /Si el harness no puede escribir en `<git-common-dir>\/chiche\/`, su capa de interacción dice cómo pedir permiso o caer a `\.sdd\/` del cwd/;
+const SDD_RUN_NEUTRAL_LINE = /Si el harness no puede escribir en `<git-common-dir>\/chiche\/` o `<git-common-dir>\/sdd\/`, su capa de interacción dice cómo pedir permiso o caer a `\.sdd\/` del cwd/;
+
+// Los cuatro lugares de `kind`, en el orden de precedencia de CA-1 y dentro
+// de una misma cláusula (sin `;` de por medio): `.chiche/<kind>/`,
+// `.sdd/<kind>/`, `<git-common-dir>/chiche/<kind>/`, `<git-common-dir>/sdd/<kind>/`.
+function fourPlacesInOrder(kind: string): RegExp {
+	const escaped = kind.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const places = [`\`\\.chiche\\/${escaped}\\/\``, `\`\\.sdd\\/${escaped}\\/\``, `\`<git-common-dir>\\/chiche\\/${escaped}\\/\``, `\`<git-common-dir>\\/sdd\\/${escaped}\\/\``];
+	return new RegExp(`en este orden: ${places.join("[^;\\n]*")}`);
+}
 
 const GRILL_DRAFTS_DOCTRINE = [
-	/El handoff, el cuestionario y la carpeta de capturas se escriben en `<git-common-dir>\/sdd\/grills\/`, fuera del working tree/,
+	/El handoff, el cuestionario y la carpeta de capturas se escriben en `<git-common-dir>\/chiche\/grills\/`, fuera del working tree/,
 	COMMON_DIR_COMMAND,
-	/Fuera de un repo git, en `\.sdd\/grills\/` del cwd/,
-	/se miran los dos lugares: `\.sdd\/grills\/` del árbol[^\n]*`<git-common-dir>\/sdd\/grills\/`; ante el mismo nombre gana el del árbol/,
+	/Fuera de un repo git, en `\.chiche\/grills\/` del cwd/,
+	/Para leer o retomar se miran los cuatro lugares, en este orden: `\.chiche\/grills\/` y `\.sdd\/grills\/` del árbol[^;\n]*`<git-common-dir>\/chiche\/grills\/` y `<git-common-dir>\/sdd\/grills\/`/,
+	fourPlacesInOrder("grills"),
+	DRAFTS_PRECEDENCE,
+	/Todo guardado se escribe en `<git-common-dir>\/chiche\/grills\/`, aunque el handoff retomado venga de otro de los cuatro lugares/,
 	/imprime su ruta absoluta/,
 	CODEX_NEUTRAL_LINE,
 ];
 
 const SDD_SPEC_DRAFTS_DOCTRINE = [
-	/La spec local se escribe en `<git-common-dir>\/sdd\/specs\/<slug>\.md`, fuera del working tree/,
+	/La spec local se escribe en `<git-common-dir>\/chiche\/specs\/<slug>\.md`, fuera del working tree/,
 	COMMON_DIR_COMMAND,
-	/fuera de un repo git, en `\.sdd\/specs\/` del cwd/,
-	/`\.sdd\/specs\/<slug>\.md` es su ruta lógica: se resuelve primero en el árbol trackeado[^\n]*y después en `<git-common-dir>\/sdd\/specs\/`/,
-	/Los handoffs de `--from-grill` y la Fase 0 se listan de los dos lugares, `\.sdd\/grills\/` del árbol y `<git-common-dir>\/sdd\/grills\/`/,
+	/fuera de un repo git, en `\.chiche\/specs\/` del cwd/,
+	fourPlacesInOrder("specs"),
+	fourPlacesInOrder("grills"),
+	DRAFTS_PRECEDENCE,
+	// L4 del issue #103: el artefacto existente se actualiza en su lugar; lo nuevo va a chiche.
+	/`\.chiche\/specs\/<slug>\.md` es su ruta lógica \(`\.sdd\/specs\/<slug>\.md` si ya vive en un lugar `sdd`\): si el nombre ya existe en alguno de los cuatro lugares, se actualiza en su lugar; si no, se escribe en `<git-common-dir>\/chiche\/specs\/`/,
+	/Los handoffs de `--from-grill` y la Fase 0 se listan de los cuatro lugares, en este orden/,
 	// Review de #86: raíz física en el árbol; en el common-dir, `Proyecto` o el worktree principal.
-	/La raíz operativa de un handoff depende de dónde está: en `\.sdd\/grills\/` del árbol es la raíz física del checkout que lo contiene; en `<git-common-dir>\/sdd\/grills\/` es su campo `Proyecto` si nombra un worktree del mismo repo[^\n]*y, si no, el worktree principal de ese common-dir/,
+	/La raíz operativa de un handoff depende de dónde está: en `\.chiche\/grills\/` o `\.sdd\/grills\/` del árbol es la raíz física del checkout que lo contiene; en `<git-common-dir>\/chiche\/grills\/` o `<git-common-dir>\/sdd\/grills\/` es su campo `Proyecto` si nombra un worktree del mismo repo[^\n]*y, si no, el worktree principal de ese common-dir/,
 	CODEX_NEUTRAL_LINE,
 	/imprime la ruta absoluta de la spec local/,
 ];
 
 const SDD_RUN_DRAFTS_DOCTRINE = [
-	/\*\*Borradores del common-dir\*\*: los artefactos de entrada se toman de `<git-common-dir>\/sdd\/`/,
+	/\*\*Borradores del common-dir\*\*: los artefactos de entrada se toman de `<git-common-dir>\/chiche\/` y de `<git-common-dir>\/sdd\/`/,
 	COMMON_DIR_COMMAND,
 	/la spec target, el handoff canónico, su carpeta de capturas y las specs predecesoras/,
-	/Por compatibilidad, también los que sigan sin trackear en `\.sdd\/` del checkout original/,
+	/Por compatibilidad, también los que sigan sin trackear en `\.chiche\/` o `\.sdd\/` del checkout original/,
 	/Se copian al worktree con el mismo nombre, bajo `\.sdd\/grills\/` y `\.sdd\/specs\/`, y entran en el PRIMER commit/,
 	// Review de #86: el borrado espera al push, así la única copia nunca queda en un branch local.
-	/las copias de `<git-common-dir>\/sdd\/` se borran recién después del push del branch \(o con el PR abierto\)/,
+	/las copias de `<git-common-dir>\/chiche\/` y de `<git-common-dir>\/sdd\/` se borran recién después del push del branch \(o con el PR abierto\)/,
 	/Con `--no-pr`, o si el run termina antes del push, se conservan y el reporte las nombra/,
-	CODEX_NEUTRAL_LINE,
+	SDD_RUN_NEUTRAL_LINE,
 ];
 
 const ISSUE_TRIAGE_DRAFTS_DOCTRINE = [
-	/`\.sdd\/grills\/` y `\.sdd\/specs\/` del árbol[^\n]*`<git-common-dir>\/sdd\/grills\/` y `<git-common-dir>\/sdd\/specs\/`/,
+	/los trackeados `\.chiche\/grills\/`, `\.chiche\/specs\/`, `\.sdd\/grills\/` y `\.sdd\/specs\/` del árbol[^\n]*los locales `<git-common-dir>\/chiche\/grills\/`, `<git-common-dir>\/chiche\/specs\/`, `<git-common-dir>\/sdd\/grills\/` y `<git-common-dir>\/sdd\/specs\/`/,
 	COMMON_DIR_COMMAND,
-	/El inventario y el linaje se resuelven en los dos lugares; ante el mismo nombre gana el del árbol/,
-	/`superseded-by=\.sdd\/specs\/<x>\.md` se busca primero en el árbol y después en `<git-common-dir>\/sdd\/specs\/`/,
+	/El inventario y el linaje se resuelven en los cuatro lugares de cada tipo \(`grills` o `specs`\), en este orden/,
+	fourPlacesInOrder("<tipo>"),
+	DRAFTS_PRECEDENCE,
+	/Un `superseded-by=\.chiche\/specs\/<x>\.md` o `superseded-by=\.sdd\/specs\/<x>\.md` se busca por nombre en ese mismo orden, y los cuatro cuentan como dentro del proyecto/,
 ];
 
+// Ningún bloque de borradores conserva la doctrina de dos lugares ni un
+// fallback a `.chiche/` del cwd, que sdd-run todavía no copia (review de #105, F3).
+const DRAFTS_STALE = [/los dos lugares/, /gana el del árbol/, /caer a `\.chiche\/` del cwd/];
+
 async function draftsBlocks(skill: string, block: string, patterns: RegExp[]): Promise<string[]> {
-	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
 	const problems: string[] = [];
-	const byHarness = new Map<Harness, string[]>();
+	const byHarness = new Map<Harness, string>();
 	for (const harness of HARNESSES) {
 		const doctrine = delimitedDoctrine(await readRepoFile(`${harness}/${skill}/SKILL.md`), block);
 		for (const pattern of patterns) {
 			if (!pattern.test(doctrine)) problems.push(`${harness}/${skill}/SKILL.md (${block}) no declara ${pattern}`);
 		}
-		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
+		for (const stale of DRAFTS_STALE) {
+			if (stale.test(doctrine)) problems.push(`${harness}/${skill}/SKILL.md (${block}) todavía declara ${stale}`);
+		}
+		byHarness.set(harness, doctrine);
 	}
+	// Issue #103, CA-5: el bloque es idéntico byte a byte, sin normalizar invocaciones.
 	const [reference, ...rest] = HARNESSES;
 	for (const harness of rest) {
-		const left = byHarness.get(reference!)?.[0] ?? "";
-		const right = byHarness.get(harness)?.[0] ?? "";
+		const left = byHarness.get(reference!) ?? "";
+		const right = byHarness.get(harness) ?? "";
 		if (left !== right) problems.push(`${skill} (${block}): ${reference} vs ${harness} — ${firstDifference(left, right)}`);
 	}
 	return problems;
 }
 
-test("#84 CA-13: grill escribe handoff, cuestionario y capturas en <git-common-dir>/sdd/grills en los cuatro harnesses", async () => {
+test("autotest: fourPlacesInOrder exige los cuatro lugares en orden y en una misma cláusula", () => {
+	const pattern = fourPlacesInOrder("grills");
+	const ordered = "en este orden: `.chiche/grills/` y `.sdd/grills/` del árbol, y `<git-common-dir>/chiche/grills/` y `<git-common-dir>/sdd/grills/`; ante el mismo nombre";
+	assert.match(ordered, pattern);
+	assert.doesNotMatch(ordered.replace("`.chiche/grills/` y `.sdd/grills/`", "`.sdd/grills/` y `.chiche/grills/`"), pattern, "chiche antes que sdd");
+	assert.doesNotMatch(ordered.replace("del árbol, y", "del árbol; y"), pattern, "una sola cláusula");
+	assert.doesNotMatch(ordered.replace(", y `<git-common-dir>/chiche/grills/`", ""), pattern, "los cuatro lugares");
+	assert.match("en este orden: `.chiche/<tipo>/`, `.sdd/<tipo>/`, `<git-common-dir>/chiche/<tipo>/` y `<git-common-dir>/sdd/<tipo>/`", fourPlacesInOrder("<tipo>"));
+});
+
+test("#84 CA-13, #103 CA-5: grill escribe handoff, cuestionario y capturas en <git-common-dir>/chiche/grills y retoma de los cuatro lugares en los cinco harnesses", async () => {
 	const problems = await draftsBlocks("grill", "grill-drafts", GRILL_DRAFTS_DOCTRINE);
 	for (const harness of HARNESSES) {
 		const file = `${harness}/grill/SKILL.md`;
 		const markdown = await readRepoFile(file);
-		if (!/`<git-common-dir>\/sdd\/grills\/<fecha>-<slug>\.md`/.test(markdown)) problems.push(`${file}: el handoff no se escribe en <git-common-dir>/sdd/grills/<fecha>-<slug>.md`);
-		if (!/`<git-common-dir>\/sdd\/grills\/<fecha>-<slug>-cuestionario\.md`/.test(markdown)) problems.push(`${file}: el cuestionario no se escribe en <git-common-dir>/sdd/grills/`);
-		if (/`\.sdd\/grills\/<fecha>-<slug>(?:-cuestionario)?\.md`/.test(markdown)) problems.push(`${file}: todavía escribe en .sdd/grills/<fecha>-<slug>.md`);
+		if (!/`<git-common-dir>\/chiche\/grills\/<fecha>-<slug>\.md`/.test(markdown)) problems.push(`${file}: el handoff no se escribe en <git-common-dir>/chiche/grills/<fecha>-<slug>.md`);
+		if (!/`<git-common-dir>\/chiche\/grills\/<fecha>-<slug>-cuestionario\.md`/.test(markdown)) problems.push(`${file}: el cuestionario no se escribe en <git-common-dir>/chiche/grills/`);
+		if (/`(?:<git-common-dir>\/sdd|\.sdd|\.chiche)\/grills\/<fecha>-<slug>(?:-cuestionario)?\.md`/.test(markdown)) problems.push(`${file}: todavía escribe fuera de <git-common-dir>/chiche/grills/<fecha>-<slug>.md`);
+		if (/handoffs? (?:previos )?(?:de los dos lugares|en `\.sdd\/grills\/` y `<git-common-dir>\/sdd\/grills\/`)/.test(markdown)) problems.push(`${file}: todavía lista los handoffs de dos lugares`);
+		if (harness !== "pi" && !/list(?:á|ar) por fecha los handoffs de los cuatro lugares \(`\.chiche\/grills\/\*\.md`, `\.sdd\/grills\/\*\.md`, `<git-common-dir>\/chiche\/grills\/\*\.md` y `<git-common-dir>\/sdd\/grills\/\*\.md`\)/.test(markdown)) {
+			problems.push(`${file}: la reanudación no lista los handoffs de los cuatro lugares`);
+		}
+		if (harness === "pi" && !/handoffs portables de cada root conocido bajo `\.chiche\/grills\/` y `\.sdd\/grills\/` y de `<git-common-dir>\/chiche\/grills\/` y `<git-common-dir>\/sdd\/grills\/`/.test(markdown)) {
+			problems.push(`${file}: /grills y select_grill_session no combinan los cuatro lugares`);
+		}
 		const design = delimitedDoctrine(markdown, "grill-design");
-		if (!/se copian a `<git-common-dir>\/sdd\/grills\/<nombre-real-del-handoff>\/`/.test(design)) problems.push(`${file}: las capturas no se copian a <git-common-dir>/sdd/grills/`);
+		if (!/se copian a `<git-common-dir>\/chiche\/grills\/<nombre-real-del-handoff>\/`/.test(design)) problems.push(`${file}: las capturas no se copian a <git-common-dir>/chiche/grills/`);
 	}
 	assert.deepEqual(problems, []);
 });
 
-test("#84 CA-14: sdd-spec escribe la spec local en <git-common-dir>/sdd/specs y lista los dos lugares en los cuatro harnesses", async () => {
+test("#84 CA-14, #103 CA-5: sdd-spec escribe la spec local en <git-common-dir>/chiche/specs y su Fase 0 lista los cuatro lugares en los cinco harnesses", async () => {
 	const problems = await draftsBlocks("sdd-spec", "sdd-spec-drafts", SDD_SPEC_DRAFTS_DOCTRINE);
 	for (const harness of HARNESSES) {
 		const file = `${harness}/sdd-spec/SKILL.md`;
 		const markdown = await readRepoFile(file);
 		const flow = delimitedDoctrine(markdown, "sdd-spec-flow");
-		if (!/`<git-common-dir>\/sdd\/specs\/<slug>\.md`/.test(flow)) problems.push(`${file}: el destino local de sdd-spec-flow no es <git-common-dir>/sdd/specs/<slug>.md`);
+		if (!/`<git-common-dir>\/chiche\/specs\/<slug>\.md`/.test(flow)) problems.push(`${file}: el destino local de sdd-spec-flow no es <git-common-dir>/chiche/specs/<slug>.md`);
+		if (/`<git-common-dir>\/sdd\/specs\/(?:issue-NN-)?<slug>\.md`/.test(flow)) problems.push(`${file}: sdd-spec-flow todavía escribe en <git-common-dir>/sdd/specs/`);
+		if (!/`local` = `<git-common-dir>\/chiche\/specs\/`/.test(markdown)) problems.push(`${file}: --out local no apunta a <git-common-dir>/chiche/specs/`);
 		if (/`local` = `\.sdd\/specs\/`/.test(markdown)) problems.push(`${file}: --out local todavía apunta a .sdd/specs/`);
+		if (!/Revisar `\.chiche\/specs\/`, `\.sdd\/specs\/`, `<git-common-dir>\/chiche\/specs\/` y `<git-common-dir>\/sdd\/specs\/`/.test(markdown)) problems.push(`${file}: la búsqueda de una spec previa no mira los cuatro lugares`);
+		if (/`\.sdd\/grills\/` (?:o|y) (?:en )?`<git-common-dir>\/sdd\/grills\/`|`\.sdd\/specs\/` y `<git-common-dir>\/sdd\/specs\/`|`\.sdd\/grills\/\*\.md` y `<git-common-dir>\/sdd\/grills\/\*\.md`/.test(markdown)) {
+			problems.push(`${file}: todavía enumera dos lugares de handoffs o specs`);
+		}
 		if (/ra[ií]z operativa (?:de un handoff )?sale (?:de su|del) campo `Proyecto`[^\n]*no de d[oó]nde est[aá] guardado el archivo/.test(markdown)) {
 			problems.push(`${file}: la raíz operativa de un handoff del árbol todavía sale de Proyecto`);
 		}
@@ -983,52 +1038,130 @@ test("#84 CA-14: sdd-spec escribe la spec local en <git-common-dir>/sdd/specs y 
 	assert.deepEqual(problems, []);
 });
 
-test("#84 CA-15: sdd-run toma los artefactos de entrada de <git-common-dir>/sdd/, los commitea en el worktree y borra las copias", async () => {
+test("#84 CA-15, #103 CA-5: sdd-run toma los artefactos de entrada de <git-common-dir>/chiche/ y <git-common-dir>/sdd/, los commitea en el worktree y borra las copias", async () => {
 	const problems: string[] = [];
 	for (const harness of HARNESSES) {
-		const doctrine = delimitedDoctrine(await readRepoFile(`${harness}/sdd-run/SKILL.md`), "sdd-run-dirty-checkout");
+		const markdown = await readRepoFile(`${harness}/sdd-run/SKILL.md`);
+		const doctrine = delimitedDoctrine(markdown, "sdd-run-dirty-checkout");
 		for (const pattern of [...SDD_RUN_DRAFTS_DOCTRINE, /checkout original queda intacto/i]) {
 			if (!pattern.test(doctrine)) problems.push(`${harness}/sdd-run/SKILL.md (sdd-run-dirty-checkout) no declara ${pattern}`);
+		}
+		if (!/Listar las specs de `\.chiche\/specs\/`, `\.sdd\/specs\/`, `<git-common-dir>\/chiche\/specs\/` y `<git-common-dir>\/sdd\/specs\/`/.test(markdown)) {
+			problems.push(`${harness}/sdd-run/SKILL.md: la Fase 0 no lista las specs de los cuatro lugares`);
 		}
 	}
 	assert.deepEqual(problems, []);
 });
 
-test("#84 CA-16: issue-triage resuelve el linaje en los dos lugares y los READMEs dicen dónde viven los borradores", async () => {
+test("#84 CA-16, #103 CA-5: issue-triage resuelve el linaje en los cuatro lugares y los READMEs dicen dónde viven los borradores", async () => {
 	const problems = await draftsBlocks("issue-triage", "issue-triage-drafts", ISSUE_TRIAGE_DRAFTS_DOCTRINE);
 	for (const harness of ["claude", "codex", "opencode"] as const) {
 		const file = `${harness}/issue-triage/SKILL.md`;
-		if (!/ubicado directamente bajo `<cwd>\/\.sdd\/grills\/` o `<git-common-dir>\/sdd\/grills\/`/.test(await readRepoFile(file))) {
-			problems.push(`${file}: spec-from-grill no acepta el handoff de <git-common-dir>/sdd/grills/`);
+		const markdown = await readRepoFile(file);
+		if (!/dentro de `cwd`, de `<git-common-dir>\/chiche\/` o de `<git-common-dir>\/sdd\/`/.test(markdown)) problems.push(`${file}: los artefactos del common-dir no cuentan chiche y sdd`);
+		if (!/ubicado directamente bajo `<cwd>\/\.chiche\/grills\/`, `<cwd>\/\.sdd\/grills\/`, `<git-common-dir>\/chiche\/grills\/` o `<git-common-dir>\/sdd\/grills\/`/.test(markdown)) {
+			problems.push(`${file}: spec-from-grill no acepta el handoff de los cuatro lugares`);
 		}
 	}
 	for (const path of ["README.md", "README.en.md"]) {
 		const readme = await readRepoFile(path);
-		for (const literal of ["`<git-common-dir>/sdd/grills/`", "`<git-common-dir>/sdd/specs/`", "`git rev-parse --path-format=absolute --git-common-dir`"]) {
+		for (const literal of ["`<git-common-dir>/chiche/grills/`", "`<git-common-dir>/chiche/specs/`", "`<git-common-dir>/chiche/events.jsonl`", "`<git-common-dir>/sdd/events.jsonl`", "`git rev-parse --path-format=absolute --git-common-dir`"]) {
 			if (!readme.includes(literal)) problems.push(`${path}: no menciona ${literal}`);
 		}
 	}
 	assert.deepEqual(problems, []);
 });
 
-test("#84 review #86: en Codex, escribir en <git-common-dir>/sdd/ pide escalación o cae a .sdd/ del cwd", async () => {
+test("#84 review #86, #103 CA-5, review #105: en Codex, escribir en <git-common-dir>/chiche/ pide escalación o cae a .sdd/ del cwd", async () => {
 	const problems: string[] = [];
-	const shared = /En Codex, el sandbox por defecto deja `\.git\/` en solo lectura \(`mkdir: \.git\/sdd: Operation not permitted`\): pedir escalación para escribir en `<git-common-dir>\/sdd\/`/;
+	const shared = /En Codex, el sandbox por defecto deja `\.git\/` en solo lectura \(`mkdir: \.git\/chiche: Operation not permitted`\): pedir escalación para escribir en `<git-common-dir>\/chiche\/`/;
 	const fallback: Record<string, RegExp> = {
 		grill: /sin permiso, escribir en `\.sdd\/` del cwd y decirlo en el reporte[^\n]*`\$sdd-land`/,
 		"sdd-spec": /sin permiso, escribir en `\.sdd\/` del cwd y decirlo en el reporte[^\n]*`\$sdd-land`/,
-		"sdd-run": /sin permiso, dejarlas y decirlo en el reporte/,
+		"sdd-run": /pedir escalación para escribir en `<git-common-dir>\/chiche\/` y `<git-common-dir>\/sdd\/`, donde se borran las copias; sin permiso, dejarlas y decirlo en el reporte\. Los borradores que `\$grill` y `\$sdd-spec` hayan dejado en `\.sdd\/` del cwd entran/,
 	};
 	for (const [skill, pattern] of Object.entries(fallback)) {
 		const codex = await readRepoFile(`codex/${skill}/SKILL.md`);
 		if (!shared.test(codex)) problems.push(`codex/${skill}/SKILL.md: falta la escalación de Codex`);
 		if (!pattern.test(codex)) problems.push(`codex/${skill}/SKILL.md: falta el fallback ${pattern}`);
+		if (/sin permiso, escribir en `\.chiche\/` del cwd|dejado en `\.chiche\/`/.test(codex)) problems.push(`codex/${skill}/SKILL.md: el fallback todavía va a .chiche/ del cwd`);
 		for (const harness of ["claude", "opencode", "pi", "antigravity"] as const) {
 			if (/pedir escalación para escribir en `<git-common-dir>/.test(await readRepoFile(`${harness}/${skill}/SKILL.md`))) problems.push(`${harness}/${skill}/SKILL.md: la escalación es solo de Codex`);
 		}
 	}
 	const doc = await readRepoFile("docs/harness-interaction-differences.md");
-	if (!/En Codex[^\n]*`codex sandbox -P :workspace`[^\n]*Codex 0\.146\.0[^\n]*`<git-common-dir>\/sdd\/`[^\n]*escalación[^\n]*`\.sdd\/` del cwd/.test(doc)) problems.push("docs/harness-interaction-differences.md: falta la diferencia de Codex con `.git/`");
+	if (!/En Codex[^\n]*`codex sandbox -P :workspace`[^\n]*Codex 0\.146\.0[^\n]*borradores en `<git-common-dir>\/chiche\/`[^\n]*escalación[^\n]*sin permiso, escriben en `\.sdd\/` del cwd/.test(doc)) problems.push("docs/harness-interaction-differences.md: falta la diferencia de Codex con `.git/`");
+	if (/borradores en `<git-common-dir>\/sdd\/`|escriben en `\.chiche\/` del cwd/.test(doc)) problems.push("docs/harness-interaction-differences.md: la diferencia de Codex todavía escribe borradores en sdd o cae a .chiche/");
+	assert.deepEqual(problems, []);
+});
+
+// Review de #105 (F2): Pi escribe `Chiche-Tracking: version=2`, así que un
+// artefacto que otro harness actualiza puede traer cualquiera de los dos
+// markers. Cada regla de actualización lo dice, y la regla principal de cada
+// skill lo dice con esta frase literal. Los templates de artefactos nuevos
+// siguen en v1 en esta capa.
+const MARKER_BOTH = "`SDD-Tracking: version=1` o `Chiche-Tracking: version=2`";
+const MARKER_NEVER_ANOTHER = "nunca se agrega otro";
+const MARKER_UPDATE_RULE = "El marker de un artefacto es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: el existente se reemplaza en su lugar conservando su nombre y su versión, y nunca se agrega otro al lado.";
+
+interface MarkerUpdateRule {
+	anchor: RegExp;
+	full: boolean;
+	harnesses?: readonly Harness[];
+}
+
+const MARKER_UPDATE_RULES: Record<"grill" | "sdd-spec" | "sdd-run", MarkerUpdateRule[]> = {
+	grill: [
+		{ anchor: /Guardar de nuevo hace upsert/, full: true, harnesses: ["claude", "codex", "opencode", "antigravity"] },
+		{ anchor: /En Pi lo escribe y actualiza la tool/, full: false, harnesses: ["pi"] },
+	],
+	"sdd-spec": [
+		{ anchor: /`--triage-route update-existing-spec\|audit-existing-spec` exige un target explícito/, full: false, harnesses: ["claude", "codex", "opencode", "antigravity"] },
+		{ anchor: /Re-correr sobre la misma spec hace upsert/, full: true },
+		{ anchor: /la opción upsertea el marker/, full: false },
+		{ anchor: /Ser idempotente: re-correr sobre el mismo pedido/, full: false },
+	],
+	"sdd-run": [
+		{ anchor: /Actualizar la spec \(único artefacto que el run modifica/, full: false },
+		{ anchor: /La transición preserva la identidad/, full: true },
+		{ anchor: /Mantener la identidad del marker/, full: false },
+	],
+};
+
+export function markerUpdateProblems(file: string, markdown: string, rules: MarkerUpdateRule[], harness: Harness): string[] {
+	const problems: string[] = [];
+	for (const rule of rules) {
+		if (rule.harnesses && !rule.harnesses.includes(harness)) continue;
+		const lines = markdown.split("\n").filter((line) => rule.anchor.test(line));
+		if (lines.length === 0) problems.push(`${file}: falta la regla ${rule.anchor}`);
+		for (const line of lines) {
+			if (!line.includes(MARKER_BOTH)) problems.push(`${file} ${rule.anchor}: no nombra ${MARKER_BOTH}`);
+			if (!line.includes(MARKER_NEVER_ANOTHER)) problems.push(`${file} ${rule.anchor}: no dice «${MARKER_NEVER_ANOTHER}»`);
+			if (rule.full && !line.includes(MARKER_UPDATE_RULE)) problems.push(`${file} ${rule.anchor}: no lleva la regla literal del marker existente`);
+		}
+	}
+	return problems;
+}
+
+test("autotest: markerUpdateProblems exige los dos markers y que nunca se agregue otro en cada regla", () => {
+	const rules: MarkerUpdateRule[] = [{ anchor: /hace upsert/, full: true }];
+	assert.deepEqual(markerUpdateProblems("x", `Guardar hace upsert. ${MARKER_UPDATE_RULE}`, rules, "claude"), []);
+	assert.equal(markerUpdateProblems("x", "Guardar hace upsert del marker `SDD-Tracking`, nunca se agrega otro.", rules, "claude").length, 2);
+	assert.deepEqual(markerUpdateProblems("x", "sin la regla", rules, "claude"), ["x: falta la regla /hace upsert/"]);
+	assert.deepEqual(markerUpdateProblems("x", "sin la regla", [{ ...rules[0]!, harnesses: ["pi"] }], "claude"), []);
+});
+
+test("review #105 (F2): toda regla que actualiza el marker de un artefacto existente acepta SDD-Tracking v1 o Chiche-Tracking v2 y nunca agrega otro, en los cinco harnesses", async () => {
+	const problems: string[] = [];
+	for (const [skill, rules] of Object.entries(MARKER_UPDATE_RULES)) {
+		for (const harness of HARNESSES) {
+			const file = `${harness}/${skill}/SKILL.md`;
+			problems.push(...markerUpdateProblems(file, await readRepoFile(file), rules, harness));
+		}
+	}
+	const pi = await readRepoFile("pi/grill/SKILL.md");
+	if (/garantiza el marker `SDD-Tracking`/.test(pi)) problems.push("pi/grill/SKILL.md: la tool todavía «garantiza el marker `SDD-Tracking`»");
+	if (!/cada `pause` y `finalize` upsertea [^\n]* y escribe el marker `Chiche-Tracking: version=2`/.test(pi)) problems.push("pi/grill/SKILL.md: no dice que la tool escribe `Chiche-Tracking: version=2`");
 	assert.deepEqual(problems, []);
 });
 

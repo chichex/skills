@@ -140,17 +140,20 @@ function relativeArtifactPath(root: string, path: string): string | null {
 	return relationship.split(sep).join("/");
 }
 
-// Un borrador de spec vive en <git-common-dir>/sdd/specs/ (spec #84, CA-12),
-// fuera del working tree de un worktree linkeado. Su referencia canónica es la
-// ruta lógica `.sdd/specs/<archivo>`. Estructuralmente, el common-dir tiene que
-// ser un directorio git (`.git`, o `<nombre>.git` en un repo bare); que sea el
-// del repo de `cwd` lo comprueba con git `startFreshStage` antes de lanzar.
+// Un borrador de spec vive en <git-common-dir>/chiche/specs/ o, si es anterior
+// al renombre, en <git-common-dir>/sdd/specs/ (spec #84, CA-12; issue #103,
+// CA-1), fuera del working tree de un worktree linkeado. Su referencia canónica
+// es la ruta lógica de su marca: `.chiche/specs/<archivo>` o
+// `.sdd/specs/<archivo>`. Estructuralmente, el common-dir tiene que ser un
+// directorio git (`.git`, o `<nombre>.git` en un repo bare); que sea el del
+// repo de `cwd` lo comprueba con git `startFreshStage` antes de lanzar.
 function draftArtifactPath(path: string): string | null {
 	if (!isAbsolute(path) || !path.endsWith(".md")) return null;
 	const directory = dirname(resolve(path));
+	const brand = basename(dirname(directory));
 	const commonDir = dirname(dirname(directory));
-	return basename(directory) === "specs" && basename(dirname(directory)) === "sdd" && basename(commonDir).endsWith(".git")
-		? `.sdd/specs/${basename(path)}`
+	return basename(directory) === "specs" && (brand === "chiche" || brand === "sdd") && basename(commonDir).endsWith(".git")
+		? `.${brand}/specs/${basename(path)}`
 		: null;
 }
 
@@ -220,7 +223,7 @@ export function validateDirectRunRequest(input: unknown): DirectRunValidation {
 			&& typeof object.repo === "string"
 			&& targetObject.canonicalReference === `${object.repo}:${candidate}`) ?? insidePath ?? draftPath;
 		if (artifactPath === null && pathOk && cwdOk) {
-			diagnostics.push({ path: "$.target.path", code: "invalid-value", message: "Spec path must be inside cwd or under <git-common-dir>/sdd/specs" });
+			diagnostics.push({ path: "$.target.path", code: "invalid-value", message: "Spec path must be inside cwd or under <git-common-dir>/chiche/specs or <git-common-dir>/sdd/specs" });
 		}
 		if (artifactPath && typeof object.repo === "string"
 			&& targetObject.canonicalReference !== `${object.repo}:${artifactPath}`) {

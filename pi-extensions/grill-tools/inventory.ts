@@ -415,7 +415,7 @@ function normalizedMarkdown(markdown: string): string {
 	return markdown
 		.replace(/\r\n?/g, "\n")
 		.split("\n")
-		.filter((line) => !/^\s*<!--\s*SDD-Tracking\s*:.*-->\s*$/i.test(line))
+		.filter((line) => !/^\s*<!--\s*(?:Chiche|SDD)-Tracking\s*:.*-->\s*$/i.test(line))
 		.join("\n")
 		.trim();
 }

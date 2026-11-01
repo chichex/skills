@@ -8,7 +8,7 @@ import {
 } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
-import { resolveGitCommonDir as resolveGitCommonDirDefault } from "../lib/sdd-paths.ts";
+import { resolveGitCommonDir as resolveGitCommonDirDefault } from "../lib/chiche-paths.ts";
 import type { WorkflowResolutionV1 } from "../workflow-resolution/index.ts";
 import { describeDirectWorkflow, directDraftCommonDir, validateDirectWorkflowRequest } from "./direct-protocol.ts";
 import {

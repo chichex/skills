@@ -1,5 +1,10 @@
 # SDD artifact tracking contract — version 1
 
+> **Nota:** reemplazado por chiche-tracking-v2; v1 sigue siendo válido de lectura.
+> Los productores escriben `Chiche-Tracking: version=2`
+> ([chiche-tracking-v2.md](chiche-tracking-v2.md)); una reescritura migra el
+> marker v1 a v2 en su lugar.
+
 This document is the single normative definition of machine-readable identity and
 lifecycle metadata for SDD specs, grill handoffs, and autonomy contracts. It is
 independent of the program that creates or consumes an artifact.
