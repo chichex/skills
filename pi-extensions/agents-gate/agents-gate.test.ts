@@ -10,7 +10,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +50,18 @@ function runInstaller(script: string, args: string[], env: NodeJS.ProcessEnv) {
 		stdout: result.stdout ?? "",
 		stderr: result.stderr ?? "",
 	};
+}
+
+// Archivos de un arbol como `ruta relativa\0contenido`, ordenados: dos arboles
+// son iguales solo si tienen los mismos archivos con el mismo contenido.
+async function fileTreeOf(root: string, prefix = ""): Promise<string[]> {
+	const entries: string[] = [];
+	for (const entry of await readdir(join(root, prefix), { withFileTypes: true })) {
+		const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+		if (entry.isDirectory()) entries.push(...(await fileTreeOf(root, relativePath)));
+		else entries.push(`${relativePath}\0${await readFile(join(root, relativePath), "utf8")}`);
+	}
+	return entries.sort();
 }
 
 // --- Censo de agents/*.md sobre archivos trackeados en git -----------------
@@ -568,14 +580,17 @@ test("CA-7: install.sh copia agents/*.md a CLAUDE_AGENTS_DIR en 'claude', 'all' 
 			}
 
 			// Hallazgo #3 del review de PR #43: nada lee el manifest
-			// '.chichex-skills-managed' para el kind 'md' (clean_managed no
+			// '.chiche-managed' para el kind 'md' (clean_managed no
 			// tiene rama para agentes de Claude), asi que install_agents no
 			// debe escribirlo: un manifest sin lector es arbol incoherente.
-			assert.equal(
-				await absolutePathExists(join(agentsDest, ".chichex-skills-managed")),
-				false,
-				`install.sh ${which}: no debe escribir el manifest .chichex-skills-managed en CLAUDE_AGENTS_DIR (nada lo limpia para el kind md)`,
-			);
+			// Tampoco el nombre viejo de antes del issue #103.
+			for (const manifestName of [".chiche-managed", ".chichex-skills-managed"]) {
+				assert.equal(
+					await absolutePathExists(join(agentsDest, manifestName)),
+					false,
+					`install.sh ${which}: no debe escribir el manifest ${manifestName} en CLAUDE_AGENTS_DIR (nada lo limpia para el kind md)`,
+				);
+			}
 
 			const afterRun = await stat(realHomeAgentFile).catch(() => null);
 			if (beforeRun === null) {
@@ -598,7 +613,7 @@ test("CA-7: install.sh copia agents/*.md a CLAUDE_AGENTS_DIR en 'claude', 'all' 
 	}
 });
 
-test("CA-8: install.sh claude avisa la sombra del plugin chichex-skills solo cuando esta registrado, y salta agents/ sin abortar skills", async () => {
+test("CA-8: install.sh claude avisa la sombra del plugin chiche (o del viejo chichex-skills) solo cuando esta registrado, y salta agents/ sin abortar skills", async () => {
 	const root = await mkdtemp(join(tmpdir(), "chichex-claude-shadow-"));
 	try {
 		const fixtureRepo = join(root, "repo");
@@ -621,6 +636,8 @@ test("CA-8: install.sh claude avisa la sombra del plugin chichex-skills solo cua
 		// installed_plugins.json. Sumamos una segunda forma plausible sin
 		// sufijo de version para no reconfirmar la unica forma que inventamos.
 		const registryWithBareName = join(root, "installed_plugins_bare.json");
+		// Issue #103 CA-10: el plugin se publica como `chiche`.
+		const registryWithChiche = join(root, "installed_plugins_chiche.json");
 		const registryWithout = join(root, "installed_plugins_without.json");
 		await writeFile(
 			registryWith,
@@ -630,7 +647,23 @@ test("CA-8: install.sh claude avisa la sombra del plugin chichex-skills solo cua
 			registryWithBareName,
 			JSON.stringify({ version: 2, plugins: { "chichex-skills": [{ scope: "user" }] } }),
 		);
+		await writeFile(
+			registryWithChiche,
+			JSON.stringify({ version: 2, plugins: { "chiche@chichex": [{ scope: "user" }] } }),
+		);
 		await writeFile(registryWithout, JSON.stringify({ version: 2, plugins: { "other-plugin@marketplace": [] } }));
+		// Claves parecidas que no son el plugin, y un installPath bajo un home
+		// que se llama chiche: ninguno dispara el aviso.
+		const lookalikeRegistries: string[] = [];
+		for (const [index, plugins] of [
+			{ "chiche-foo@x": [{ scope: "user" }] },
+			{ "chichex-other@x": [{ scope: "user" }] },
+			{ "other@chiche": [{ scope: "user", installPath: "/home/chiche/.claude/plugins/cache/chiche/other/1.0.0" }] },
+		].entries()) {
+			const registry = join(root, `installed_plugins_lookalike_${index}.json`);
+			await writeFile(registry, JSON.stringify({ version: 2, plugins }));
+			lookalikeRegistries.push(registry);
+		}
 
 		const baseEnv = {
 			HOME: join(root, "home"),
@@ -639,7 +672,7 @@ test("CA-8: install.sh claude avisa la sombra del plugin chichex-skills solo cua
 			PATH: process.env.PATH ?? "",
 		};
 
-		for (const registry of [registryWith, registryWithBareName]) {
+		for (const registry of [registryWith, registryWithBareName, registryWithChiche]) {
 			const withPlugin = runInstaller(join(fixtureRepo, "install.sh"), ["claude"], {
 				...baseEnv,
 				CLAUDE_PLUGIN_REGISTRY_FILE: registry,
@@ -647,8 +680,18 @@ test("CA-8: install.sh claude avisa la sombra del plugin chichex-skills solo cua
 			assert.equal(withPlugin.status, 0, `${withPlugin.stdout}\n${withPlugin.stderr}`);
 			assert.match(
 				`${withPlugin.stdout}\n${withPlugin.stderr}`,
-				/chichex-skills[\s\S]{0,80}ya est[aá] instalado/i,
+				/plugin chiche ya est[aá] instalado/i,
 				`debe avisar cuando el plugin esta registrado (${registry})`,
+			);
+			assert.match(
+				`${withPlugin.stdout}\n${withPlugin.stderr}`,
+				/\/plugin update chiche\b/,
+				`el aviso nombra el comando de update con el plugin chiche (${registry})`,
+			);
+			assert.doesNotMatch(
+				`${withPlugin.stdout}\n${withPlugin.stderr}`,
+				/\/plugin update chichex-skills/,
+				`el aviso no nombra el plugin viejo (${registry})`,
 			);
 			assert.ok(
 				await absolutePathExists(join(root, "dest", "skills", "dummy-skill", "SKILL.md")),
@@ -662,21 +705,23 @@ test("CA-8: install.sh claude avisa la sombra del plugin chichex-skills solo cua
 			await rm(join(root, "dest"), { recursive: true, force: true });
 		}
 
-		const withoutPlugin = runInstaller(join(fixtureRepo, "install.sh"), ["claude"], {
-			...baseEnv,
-			CLAUDE_PLUGIN_REGISTRY_FILE: registryWithout,
-		});
-		assert.equal(withoutPlugin.status, 0, `${withoutPlugin.stdout}\n${withoutPlugin.stderr}`);
-		assert.doesNotMatch(
-			`${withoutPlugin.stdout}\n${withoutPlugin.stderr}`,
-			/ya est[aá] instalado/i,
-			"no debe avisar cuando el plugin no esta registrado",
-		);
-		assert.ok(
-			await absolutePathExists(join(root, "dest", "agents", "implementer.md")),
-			"sin conflicto, agents/ se instala normalmente",
-		);
-		await rm(join(root, "dest"), { recursive: true, force: true });
+		for (const registry of [registryWithout, ...lookalikeRegistries]) {
+			const withoutPlugin = runInstaller(join(fixtureRepo, "install.sh"), ["claude"], {
+				...baseEnv,
+				CLAUDE_PLUGIN_REGISTRY_FILE: registry,
+			});
+			assert.equal(withoutPlugin.status, 0, `${withoutPlugin.stdout}\n${withoutPlugin.stderr}`);
+			assert.doesNotMatch(
+				`${withoutPlugin.stdout}\n${withoutPlugin.stderr}`,
+				/ya est[aá] instalado/i,
+				`no debe avisar cuando el plugin no esta registrado (${await readFile(registry, "utf8")})`,
+			);
+			assert.ok(
+				await absolutePathExists(join(root, "dest", "agents", "implementer.md")),
+				`sin conflicto, agents/ se instala normalmente (${registry})`,
+			);
+			await rm(join(root, "dest"), { recursive: true, force: true });
+		}
 
 		const missingRegistry = runInstaller(join(fixtureRepo, "install.sh"), ["claude"], {
 			...baseEnv,
@@ -1000,7 +1045,7 @@ test("install.sh poda los skills administrados retirados y respeta los no admini
 			}
 			// retired-skill figura en el manifest; user-skill no. "../sentinel" es un
 			// nombre hostil que la poda nunca debe resolver fuera del destino.
-			await writeFile(join(dest, ".chichex-skills-managed"), "retired-skill\n../sentinel\n");
+			await writeFile(join(dest, ".chiche-managed"), "retired-skill\n../sentinel\n");
 		}
 		const configFile = join(root, "dest", "codex-config.toml");
 		await writeFile(
@@ -1034,13 +1079,176 @@ test("install.sh poda los skills administrados retirados y respeta los no admini
 			assert.equal(await absolutePathExists(join(dest, "retired-skill")), false, `${harness}: el skill administrado retirado debe podarse`);
 			assert.ok(await absolutePathExists(join(dest, "user-skill", "SKILL.md")), `${harness}: el skill no administrado debe sobrevivir`);
 			assert.ok(await absolutePathExists(join(dest, "live-skill", "SKILL.md")), `${harness}: el skill vigente se instala`);
-			const manifest = await readFile(join(dest, ".chichex-skills-managed"), "utf8");
+			const manifest = await readFile(join(dest, ".chiche-managed"), "utf8");
 			assert.match(manifest, /^live-skill$/m, `${harness}: el manifest registra el skill vigente`);
 			assert.doesNotMatch(manifest, /retired-skill|sentinel/, `${harness}: el manifest se reescribe sin lo podado ni nombres hostiles`);
 		}
 		assert.equal(await readFile(sentinel, "utf8"), "no tocar", "un nombre hostil del manifest no puede borrar fuera del destino");
 		const config = await readFile(configFile, "utf8");
 		assert.doesNotMatch(config, /retired-skill/, "el bloque de precedencia de Codex no conserva entradas de skills retirados");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+// --- Issue #103 CA-10: migracion del manifest viejo y del bloque de Codex -----
+
+const LEGACY_MANIFEST = ".chichex-skills-managed";
+const CHICHE_MANIFEST = ".chiche-managed";
+const CODEX_BEGIN = "# >>> chichex/chiche: prefer Codex over Pi >>>";
+const CODEX_END = "# <<< chichex/chiche: prefer Codex over Pi <<<";
+const LEGACY_CODEX_BEGIN = "# >>> chichex/skills: prefer Codex over Pi >>>";
+const LEGACY_CODEX_END = "# <<< chichex/skills: prefer Codex over Pi <<<";
+const SKILL_HARNESSES = ["claude", "codex", "opencode", "antigravity", "pi"] as const;
+
+// Un destino como lo dejaba un install.sh anterior al renombre: manifest viejo
+// con un skill retirado, sdd-run y un nombre hostil; una copia completa vieja
+// de sdd-run con un archivo extra; y un skill ajeno que nunca paso por el
+// manifest.
+async function seedLegacyChichexDestination(dest: string): Promise<void> {
+	await mkdir(join(dest, "retired-skill"), { recursive: true });
+	await writeFile(join(dest, "retired-skill", "SKILL.md"), "retirado\n");
+	await mkdir(join(dest, "sdd-run", "references"), { recursive: true });
+	await writeFile(join(dest, "sdd-run", "SKILL.md"), "---\nname: sdd-run\n---\nDoctrina completa vieja.\n");
+	await writeFile(join(dest, "sdd-run", "references", "stale.md"), "viejo\n");
+	await mkdir(join(dest, "user-skill"), { recursive: true });
+	await writeFile(join(dest, "user-skill", "SKILL.md"), "ajeno\n");
+	await writeFile(join(dest, LEGACY_MANIFEST), "retired-skill\nsdd-run\n../sentinel\n");
+}
+
+async function assertLegacyChichexDestinationMigrated(label: string, dest: string, source: string): Promise<void> {
+	assert.equal(await absolutePathExists(join(dest, "retired-skill")), false, `${label}: el skill retirado del manifest viejo debe podarse`);
+	assert.equal(
+		await absolutePathExists(join(dest, "sdd-run", "references", "stale.md")),
+		false,
+		`${label}: la copia completa vieja de sdd-run no deja archivos sueltos`,
+	);
+	assert.equal(
+		await readFile(join(dest, "sdd-run", "SKILL.md"), "utf8"),
+		await readFile(join(source, "sdd-run", "SKILL.md"), "utf8"),
+		`${label}: sdd-run/SKILL.md es el alias del checkout`,
+	);
+	assert.deepEqual(await fileTreeOf(join(dest, "sdd-run")), await fileTreeOf(join(source, "sdd-run")), `${label}: sdd-run es exactamente el alias`);
+	for (const name of ["chiche-init", "chiche-spec", "chiche-run", "chiche-land"]) {
+		assert.deepEqual(await fileTreeOf(join(dest, name)), await fileTreeOf(join(source, name)), `${label}: ${name} instalado`);
+	}
+	const sourceNames = (await readdir(source, { withFileTypes: true }))
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => entry.name)
+		.sort();
+	const manifest = (await readFile(join(dest, CHICHE_MANIFEST), "utf8")).split("\n").filter(Boolean).sort();
+	assert.deepEqual(manifest, sourceNames, `${label}: ${CHICHE_MANIFEST} lista exactamente lo instalado`);
+	assert.equal(await absolutePathExists(join(dest, LEGACY_MANIFEST)), false, `${label}: ${LEGACY_MANIFEST} desaparece`);
+	assert.equal(await readFile(join(dest, "user-skill", "SKILL.md"), "utf8"), "ajeno\n", `${label}: el skill ajeno queda intacto`);
+}
+
+test("issue #103 CA-10: install.sh claude|codex|all migra un .chichex-skills-managed viejo a .chiche-managed y reemplaza la copia vieja de sdd-run por el alias", async () => {
+	const realHomeManifests = [
+		join(homedir(), ".claude", "skills"),
+		join(homedir(), ".codex", "skills"),
+		join(homedir(), ".agents", "skills"),
+	].flatMap((dir) => [join(dir, CHICHE_MANIFEST), join(dir, LEGACY_MANIFEST)]);
+	const realHomeBefore = await Promise.all(realHomeManifests.map((path) => stat(path).then((info) => info.mtimeMs, () => null)));
+
+	const cases: Array<{ which: string; harnesses: readonly (typeof SKILL_HARNESSES)[number][] }> = [
+		{ which: "claude", harnesses: ["claude"] },
+		{ which: "codex", harnesses: ["codex"] },
+		{ which: "all", harnesses: SKILL_HARNESSES },
+	];
+	for (const { which, harnesses } of cases) {
+		const root = await mkdtemp(join(tmpdir(), "chichex-legacy-manifest-"));
+		try {
+			const fixtureRepo = join(root, "repo");
+			await mkdir(fixtureRepo, { recursive: true });
+			await cp(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+			for (const harness of SKILL_HARNESSES) {
+				await cp(repoPath(harness), join(fixtureRepo, harness), { recursive: true });
+			}
+			const dests: Record<(typeof SKILL_HARNESSES)[number], string> = {
+				claude: join(root, "dest", "claude-skills"),
+				codex: join(root, "dest", "codex-skills"),
+				opencode: join(root, "dest", "opencode-skills"),
+				antigravity: join(root, "dest", "antigravity-skills"),
+				pi: join(root, "dest", "pi-skills"),
+			};
+			const sentinel = join(root, "dest", "sentinel");
+			await mkdir(join(root, "dest"), { recursive: true });
+			await writeFile(sentinel, "no tocar");
+			for (const harness of harnesses) await seedLegacyChichexDestination(dests[harness]);
+
+			const result = runInstaller(join(fixtureRepo, "install.sh"), [which], {
+				HOME: join(root, "home"),
+				CLAUDE_SKILLS_DIR: dests.claude,
+				CLAUDE_AGENTS_DIR: join(root, "dest", "agents"),
+				CLAUDE_PLUGIN_REGISTRY_FILE: join(root, "no-registry.json"),
+				CODEX_SKILLS_DIR: dests.codex,
+				CODEX_CONFIG_FILE: join(root, "dest", "codex-config.toml"),
+				OPENCODE_SKILLS_DIR: dests.opencode,
+				ANTIGRAVITY_SKILLS_DIR: dests.antigravity,
+				PI_SKILLS_DIR: dests.pi,
+				PI_EXTENSIONS_DIR: join(root, "dest", "pi-extensions"),
+				PI_THEMES_DIR: join(root, "dest", "pi-themes"),
+				// Sin `pi` en PATH: el guard del Pi Package nativo degrada a "sin conflicto".
+				PATH: "/usr/bin:/bin",
+			});
+			assert.equal(result.status, 0, `install.sh ${which}: ${result.stdout}\n${result.stderr}`);
+			for (const harness of harnesses) {
+				await assertLegacyChichexDestinationMigrated(`install.sh ${which} (${harness})`, dests[harness], join(fixtureRepo, harness));
+			}
+			assert.equal(await readFile(sentinel, "utf8"), "no tocar", `install.sh ${which}: un nombre hostil del manifest viejo no borra fuera del destino`);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	}
+
+	const realHomeAfter = await Promise.all(realHomeManifests.map((path) => stat(path).then((info) => info.mtimeMs, () => null)));
+	assert.deepEqual(realHomeAfter, realHomeBefore, "los manifests del HOME real no cambian");
+});
+
+test("issue #103 CA-10: install.sh codex reemplaza el bloque viejo chichex/skills de config.toml por un unico bloque chichex/chiche", async () => {
+	const root = await mkdtemp(join(tmpdir(), "chichex-codex-block-"));
+	try {
+		const fixtureRepo = join(root, "repo");
+		for (const harness of ["codex", "pi"]) {
+			await mkdir(join(fixtureRepo, harness, "grill"), { recursive: true });
+			await writeFile(join(fixtureRepo, harness, "grill", "SKILL.md"), "---\nname: grill\n---\n");
+		}
+		await cp(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+		const piDest = join(root, "dest", "pi-skills");
+		const configFile = join(root, "dest", "codex-config.toml");
+		const staleEntry = ["", "[[skills.config]]", 'path = "/old/pi/grill/SKILL.md"', "enabled = false"];
+		const scenarios = {
+			"solo el bloque viejo": [LEGACY_CODEX_BEGIN, ...staleEntry, LEGACY_CODEX_END],
+			"bloque viejo y bloque nuevo": [LEGACY_CODEX_BEGIN, ...staleEntry, LEGACY_CODEX_END, "", CODEX_BEGIN, ...staleEntry, CODEX_END],
+		};
+		for (const [label, block] of Object.entries(scenarios)) {
+			await mkdir(join(root, "dest"), { recursive: true });
+			await writeFile(configFile, ['model = "user-model"', "", ...block, "", "[profiles.user]", 'name = "keep"', ""].join("\n"));
+			const env = {
+				HOME: join(root, "home"),
+				CODEX_SKILLS_DIR: join(root, "dest", "codex-skills"),
+				CODEX_CONFIG_FILE: configFile,
+				PI_SKILLS_DIR: piDest,
+				PATH: "/usr/bin:/bin",
+			};
+			const result = runInstaller(join(fixtureRepo, "install.sh"), ["codex"], env);
+			assert.equal(result.status, 0, `${label}: ${result.stdout}\n${result.stderr}`);
+			const config = await readFile(configFile, "utf8");
+			const lines = config.split("\n");
+			assert.equal(lines.filter((line) => line === CODEX_BEGIN).length, 1, `${label}: un solo inicio de bloque chichex/chiche\n${config}`);
+			assert.equal(lines.filter((line) => line === CODEX_END).length, 1, `${label}: un solo fin de bloque chichex/chiche\n${config}`);
+			assert.doesNotMatch(config, /chichex\/skills/, `${label}: no queda el bloque viejo\n${config}`);
+			assert.doesNotMatch(config, /\/old\/pi/, `${label}: no quedan entradas del bloque viejo\n${config}`);
+			assert.ok(config.includes(`path = "${join(piDest, "grill", "SKILL.md")}"`), `${label}: el bloque nuevo apunta a PI_SKILLS_DIR\n${config}`);
+			const order = ['model = "user-model"', CODEX_BEGIN, CODEX_END, "[profiles.user]", 'name = "keep"'].map((line) => lines.indexOf(line));
+			assert.deepEqual([...order].sort((a, b) => a - b), order, `${label}: la config ajena queda en su lugar alrededor del bloque\n${config}`);
+			assert.ok(order.every((index) => index >= 0), `${label}: la config ajena sobrevive\n${config}`);
+
+			const repeated = runInstaller(join(fixtureRepo, "install.sh"), ["codex"], env);
+			assert.equal(repeated.status, 0, `${label}: ${repeated.stdout}\n${repeated.stderr}`);
+			assert.equal(await readFile(configFile, "utf8"), config, `${label}: una segunda corrida no cambia config.toml`);
+			await rm(join(root, "dest"), { recursive: true, force: true });
+		}
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

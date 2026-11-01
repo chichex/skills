@@ -44,8 +44,12 @@ PI_THEMES_DEST="${PI_THEMES_DIR:-$HOME/.pi/agent/themes}"
 CODEX_DEST="${CODEX_SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
 CODEX_CONFIG="${CODEX_CONFIG_FILE:-${CODEX_HOME:-$HOME/.codex}/config.toml}"
 CODEX_DEDUPLICATE="${CODEX_DEDUPLICATE_PI_SKILLS:-1}"
-CODEX_MANAGED_BEGIN="# >>> chichex/skills: prefer Codex over Pi >>>"
-CODEX_MANAGED_END="# <<< chichex/skills: prefer Codex over Pi <<<"
+CODEX_MANAGED_BEGIN="# >>> chichex/chiche: prefer Codex over Pi >>>"
+CODEX_MANAGED_END="# <<< chichex/chiche: prefer Codex over Pi <<<"
+# Rotulo del bloque antes del renombre a chiche (issue #103): se reconoce y se
+# reemplaza por el nuevo, nunca se duplica.
+CODEX_LEGACY_BEGIN="# >>> chichex/skills: prefer Codex over Pi >>>"
+CODEX_LEGACY_END="# <<< chichex/skills: prefer Codex over Pi <<<"
 WHICH="${1:-all}"
 CONFIRMATION="${2:-}"
 
@@ -100,9 +104,39 @@ pi_managed_names() {
 # repo instaló ahí alguna vez. Sin esto, `clean_pi` solo podría borrar lo que
 # el checkout ACTUAL todavía tiene, y un skill/extensión/theme renombrado o
 # eliminado upstream quedaría huérfano en el destino tras una limpieza
-# (hallazgo F2 del review de PR #22).
+# (hallazgo F2 del review de PR #22). El manifest es `.chiche-managed`; antes
+# del renombre a chiche (issue #103) era `.chichex-skills-managed`, que se
+# sigue leyendo y se migra al nuevo en la próxima instalación.
 pi_manifest_path() {
+  printf '%s/.chiche-managed' "$1"
+}
+
+pi_legacy_manifest_path() {
   printf '%s/.chichex-skills-managed' "$1"
+}
+
+# Nombres que recuerdan el manifest nuevo y el viejo, sin repetidos y en
+# orden de aparición. Que falte alguno (o los dos) no es un error. Descarta
+# los nombres inválidos (vacíos, con '/', '.' o '..') para que un manifest
+# corrupto no pueda hacer borrar fuera del destino a `clean_managed`.
+pi_manifest_names() {
+  local manifest legacy
+  manifest="$(pi_manifest_path "$1")"
+  legacy="$(pi_legacy_manifest_path "$1")"
+  [ -f "$manifest" ] || manifest=/dev/null
+  [ -f "$legacy" ] || legacy=/dev/null
+  awk '$0 != "" && $0 != "." && $0 != ".." && index($0, "/") == 0 && !seen[$0]++' "$manifest" "$legacy"
+}
+
+# Funde el manifest viejo en `.chiche-managed` y lo borra: desde acá solo se
+# escribe uno, sin los nombres inválidos.
+pi_migrate_manifest() {
+  local dest="$1" merged
+  [ -f "$(pi_legacy_manifest_path "$dest")" ] || return 0
+  merged="$(mktemp "$dest/.chiche-managed.XXXXXX")"
+  pi_manifest_names "$dest" > "$merged"
+  mv "$merged" "$(pi_manifest_path "$dest")"
+  rm -f "$(pi_legacy_manifest_path "$dest")"
 }
 
 pi_record_managed() {
@@ -117,19 +151,17 @@ pi_record_managed() {
 # Unión de lo que el checkout actual instalaría y lo que el manifest recuerda
 # de instalaciones anteriores. Es lo que `clean_pi` debe borrar.
 pi_dest_names() {
-  local src="$1" dest="$2" glob_kind="$3" manifest
-  manifest="$(pi_manifest_path "$dest")"
+  local src="$1" dest="$2" glob_kind="$3"
   {
     pi_managed_names "$src" "$glob_kind"
-    # El manifest suele no existir todavía (primera instalación, o justo
-    # despues de una limpieza que lo olvidó): que falte no es un error.
-    [ -f "$manifest" ] && cat "$manifest"
-    true
+    # Los manifests suelen no existir todavía (primera instalación, o justo
+    # despues de una limpieza que los olvidó): que falten no es un error.
+    pi_manifest_names "$dest"
   } | sort -u
 }
 
 pi_forget_manifest() {
-  rm -f "$(pi_manifest_path "$1")"
+  rm -f "$(pi_manifest_path "$1")" "$(pi_legacy_manifest_path "$1")"
 }
 
 # Poda en $dest los skills que este repo instaló alguna vez (figuran en el
@@ -137,13 +169,15 @@ pi_forget_manifest() {
 # nombres administrados: un skill ajeno, que nunca pasó por el manifest,
 # sobrevive. Los nombres inválidos (vacíos, con '/' o '..') se descartan sin
 # resolverse, para que un manifest corrupto no pueda borrar fuera del destino.
-# Reescribe el manifest sin lo podado.
+# Reescribe el manifest sin lo podado. Espera el manifest ya migrado (ver
+# pi_migrate_manifest): así una copia vieja `sdd-*` que el checkout ya no trae
+# como alias se poda aunque solo figure en `.chichex-skills-managed`.
 prune_retired_skills() {
   local src="$1" dest="$2" manifest current kept name
   manifest="$(pi_manifest_path "$dest")"
   [ -f "$manifest" ] || return 0
   current="$(pi_managed_names "$src" dirs)"
-  kept="$(mktemp "$dest/.chichex-skills-managed.XXXXXX")"
+  kept="$(mktemp "$dest/.chiche-managed.XXXXXX")"
   while IFS= read -r name; do
     [ -n "$name" ] || continue
     case "$name" in
@@ -169,11 +203,13 @@ install_set() {
   fi
   mkdir -p "$dest"
   echo "→ $name → $dest"
+  pi_migrate_manifest "$dest"
   prune_retired_skills "$src" "$dest"
   while IFS= read -r base; do
     [ -n "$base" ] || continue
     # reemplaza solo ESTE skill (limpio, sin dejar archivos viejos);
-    # el resto de tu carpeta queda intacto.
+    # el resto de tu carpeta queda intacto. Una copia completa vieja de
+    # sdd-<x> queda reemplazada entera por el alias del checkout.
     rm -rf "${dest:?}/$base"
     cp -R "$src/$base" "$dest/$base"
     pi_record_managed "$dest" "$base"
@@ -189,6 +225,7 @@ install_extensions() {
   fi
   mkdir -p "$dest"
   echo "→ Pi extensions → $dest"
+  pi_migrate_manifest "$dest"
   while IFS= read -r base; do
     [ -n "$base" ] || continue
     # Pi descubre tanto archivos .ts como carpetas con index.ts.
@@ -207,6 +244,7 @@ install_themes() {
   fi
   mkdir -p "$dest"
   echo "→ Pi themes → $dest"
+  pi_migrate_manifest "$dest"
   while IFS= read -r base; do
     [ -n "$base" ] || continue
     rm -f "$dest/$base"
@@ -239,8 +277,8 @@ install_agents() {
   done < <(pi_managed_names "$src" md)
 }
 
-# Detecta si el plugin "chichex-skills" ya está registrado en el registro de
-# plugins de Claude Code. Una copia en $CLAUDE_AGENTS_DEST tiene precedencia
+# Detecta si el plugin "chiche" (antes "chichex-skills") ya está registrado
+# en el registro de plugins de Claude Code. Una copia en $CLAUDE_AGENTS_DEST tiene precedencia
 # (proyecto > usuario > plugin) sobre los agentes que expone el plugin, así
 # que la taparía y quedaría vieja para siempre. Solo LEE el registro (nunca
 # lo muta) y usa una ruta overrideable por variable de entorno en vez de
@@ -251,9 +289,13 @@ install_agents() {
 # verificado contra una instalación real; por eso el patrón matchea solo el
 # nombre del plugin, sin comillas ni '@', en vez de asumir una forma puntual
 # como `"chichex-skills@<marketplace>"` (hallazgo #2 del review de PR #43).
+# "chiche" es demasiado corto para buscarlo suelto (aparece en cualquier ruta
+# bajo /home/chiche): se exige un string JSON que sea exactamente `chiche` o
+# `chiche@<marketplace>`, para no confundirlo con `chiche-foo@x` ni con
+# `otro@chiche` (issue #103).
 claude_plugin_shadow_conflict() {
   [ -f "$CLAUDE_PLUGIN_REGISTRY" ] || return 1
-  grep -F -q 'chichex-skills' "$CLAUDE_PLUGIN_REGISTRY" 2>/dev/null
+  grep -E -q -e 'chichex-skills' -e '"chiche(@[^"]*)?"' "$CLAUDE_PLUGIN_REGISTRY" 2>/dev/null
 }
 
 install_claude() {
@@ -266,9 +308,9 @@ install_claude() {
   # (hallazgo #1 del review de PR #43). Los skills de claude/ ya se
   # instalaron arriba, así que este salteo no los afecta.
   if claude_plugin_shadow_conflict; then
-    echo "⚠  El plugin chichex-skills ya está instalado (según $CLAUDE_PLUGIN_REGISTRY)." >&2
+    echo "⚠  El plugin chiche ya está instalado (según $CLAUDE_PLUGIN_REGISTRY)." >&2
     echo "  Una copia en $CLAUDE_AGENTS_DEST tendría precedencia sobre los agentes del plugin y los taparía." >&2
-    echo "  No se instalan agents/ desde acá: usá /plugin update chichex-skills para actualizarlos." >&2
+    echo "  No se instalan agents/ desde acá: usá /plugin update chiche para actualizarlos." >&2
     echo "  Los skills de claude/ se instalaron igual." >&2
     return
   fi
@@ -284,9 +326,10 @@ pi_native_package_conflict() {
   local listing
   listing="$(cd "$REPO_DIR" && PI_OFFLINE=1 pi list 2>/dev/null)" || return 1
   # Cubre tanto `pi install git:github.com/chichex/skills` (la fuente cruda
-  # incluye ese literal) como `pi install <ruta-local>` / `-l` de ESTE mismo
-  # checkout (pi list resuelve y muestra el path absoluto == $REPO_DIR).
-  printf '%s\n' "$listing" | grep -F -q -e 'chichex/skills' -e "$REPO_DIR"
+  # incluye ese literal; `chichex/chiche` es el nombre del repo tras el
+  # renombre del issue #103) como `pi install <ruta-local>` / `-l` de ESTE
+  # mismo checkout (pi list resuelve y muestra el path absoluto == $REPO_DIR).
+  printf '%s\n' "$listing" | grep -F -q -e 'chichex/skills' -e 'chichex/chiche' -e "$REPO_DIR"
 }
 
 install_pi() {
@@ -305,9 +348,9 @@ install_pi() {
 # Borra en $dest los nombres administrados de un tipo de recurso (ver pi_dest_names)
 # y olvida el manifest: tras una limpieza completa no queda nada "administrado" ahí.
 clean_managed() {
-  local item="$1" src="$2" dest="$3" glob_kind="$4" manifest names base target
-  manifest="$(pi_manifest_path "$dest")"
-  if [ ! -d "$src" ] && [ ! -f "$manifest" ]; then
+  local item="$1" src="$2" dest="$3" glob_kind="$4" names base target
+  if [ ! -d "$src" ] && [ ! -f "$(pi_manifest_path "$dest")" ] && \
+     [ ! -f "$(pi_legacy_manifest_path "$dest")" ]; then
     echo "⚠  $item: no existe $src en el repo y no hay registro de instalaciones previas — nada que limpiar con seguridad, salteando" >&2
     return
   fi
@@ -344,10 +387,11 @@ clean_pi() {
   # Si install.sh ya había escrito el bloque administrado de Codex (config.toml
   # apuntando a $PI_DEST/<skill>/SKILL.md con enabled=false), reconciliarlo ahora
   # evita que sobrevivan entradas apuntando a paths que acabamos de borrar
-  # (hallazgo F8 del review de PR #22). Si nunca se escribió ese bloque, no
-  # tocamos la config de Codex — evita crearla de la nada para quien no usa Codex.
+  # (hallazgo F8 del review de PR #22). Si nunca se escribió ese bloque (con el
+  # rótulo nuevo o el viejo), no tocamos la config de Codex — evita crearla de
+  # la nada para quien no usa Codex.
   if [ "$CODEX_DEDUPLICATE" = "1" ] && [ -f "$CODEX_CONFIG" ] && \
-     grep -Fq "$CODEX_MANAGED_BEGIN" "$CODEX_CONFIG" 2>/dev/null; then
+     grep -Fq -e "$CODEX_MANAGED_BEGIN" -e "$CODEX_LEGACY_BEGIN" "$CODEX_CONFIG" 2>/dev/null; then
     configure_codex_skill_precedence "$PI_DEST"
   fi
 }
@@ -366,7 +410,9 @@ configure_codex_skill_precedence() {
 
   local begin_marker="$CODEX_MANAGED_BEGIN"
   local end_marker="$CODEX_MANAGED_END"
-  local config_dir config_tmp block_tmp begin_count end_count
+  local legacy_begin="$CODEX_LEGACY_BEGIN"
+  local legacy_end="$CODEX_LEGACY_END"
+  local config_dir config_tmp block_tmp begin_count end_count legacy_begin_count legacy_end_count
   config_dir="$(dirname "$CODEX_CONFIG")"
   mkdir -p "$config_dir"
   config_tmp="$(mktemp "$config_dir/.config.toml.XXXXXX")"
@@ -391,26 +437,39 @@ configure_codex_skill_precedence() {
 
   begin_count=0
   end_count=0
+  legacy_begin_count=0
+  legacy_end_count=0
   if [ -f "$CODEX_CONFIG" ]; then
     begin_count="$(grep -Fxc "$begin_marker" "$CODEX_CONFIG" || true)"
     end_count="$(grep -Fxc "$end_marker" "$CODEX_CONFIG" || true)"
+    legacy_begin_count="$(grep -Fxc "$legacy_begin" "$CODEX_CONFIG" || true)"
+    legacy_end_count="$(grep -Fxc "$legacy_end" "$CODEX_CONFIG" || true)"
   fi
 
-  if [ "$begin_count" -eq 0 ] && [ "$end_count" -eq 0 ]; then
+  if [ "$begin_count" -eq 0 ] && [ "$end_count" -eq 0 ] && \
+     [ "$legacy_begin_count" -eq 0 ] && [ "$legacy_end_count" -eq 0 ]; then
     if [ -s "$CODEX_CONFIG" ]; then
       cp "$CODEX_CONFIG" "$config_tmp"
       printf '\n' >> "$config_tmp"
     fi
     cat "$block_tmp" >> "$config_tmp"
-  elif [ "$begin_count" -eq 1 ] && [ "$end_count" -eq 1 ]; then
-    awk -v begin="$begin_marker" -v end="$end_marker" -v block="$block_tmp" '
-      $0 == begin {
-        while ((getline line < block) > 0) print line
-        close(block)
+  elif [ "$begin_count" -le 1 ] && [ "$begin_count" -eq "$end_count" ] && \
+       [ "$legacy_begin_count" -le 1 ] && [ "$legacy_begin_count" -eq "$legacy_end_count" ]; then
+    # El primer bloque (nuevo o viejo) se reemplaza por el bloque nuevo; si
+    # conviven los dos, el segundo se descarta: queda un solo bloque.
+    awk -v begin="$begin_marker" -v end="$end_marker" \
+        -v legacy_begin="$legacy_begin" -v legacy_end="$legacy_end" -v block="$block_tmp" '
+      !skipping && ($0 == begin || $0 == legacy_begin) {
+        if (!written) {
+          while ((getline line < block) > 0) print line
+          close(block)
+          written = 1
+        }
+        closing = ($0 == begin) ? end : legacy_end
         skipping = 1
         next
       }
-      skipping && $0 == end { skipping = 0; next }
+      skipping && $0 == closing { skipping = 0; next }
       !skipping { print }
     ' "$CODEX_CONFIG" > "$config_tmp"
   else
