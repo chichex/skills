@@ -399,7 +399,7 @@ test("CA-24: plugin.json y marketplace.json nombran chiche-land con descripcione
 	const marketplace = JSON.parse(await readRepoFile(".claude-plugin/marketplace.json")) as {
 		plugins: Array<{ name: string; description: string }>;
 	};
-	const entry = marketplace.plugins.find((candidate) => candidate.name === "chichex-skills");
+	const entry = marketplace.plugins.find((candidate) => candidate.name === "chiche");
 	assert.match(plugin.description, /chiche-land/);
 	assert.equal(entry?.description, plugin.description, "descripciones byte a byte iguales");
 	const tracked = spawnSync("git", ["ls-files", "codex"], { cwd: REPO_ROOT, encoding: "utf8" });

@@ -123,7 +123,7 @@ Every skill under `codex/` can be installed together as a native plugin. You do 
 
 ```bash
 codex plugin marketplace add chichex/skills
-codex plugin add chichex-skills@chichex
+codex plugin add chiche@chichex
 ```
 
 The Codex marketplace lives at `.agents/plugins/marketplace.json`. Its separate `.codex-plugin/plugin.json` manifest points to `codex/`. Claude Code keeps using `.claude-plugin/plugin.json` and `claude/`.
@@ -136,12 +136,12 @@ codex plugin marketplace upgrade chichex
 
 Restart the Codex session after installing or updating the plugin.
 
-If you installed it before `.codex-plugin/plugin.json` existed, Codex may have cached the Claude variant. Migrate it once:
+Since 2.2.0 the plugin is named `chiche` (formerly `chichex-skills`). If you have `chichex-skills@chichex` installed, or installed it before `.codex-plugin/plugin.json` existed and Codex cached the Claude variant, migrate it once:
 
 ```bash
 codex plugin marketplace upgrade chichex
 codex plugin remove chichex-skills@chichex
-codex plugin add chichex-skills@chichex
+codex plugin add chiche@chichex
 ```
 
 ### Claude Code: as a plugin (recommended)
@@ -150,8 +150,10 @@ The `claude/` skills can be installed as a Claude Code plugin, without cloning t
 
 ```
 /plugin marketplace add chichex/skills
-/plugin install chichex-skills@chichex
+/plugin install chiche@chichex
 ```
+
+Since 2.2.0 the plugin is named `chiche` (formerly `chichex-skills`). If you have `chichex-skills@chichex` installed, run `/plugin uninstall chichex-skills@chichex` before installing `chiche@chichex`. The old names `sdd-init`, `sdd-spec`, `sdd-run`, and `sdd-land` remain as deprecated aliases of `chiche-*`.
 
 The plugin exposes every skill in `claude/` and the agents of `agents/` — the custom `implementer` and `reviewer` subagents that the SDD doctrine invokes by their `description`, not by a fixed name.
 
@@ -173,7 +175,7 @@ With that, Claude Code refreshes the marketplace and updates the plugin in the b
 
 ```
 claude plugin marketplace update chichex
-claude plugin update chichex-skills@chichex
+claude plugin update chiche@chichex
 ```
 
 **Evals:** `evals/` holds a suite for `claude plugin eval` (Claude Code ≥ 2.1.280) that measures behavior, not structure: that `chiche-init`, `chiche-spec`, `chiche-run` and `grill` fire on the right prompt and not on a foreign one, and that `chiche-spec` follows its doctrine on a test project (`evals/adherence-chiche-spec/fixtures/mini-cli`). Each case runs a real `claude` on your account (`model: claude-sonnet-5`), so it is paid and non-deterministic, and it does not replace the `node --test` gates. Locally, from the repo root:

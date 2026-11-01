@@ -639,7 +639,7 @@ function assertExpectedPackageCommands(commands: PiCommand[]): void {
 test("package manifest is deterministic, Git-only, and non-publishable", async () => {
 	const manifest = await readManifest();
 
-	assert.equal(manifest.name, "chichex-skills");
+	assert.equal(manifest.name, "chiche");
 	// VERSION es la fuente; scripts/version.sh exige el mismo valor en CI.
 	assert.equal(manifest.version, (await readFile(repoFile("VERSION"), "utf8")).trim());
 	assert.equal(manifest.private, true);

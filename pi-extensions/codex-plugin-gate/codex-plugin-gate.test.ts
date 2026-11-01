@@ -14,11 +14,28 @@ test("el plugin de Codex carga el set codex y no el set claude", async () => {
 	const codex = await readJson<{ name: string; version: string; skills: string }>(".codex-plugin/plugin.json");
 	const claude = await readJson<{ name: string; skills: string[] }>(".claude-plugin/plugin.json");
 
-	assert.equal(codex.name, "chichex-skills");
+	assert.equal(codex.name, "chiche");
 	assert.equal(codex.version, (await readFile(repoFile("VERSION"), "utf8")).trim());
 	assert.equal(codex.skills, "./codex/");
 	assert.equal(claude.name, codex.name);
 	assert.deepEqual(claude.skills, ["./claude"]);
+});
+
+test("#103 CA-9: los manifests y los marketplaces publican el plugin chiche y abren su descripcion con la marca", async () => {
+	const pkg = await readJson<{ name: string }>("package.json");
+	assert.equal(pkg.name, "chiche");
+	for (const path of [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]) {
+		const manifest = await readJson<{ name: string; description: string }>(path);
+		assert.equal(manifest.name, "chiche", path);
+		assert.match(manifest.description, /^chiche: /, path);
+	}
+	const claudeMarketplace = await readJson<{ plugins: Array<{ name: string; description: string }> }>(
+		".claude-plugin/marketplace.json",
+	);
+	assert.deepEqual(claudeMarketplace.plugins.map((plugin) => plugin.name), ["chiche"]);
+	assert.match(claudeMarketplace.plugins[0]?.description ?? "", /^chiche: /);
+	const codexMarketplace = await readJson<{ interface: { displayName: string } }>(".agents/plugins/marketplace.json");
+	assert.match(codexMarketplace.interface.displayName, /^chiche\b/);
 });
 
 test("el marketplace nativo de Codex publica el plugin desde la raiz", async () => {
@@ -35,7 +52,7 @@ test("el marketplace nativo de Codex publica el plugin desde la raiz", async () 
 	assert.equal(marketplace.name, "chichex");
 	assert.equal(marketplace.plugins.length, 1);
 	const [plugin] = marketplace.plugins;
-	assert.equal(plugin?.name, "chichex-skills");
+	assert.equal(plugin?.name, "chiche");
 	assert.deepEqual(plugin?.source, { source: "local", path: "./" });
 	assert.deepEqual(plugin?.policy, {
 		installation: "AVAILABLE",
@@ -47,7 +64,7 @@ test("el marketplace nativo de Codex publica el plugin desde la raiz", async () 
 	for (const readmePath of ["README.md", "README.en.md"]) {
 		const readme = await readFile(repoFile(readmePath), "utf8");
 		assert.match(readme, /codex plugin marketplace add chichex\/skills/);
-		assert.match(readme, /codex plugin add chichex-skills@chichex/);
+		assert.match(readme, /codex plugin add chiche@chichex/);
 		assert.match(readme, /codex plugin marketplace upgrade chichex/);
 	}
 });

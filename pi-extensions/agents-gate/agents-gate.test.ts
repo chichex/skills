@@ -376,10 +376,10 @@ test("CA-9: censo de agents/*.md sobre archivos trackeados en git contra la list
 	assert.deepEqual(divergences, [], `censo de agents/: ${divergences.join("; ")}`);
 });
 
-test("CA-1: agents/implementer.md tiene frontmatter valido, skills: [chichex-skills:tdd, chichex-skills:chiche-run] y body en orden", async () => {
+test("CA-1: agents/implementer.md tiene frontmatter valido, skills: [chiche:tdd, chiche:chiche-run] y body en orden", async () => {
 	const markdown = await readRepoFile("agents/implementer.md");
 	// Hallazgo 1 del review de PR #46: `chiche-run con subagente` necesita el skill precargado.
-	const verdict = validateAgentFrontmatter("implementer", markdown, ["chichex-skills:tdd", "chichex-skills:chiche-run"]);
+	const verdict = validateAgentFrontmatter("implementer", markdown, ["chiche:tdd", "chiche:chiche-run"]);
 	assert.deepEqual(verdict.problems, [], `agents/implementer.md: ${verdict.problems.join("; ")}`);
 
 	const parts = splitFrontmatter(markdown);
@@ -423,8 +423,8 @@ test("CA-3: plugin.json autodescubre agents/ junto a skills, con description ide
 	const marketplace = JSON.parse(await readRepoFile(".claude-plugin/marketplace.json")) as {
 		plugins: Array<{ name: string; description: string }>;
 	};
-	const entry = marketplace.plugins.find((candidate) => candidate.name === "chichex-skills");
-	assert.ok(entry, "marketplace.json: plugin chichex-skills");
+	const entry = marketplace.plugins.find((candidate) => candidate.name === "chiche");
+	assert.ok(entry, "marketplace.json: plugin chiche");
 	assert.equal(entry?.description, plugin.description, "descripciones byte a byte iguales");
 });
 
@@ -497,7 +497,7 @@ test("issue #66 CA-9, CA-10, CA-24: chiche-run acota el force a gh stack, sugier
 	const marketplace = JSON.parse(await readRepoFile(".claude-plugin/marketplace.json")) as {
 		plugins: Array<{ name: string; description: string }>;
 	};
-	assert.match(marketplace.plugins.find((entry) => entry.name === "chichex-skills")?.description ?? "", /chiche-land/, "marketplace.json nombra chiche-land");
+	assert.match(marketplace.plugins.find((entry) => entry.name === "chiche")?.description ?? "", /chiche-land/, "marketplace.json nombra chiche-land");
 
 	const contract = await readRepoFile(".sdd/project.md");
 	assert.match(contract, /salvo `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear/, "contrato: excepción de merge para chiche-land en ## Limites");
@@ -753,9 +753,9 @@ test("autotest: cada campo prohibido individual dispara su propio diagnostico", 
 
 test("autotest: skills requeridas ausentes o distintas fallan con diagnostico", () => {
 	const markdown = "---\nname: implementer\ndescription: algo\n---\nBody.\n";
-	const verdict = validateAgentFrontmatter("implementer", markdown, ["chichex-skills:tdd"]);
+	const verdict = validateAgentFrontmatter("implementer", markdown, ["chiche:tdd"]);
 	assert.equal(verdict.ok, false);
-	assert.match(verdict.problems.join("\n"), /skills: esperado \[chichex-skills:tdd\], encontrado \[\]/);
+	assert.match(verdict.problems.join("\n"), /skills: esperado \[chiche:tdd\], encontrado \[\]/);
 });
 
 test("autotest: declarar agents en plugin.json falla con diagnostico", () => {
@@ -934,7 +934,7 @@ test("autotest (issue #44): el frontmatter Pi rechaza model, skills, tools en im
 		validatePiAgentFrontmatter("reviewer", withModel, tools).problems.join("\n"),
 		/campo prohibido presente en el port Pi: model/,
 	);
-	const withSkills = '---\nname: implementer\ndescription: "x"\nskills:\n	 - chichex-skills:tdd\n---\nBody.\n';
+	const withSkills = '---\nname: implementer\ndescription: "x"\nskills:\n	 - chiche:tdd\n---\nBody.\n';
 	assert.match(
 		validatePiAgentFrontmatter("implementer", withSkills, null).problems.join("\n"),
 		/campo prohibido presente en el port Pi: skills/,

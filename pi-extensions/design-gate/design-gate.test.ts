@@ -301,7 +301,7 @@ test("CA-8: design-system queda cableado en pi-package, harness-gate, README y m
 	const marketplace = JSON.parse(await readRepoFile(".claude-plugin/marketplace.json")) as {
 		plugins: Array<{ name: string; description: string }>;
 	};
-	const entry = marketplace.plugins.find((candidate) => candidate.name === "chichex-skills");
+	const entry = marketplace.plugins.find((candidate) => candidate.name === "chiche");
 	if (!/design-system/.test(plugin.description)) problems.push("plugin.json no nombra design-system");
 	if (entry?.description !== plugin.description) problems.push("descriptions de plugin.json y marketplace.json distintas");
 	assert.deepEqual(problems, []);
