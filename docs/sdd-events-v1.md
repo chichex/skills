@@ -75,13 +75,14 @@ escapes such as `\u0041`, `1.0`) is invalid.
   `owner/repo`, `#93` and `owner/repo#93` name the same issue.
 - `spec` is a `<ref>` or `none`: the identity of the spec. It is the issue
   reference (`#NN` or `owner/repo#NN`) when the spec lives in an issue body,
-  and otherwise its logical path `.sdd/specs/<slug>.md` — the same convention as
-  `superseded-by`. When a spec has both a local copy and an issue copy, the
-  issue reference wins. The identity therefore changes when a spec published
-  only under its logical path is carried to an issue; `spec.moved` links both
-  identities.
+  and otherwise the events-v1 identity of a local spec is `.sdd/specs/<slug>.md`,
+  whatever the brand of the place where it lives (`.chiche/` or `.sdd/`, in the
+  working tree or under `<git-common-dir>`). When a spec has both a local copy
+  and an issue copy, the issue reference wins. The identity therefore changes
+  when a spec published only locally is carried to an issue; `spec.moved` links
+  both identities.
 - `previous` is a `<ref>` or `none`: in `spec.moved`, the identity the spec had
-  before (its logical path `.sdd/specs/<slug>.md`), with `spec` carrying the
+  before (its local identity `.sdd/specs/<slug>.md`), with `spec` carrying the
   new one. It is `none` in every other event.
 - `grill` is a `<ref>` or `none`: the logical grill id, the same value as the
   `grill` field of the handoff marker.
@@ -107,7 +108,7 @@ The token `none` is the null sentinel; an actual reference MUST NOT decode to
 | `grill.paused` | a grill is paused or saved for later | `grill` ≠ `none`; `pr=[]` |
 | `grill.finalized` | the final grill handoff is persisted | `grill` ≠ `none`; `pr=[]` |
 | `spec.published` | a spec is published in `draft` (every publication with a receipt, including a republication and a return to `draft`) | `spec` ≠ `none`; `pr=[]` |
-| `spec.moved` | a spec published only under its logical path is carried to an issue, so its identity changes from `previous` (`.sdd/specs/<slug>.md`) to `spec` (`#NN`); emitted before the publication event of the same publication | `spec` ≠ `none`; `previous` ≠ `none`; `pr=[]` |
+| `spec.moved` | a spec published only locally is carried to an issue, so its identity changes from `previous` (`.sdd/specs/<slug>.md`) to `spec` (`#NN`); emitted before the publication event of the same publication | `spec` ≠ `none`; `previous` ≠ `none`; `pr=[]` |
 | `spec.approved` | a spec transitions to `approved`: its persisted state before the publication was not `approved`. Republishing a spec that is already `approved` emits nothing | `spec` ≠ `none`; `pr=[]` |
 | `spec.superseded` | a predecessor spec is superseded (one event per predecessor) | `spec` ≠ `none`; `pr=[]` |
 | `run.started` | a run created its worktree and branch, or its stack | `spec` ≠ `none`; `pr=[]` |

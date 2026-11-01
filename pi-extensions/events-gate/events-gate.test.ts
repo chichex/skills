@@ -153,7 +153,9 @@ test("CA-8: el bloque trae el puntero al formato, el comando canónico, la regla
 		/termina con exit 0/,
 		/el reporte del skill lo nombra en una línea/,
 		/nunca dentro del working tree/,
-		/sin caer a `\.sdd\/`/,
+		/sin caer al working tree \(`\.chiche\/` ni `\.sdd\/`\)/,
+		// Review de #105 (F4): la identidad no sigue la marca del lugar (`specEventReference`).
+		/La identidad events-v1 de una spec local es `\.sdd\/specs\/<slug>\.md` sea cual sea la marca del lugar donde vive: `\.chiche\/` o `\.sdd\/`, del árbol o del common-dir\./,
 		/`previous` es `none` salvo en `spec\.moved`/,
 		/\*\*Validación barata\.\*\*[^\n]*un valor inválido cae en el mismo aviso y no escribe nada/,
 	]), []);
@@ -224,6 +226,24 @@ test("CA-9: grill registra grill.paused al pausar o guardar y grill.finalized al
 	assert.deepEqual(problems, []);
 });
 
+test("review #105 (F4): ningún log de eventos llama ruta lógica a la identidad `.sdd/specs/<slug>.md`, y el formato la fija sea cual sea la marca", async () => {
+	const problems: string[] = [];
+	for (const skill of SKILLS) {
+		for (const harness of HARNESSES) {
+			if (/ruta lógica `\.sdd\/specs\/<slug>\.md`/.test(section(await skillFile(harness, skill), /^Log de eventos$/))) {
+				problems.push(`${harness}/${skill}: el log de eventos llama ruta lógica a la identidad events-v1`);
+			}
+		}
+	}
+	// El doc va envuelto a 80 columnas: se compara con los espacios colapsados.
+	const doc = (await readRepoFile("docs/sdd-events-v1.md")).replace(/\s+/g, " ");
+	if (!doc.includes("the events-v1 identity of a local spec is `.sdd/specs/<slug>.md`, whatever the brand of the place where it lives (`.chiche/` or `.sdd/`, in the working tree or under `<git-common-dir>`)")) {
+		problems.push("docs/sdd-events-v1.md: no fija la identidad local `.sdd/specs/<slug>.md` sea cual sea la marca");
+	}
+	if (/logical path `\.sdd\/specs\/<slug>\.md`/.test(doc)) problems.push("docs/sdd-events-v1.md: todavía llama logical path a la identidad");
+	assert.deepEqual(problems, []);
+});
+
 test("CA-9: sdd-spec registra spec.published con receipt, spec.approved en el menú y spec.superseded por predecesora", async () => {
 	const problems: string[] = [];
 	for (const harness of ["claude", "codex", "opencode", "antigravity"] as const) {
@@ -233,7 +253,8 @@ test("CA-9: sdd-spec registra spec.published con receipt, spec.approved en el me
 			/`spec\.published` cuando la spec queda `draft`/,
 			/`spec\.approved` en la transición del menú a `aprobada` \(una republicación de una spec que ya estaba `aprobada` no lo registra\)/,
 			/un `spec\.superseded` por cada predecesora/,
-			/`Llevar a issue` registra antes un `spec\.moved`: `previous` es la ruta lógica `\.sdd\/specs\/<slug>\.md` que la spec tenía y `spec` el `#NN` nuevo/,
+			/`Llevar a issue` registra antes un `spec\.moved`: `previous` es la identidad events-v1 `\.sdd\/specs\/<slug>\.md` que la spec tenía y `spec` el `#NN` nuevo/,
+			/si no su identidad events-v1 `\.sdd\/specs\/<slug>\.md`/,
 			/`issue` y `grill` son los del marker de cada documento publicado, sin codificar \(una predecesora lleva los suyos, no los de la sucesora\)/,
 			/Una publicación sin receipt no registra nada/,
 		]).map((problem) => `${harness}/sdd-spec: ${problem}`));
@@ -259,6 +280,7 @@ test("CA-9: sdd-run registra run.started, run.pr-opened, run.committed y run.fai
 			["Log de eventos", section(markdown, /^Log de eventos$/), /`run\.failed` con `reason=interrupted` en «Run interrumpido» si ya hubo `run\.started`/],
 			["Log de eventos", section(markdown, /^Log de eventos$/), /abort posterior a `run\.started` registra `run\.failed` con `reason=aborted`/],
 			["Log de eventos", section(markdown, /^Log de eventos$/), /La Fase 6 no registra eventos/],
+			["Log de eventos", section(markdown, /^Log de eventos$/), /si no su identidad events-v1 `\.sdd\/specs\/<slug>\.md`/],
 		];
 		for (const [where, text, pattern] of checks) {
 			if (!pattern.test(text)) problems.push(`${harness}/sdd-run «${where}»: falta ${pattern}`);
