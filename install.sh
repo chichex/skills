@@ -311,7 +311,7 @@ install_claude() {
     echo "⚠  El plugin chiche ya está instalado (según $CLAUDE_PLUGIN_REGISTRY)." >&2
     echo "  Una copia en $CLAUDE_AGENTS_DEST tendría precedencia sobre los agentes del plugin y los taparía." >&2
     echo "  No se instalan agents/ desde acá: usá /plugin update chiche para actualizarlos." >&2
-    # Desde la 2.2.0 el plugin se llama chiche: update no migra el viejo.
+    # Desde la 3.0.0 el plugin se llama chiche: update no migra el viejo.
     if grep -F -q 'chichex-skills' "$CLAUDE_PLUGIN_REGISTRY" 2>/dev/null; then
       echo "  Tenés el plugin con su nombre viejo: migralo con /plugin uninstall chichex-skills@chichex y /plugin install chiche@chichex." >&2
     fi

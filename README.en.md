@@ -138,7 +138,7 @@ codex plugin marketplace upgrade chichex
 
 Restart the Codex session after installing or updating the plugin.
 
-Since 2.2.0 the plugin is named `chiche` (formerly `chichex-skills`). If you have `chichex-skills@chichex` installed, or installed it before `.codex-plugin/plugin.json` existed and Codex cached the Claude variant, migrate it once:
+Since 3.0.0 the plugin is named `chiche` (formerly `chichex-skills`). If you have `chichex-skills@chichex` installed, or installed it before `.codex-plugin/plugin.json` existed and Codex cached the Claude variant, migrate it once:
 
 ```bash
 codex plugin marketplace upgrade chichex
@@ -155,7 +155,7 @@ The `claude/` skills can be installed as a Claude Code plugin, without cloning t
 /plugin install chiche@chichex
 ```
 
-Since 2.2.0 the plugin is named `chiche` (formerly `chichex-skills`). If you have `chichex-skills@chichex` installed, run `/plugin uninstall chichex-skills@chichex` before installing `chiche@chichex`. The old names `sdd-init`, `sdd-spec`, `sdd-run`, and `sdd-land` remain as deprecated aliases of `chiche-*`.
+Since 3.0.0 the plugin is named `chiche` (formerly `chichex-skills`). If you have `chichex-skills@chichex` installed, run `/plugin uninstall chichex-skills@chichex` before installing `chiche@chichex`. The old names `sdd-init`, `sdd-spec`, `sdd-run`, and `sdd-land` remain as deprecated aliases of `chiche-*`.
 
 The plugin exposes every skill in `claude/` and the agents of `agents/` — the custom `implementer` and `reviewer` subagents that the SDD doctrine invokes by their `description`, not by a fixed name.
 
