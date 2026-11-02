@@ -173,7 +173,7 @@ En Pi, la pregunta de esta sección usa `ask_user_question`.
 - Reescribe a `.chiche/` toda referencia `.sdd/` dentro de `.chiche/**` y la de `CLAUDE.md` y `AGENTS.md` (`@.sdd/project.md`, el bloque `sdd-contract`).
 - Reescribe el marker de cada artefacto a `Chiche-Tracking: version=2`, con los demás campos intactos (contrato `docs/chiche-tracking-v2.md`).
 - Mueve `<git-common-dir>/sdd/` a `<git-common-dir>/chiche/`, incluido `events.jsonl`: el log viejo va primero, el nuevo después.
-- Anota la migración, con fecha, en `## Decisiones humanas` de `.chiche/project.md`.
+- Anota la migración, con fecha, en `## Decisiones humanas` de `.chiche/project.md`, una sola vez: si la nota ya está, una nueva corrida de la secuencia no la repite.
 
 **Secuencia canónica.** Se ejecuta tal cual con `bash`, desde el repo o desde uno de sus worktrees. No se reordena ni se reescribe a mano:
 
@@ -185,19 +185,19 @@ if [ ! -e .chiche ]; then git mv .sdd .chiche; else
   git ls-files -z -- .sdd | while IFS= read -r -d '' f; do t=".chiche/${f#.sdd/}"
     if [ -e "$t" ]; then echo "chiche-init: conservado $t; queda $f"; else mkdir -p "${t%/*}" && git mv "$f" "$t"; fi; done
   find .sdd -type d -empty -delete 2>/dev/null || true; fi
-{ git ls-files -z -- .chiche; for f in CLAUDE.md AGENTS.md; do [ -f "$f" ] && printf '%s\0' "$f"; done; } | while IFS= read -r -d '' f; do
+{ git ls-files -z -- .chiche; for f in CLAUDE.md AGENTS.md; do if [ -f "$f" ]; then printf '%s\0' "$f"; fi; done; } | while IFS= read -r -d '' f; do
   grep -Iq -e '\.sdd/' -e 'SDD-Tracking: version=1;' "$f" || continue
-  sed -e 's#\.sdd/#.chiche/#g' -e 's#<!-- SDD-Tracking: version=1;#<!-- Chiche-Tracking: version=2;#' "$f" > "$f.chiche-migrate" && mv "$f.chiche-migrate" "$f"; done
-if [ -d "$common/sdd" ] && mkdir -p "$common/chiche" 2>/dev/null; then
-  if [ -f "$common/sdd/events.jsonl" ]; then { cat "$common/sdd/events.jsonl"; if [ -f "$common/chiche/events.jsonl" ]; then cat "$common/chiche/events.jsonl"; fi; } > "$common/chiche/events.jsonl.chiche-migrate"
+  sed -e 's#\.sdd/#.chiche/#g' -e 's#<!-- SDD-Tracking: version=1;#<!-- Chiche-Tracking: version=2;#' "$f" > "$f.chiche-migrate" && cat "$f.chiche-migrate" > "$f" && rm "$f.chiche-migrate"; done
+if [ -d "$common/sdd" ] && mkdir -p "$common/chiche" 2>/dev/null && [ -w "$common/chiche" ]; then
+  if [ -f "$common/sdd/events.jsonl" ]; then { awk 1 "$common/sdd/events.jsonl"; if [ -f "$common/chiche/events.jsonl" ]; then awk 1 "$common/chiche/events.jsonl"; fi; } > "$common/chiche/events.jsonl.chiche-migrate"
     mv "$common/chiche/events.jsonl.chiche-migrate" "$common/chiche/events.jsonl" && rm "$common/sdd/events.jsonl"; fi
   (cd "$common/sdd" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#./}; t="$common/chiche/$f"
     if [ -e "$t" ]; then echo "chiche-init: conservado $t; queda $common/sdd/$f"; else mkdir -p "${t%/*}" && mv "$common/sdd/$f" "$t"; fi; done
   find "$common/sdd" -type d -empty -delete 2>/dev/null || true
 elif [ -d "$common/sdd" ]; then echo "chiche-init: no se pudo escribir en $common/chiche; $common/sdd queda como está"; fi
-if [ -f .chiche/project.md ]; then
+if [ -f .chiche/project.md ] && ! grep -q 'migracion a .chiche/ con chiche-init --update' .chiche/project.md; then
   today=$(date -u +%Y-%m-%d)
-  awk -v line="- $today: migracion de .sdd/ a .chiche/ con chiche-init --update; los artefactos llevan Chiche-Tracking: version=2 y <git-common-dir>/sdd/ paso a <git-common-dir>/chiche/." '{ print } /^## Decisiones humanas/ { print line }' .chiche/project.md > .chiche/project.md.chiche-migrate && mv .chiche/project.md.chiche-migrate .chiche/project.md
+  awk -v line="- $today: migracion a .chiche/ con chiche-init --update (antes .sdd); los artefactos llevan Chiche-Tracking: version=2 y <git-common-dir>/sdd/ paso a <git-common-dir>/chiche/." '{ print } /^## Decisiones humanas/ { print line }' .chiche/project.md > .chiche/project.md.chiche-migrate && cat .chiche/project.md.chiche-migrate > .chiche/project.md && rm .chiche/project.md.chiche-migrate
 fi
 ```
 

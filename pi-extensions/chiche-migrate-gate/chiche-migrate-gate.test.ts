@@ -15,7 +15,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -165,7 +165,7 @@ test("CA-13: el bloque trae un único fence y es bash", async () => {
 	assert.deepEqual(problems, []);
 });
 
-test("CA-13: el bloque nombra la pregunta, las dos opciones, la regla de --assume, Decisiones humanas y conservado", async () => {
+test("CA-13: el bloque nombra la pregunta, las dos opciones, la regla de --assume, Decisiones humanas, la nota sin .sdd/ y conservado", async () => {
 	const block = await referenceBlock();
 	assert.deepEqual(missing(block, [
 		new RegExp(escapeRegExp(`"${QUESTION}"`)),
@@ -176,6 +176,7 @@ test("CA-13: el bloque nombra la pregunta, las dos opciones, la regla de --assum
 		/`Chiche-Tracking: version=2`, con los demás campos intactos \(contrato `docs\/chiche-tracking-v2\.md`\)/,
 		/Mueve `<git-common-dir>\/sdd\/` a `<git-common-dir>\/chiche\/`, incluido `events\.jsonl`/,
 		/## Decisiones humanas/,
+		/^- Anota la migración, con fecha, en `## Decisiones humanas` de `\.chiche\/project\.md`, una sola vez: si la nota ya está, una nueva corrida de la secuencia no la repite\.$/m,
 		/Con `\.chiche\/` ya presente, la secuencia mueve lo que falta y conserva lo que ya está en `\.chiche\/`/,
 		/chiche-init: conservado <ruta>; queda <ruta vieja>/,
 		/Si el harness no puede escribir en `<git-common-dir>\/chiche\/`, el paso del common-dir se saltea con el aviso/,
@@ -183,6 +184,15 @@ test("CA-13: el bloque nombra la pregunta, las dos opciones, la regla de --assum
 		/Con `--assume` \(y, cuando exista, con `--autonomy` A2 o más\) no se migra ni se pregunta: el reporte lo lista como `mejora disponible`/,
 		/Tras migrar, el resto de la corrida lee y escribe `\.chiche\/project\.md`/,
 	]), []);
+	const script = await canonicalSequence();
+	const bullet = block.split("\n").find((line) => line.startsWith("- Anota la migración")) ?? "";
+	assert.ok(bullet, "el bloque trae la bullet que describe la nota");
+	assert.equal(bullet.includes(".sdd/"), false, `la bullet de la nota no nombra .sdd/: ${bullet}`);
+	const note = /awk -v line="([^"]*)"/.exec(script)?.[1] ?? "";
+	assert.ok(note.includes(MIGRATION_NOTE), `la nota del awk dice «${MIGRATION_NOTE}»: ${note}`);
+	assert.ok(note.includes("(antes .sdd)"), `la nota recuerda el nombre anterior sin barra: ${note}`);
+	assert.equal(note.includes(".sdd/"), false, `la nota del awk no lleva .sdd/ (la reescritura de una nueva corrida no la cambia): ${note}`);
+	assert.ok(script.includes(`grep -q '${MIGRATION_NOTE}' .chiche/project.md`), "el awk va guardado por un grep de la misma frase");
 });
 
 test("CA-13: el bloque no nombra ninguna tool de preguntas, literal de harness ni invocación de skill", async () => {
@@ -226,9 +236,10 @@ test("CA-13: la sección va entre «Upgrade de contrato» y la Fase 4, con el li
 			}
 		}
 		if (harness === "codex") {
-			if (!/^En Codex, el sandbox por defecto deja `\.git\/` en solo lectura[^\n]*paso del common-dir[^\n]*pide escalación[^\n]*sin permiso[^\n]*se saltea con el aviso[^\n]*`docs\/harness-interaction-differences\.md`/m.test(outside)) {
-				problems.push(`${path}: falta la escalación del paso del common-dir fuera del bloque`);
+			if (!/^En Codex, el sandbox por defecto deja `\.git\/` en solo lectura y `git mv` escribe `\.git\/index`: la secuencia entera pide escalación desde el primer intento; sin permiso no se migra nada, el contrato sigue en `\.sdd\/project\.md` y el reporte dice `mantenida \.sdd\/ \(sin permiso para escribir \.git\/\)` \(ver `docs\/harness-interaction-differences\.md`\)\.$/m.test(outside)) {
+				problems.push(`${path}: falta la escalación de toda la secuencia fuera del bloque`);
 			}
+			if (/paso del common-dir[^\n]*la migración del árbol sigue/.test(outside)) problems.push(`${path}: dice que sin permiso la migración del árbol sigue, y git mv ya falla en el primer paso`);
 		} else if (/escalación/.test(outside)) {
 			problems.push(`${path}: la escalación del common-dir es solo de Codex`);
 		}
@@ -404,7 +415,7 @@ function canonical(parsed: ParseResult) {
 	return parsed as Extract<ParseResult, { kind: "metadata"; format: "canonical" }>;
 }
 
-const MIGRATION_NOTE = "migracion de .sdd/ a .chiche/";
+const MIGRATION_NOTE = "migracion a .chiche/ con chiche-init --update";
 
 function utcToday(): string {
 	return new Date().toISOString().slice(0, 10);
@@ -522,8 +533,7 @@ test("CA-13: la secuencia migra .sdd/ a .chiche/ en un repo completo y deja git 
 		assert.equal(parsed.version, 2, `${path}: version 2`);
 		assert.deepEqual(parsed.metadata, previous.metadata, `${path}: los demás campos quedan intactos`);
 		assert.equal(text.split("\n").filter((line) => /<!--\s*(?:SDD|Chiche)-Tracking\s*:/.test(line)).length, 1, `${path}: exactamente un marker`);
-		const withoutNote = text.split("\n").filter((line) => !line.includes(MIGRATION_NOTE)).join("\n");
-		assert.equal(withoutNote.includes(".sdd/"), false, `${path}: sin referencias a .sdd/`);
+		assert.equal(text.includes(".sdd/"), false, `${path}: sin referencias a .sdd/`);
 	}
 	// Las referencias en prosa se reescriben; la referencia codificada de superseded-by sigue siendo la misma.
 	assert.match(readFileSync(join(repo, ".chiche/specs/b.md"), "utf8"), /Ver el contrato en `\.chiche\/project\.md`/);
@@ -685,4 +695,78 @@ test("CA-13: un adjunto binario bajo .sdd/ viaja intacto y no entra a la reescri
 	assert.equal(run.status, 0, run.stderr);
 	assert.deepEqual(readFileSync(join(repo, ".chiche/grills/2026-01-01-x/captura.png")), png, "los bytes del adjunto no cambian");
 	assert.ok(porcelain(repo).includes("R  .sdd/grills/2026-01-01-x/captura.png -> .chiche/grills/2026-01-01-x/captura.png"), "el adjunto es un rename puro");
+});
+
+// S13/B1
+test("CA-13: un segmento final sin LF en sdd/events.jsonl no se funde con el log de chiche/", async (t) => {
+	const script = await canonicalSequence();
+	const repo = initRepo(scratch(t, "nolf"), FULL_TREE);
+	const common = join(repo, ".git");
+	writeTree(common, {
+		"sdd/events.jsonl": `${eventLine({})}\n${eventLine({ ts: "2026-10-02T10:00:00Z" }).slice(0, 40)}`,
+		"chiche/events.jsonl": `${eventLine({ ts: "2026-10-30T10:00:00Z", harness: "codex" })}\n`,
+	});
+	const before = (await readSddEvents(repo)).map((event) => event.ts);
+	const run = runSequence(script, repo);
+	assert.equal(run.status, 0, run.stderr);
+	assert.deepEqual((await readSddEvents(repo)).map((event) => event.ts), before, "la migración no pierde eventos legibles");
+});
+
+// S13/B2
+test("CA-13: la reescritura conserva symlinks y el modo de los archivos", async (t) => {
+	const script = await canonicalSequence();
+	const repo = join(scratch(t, "modes"), "repo");
+	mkdirSync(repo);
+	git(repo, "init", "-q", "-b", "main");
+	const { "CLAUDE.md": _claude, ...tree } = FULL_TREE;
+	writeTree(repo, { ...tree, ".sdd/evidence/check.sh": "#!/bin/sh\ncat .sdd/project.md\n" });
+	chmodSync(join(repo, ".sdd/evidence/check.sh"), 0o755);
+	symlinkSync("AGENTS.md", join(repo, "CLAUDE.md"));
+	git(repo, "add", "-A");
+	git(repo, "commit", "-q", "-m", "fixture");
+	const run = runSequence(script, repo);
+	assert.equal(run.status, 0, run.stderr);
+	assert.ok(lstatSync(join(repo, "CLAUDE.md")).isSymbolicLink(), "CLAUDE.md sigue siendo symlink");
+	assert.equal(statSync(join(repo, ".chiche/evidence/check.sh")).mode & 0o777, 0o755);
+	assert.equal(git(repo, "diff", "--summary"), "", "sin mode change");
+});
+
+// S13/S1
+test("CA-13: re-correr la secuencia con duplicados conservados no reescribe ni duplica la nota", async (t) => {
+	const script = await canonicalSequence();
+	const repo = initRepo(scratch(t, "rerun"), {
+		...FULL_TREE,
+		".chiche/specs/a.md": SPEC_A.replace("<!-- SDD-Tracking: version=1;", "<!-- Chiche-Tracking: version=2;"),
+	});
+	assert.equal(runSequence(script, repo).status, 0);
+	const once = readFileSync(join(repo, ".chiche/project.md"), "utf8");
+	const again = runSequence(script, repo);
+	assert.equal(again.status, 0, again.stderr);
+	assert.equal(readFileSync(join(repo, ".chiche/project.md"), "utf8"), once);
+});
+
+// S13/S3
+test("CA-13: con <git-common-dir>/chiche/ presente y no escribible la secuencia avisa, sigue y anota", { skip: process.getuid?.() === 0 }, async (t) => {
+	const script = await canonicalSequence();
+	const repo = initRepo(scratch(t, "rochiche"), FULL_TREE);
+	const common = join(repo, ".git");
+	const events = `${eventLine({})}\n`;
+	writeTree(common, { "sdd/events.jsonl": events, "chiche/events.jsonl": `${eventLine({ ts: "2026-10-30T10:00:00Z" })}\n` });
+	chmodSync(join(common, "chiche"), 0o555);
+	const run = runSequence(script, repo);
+	chmodSync(join(common, "chiche"), 0o755);
+	assert.equal(run.status, 0, run.stderr);
+	assert.match(run.stdout, /chiche-init: no se pudo escribir en /);
+	assert.equal(readFileSync(join(common, "sdd", "events.jsonl"), "utf8"), events);
+	assert.ok(readFileSync(join(repo, ".chiche/project.md"), "utf8").includes(MIGRATION_NOTE));
+});
+
+// S13/S4
+test("CA-13: la secuencia no depende de que pipefail esté apagado", async (t) => {
+	const script = await canonicalSequence();
+	const { "AGENTS.md": _agents, ...tree } = FULL_TREE;
+	const repo = initRepo(scratch(t, "pipefail"), tree);
+	const run = runSequence(`set -o pipefail\n${script}`, repo);
+	assert.equal(run.status, 0, run.stderr);
+	assert.ok(readFileSync(join(repo, ".chiche/project.md"), "utf8").includes(MIGRATION_NOTE));
 });
