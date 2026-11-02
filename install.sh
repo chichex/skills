@@ -176,8 +176,9 @@ pi_forget_manifest() {
 # archivo viejo anidado que el discovery de Pi vuelva a levantar.
 # Reescribe el manifest sin lo podado. Espera el manifest ya migrado (ver
 # pi_migrate_manifest): así una copia vieja (un `sdd-*` que el checkout ya no
-# trae como alias, o la carpeta `sdd-artifacts` de una extensión renombrada) se
-# poda aunque solo figure en `.chichex-skills-managed`.
+# trae, porque desde 4.0.0 ningún alias lo reemplaza, o la carpeta
+# `sdd-artifacts` de una extensión renombrada) se poda aunque solo figure en
+# `.chichex-skills-managed`.
 prune_retired() {
   local src="$1" dest="$2" glob_kind="$3" manifest current kept name
   manifest="$(pi_manifest_path "$dest")"
@@ -220,8 +221,8 @@ install_set() {
   while IFS= read -r base; do
     [ -n "$base" ] || continue
     # reemplaza solo ESTE skill (limpio, sin dejar archivos viejos);
-    # el resto de tu carpeta queda intacto. Una copia completa vieja de
-    # sdd-<x> queda reemplazada entera por el alias del checkout.
+    # el resto de tu carpeta queda intacto. Una copia vieja de sdd-<x> no
+    # llega acá: el checkout ya no la trae y la poda prune_retired.
     rm -rf "${dest:?}/$base"
     cp -R "$src/$base" "$dest/$base"
     pi_record_managed "$dest" "$base"
@@ -416,6 +417,32 @@ clean_pi() {
   fi
 }
 
+# Copias Pi que este repo instaló alguna vez (figuran en el manifest de $PI_DEST),
+# que el checkout ya no trae y que siguen en disco: los `sdd-*` de una 2.x o 3.x.
+# `install.sh codex` no poda $PI_DEST, así que Codex las vería habilitadas y
+# repetidas contra `chiche-*`. Un nombre por línea, ordenados. Migra el manifest
+# viejo de $PI_DEST si hace falta, pero nunca crea uno que no existe.
+codex_stale_pi_skills() {
+  local name
+  pi_migrate_manifest "$PI_DEST"
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    [ ! -f "$REPO_DIR/pi/$name/SKILL.md" ] || continue
+    [ -f "$PI_DEST/$name/SKILL.md" ] || continue
+    printf '%s\n' "$name"
+  done < <(pi_manifest_names "$PI_DEST" | sort)
+}
+
+codex_report_stale_pi_skills() {
+  local name
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    echo "   ↳ $name: copia Pi retirada; corré ./install.sh pi o ./install.sh pi-clean --confirm para podarla"
+  done <<EOF
+$1
+EOF
+}
+
 configure_codex_skill_precedence() {
   # check_root: contra qué comprobar si un skill de Pi "existe" para generar su
   # entrada de precedencia. Por defecto el checkout ($REPO_DIR/pi), que es lo
@@ -433,6 +460,8 @@ configure_codex_skill_precedence() {
   local legacy_begin="$CODEX_LEGACY_BEGIN"
   local legacy_end="$CODEX_LEGACY_END"
   local config_dir config_tmp block_tmp begin_count end_count legacy_begin_count legacy_end_count
+  local emitted="" stale_skills name escaped_path
+  stale_skills="$(codex_stale_pi_skills)"
   config_dir="$(dirname "$CODEX_CONFIG")"
   mkdir -p "$config_dir"
   config_tmp="$(mktemp "$config_dir/.config.toml.XXXXXX")"
@@ -451,7 +480,20 @@ configure_codex_skill_precedence() {
       printf '\n[[skills.config]]\n'
       printf 'path = "%s"\n' "$escaped_path"
       printf 'enabled = false\n'
+      emitted="$emitted$base"$'\n'
     done
+    # Después de los skills vigentes: las copias Pi retiradas que siguen en
+    # $PI_DEST (ver codex_stale_pi_skills), sin repetir una ya emitida.
+    while IFS= read -r name; do
+      [ -n "$name" ] || continue
+      ! printf '%s' "$emitted" | grep -Fxq -e "$name" || continue
+      escaped_path="$(printf '%s' "$PI_DEST/$name/SKILL.md" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+      printf '\n[[skills.config]]\n'
+      printf 'path = "%s"\n' "$escaped_path"
+      printf 'enabled = false\n'
+    done <<EOF
+$stale_skills
+EOF
     printf '%s\n' "$end_marker"
   } > "$block_tmp"
 
@@ -502,12 +544,14 @@ configure_codex_skill_precedence() {
   if [ -f "$CODEX_CONFIG" ] && cmp -s "$config_tmp" "$CODEX_CONFIG"; then
     rm -f "$config_tmp"
     echo "→ Codex: precedencia sobre skills Pi ya configurada"
+    codex_report_stale_pi_skills "$stale_skills"
     return
   fi
 
   chmod 600 "$config_tmp"
   mv "$config_tmp" "$CODEX_CONFIG"
   echo "→ Codex: desactivadas las copias Pi duplicadas en $CODEX_CONFIG"
+  codex_report_stale_pi_skills "$stale_skills"
 }
 
 install_codex() {
@@ -520,11 +564,17 @@ install_antigravity() {
 }
 
 case "$WHICH" in
-  all)      install_codex
+  all)      # install_pi poda $PI_DEST antes de que Codex lo mire: el bloque de
+            # precedencia no lista copias Pi que esta misma corrida retira. Con el
+            # Pi Package nativo instalado install_pi falla; se difiere al final
+            # (como siempre) para que no corte los demás sets.
+            pi_blocked=0
+            if pi_native_package_conflict; then pi_blocked=1; else install_pi; fi
+            install_codex
             install_claude
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST"
             install_antigravity
-            install_pi ;;
+            if [ "$pi_blocked" = 1 ]; then install_pi; fi ;;
   both)     install_claude
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
   claude)   install_claude ;;

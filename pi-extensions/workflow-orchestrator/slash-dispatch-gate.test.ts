@@ -26,8 +26,8 @@ test("included Pi consumers contain zero SDD dispatch through literal or dynamic
 	}
 });
 
-// Issue #103, S11: los alias `sdd-*` existen solo para quien los escribe a mano.
-// Ningún consumidor Pi los despacha: ni por `/skill:sdd-*`, ni por nombre de
+// Issue #103, CA-22: los alias `sdd-*` se retiraron en 4.0.0. Ningún consumidor
+// Pi los despacha ni los registra: ni por `/skill:sdd-*`, ni por nombre de
 // comando `skill:sdd-*`, ni como `name: "sdd-*"` de un skill a materializar.
 const FORBIDDEN_ALIAS_DISPATCH = /\/?skill:sdd-(?:init|spec|run|land)\b|\bname: "sdd-(?:init|spec|run|land)"/;
 
@@ -39,8 +39,6 @@ const FORBIDDEN_ALIAS_LITERAL = /["'`]sdd-(?:init|spec|run|land)["'`]/;
 // Formas con el literal `"sdd-<x>"` que no despachan un skill y deben quedar.
 // Se quitan del fuente antes de buscar.
 const ALLOWED_ALIAS_LITERALS = [
-	// El comando de extensión `/sdd-run` es el alias deprecado en sí (S11): avisa y delega en `/chiche-run`.
-	/\bregisterCommand\("sdd-run"/g,
 	// Discriminante `kind` del protocolo directo (direct-protocol.ts, direct-launch.ts): un request v1
 	// ya emitido lo lleva persistido, así que renombrarlo lo invalidaría. No nombra un skill.
 	/\bkind: "sdd-run"/g,
@@ -98,16 +96,14 @@ test("the alias dispatch gate rejects a positional skill name, the way productio
 	}
 });
 
-test("the alias dispatch gate keeps the persisted identifiers and the /sdd-run command", () => {
+test("the alias dispatch gate keeps the persisted identifiers and rejects the retired /sdd-run command", () => {
 	for (const fine of [
-		'pi.registerCommand("sdd-run", {',
 		'kind: "sdd-run";',
 		'kind: "sdd-run",',
 		'if (object.kind !== "sdd-run") diagnostics.push(',
 		'kind: "sdd-spec-publication";',
 		'pi.registerEntryRenderer("sdd-spec-inspection", render)',
 		'pi.appendEntry("sdd-spec-inspection", details)',
-		'notify(context, "sdd-run es un alias deprecado: usá chiche-run", "info")',
 		'registerCommand("__sdd-dispatch"',
 		'request(resolution, "chiche-spec", { issue })',
 		'continueWithMaterializedSkill(pi, "chiche-run", context)',
@@ -116,4 +112,6 @@ test("the alias dispatch gate keeps the persisted identifiers and the /sdd-run c
 	}
 	// La excepción es por forma, no por archivo: el mismo nombre suelto en otra posición sigue prohibido.
 	assert.notDeepEqual(aliasDispatches('registerCommand("sdd-run", () => dispatch(pi, "sdd-run"))'), []);
+	// Y el comando retirado solo, sin nada más que lo delate, también se rechaza.
+	assert.notDeepEqual(aliasDispatches('pi.registerCommand("sdd-run", {'), []);
 });

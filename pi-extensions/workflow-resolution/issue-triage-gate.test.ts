@@ -311,10 +311,11 @@ test("both READMEs advertise issue-triage and its confirmed chaining in OpenCode
 });
 
 // Review #106, F1: quien copió la allowlist anterior (`sdd-spec`/`sdd-run`) con
-// `"*": "deny"` pierde `chiche-*` al actualizar. La nota va junto al ejemplo.
+// `"*": "deny"` pierde `chiche-*` al actualizar. La nota va junto al ejemplo y,
+// desde 4.0.0 (CA-24), dice que esas entradas sobran porque los alias se retiraron.
 const ALLOWLIST_MIGRATION_NOTE: Record<string, RegExp> = {
-	"README.md": /Si venís de la versión anterior[^\n]*agregá `chiche-spec` y `chiche-run`[^\n]*`sdd-\*`[^\n]*alias/,
-	"README.en.md": /Coming from the previous version[^\n]*add `chiche-spec` and `chiche-run`[^\n]*`sdd-\*`[^\n]*aliases/,
+	"README.md": /Si venís de la versión anterior[^\n]*agregá `chiche-spec` y `chiche-run`[^\n]*`sdd-spec` y `sdd-run`[^\n]*retiraron en 4\.0\.0/,
+	"README.en.md": /Coming from the previous version[^\n]*add `chiche-spec` and `chiche-run`[^\n]*`sdd-spec` and `sdd-run`[^\n]*retired in 4\.0\.0/,
 };
 
 test("both READMEs tell who copied the previous OpenCode allowlist to add chiche-spec and chiche-run", async () => {

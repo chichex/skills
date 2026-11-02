@@ -30,7 +30,7 @@ test("extension entrypoint registers the controller but keeps the terminal tool 
 		["launch_sdd_run", "launch_grill"],
 		"the terminal triage tool stays lazy; direct launches are globally available behind explicit UI gates",
 	);
-	assert.deepEqual(commands, ["__sdd-dispatch", "chiche-run", "sdd-run", "grill"]);
+	assert.deepEqual(commands, ["__sdd-dispatch", "chiche-run", "grill"]);
 	assert.ok(events.includes("agent_settled"));
 	assert.ok(events.includes("session_shutdown"));
 	assert.equal(typeof createSubmitWorkflowResolutionTool, "function");

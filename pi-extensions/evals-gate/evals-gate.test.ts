@@ -1,6 +1,7 @@
 // Gate de los casos de `claude plugin eval` (evals/). Solo tests, sin
 // extension: no corre ningun eval (son pagos), asserta su forma. Issue #103,
-// CA-12: los casos y graders siguen a los skills renombrados a chiche-*.
+// CA-12: los casos y graders siguen a los skills renombrados a chiche-*; CA-23: los
+// graders negativos ya no contemplan los alias sdd-*, retirados en 4.0.0.
 
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
@@ -57,24 +58,24 @@ test("#103 CA-12: un grader positivo matchea solo (?:[\\w-]+:)?chiche-<x>, con o
 		assert.match(`{"skill": "${skill}"}`, pattern, `${path}: sin namespace`);
 		assert.match(`{"skill":"chiche:${skill}"}`, pattern, `${path}: con namespace chiche:`);
 		assert.doesNotMatch(`{"skill": "${skill.replace("chiche-", "sdd-")}"}`, pattern, `${path}: no matchea el alias`);
+		assert.doesNotMatch(`{"skill": "${skill}-extra"}`, pattern, `${path}: la comilla de cierre ancla el nombre, no matchea un prefijo`);
 	}
 });
 
-test("#103 CA-12: un grader negativo matchea (?:[\\w-]+:)?(?:chiche|sdd)-<x>: atrapa el skill y su alias", async () => {
+test("#103 CA-23: un grader negativo matchea solo (?:[\\w-]+:)?chiche-<x>: los alias sdd-* se retiraron", async () => {
 	for (const [path, skill, polarity] of SKILL_GRADERS) {
 		if (polarity !== "negative") continue;
 		const grader = await readFile(repoFile(`evals/${path}`), "utf8");
 		assert.match(grader, /^max: 0$/m, `${path}: un grader negativo exige max: 0`);
 		const suffix = skill.replace("chiche-", "");
 		const literal = grader.match(/^input_match: '(.*)'$/m)?.[1];
-		assert.equal(literal, `"skill"\\s*:\\s*"(?:[\\w-]+:)?(?:chiche|sdd)-${suffix}"`, path);
+		assert.equal(literal, `"skill"\\s*:\\s*"(?:[\\w-]+:)?chiche-${suffix}"`, path);
 		const pattern = new RegExp(literal ?? "");
-		for (const name of [skill, `sdd-${suffix}`]) {
-			assert.match(`{"skill": "${name}"}`, pattern, `${path}: sin namespace, ${name}`);
-			assert.match(`{"skill":"chiche:${name}"}`, pattern, `${path}: con namespace chiche:, ${name}`);
-		}
+		assert.match(`{"skill": "${skill}"}`, pattern, `${path}: sin namespace`);
+		assert.match(`{"skill":"chiche:${skill}"}`, pattern, `${path}: con namespace chiche:`);
+		assert.doesNotMatch(`{"skill": "sdd-${suffix}"}`, pattern, `${path}: el alias retirado ya no se contempla`);
 		assert.doesNotMatch(`{"skill": "grill"}`, pattern, `${path}: no matchea otro skill`);
-		assert.doesNotMatch(`{"skill": "sdd-${suffix}-extra"}`, pattern, `${path}: no matchea un prefijo`);
+		assert.doesNotMatch(`{"skill": "${skill}-extra"}`, pattern, `${path}: la comilla de cierre ancla el nombre, no matchea un prefijo`);
 	}
 });
 

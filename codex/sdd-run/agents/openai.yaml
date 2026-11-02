@@ -1,6 +1,0 @@
-interface:
-  display_name: "sdd-run (alias deprecado)"
-  short_description: "Alias deprecado de chiche-run"
-  default_prompt: "Usá $chiche-run: sdd-run es un alias deprecado."
-policy:
-  allow_implicit_invocation: false

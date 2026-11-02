@@ -14,7 +14,6 @@ import {
 import {
 	applyInlineSkillCompletion,
 	extractInlineSkillToken,
-	orderSkillCommands,
 	promoteInlineSkillInvocation,
 	skillSuggestions,
 } from "./logic";
@@ -42,8 +41,7 @@ function matchingSkills(commands: SlashCommandInfo[], query: string): SlashComma
 		})
 		: commands;
 
-	// Los alias deprecados `sdd-*` van al final: nunca desplazan a `chiche-*`.
-	return orderSkillCommands(matches).slice(0, MAX_SUGGESTIONS);
+	return matches.slice(0, MAX_SUGGESTIONS);
 }
 
 function autocompleteItems(commands: SlashCommandInfo[]): AutocompleteItem[] {
