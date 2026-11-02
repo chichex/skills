@@ -430,7 +430,7 @@ test("CA-4: la tabla de Upgrade de contrato gana la fila Diseño", async () => {
 });
 
 test("CA-5: el contrato de este repo gana ## Diseño sin superficies, la fila del gate y los conteos nuevos", async () => {
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	const contractHeadings = headings(contract);
 	assert.notEqual(contractHeadings.indexOf("## Stack"), -1, "el contrato tiene ## Stack");
 	assert.equal(contractHeadings[contractHeadings.indexOf("## Stack") + 1], "## Diseño", "## Diseño va inmediatamente después de ## Stack");
@@ -680,7 +680,7 @@ test("CA-16: next.md no repite las reglas de web en celular que ya trae react.md
 });
 
 test("CA-17: el contrato fecha los conteos nuevos y cita la corrida con Pi 0.85.1", async () => {
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	const commands = section(contract, /^## Comandos$/);
 	// Pi Package, frontmatter y la suite se re-verificaron el 2026-11-01 con la
 	// capa 2 del renombre a chiche (alias sdd-*); drift conserva la corrida del

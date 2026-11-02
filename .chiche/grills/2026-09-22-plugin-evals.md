@@ -1,6 +1,6 @@
 # Grill — Suite de evals de `claude plugin eval` para `chichex-skills`
 <!-- Estado: finalized. Proyecto: /Users/ayrtonmarini/workspace/skills. Fuente: pedido en chat del 2026-09-22 ("podemos usar el claude plugin eval para ver si resiste nuestro set de skills?"). -->
-<!-- SDD-Tracking: version=1; type=grill; state=finalized; issue=none; grill=2026-09-22-plugin-evals; project=%2FUsers%2Fayrtonmarini%2Fworkspace%2Fskills -->
+<!-- Chiche-Tracking: version=2; type=grill; state=finalized; issue=none; grill=2026-09-22-plugin-evals; project=%2FUsers%2Fayrtonmarini%2Fworkspace%2Fskills -->
 
 ## Modo
 standard
@@ -19,15 +19,15 @@ standard
 - `.github/workflows/claude-review.yml` corre en `ubuntu-latest` por `workflow_dispatch` (inputs `pr`, `model`, `effort`) con el secret `CLAUDE_CODE_OAUTH_TOKEN` (`:24-68`, `:96`). El binario del CLI referencia `CLAUDE_CODE_OAUTH_TOKEN` (strings). `ci.yml` no tiene auth de Anthropic.
 - `claude/` tiene 14 skills. `grill-with-domain-modeling` declara `disable-model-invocation: true` (`claude/grill-with-domain-modeling/SKILL.md:4`): el modelo no puede dispararlo. `mini-grill` y `domain-modeling` declaran disparo solo explícito en su `description`.
 - Modelo default de la sesión del usuario: `claude-fable-5-1[1m]` (`~/.claude/settings.json:22`). Sin `--model`, las corridas lo usan.
-- No hay `CONTEXT.md`, `CONTEXT-MAP.md` ni `docs/adr/`. Grills previos en `.sdd/grills/`: ninguno trata evals; `2026-09-22-sdd-menos-friccion.md` define la doctrina de `sdd-spec` que la rúbrica de adherencia juzga.
+- No hay `CONTEXT.md`, `CONTEXT-MAP.md` ni `docs/adr/`. Grills previos en `.chiche/grills/`: ninguno trata evals; `2026-09-22-sdd-menos-friccion.md` define la doctrina de `sdd-spec` que la rúbrica de adherencia juzga.
 
 ## Decisiones resueltas
 1. **Objetivo.** Triggering determinista más un único caso de adherencia de `sdd-spec`.
 2. **Cobertura de triggering.** Seis skills: `sdd-init`, `sdd-spec`, `sdd-run`, `sdd-review-loop`, `grill`, `mini-grill`. Fuera: `coding-policies`, `domain-modeling`, `issue-triage`, `quick-run`, `tdd`, `wait-pr`, `yt-summary` y `grill-with-domain-modeling`.
 3. **Modelo.** Cada caso declara `model: claude-sonnet-5`. `--model` lo pisa a demanda.
 4. **Sin gate determinista** sobre la suite. Se valida solo al correrla.
-5. **Fixture de adherencia.** Un mini repo versionado en `evals/fixtures/` con `.sdd/project.md` mínimo, montado con `context.add_dirs` desde un `case.yaml`. El prompt apunta al path del fixture.
-6. **Graders de adherencia.** Deterministas: `tool_used Read` sobre `.sdd/project.md`, `tool_used AskUserQuestion` con `max: 0`, `file_exists` sobre la spec escrita, `regex` sobre la sección de inferencias. Más una rúbrica `llm` juzgada por Haiku que evalúa que las inferencias estén expuestas y correspondan al pedido.
+5. **Fixture de adherencia.** Un mini repo versionado en `evals/fixtures/` con `.chiche/project.md` mínimo, montado con `context.add_dirs` desde un `case.yaml`. El prompt apunta al path del fixture.
+6. **Graders de adherencia.** Deterministas: `tool_used Read` sobre `.chiche/project.md`, `tool_used AskUserQuestion` con `max: 0`, `file_exists` sobre la spec escrita, `regex` sobre la sección de inferencias. Más una rúbrica `llm` juzgada por Haiku que evalúa que las inferencias estén expuestas y correspondan al pedido.
 7. **Runs.** `runs: 1` en cada caso. Comando documentado con `--ablation none`. Repetición con `--runs 3 --ablation with-without` a demanda cuando un caso falla o cambia un skill.
 8. **Presupuesto.** `--max-cost-usd 5` por corrida completa. Se calibra con el costo real del primer reporte y se actualiza en la doc.
 9. **Reporte.** `--no-publish`. HTML y JSON quedan en `evals/results/`, ignorado por git.
@@ -54,7 +54,7 @@ Primera suite de evals del plugin de Claude Code `chichex-skills`. Mide dos cosa
 - Un caso positivo por skill, con graders `tool_used` sobre el tool `Skill` por `input_match` contra `"skill":"chichex-skills:<nombre>"` (aceptando el nombre con o sin prefijo de plugin). Donde hay confusión, el mismo caso agrega un grader negativo (`max: 0`). Un caso extra con un pedido ambiguo donde ningún skill debe dispararse. Total estimado: 8 casos.
 - Pares negativos: "hagamos la spec de X" dispara `sdd-spec` y no `grill`; "grillame este plan" dispara `grill` y no `sdd-spec`; un pedido ambiguo sin la frase "mini grill" no dispara `mini-grill` ni `grill`; "corré la spec de X" sin spec en el workspace dispara `sdd-run` y no `sdd-spec`.
 - El workflow copia la estructura de `claude-review.yml` y expone inputs `case`, `runs`, `model` y `ablation` con los defaults de la suite.
-- Documentación: fila nueva en la tabla de comandos de `.sdd/project.md`, sección en `README.md` y `README.en.md`, y `evals/results/` en `.gitignore`.
+- Documentación: fila nueva en la tabla de comandos de `.chiche/project.md`, sección en `README.md` y `README.en.md`, y `evals/results/` en `.gitignore`.
 - La verificación autónoma de la spec es la corrida de la decisión 12 más la carga sintáctica del workflow.
 
 **Riesgos y preguntas diferidas**
@@ -70,8 +70,8 @@ Primera suite de evals del plugin de Claude Code `chichex-skills`. Mide dos cosa
 - Job automático en PRs que toquen `claude/`, `agents/` o `evals/`.
 
 **Contexto recomendado para la sesión que escriba la spec**
-- Este handoff y `.sdd/project.md`.
+- Este handoff y `.chiche/project.md`.
 - Las `description` de los seis skills en `claude/*/SKILL.md` para redactar prompts positivos y negativos.
 - `.claude-plugin/plugin.json` y `.github/workflows/claude-review.yml` como plantilla del workflow.
 - La salida de `claude plugin eval --help` y la plantilla de `claude plugin eval init --bare`.
-- El grill `.sdd/grills/2026-09-22-sdd-menos-friccion.md` para la doctrina de `sdd-spec` que juzga la rúbrica.
+- El grill `.chiche/grills/2026-09-22-sdd-menos-friccion.md` para la doctrina de `sdd-spec` que juzga la rúbrica.

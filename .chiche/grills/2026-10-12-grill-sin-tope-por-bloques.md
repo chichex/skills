@@ -1,6 +1,6 @@
 # Grill — grill sin tope y siempre por bloques
 <!-- Estado: finalized. Proyecto: /Users/ayrtonmarini/workspace/skills. Fuente: pedido en chat «quiero sacar el límite de preguntas en un grill». -->
-<!-- SDD-Tracking: version=1; type=grill; state=finalized; issue=none; grill=2026-10-12-grill-sin-tope-por-bloques; project=%2FUsers%2Fayrtonmarini%2Fworkspace%2Fskills -->
+<!-- Chiche-Tracking: version=2; type=grill; state=finalized; issue=none; grill=2026-10-12-grill-sin-tope-por-bloques; project=%2FUsers%2Fayrtonmarini%2Fworkspace%2Fskills -->
 
 ## Hechos comprobados
 
@@ -64,4 +64,4 @@ Ninguno.
 
 ### Contexto recomendado para la spec
 
-Archivos a tocar: los cuatro `grill/SKILL.md`; `pi-extensions/grill-tools/index.ts`, `inventory.ts`, `runtime-import.ts` y sus tests; `pi-extensions/ask-user-question/index.ts`; `pi-extensions/design-gate/design-gate.test.ts`; `README.md`; la fila `gate de doctrina de diseño` de `.sdd/project.md` si cambia el conteo de tests. Verificación: `node --test pi-extensions/*/*.test.ts`, `bash scripts/lint-frontmatter.sh`, `bash scripts/drift-report.sh` y `claude plugin validate .`.
+Archivos a tocar: los cuatro `grill/SKILL.md`; `pi-extensions/grill-tools/index.ts`, `inventory.ts`, `runtime-import.ts` y sus tests; `pi-extensions/ask-user-question/index.ts`; `pi-extensions/design-gate/design-gate.test.ts`; `README.md`; la fila `gate de doctrina de diseño` de `.chiche/project.md` si cambia el conteo de tests. Verificación: `node --test pi-extensions/*/*.test.ts`, `bash scripts/lint-frontmatter.sh`, `bash scripts/drift-report.sh` y `claude plugin validate .`.

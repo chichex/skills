@@ -408,7 +408,7 @@ test("CA-24: plugin.json y marketplace.json nombran chiche-land con descripcione
 });
 
 test("CA-24: el contrato autoriza el merge de /chiche-land, declara el gate nuevo y pinea la versión de gh-stack", async () => {
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	const limites = section(contract, /^## Limites$/);
 	assert.match(limites, /No hacer `git push` a `main`, force-push ni mergear PRs, salvo `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear\./);
 	assert.match(section(contract, /^## Comandos$/), /node --test pi-extensions\/chiche-land-gate\/chiche-land-gate\.test\.ts/);
@@ -519,7 +519,7 @@ test("autotest: la guarda de CA-5 detecta un barrido por ancestría con otra red
 });
 
 test("#84 CA-8: el contrato dice que gh stack ya se ejecutó en vivo en pramaestudio/platform#59/#60", async () => {
-	const gaps = section(await readRepoFile(".sdd/project.md"), /^## Gaps$/);
+	const gaps = section(await readRepoFile(".chiche/project.md"), /^## Gaps$/);
 	assert.match(gaps, /`gh stack`[^\n]*ya se ejecut[oó] en vivo[^\n]*merge atómico[^\n]*`unstack --local`[^\n]*`branch -d`[^\n]*`pramaestudio\/platform#59\/#60`/);
 	assert.match(gaps, /`gh stack view --json` tenia un head viejo|`gh stack view --json` tenía un head viejo/);
 	assert.doesNotMatch(gaps, /no se instalo ni se ejecuto en ninguna corrida/);
@@ -532,7 +532,7 @@ test("autotest: un harness sin la doctrina de un CA se reporta con el patrón qu
 });
 
 test("#84 review: el contrato declara la dependencia de jq del gate y la limitación push/pull_request del filtro", async () => {
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	const row = section(contract, /^## Comandos$/).split("\n").find((line) => line.startsWith("| gate de doctrina de chiche-land |")) ?? "";
 	assert.match(row, /ejecuta el filtro jq canónico sobre `pi-extensions\/chiche-land-gate\/fixtures\/`/);
 	assert.match(row, /requiere `jq`[^|]*se saltea y lo dice si falta/);

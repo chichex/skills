@@ -343,7 +343,7 @@ test("CA-11: la fila grill de README.md describe la entrevista por bloques y no 
 });
 
 test("CA-12: el contrato suma la fila del gate de grill y CI lo corre con el glob de extensiones", async () => {
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	const commands = section(contract, /^## Comandos$/);
 	assert.match(commands, /^\| gate de doctrina de grill \| `node --test pi-extensions\/grill-gate\/grill-gate\.test\.ts` \| raiz \| verificado \d{4}-\d{2}-\d{2} \|/m);
 	assert.match(await readRepoFile(".github/workflows/ci.yml"), /node --test pi-extensions\/\*\/\*\.test\.ts/);

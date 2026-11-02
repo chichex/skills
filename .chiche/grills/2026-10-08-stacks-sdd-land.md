@@ -1,6 +1,6 @@
 # Grill — Stacks de PRs por spec + sdd-land
 <!-- Estado: finalized. Proyecto: /Users/ayrtonmarini/workspace/skills. Fuente: pedido libre en chat. -->
-<!-- SDD-Tracking: version=1; type=grill; state=finalized; issue=none; grill=2026-10-08-stacks-sdd-land; project=%2FUsers%2Fayrtonmarini%2Fworkspace%2Fskills -->
+<!-- Chiche-Tracking: version=2; type=grill; state=finalized; issue=none; grill=2026-10-08-stacks-sdd-land; project=%2FUsers%2Fayrtonmarini%2Fworkspace%2Fskills -->
 
 ## Modo
 standard
@@ -17,7 +17,7 @@ standard
 - `sdd-review-loop` corrige en `../<repo>-review-loop-<PR>` detached sobre `origin/<headRef>` con push normal, nunca force. `quick-run` usa worktree hermano y branch `quick/issue-<N>-<slug>`.
 - `repo-clean` existe solo en `pi/` y `codex/`: sincroniza el branch actual con `origin/<branch>`, no cambia de branch, no borra branches ni worktrees, maneja checkout sucio con conservar/descartar.
 - `install.sh` poda en cada destino los skills administrados que el checkout ya no tiene (manifest `.chichex-skills-managed`, PR #60).
-- Contrato de este repo (`.sdd/project.md` Limites): prohíbe push a main, force-push y mergear PRs. CI con 6 jobs tras PR #62 (`plugin-validate` incluido).
+- Contrato de este repo (`.chiche/project.md` Limites): prohíbe push a main, force-push y mergear PRs. CI con 6 jobs tras PR #62 (`plugin-validate` incluido).
 - Gates a tocar ante alta/baja de skills: `EXPECTED_SKILLS` y conteo de comandos RPC en `pi-extensions/pi-package/pi-package.test.ts`, `scripts/lint-frontmatter.sh`, `pi-extensions/harness-gate/`, `pi-extensions/agents-gate/`, README/README.en, `.claude-plugin/plugin.json`, manifest de `install.sh`.
 - `domain-modeling` retirado el 2026-10-08: la sesión corrió en modo `standard` sin preguntarlo.
 
@@ -72,7 +72,7 @@ Dos cambios encadenados en la familia SDD, en los cuatro harnesses: (1) una spec
 - Squash o rebase con stacks: reportes no oficiales de problemas de tracking; el default es merge commit.
 - Un fix en una capa baja rebasea las de arriba e invalida aprobaciones si el diff cambió.
 - Verificación autónoma de `sdd-land`: exige repos descartables con stacks reales en GitHub (red): señal MEDIA; parte queda como prueba humana.
-- Hay que actualizar `pi-package` gate (`EXPECTED_SKILLS`, comandos RPC), `harness-gate`, `agents-gate`, lint de frontmatter, README, `plugin.json`, manifest de `install.sh` y `.sdd/project.md`.
+- Hay que actualizar `pi-package` gate (`EXPECTED_SKILLS`, comandos RPC), `harness-gate`, `agents-gate`, lint de frontmatter, README, `plugin.json`, manifest de `install.sh` y `.chiche/project.md`.
 
 **Diferido**
 - Evals de triggering para `sdd-land`.
@@ -80,4 +80,4 @@ Dos cambios encadenados en la familia SDD, en los cuatro harnesses: (1) una spec
 - Soporte probado de merge queue con stacks.
 
 **Contexto para la spec**
-`claude|codex|opencode|pi/{sdd-spec,sdd-run,sdd-review-loop}/SKILL.md`; `pi/repo-clean/SKILL.md` y `codex/repo-clean/SKILL.md` (baja); `pi-extensions/pi-package/pi-package.test.ts` (`EXPECTED_SKILLS`, conteo RPC); `pi-extensions/harness-gate/`; `pi-extensions/agents-gate/`; `scripts/lint-frontmatter.sh`; `install.sh` y su manifest de administrados; `README.md`/`README.en.md`; `.claude-plugin/plugin.json`; `.sdd/project.md` (Limites y tabla de comandos); skill `harness-port`; docs oficiales de stacked PRs en docs.github.com y README de `github/gh-stack`.
+`claude|codex|opencode|pi/{sdd-spec,sdd-run,sdd-review-loop}/SKILL.md`; `pi/repo-clean/SKILL.md` y `codex/repo-clean/SKILL.md` (baja); `pi-extensions/pi-package/pi-package.test.ts` (`EXPECTED_SKILLS`, conteo RPC); `pi-extensions/harness-gate/`; `pi-extensions/agents-gate/`; `scripts/lint-frontmatter.sh`; `install.sh` y su manifest de administrados; `README.md`/`README.en.md`; `.claude-plugin/plugin.json`; `.chiche/project.md` (Limites y tabla de comandos); skill `harness-port`; docs oficiales de stacked PRs en docs.github.com y README de `github/gh-stack`.

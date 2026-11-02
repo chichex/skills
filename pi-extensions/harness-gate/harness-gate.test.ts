@@ -838,8 +838,8 @@ test("ultracode no aparece en ningún skill de claude/", async () => {
 	assert.deepEqual(offenders, []);
 });
 
-test(".sdd/project.md lleva el marker canonico type=project", async () => {
-	const parsed = parseSddArtifact(await readRepoFile(".sdd/project.md"));
+test(".chiche/project.md lleva el marker canonico type=project", async () => {
+	const parsed = parseSddArtifact(await readRepoFile(".chiche/project.md"));
 	assert.equal(parsed.kind, "metadata", "el contrato del repo tiene metadata SDD");
 	assert.ok(parsed.kind === "metadata" && parsed.format === "canonical", "el marker es canonico, no legacy");
 	assert.ok(

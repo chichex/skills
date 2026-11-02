@@ -1,6 +1,6 @@
 # Spec — Extraer quick-run protegido a un skill dedicado
 <!-- Generada por /skill:sdd-spec el 2026-08-10. Fuente: issue #12. Estado: implementada -->
-<!-- SDD-Tracking: version=1; type=spec; state=implemented; issue=#12; grill=none; superseded-by=none -->
+<!-- Chiche-Tracking: version=2; type=spec; state=implemented; issue=#12; grill=none; superseded-by=none -->
 
 ## Contexto
 El issue #12 se abrió cuando `issue-triage` todavía ejecutaba la vía rápida dentro de su Fase 6, pero #11 cambió esa frontera: hoy las tres copias emiten `WorkflowResolutionV1` y terminan sin ejecutar stages (`pi/issue-triage/SKILL.md:128,321-329`; equivalente en Claude/Codex). No existe ningún directorio `quick-run`; el resolver ya representa `quick-run|join-quick-run` como `stage="quick-run", mode="new"` (`pi-extensions/workflow-resolution/index.ts:397-423,464-466`). La doctrina completa retirada sigue recuperable, byte-equivalente entre harnesses, en `f5c138b:{claude,codex,pi}/issue-triage/SKILL.md:245-308`.
@@ -25,7 +25,7 @@ Las tres copias conservan el contrato histórico completo:
 5. crean un worktree hermano desde el base actualizado y branch exacto `quick/issue-<N>-<slug>`;
 6. realizan todo el trabajo dentro de ese worktree y nunca editan el checkout original.
 
-La ausencia de `.sdd/project.md` no deriva a `sdd-init` ni bloquea por sí sola la vía rápida: si el contrato existe, sus comandos y límites mandan; si falta, sólo se detecta de forma acotada la señal focalizada necesaria. Los límites del repo prevalecen siempre sobre el handoff.
+La ausencia de `.chiche/project.md` no deriva a `sdd-init` ni bloquea por sí sola la vía rápida: si el contrato existe, sus comandos y límites mandan; si falta, sólo se detecta de forma acotada la señal focalizada necesaria. Los límites del repo prevalecen siempre sobre el handoff.
 
 ### CA-4 — Implementación mínima, tests primero y presupuesto finito [ALTA doctrina · NULA conducta emergente]
 El skill convierte cada ítem del checklist en una verificación concreta. Cuando el comportamiento es testeable, escribe o ajusta primero el test focalizado y demuestra rojo por la razón correcta; implementa sólo lo necesario; ejecuta el test focalizado y el chequeo estático más barato aplicable; y reporta exactamente qué corrió, sin llamar verde a una regresión no ejecutada.
@@ -99,7 +99,7 @@ La auditoría de paths confirma que el cambio no crea OpenCode, no modifica pars
 | 7 | Documentación | Fila propia de `quick-run` y triage ajustado | Mencionarlo sólo dentro de triage | alta | confirmada |
 
 ## Verificabilidad
-La verificabilidad es mixta y está anclada en `.sdd/project.md`:
+La verificabilidad es mixta y está anclada en `.chiche/project.md`:
 
 - **ALTA — CA-1..CA-8, cara doctrinal/estática:** `node --test` ejecuta TypeScript nativo de forma determinista; el glob de CI captura tests nuevos bajo `pi-extensions/<módulo>/*.test.ts`. El test focalizado existente de triage pasó 3/3 durante el análisis. Frontmatter, paths, sidecars, README, templates y equivalencia son propiedades observables de archivos.
 - **NULA — CA-2..CA-5, conducta emergente:** el contrato declara que la ejecución fiel de un skill y los flujos interactivos requieren prueba humana; no existe fake de Claude/Codex/Pi que ejecute la doctrina. #12 además prohíbe ejecutar un quick-run durante esta unidad, por lo que esas caras no se marcarán verificadas por inspección.
