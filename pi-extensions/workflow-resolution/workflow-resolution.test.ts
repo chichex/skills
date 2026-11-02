@@ -10,7 +10,7 @@ import {
 	selectWorkflowRoute,
 } from "./index.ts";
 
-const REPOSITORY = "chichex/skills";
+const REPOSITORY = "chichex/chiche";
 const PROJECT_ROOT = "/workspace/skills";
 
 function issue(number: number) {
@@ -217,7 +217,7 @@ test("recovers only legacy or absent identity and diagnoses canonical mismatches
 		id: "mismatched-spec",
 		expectedType: "spec",
 		location: "issue",
-		path: "https://github.com/chichex/skills/issues/11",
+		path: "https://github.com/chichex/chiche/issues/11",
 		hostIssue: issue(11),
 		markdown: [
 			"# Spec — Wrong issue",
@@ -233,7 +233,7 @@ test("recovers only legacy or absent identity and diagnoses canonical mismatches
 		id: "wrong-type",
 		expectedType: "spec",
 		location: "issue",
-		path: "https://github.com/chichex/skills/issues/11",
+		path: "https://github.com/chichex/chiche/issues/11",
 		hostIssue: issue(11),
 		markdown: [
 			"# Grill — Not a spec",
@@ -339,7 +339,7 @@ test("routes new work and a single resolved spec through the deterministic stage
 test("deduplicates only normatively equivalent local and GitHub spec copies", () => {
 	const local = canonicalSpec("approved", "fresh");
 	const githubMarkdown = local.markdown
-		.replace("issue=#11", "issue=chichex/skills#11")
+		.replace("issue=#11", "issue=chichex/chiche#11")
 		.replaceAll("\n", "\r\n")
 		.replace(/\r\n$/, "")
 		+ [
@@ -354,7 +354,7 @@ test("deduplicates only normatively equivalent local and GitHub spec copies", ()
 		...local,
 		id: "issue-copy",
 		location: "issue" as const,
-		path: "https://github.com/chichex/skills/issues/11",
+		path: "https://github.com/chichex/chiche/issues/11",
 		hostIssue: issue(11),
 		markdown: githubMarkdown,
 	};
@@ -386,15 +386,15 @@ test("#103 CA-2: deduplicates local and GitHub copies that carry Chiche-Tracking
 		markdown: v1.markdown.replace("<!-- SDD-Tracking: version=1; ", "<!-- Chiche-Tracking: version=2; "),
 	};
 	assert.notEqual(local.markdown, v1.markdown);
-	assert.equal(normalizeNormativeSpecContent(local.markdown.replace("issue=#11", "issue=chichex/skills#11"), "chichex/skills", "issue"),
-		normalizeNormativeSpecContent(local.markdown, "chichex/skills", "local"));
+	assert.equal(normalizeNormativeSpecContent(local.markdown.replace("issue=#11", "issue=chichex/chiche#11"), "chichex/chiche", "issue"),
+		normalizeNormativeSpecContent(local.markdown, "chichex/chiche", "local"));
 	const issueCopy = {
 		...local,
 		id: "issue-copy-v2",
 		location: "issue" as const,
-		path: "https://github.com/chichex/skills/issues/11",
+		path: "https://github.com/chichex/chiche/issues/11",
 		hostIssue: issue(11),
-		markdown: local.markdown.replace("issue=#11", "issue=chichex/skills#11"),
+		markdown: local.markdown.replace("issue=#11", "issue=chichex/chiche#11"),
 	};
 
 	const equivalent = resolveWorkflow(resolutionInput({ artifacts: [issueCopy, local] }));
@@ -412,15 +412,15 @@ test("review #105: una copia local v1 y una copia issue v2 de la misma spec se f
 	const local = canonicalSpec("approved", "fresh");
 	const v2Markdown = local.markdown
 		.replace("<!-- SDD-Tracking: version=1; ", "<!-- Chiche-Tracking: version=2; ")
-		.replace("issue=#11", "issue=chichex/skills#11");
+		.replace("issue=#11", "issue=chichex/chiche#11");
 	assert.notEqual(v2Markdown, local.markdown);
-	assert.equal(normalizeNormativeSpecContent(v2Markdown, "chichex/skills", "issue"),
-		normalizeNormativeSpecContent(local.markdown, "chichex/skills", "local"));
+	assert.equal(normalizeNormativeSpecContent(v2Markdown, "chichex/chiche", "issue"),
+		normalizeNormativeSpecContent(local.markdown, "chichex/chiche", "local"));
 	const issueCopy = {
 		...local,
 		id: "issue-copy-v2",
 		location: "issue" as const,
-		path: "https://github.com/chichex/skills/issues/11",
+		path: "https://github.com/chichex/chiche/issues/11",
 		hostIssue: issue(11),
 		markdown: v2Markdown,
 	};
@@ -434,12 +434,12 @@ test("review #105: una copia local v1 y una copia issue v2 de la misma spec se f
 	// Fuera de la marca, cualquier campo distinto sigue separando las copias.
 	for (const [name, markdown] of [
 		["state", v2Markdown.replace("state=approved", "state=implemented")],
-		["issue", v2Markdown.replace("issue=chichex/skills#11", "issue=chichex/skills#12")],
+		["issue", v2Markdown.replace("issue=chichex/chiche#11", "issue=chichex/chiche#12")],
 		["grill", v2Markdown.replace("grill=none", "grill=g-1")],
 		["prose", v2Markdown.replace("Body.", "Body changed.")],
 	] as const) {
-		assert.notEqual(normalizeNormativeSpecContent(markdown, "chichex/skills", "issue"),
-			normalizeNormativeSpecContent(local.markdown, "chichex/skills", "local"), name);
+		assert.notEqual(normalizeNormativeSpecContent(markdown, "chichex/chiche", "issue"),
+			normalizeNormativeSpecContent(local.markdown, "chichex/chiche", "local"), name);
 		const conflict = resolveWorkflow(resolutionInput({
 			artifacts: [local, { ...issueCopy, id: `issue-${name}`, markdown }],
 		}));
@@ -447,8 +447,8 @@ test("review #105: una copia local v1 y una copia issue v2 de la misma spec se f
 	}
 	// Un par inválido (SDD-Tracking con version=2) no se iguala con el v1.
 	const mismatched = local.markdown.replace("SDD-Tracking: version=1", "SDD-Tracking: version=2");
-	assert.notEqual(normalizeNormativeSpecContent(mismatched, "chichex/skills", "issue"),
-		normalizeNormativeSpecContent(local.markdown, "chichex/skills", "local"));
+	assert.notEqual(normalizeNormativeSpecContent(mismatched, "chichex/chiche", "issue"),
+		normalizeNormativeSpecContent(local.markdown, "chichex/chiche", "local"));
 });
 
 test("audits safely associated unknown metadata but blocks unsafe or conflicting metadata", () => {
@@ -473,7 +473,7 @@ test("audits safely associated unknown metadata but blocks unsafe or conflicting
 		id: "invalid-hosted",
 		expectedType: "spec" as const,
 		location: "issue" as const,
-		path: "https://github.com/chichex/skills/issues/11",
+		path: "https://github.com/chichex/chiche/issues/11",
 		hostIssue: issue(11),
 		markdown: "# Spec\n<!-- SDD-Tracking: version=2; type=spec; state=approved; issue=#11; grill=none; superseded-by=none -->\n",
 	};
@@ -500,7 +500,7 @@ test("audits safely associated unknown metadata but blocks unsafe or conflicting
 		...approved,
 		id: "conflicting-markers",
 		location: "issue" as const,
-		path: "https://github.com/chichex/skills/issues/11",
+		path: "https://github.com/chichex/chiche/issues/11",
 		hostIssue: issue(11),
 		markdown: approved.markdown.replace(
 			"<!-- SDD-Tracking:",
@@ -529,7 +529,7 @@ test("follows one explicit spec lineage and stops on unusable or conflicting gra
 
 	const issueSuccessor = specAt({
 		id: "issue-successor",
-		path: "https://github.com/chichex/skills/issues/11",
+		path: "https://github.com/chichex/chiche/issues/11",
 		state: "draft",
 		location: "issue",
 	});
@@ -537,7 +537,7 @@ test("follows one explicit spec lineage and stops on unusable or conflicting gra
 		id: "to-issue",
 		path: oldPath,
 		state: "superseded",
-		supersededBy: "chichex/skills#11",
+		supersededBy: "chichex/chiche#11",
 	});
 	assert.equal(
 		resolveWorkflow(resolutionInput({ artifacts: [toIssue, issueSuccessor] })).code,
@@ -547,7 +547,7 @@ test("follows one explicit spec lineage and stops on unusable or conflicting gra
 	const crossIssueSuccessor = {
 		...specAt({
 			id: "issue-21-successor",
-			path: "https://github.com/chichex/skills/issues/21",
+			path: "https://github.com/chichex/chiche/issues/21",
 			state: "approved",
 			fresh: "fresh",
 			location: "issue",
@@ -559,7 +559,7 @@ test("follows one explicit spec lineage and stops on unusable or conflicting gra
 		id: "to-issue-21",
 		path: oldPath,
 		state: "superseded",
-		supersededBy: "chichex/skills#21",
+		supersededBy: "chichex/chiche#21",
 	});
 	const crossIssue = resolveWorkflow(resolutionInput({ artifacts: [crossIssueOld, crossIssueSuccessor] }));
 	assert.equal(crossIssue.code, "run-existing-spec");
@@ -687,7 +687,7 @@ test("requires join canonicalization before inspection and uses only canonical i
 		id: "source-poison",
 		expectedType: "spec" as const,
 		location: "issue" as const,
-		path: "https://github.com/chichex/skills/issues/11",
+		path: "https://github.com/chichex/chiche/issues/11",
 		hostIssue: issue(11),
 		get markdown(): string {
 			markdownRead = true;
@@ -711,7 +711,7 @@ test("requires join canonicalization before inspection and uses only canonical i
 
 	const sourceSpec = specAt({
 		id: "source-implemented",
-		path: "https://github.com/chichex/skills/issues/11",
+		path: "https://github.com/chichex/chiche/issues/11",
 		state: "implemented",
 		fresh: "fresh",
 		location: "issue",
@@ -719,7 +719,7 @@ test("requires join canonicalization before inspection and uses only canonical i
 	const canonicalDraft = {
 		...specAt({
 			id: "canonical-draft",
-			path: "https://github.com/chichex/skills/issues/20",
+			path: "https://github.com/chichex/chiche/issues/20",
 			state: "draft",
 			location: "issue",
 		}),

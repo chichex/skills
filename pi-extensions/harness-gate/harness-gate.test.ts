@@ -922,6 +922,124 @@ test("autotest: RETIREMENT_NOTE acepta las dos frases de retiro de los README y 
 	assert.doesNotMatch("claude/grill/SKILL.md:9:`sdd-run` se retiraron en 4.0.0.", RETIREMENT_NOTE);
 });
 
+// --- #103 CA-17: el arbol usa chichex/chiche --------------------------------
+
+// El nombre viejo del repo. Se arma con join para que este archivo no se encuentre a si mismo.
+const OLD_REPO_NAME = ["chichex", "skills"].join("/");
+
+interface OldNameAllowance {
+	file: string;
+	test: RegExp;
+	// Cantidad exacta de lineas del archivo que esta entrada debe cubrir; sin ella, una o mas.
+	exactly?: number;
+}
+
+// Unicas lineas trackeadas que pueden seguir nombrando el repo viejo (decision L46 de la spec chiche-rename).
+// Los artefactos historicos congelados de .chiche/grills y .chiche/specs quedan fuera del grep.
+const OLD_NAME_ALLOWANCES: OldNameAllowance[] = [
+	// La nota de instalacion de cada README: una sola linea por README.
+	{ file: "README.md", test: /\bantes `chichex\/skills`/, exactly: 1 },
+	{ file: "README.en.md", test: /\bformerly `chichex\/skills`/, exactly: 1 },
+	// install.sh: el rotulo viejo del bloque de Codex (para reemplazarlo) y la deteccion en `pi list`,
+	// que sigue reconociendo la fuente que el usuario tipeo antes del renombre.
+	{ file: "install.sh", test: /^CODEX_LEGACY_(?:BEGIN|END)=/ },
+	{ file: "install.sh", test: /grep -F -q -e 'chichex\/skills'/ },
+	{ file: "install.sh", test: /^\s*#.*chichex\/skills/ },
+	// Los tests que ejercitan ese bloque viejo y esa deteccion.
+	{ file: "pi-extensions/agents-gate/agents-gate.test.ts", test: /"# (?:>>>|<<<) chichex\/skills: prefer Codex over Pi (?:>>>|<<<)"/ },
+	{ file: "pi-extensions/agents-gate/agents-gate.test.ts", test: /^test\("issue #103 CA-10: install\.sh codex reemplaza el bloque viejo chichex\/skills de config\.toml/ },
+	{ file: "pi-extensions/pi-package/pi-package.test.ts", test: /"# (?:>>>|<<<) chichex\/skills: prefer Codex over Pi (?:>>>|<<<)"/ },
+	{ file: "pi-extensions/pi-package/pi-package.test.ts", test: /rotulo viejo chichex\/skills;/ },
+	{ file: "pi-extensions/pi-package/pi-package.test.ts", test: /assert\.doesNotMatch\(configAfter, \/chichex\\\/skills\/, "the old chichex\/skills block must be replaced/ },
+	{ file: "pi-extensions/pi-package/pi-package.test.ts", test: /for \(const source of \["git:github\.com\/chichex\/skills", "git:github\.com\/chichex\/chiche"\]\)/ },
+	// El titulo de este gate nombra el repo viejo (el resto de este archivo lo arma con OLD_REPO_NAME).
+	{ file: "pi-extensions/harness-gate/harness-gate.test.ts", test: /^test\("issue #103 CA-17: el árbol usa chichex\/chiche; chichex\/skills solo sobrevive/ },
+	// Entradas fechadas de `## Decisiones humanas` (historia del renombre) y la limitacion de la deteccion en `## Gaps`.
+	{ file: ".chiche/project.md", test: /^- \d{4}-\d{2}-\d{2}: / },
+	{ file: ".chiche/project.md", test: /^- La deteccion de "el Pi Package nativo ya esta instalado"/ },
+];
+
+// Lineas `archivo:numero:texto` de git grep que ninguna entrada cubre, mas las entradas con `exactly`
+// que no cubren exactamente esa cantidad de lineas.
+function oldNameProblems(grepLines: string[], allowances: OldNameAllowance[]): string[] {
+	const problems: string[] = [];
+	const covered = new Map<OldNameAllowance, number>();
+	for (const line of grepLines) {
+		const match = /^([^:]+):(\d+):(.*)$/.exec(line);
+		if (match === null) {
+			problems.push(`${line}: salida de git grep ilegible`);
+			continue;
+		}
+		const [, file, , text] = match;
+		const entry = allowances.find((allowance) => allowance.file === file && allowance.test.test(text ?? ""));
+		if (entry === undefined) problems.push(`${file}:${match[2]}: nombra el repo viejo y no esta en la allowlist`);
+		else covered.set(entry, (covered.get(entry) ?? 0) + 1);
+	}
+	for (const allowance of allowances) {
+		if (allowance.exactly !== undefined && (covered.get(allowance) ?? 0) !== allowance.exactly) {
+			problems.push(`${allowance.file}: la nota ${allowance.test} debe aparecer ${allowance.exactly} vez y aparece ${covered.get(allowance) ?? 0}`);
+		}
+	}
+	return problems;
+}
+
+// Archivos TRACKEADOS (git grep), sin los artefactos historicos congelados. Estado 0 si hay
+// coincidencias, 1 si no hay, mayor que 1 si git falla.
+function grepOldRepoName(cwd: string) {
+	return spawnSync("git", ["grep", "-n", "-F", OLD_REPO_NAME, "--", ".", ":!.chiche/grills", ":!.chiche/specs"], { cwd, encoding: "utf8" });
+}
+
+test("issue #103 CA-17: el árbol usa chichex/chiche; chichex/skills solo sobrevive en la allowlist", () => {
+	const grep = grepOldRepoName(fileURLToPath(repoFile("")));
+	assert.ok(grep.status === 0 || grep.status === 1, `git grep fallo (estado ${grep.status}): ${grep.stderr}`);
+	const lines = grep.stdout.split("\n").filter((line) => line.length > 0);
+	assert.deepEqual(oldNameProblems(lines, OLD_NAME_ALLOWANCES), []);
+});
+
+test("autotest: oldNameProblems rechaza una linea fuera de la allowlist y una nota de README repetida o ausente", () => {
+	const allowances: OldNameAllowance[] = [
+		{ file: "README.md", test: /\bantes `chichex\/skills`/, exactly: 1 },
+		{ file: "install.sh", test: /^CODEX_LEGACY_(?:BEGIN|END)=/ },
+	];
+	const noteTest = allowances[0]?.test;
+	const note = `README.md:10:El repo se llamaba antes \`${OLD_REPO_NAME}\`; actualizá el remote.`;
+	const legacy = `install.sh:52:CODEX_LEGACY_BEGIN="# >>> ${OLD_REPO_NAME}: prefer Codex over Pi >>>"`;
+	const uncovered = (file: string, line: number) => `${file}:${line}: nombra el repo viejo y no esta en la allowlist`;
+	const noteCount = (count: number) => `README.md: la nota ${noteTest} debe aparecer 1 vez y aparece ${count}`;
+
+	assert.deepEqual(oldNameProblems([note, legacy], allowances), []);
+	assert.deepEqual(oldNameProblems([`README.md:99:pi install git:github.com/${OLD_REPO_NAME}`, note], allowances), [uncovered("README.md", 99)]);
+	assert.deepEqual(oldNameProblems([`package.json:10:"repository": "https://github.com/${OLD_REPO_NAME}.git"`], allowances), [
+		uncovered("package.json", 10),
+		noteCount(0),
+	]);
+	assert.deepEqual(oldNameProblems([note, `README.md:11:Tambien antes \`${OLD_REPO_NAME}\`.`], allowances), [noteCount(2)]);
+	assert.deepEqual(oldNameProblems([note, `install.sh:60:echo ${OLD_REPO_NAME}`], allowances), [uncovered("install.sh", 60)]);
+});
+
+test("issue #103 CA-17: el grep mira archivos trackeados y deja afuera .chiche/grills y .chiche/specs", async () => {
+	const repo = await mkdtemp(join(tmpdir(), "chiche-ca17-"));
+	try {
+		const git = (...args: string[]) => {
+			const result = spawnSync("git", args, { cwd: repo, encoding: "utf8" });
+			assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
+		};
+		git("init", "-q");
+		for (const dir of [".chiche/grills", ".chiche/specs"]) await mkdir(join(repo, dir), { recursive: true });
+		await writeFile(join(repo, "README.md"), `antes \`${OLD_REPO_NAME}\`\n`);
+		await writeFile(join(repo, ".chiche/grills/historico.md"), `${OLD_REPO_NAME}\n`);
+		await writeFile(join(repo, ".chiche/specs/historica.md"), `${OLD_REPO_NAME}\n`);
+		git("add", "README.md", ".chiche");
+		await writeFile(join(repo, "suelto.md"), `${OLD_REPO_NAME}\n`);
+
+		const grep = grepOldRepoName(repo);
+		assert.equal(grep.status, 0, grep.stderr);
+		assert.deepEqual(grep.stdout.split("\n").filter((line) => line.length > 0), [`README.md:1:antes \`${OLD_REPO_NAME}\``]);
+	} finally {
+		await rm(repo, { recursive: true, force: true });
+	}
+});
+
 // --- Autotests del gate: puede fallar y con que diagnostico ------------------
 
 test("autotest: una divergencia entre harnesses se reporta con la linea que difiere", () => {

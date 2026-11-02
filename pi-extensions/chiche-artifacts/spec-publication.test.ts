@@ -32,8 +32,8 @@ function canonicalSpec(options: {
 test("accepts one canonical interactive spec with semantic issue identity and exact decoded grill", () => {
 	const result = validateSpecPublication(canonicalSpec(), {
 		mode: "interactive",
-		repository: "chichex/skills",
-		issue: { repository: "chichex/skills", number: 33 },
+		repository: "chichex/chiche",
+		issue: { repository: "chichex/chiche", number: 33 },
 		grill: "session 33/á",
 		supersededBy: null,
 	});
@@ -49,8 +49,8 @@ test("accepts one canonical interactive spec with semantic issue identity and ex
 test("accepts draft only in assume mode and rejects every malformed or mismatched identity with typed diagnostics", () => {
 	assert.equal(validateSpecPublication(canonicalSpec({ state: "draft" }), {
 		mode: "assume",
-		repository: "chichex/skills",
-		issue: { repository: "chichex/skills", number: 33 },
+		repository: "chichex/chiche",
+		issue: { repository: "chichex/chiche", number: 33 },
 		grill: "session 33/á",
 		supersededBy: null,
 	}).ok, true);
@@ -88,8 +88,8 @@ test("accepts draft only in assume mode and rejects every malformed or mismatche
 	for (const fixture of invalidCases) {
 		const result = validateSpecPublication(fixture.markdown, {
 			mode: "interactive",
-			repository: "chichex/skills",
-			issue: { repository: "chichex/skills", number: 33 },
+			repository: "chichex/chiche",
+			issue: { repository: "chichex/chiche", number: 33 },
 			grill: "session 33/á",
 			supersededBy: null,
 		});
@@ -125,8 +125,8 @@ test("persists a valid local spec, rereads it, and returns a receipt only after 
 			markdown,
 			expectation: {
 				mode: "interactive",
-				repository: "chichex/skills",
-				issue: { repository: "chichex/skills", number: 33 },
+				repository: "chichex/chiche",
+				issue: { repository: "chichex/chiche", number: 33 },
 				grill: "session 33/á",
 				supersededBy: null,
 			},
@@ -152,8 +152,8 @@ test("persists a canonical draft and returns a receipt in assume mode", async ()
 			markdown,
 			expectation: {
 				mode: "assume",
-				repository: "chichex/skills",
-				issue: { repository: "chichex/skills", number: 33 },
+				repository: "chichex/chiche",
+				issue: { repository: "chichex/chiche", number: 33 },
 				grill: null,
 				supersededBy: null,
 			},
@@ -177,7 +177,7 @@ test("rejects every invalid metadata case before invoking a mutation port and ne
 		async readLocal() { return ""; },
 		async writeIssue() { mutations += 1; },
 		async readIssue() { return ""; },
-		async createIssue() { mutations += 1; return { repository: "chichex/skills", number: 99 }; },
+		async createIssue() { mutations += 1; return { repository: "chichex/chiche", number: 99 }; },
 	};
 	const approved = canonicalSpec();
 	const marker = approved.split("\n")[2]!;
@@ -196,8 +196,8 @@ test("rejects every invalid metadata case before invoking a mutation port and ne
 				markdown,
 				expectation: {
 					mode: "interactive",
-					repository: "chichex/skills",
-					issue: { repository: "chichex/skills", number: 33 },
+					repository: "chichex/chiche",
+					issue: { repository: "chichex/chiche", number: 33 },
 					grill: "session 33/á",
 					supersededBy: null,
 				},
@@ -211,8 +211,8 @@ test("rejects every invalid metadata case before invoking a mutation port and ne
 });
 
 test("persists an existing issue spec and requires an independent reread before issuing the receipt", async () => {
-	const issue = { repository: "chichex/skills", number: 33 };
-	const markdown = canonicalSpec({ issue: "chichex/skills#33" });
+	const issue = { repository: "chichex/chiche", number: 33 };
+	const markdown = canonicalSpec({ issue: "chichex/chiche#33" });
 	let body = "";
 	const calls: string[] = [];
 	const ports: SpecPublicationPorts = {
@@ -234,7 +234,7 @@ test("persists an existing issue spec and requires an independent reread before 
 			markdown,
 			expectation: {
 				mode: "interactive",
-				repository: "chichex/skills",
+				repository: "chichex/chiche",
 				issue,
 				grill: "session 33/á",
 				supersededBy: null,
@@ -244,12 +244,12 @@ test("persists an existing issue spec and requires an independent reread before 
 	}, ports);
 
 	assert.equal(result.ok, true);
-	assert.deepEqual(calls, ["write:chichex/skills#33", "read:chichex/skills#33"]);
-	if (result.ok) assert.deepEqual(result.receipt.documents[0]?.destinations, ["issue:chichex/skills#33"]);
+	assert.deepEqual(calls, ["write:chichex/chiche#33", "read:chichex/chiche#33"]);
+	if (result.ok) assert.deepEqual(result.receipt.documents[0]?.destinations, ["issue:chichex/chiche#33"]);
 });
 
 test("blocks an Ambos receipt when reread copies diverge beyond the shared transport normalizations", async () => {
-	const issue = { repository: "chichex/skills", number: 33 };
+	const issue = { repository: "chichex/chiche", number: 33 };
 	const localPath = "/workspace/skills/.sdd/specs/issue-33.md";
 	const markdown = canonicalSpec();
 	const localBodies = new Map<string, string>();
@@ -260,7 +260,7 @@ test("blocks an Ambos receipt when reread copies diverge beyond the shared trans
 		async readLocal(path) { return localBodies.get(path) ?? ""; },
 		async writeIssue(_target, content) {
 			issueBody = content
-				.replace("issue=#33", "issue=chichex/skills#33")
+				.replace("issue=#33", "issue=chichex/chiche#33")
 				.replace(/\n$/, "")
 				+ "\n\n<details><summary>Body original</summary>\n\nArchived source.\n\n</details>\n";
 		},
@@ -275,7 +275,7 @@ test("blocks an Ambos receipt when reread copies diverge beyond the shared trans
 			markdown,
 			expectation: {
 				mode: "interactive" as const,
-				repository: "chichex/skills",
+				repository: "chichex/chiche",
 				issue,
 				grill: "session 33/á",
 				supersededBy: null,
@@ -306,14 +306,14 @@ test("blocks an Ambos receipt when reread copies diverge beyond the shared trans
 
 test("creates a non-SDD staging issue before publishing and rereading the identity-bound spec", async () => {
 	const initial = canonicalSpec({ issue: "none" });
-	const createdIssue = { repository: "chichex/skills", number: 88 };
+	const createdIssue = { repository: "chichex/chiche", number: 88 };
 	let published = "";
 	let staging = "";
 	const ports: SpecPublicationPorts = {
 		async writeLocal() { throw new Error("unexpected local write"); },
 		async readLocal() { throw new Error("unexpected local read"); },
 		async createIssue(repository, title, stagingBody) {
-			assert.equal(repository, "chichex/skills");
+			assert.equal(repository, "chichex/chiche");
 			assert.equal(title, "Canonical publication");
 			staging = stagingBody;
 			return createdIssue;
@@ -334,14 +334,14 @@ test("creates a non-SDD staging issue before publishing and rereading the identi
 			markdown: initial,
 			expectation: {
 				mode: "interactive",
-				repository: "chichex/skills",
+				repository: "chichex/chiche",
 				issue: null,
 				grill: "session 33/á",
 				supersededBy: null,
 			},
 			destinations: [{
 				kind: "new-issue",
-				repository: "chichex/skills",
+				repository: "chichex/chiche",
 				title: "Canonical publication",
 			}],
 		}],
@@ -366,12 +366,12 @@ test("creates a non-SDD staging issue before publishing and rereading the identi
 	);
 	assert.equal(result.ok, true);
 	if (result.ok) {
-		assert.deepEqual(result.receipt.documents[0]?.destinations, ["issue:chichex/skills#88"]);
+		assert.deepEqual(result.receipt.documents[0]?.destinations, ["issue:chichex/chiche#88"]);
 	}
 });
 
 test("reports a staged issue after update failure and retries it as the same existing issue", async () => {
-	const createdIssue = { repository: "chichex/skills", number: 89 };
+	const createdIssue = { repository: "chichex/chiche", number: 89 };
 	let attemptedBody = "";
 	let remoteBody = "";
 	let failUpdate = true;
@@ -393,12 +393,12 @@ test("reports a staged issue after update failure and retries it as the same exi
 			markdown: canonicalSpec({ issue: "none", grill: "none" }),
 			expectation: {
 				mode: "interactive",
-				repository: "chichex/skills",
+				repository: "chichex/chiche",
 				issue: null,
 				grill: null,
 				supersededBy: null,
 			},
-			destinations: [{ kind: "new-issue", repository: "chichex/skills", title: "Staged" }],
+			destinations: [{ kind: "new-issue", repository: "chichex/chiche", title: "Staged" }],
 		}],
 	}, ports);
 
@@ -423,7 +423,7 @@ test("reports a staged issue after update failure and retries it as the same exi
 			markdown: attemptedBody,
 			expectation: {
 				mode: "interactive",
-				repository: "chichex/skills",
+				repository: "chichex/chiche",
 				issue: createdIssue,
 				grill: null,
 				supersededBy: null,
@@ -450,8 +450,8 @@ test("fails closed when a destination reread tampers with state, issue, or grill
 				markdown,
 				expectation: {
 					mode: "interactive",
-					repository: "chichex/skills",
-					issue: { repository: "chichex/skills", number: 33 },
+					repository: "chichex/chiche",
+					issue: { repository: "chichex/chiche", number: 33 },
 					grill: "session 33/á",
 					supersededBy: null,
 				},
@@ -481,7 +481,7 @@ test("fails closed when a destination reread tampers with state, issue, or grill
 });
 
 test("preserves a successful half of Ambos and an idempotent retry converges without duplicate files or markers", async () => {
-	const issue = { repository: "chichex/skills", number: 33 };
+	const issue = { repository: "chichex/chiche", number: 33 };
 	const localPath = "/workspace/skills/.sdd/specs/issue-33.md";
 	const markdown = canonicalSpec();
 	const local = new Map<string, string>();
@@ -503,7 +503,7 @@ test("preserves a successful half of Ambos and an idempotent retry converges wit
 			markdown,
 			expectation: {
 				mode: "interactive" as const,
-				repository: "chichex/skills",
+				repository: "chichex/chiche",
 				issue,
 				grill: "session 33/á",
 				supersededBy: null,
@@ -531,7 +531,7 @@ test("preserves a successful half of Ambos and an idempotent retry converges wit
 });
 
 test("validates successor and superseded predecessor as one all-or-nothing receipt", async () => {
-	const issue = { repository: "chichex/skills", number: 33 };
+	const issue = { repository: "chichex/chiche", number: 33 };
 	const successorPath = "/workspace/skills/.sdd/specs/issue-33-next.md";
 	const predecessorPath = "/workspace/skills/.sdd/specs/issue-33-old.md";
 	const successor = canonicalSpec({ grill: "none" });
@@ -556,7 +556,7 @@ test("validates successor and superseded predecessor as one all-or-nothing recei
 			markdown: successor,
 			expectation: {
 				mode: "interactive" as const,
-				repository: "chichex/skills",
+				repository: "chichex/chiche",
 				issue,
 				grill: null,
 				supersededBy: null,
@@ -569,7 +569,7 @@ test("validates successor and superseded predecessor as one all-or-nothing recei
 			markdown: predecessor,
 			expectation: {
 				mode: "interactive" as const,
-				repository: "chichex/skills",
+				repository: "chichex/chiche",
 				issue,
 				grill: null,
 				state: "superseded" as const,
@@ -605,8 +605,8 @@ test("refuses a superseded-by pointer that does not identify any successor desti
 				markdown: canonicalSpec({ grill: "none" }),
 				expectation: {
 					mode: "interactive",
-					repository: "chichex/skills",
-					issue: { repository: "chichex/skills", number: 33 },
+					repository: "chichex/chiche",
+					issue: { repository: "chichex/chiche", number: 33 },
 					grill: null,
 					supersededBy: null,
 				},
@@ -618,8 +618,8 @@ test("refuses a superseded-by pointer that does not identify any successor desti
 				markdown: canonicalSpec({ state: "superseded", grill: "none", supersededBy: "other.md" }),
 				expectation: {
 					mode: "interactive",
-					repository: "chichex/skills",
-					issue: { repository: "chichex/skills", number: 33 },
+					repository: "chichex/chiche",
+					issue: { repository: "chichex/chiche", number: 33 },
 					grill: null,
 					state: "superseded",
 					supersededBy: "other.md",
@@ -634,7 +634,7 @@ test("refuses a superseded-by pointer that does not identify any successor desti
 		},
 		async writeIssue() { writes += 1; },
 		async readIssue() { return ""; },
-		async createIssue() { writes += 1; return { repository: "chichex/skills", number: 99 }; },
+		async createIssue() { writes += 1; return { repository: "chichex/chiche", number: 99 }; },
 	});
 
 	assert.equal(result.ok, false);
@@ -662,8 +662,8 @@ test("refuses to rewrite a predecessor when its persisted identity would not be 
 				markdown: successor,
 				expectation: {
 					mode: "interactive",
-					repository: "chichex/skills",
-					issue: { repository: "chichex/skills", number: 34 },
+					repository: "chichex/chiche",
+					issue: { repository: "chichex/chiche", number: 34 },
 					grill: null,
 					supersededBy: null,
 				},
@@ -675,8 +675,8 @@ test("refuses to rewrite a predecessor when its persisted identity would not be 
 				markdown: rewrittenOld,
 				expectation: {
 					mode: "interactive",
-					repository: "chichex/skills",
-					issue: { repository: "chichex/skills", number: 34 },
+					repository: "chichex/chiche",
+					issue: { repository: "chichex/chiche", number: 34 },
 					grill: null,
 					state: "superseded",
 					supersededBy: ".sdd/specs/next.md",
@@ -689,7 +689,7 @@ test("refuses to rewrite a predecessor when its persisted identity would not be 
 		async readLocal(path) { return path === oldPath ? persistedOld : successor; },
 		async writeIssue() { writes += 1; },
 		async readIssue() { return ""; },
-		async createIssue() { writes += 1; return { repository: "chichex/skills", number: 99 }; },
+		async createIssue() { writes += 1; return { repository: "chichex/chiche", number: 99 }; },
 	});
 
 	assert.equal(result.ok, false);
@@ -707,14 +707,14 @@ test("rejects an issue destination whose host identity differs from the validate
 			markdown: canonicalSpec(),
 			expectation: {
 				mode: "interactive",
-				repository: "chichex/skills",
-				issue: { repository: "chichex/skills", number: 33 },
+				repository: "chichex/chiche",
+				issue: { repository: "chichex/chiche", number: 33 },
 				grill: "session 33/á",
 				supersededBy: null,
 			},
 			destinations: [{
 				kind: "issue",
-				issue: { repository: "chichex/skills", number: 34 },
+				issue: { repository: "chichex/chiche", number: 34 },
 			}],
 		}],
 	}, {
@@ -722,7 +722,7 @@ test("rejects an issue destination whose host identity differs from the validate
 		async readLocal() { return ""; },
 		async writeIssue() { writes += 1; },
 		async readIssue() { return ""; },
-		async createIssue() { writes += 1; return { repository: "chichex/skills", number: 34 }; },
+		async createIssue() { writes += 1; return { repository: "chichex/chiche", number: 34 }; },
 	});
 
 	assert.equal(result.ok, false);

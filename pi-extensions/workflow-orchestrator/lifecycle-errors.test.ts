@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { startFreshStage } from "./lifecycle.ts";
 
-const REPO = "chichex/skills";
+const REPO = "chichex/chiche";
 const SOURCE = "/workspace/source";
 const TARGET = "/workspace/target";
 const ORIGIN_FILE = "/sessions/origin.jsonl";

@@ -25,15 +25,15 @@ function directRunRequest() {
 	return {
 		version: 1,
 		kind: "sdd-run",
-		repo: "chichex/skills",
+		repo: "chichex/chiche",
 		cwd: "/workspace/skills",
 		target: {
 			type: "issue",
-			canonicalReference: "chichex/skills#14",
-			issue: { repository: "chichex/skills", number: 14 },
+			canonicalReference: "chichex/chiche#14",
+			issue: { repository: "chichex/chiche", number: 14 },
 		},
 		summary: "Run issue #14.",
-		evidence: [{ kind: "issue", reference: "chichex/skills#14", detail: "Explicit target" }],
+		evidence: [{ kind: "issue", reference: "chichex/chiche#14", detail: "Explicit target" }],
 	};
 }
 
@@ -54,7 +54,7 @@ function directGrillRequest() {
 }
 
 function workflowResolution(overrides: Record<string, unknown> = {}) {
-	const issue = { repository: "chichex/skills", number: 14 };
+	const issue = { repository: "chichex/chiche", number: 14 };
 	return {
 		version: 1,
 		outcome: "start",
@@ -65,7 +65,7 @@ function workflowResolution(overrides: Record<string, unknown> = {}) {
 		selectedRoute: "spec",
 		stage: "spec",
 		mode: "new",
-		repo: "chichex/skills",
+		repo: "chichex/chiche",
 		cwd: "/workspace/skills",
 		sources: [issue],
 		canonicalIssue: issue,

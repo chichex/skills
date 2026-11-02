@@ -122,7 +122,7 @@ El repo corre CI en GitHub Actions (`.github/workflows/ci.yml`): valida sintaxis
 Los skills de `codex/` se pueden instalar juntos como plugin nativo. No hace falta clonar el repo ni correr `install.sh`:
 
 ```bash
-codex plugin marketplace add chichex/skills
+codex plugin marketplace add chichex/chiche
 codex plugin add chiche@chichex
 ```
 
@@ -149,9 +149,11 @@ codex plugin add chiche@chichex
 Los skills de `claude/` se pueden instalar como plugin de Claude Code, sin clonar el repo ni correr `install.sh`:
 
 ```
-/plugin marketplace add chichex/skills
+/plugin marketplace add chichex/chiche
 /plugin install chiche@chichex
 ```
+
+El repo se llamaba antes `chichex/skills`; GitHub redirige la URL vieja, pero actualizá el remote (`git remote set-url origin ssh://git@github.com/chichex/chiche.git`) y las fuentes `git:github.com/chichex/chiche`.
 
 Desde la 3.0.0 el plugin se llama `chiche` (antes `chichex-skills`). Si tenés instalado `chichex-skills@chichex`, corré `/plugin uninstall chichex-skills@chichex` antes de instalar `chiche@chichex`. Los nombres viejos `sdd-init`, `sdd-spec`, `sdd-run` y `sdd-land` se retiraron en 4.0.0.
 
@@ -165,7 +167,7 @@ El plugin expone todos los skills de `claude/` y los agentes de `agents/` — lo
   ```json
   "extraKnownMarketplaces": {
     "chichex": {
-      "source": { "source": "github", "repo": "chichex/skills" },
+      "source": { "source": "github", "repo": "chichex/chiche" },
       "autoUpdate": true
     }
   }
@@ -184,7 +186,7 @@ claude plugin update chiche@chichex
 claude plugin eval . --ablation none --runs 1 --max-cost-usd 5 --no-publish --allow-tools Write --scaffold
 ```
 
-Un caso que falla se repite con `--case <nombre> --runs 3 --ablation with-without`. En CI corre solo a pedido: `gh workflow run plugin-eval.yml --repo chichex/skills` (`.github/workflows/plugin-eval.yml`, mismo secret `CLAUDE_CODE_OAUTH_TOKEN` que el review); el reporte queda como artifact `plugin-eval-results`.
+Un caso que falla se repite con `--case <nombre> --runs 3 --ablation with-without`. En CI corre solo a pedido: `gh workflow run plugin-eval.yml --repo chichex/chiche` (`.github/workflows/plugin-eval.yml`, mismo secret `CLAUDE_CODE_OAUTH_TOKEN` que el review); el reporte queda como artifact `plugin-eval-results`.
 
 ### Pi: como Pi Package nativo (recomendado)
 
@@ -193,21 +195,21 @@ Un caso que falla se repite con `--case <nombre> --runs 3 --ablation with-withou
 La instalación nativa es global por defecto y deja actualizaciones y rollback a cargo de Pi:
 
 ```bash
-pi install git:github.com/chichex/skills
+pi install git:github.com/chichex/chiche
 pi update --extensions
-pi remove git:github.com/chichex/skills
+pi remove git:github.com/chichex/chiche
 ```
 
 Para una instalación project-local opcional, agregá `-l`; Pi la registra en `.pi/settings.json` y el proyecto debe ser de confianza:
 
 ```bash
-pi install git:github.com/chichex/skills -l
+pi install git:github.com/chichex/chiche -l
 ```
 
 Podés fijar una versión reproducible por tag o commit:
 
 ```bash
-pi install git:github.com/chichex/skills@<tag-o-commit>
+pi install git:github.com/chichex/chiche@<tag-o-commit>
 ```
 
 Los pins no avanzan con `pi update --extensions`: el update reconcilia el checkout al ref fijado. Para moverlo, instalá explícitamente otro ref; sin pin, la fuente sigue el branch default del repo.
@@ -223,7 +225,7 @@ Si antes instalaste Pi mediante las copias de este repo, migrá primero desde un
 ```bash
 ./install.sh pi-clean            # rechaza la operación y no borra nada
 ./install.sh pi-clean --confirm  # elimina sólo los nombres administrados por este repo
-pi install git:github.com/chichex/skills
+pi install git:github.com/chichex/chiche
 ```
 
 La limpieza respeta `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR` y `PI_THEMES_DIR`, es idempotente, no hace `git pull` y preserva recursos con otros nombres. No mantengas simultáneamente el Pi Package y las copias creadas por `./install.sh pi`: duplicarían skills, tools o comandos.
@@ -235,8 +237,8 @@ La limpieza respeta `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR` y `PI_THEMES_DIR`, es i
 Cloná el repo y corré `install.sh`. Hace `git pull` y copia cada skill —y las extensiones de Pi, tanto archivos `.ts` como carpetas con `index.ts`— a la carpeta de su herramienta **sin pisar lo demás que ya tengas** (solo agrega/actualiza lo que viene de este repo):
 
 ```bash
-git clone https://github.com/chichex/skills.git
-cd skills
+git clone https://github.com/chichex/chiche.git
+cd chiche
 ./install.sh            # instala todos los sets
 ./install.sh all        # igual que el anterior
 ./install.sh both       # Claude Code + opencode

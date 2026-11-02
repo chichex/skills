@@ -338,7 +338,7 @@ install_claude() {
   install_agents "$REPO_DIR/agents" "$CLAUDE_AGENTS_DEST"
 }
 
-# Detecta si el Pi Package nativo de este repo (`pi install git:github.com/chichex/skills`,
+# Detecta si el Pi Package nativo de este repo (`pi install git:github.com/chichex/chiche`,
 # o su variante -l local) ya está registrado en la config de Pi. `pi list` no muta nada.
 # Si no hay `pi` en PATH, o la detección falla por cualquier motivo, asumimos que NO hay
 # conflicto: instalar via copias legacy debe seguir funcionando para quien no usa Pi Package.
@@ -346,18 +346,20 @@ pi_native_package_conflict() {
   command -v pi >/dev/null 2>&1 || return 1
   local listing
   listing="$(cd "$REPO_DIR" && PI_OFFLINE=1 pi list 2>/dev/null)" || return 1
-  # Cubre tanto `pi install git:github.com/chichex/skills` (la fuente cruda
-  # incluye ese literal; `chichex/chiche` es el nombre del repo tras el
-  # renombre del issue #103) como `pi install <ruta-local>` / `-l` de ESTE
-  # mismo checkout (pi list resuelve y muestra el path absoluto == $REPO_DIR).
+  # Cubre `pi install git:github.com/chichex/chiche` (el nombre actual del repo)
+  # y también la fuente vieja `git:github.com/chichex/skills`: `pi list` muestra
+  # la fuente tal como el usuario la tipeó, así que quien instaló antes del
+  # renombre del issue #103 sigue viendo el literal viejo. Cubre además
+  # `pi install <ruta-local>` / `-l` de ESTE mismo checkout (pi list resuelve y
+  # muestra el path absoluto == $REPO_DIR).
   printf '%s\n' "$listing" | grep -F -q -e 'chichex/skills' -e 'chichex/chiche' -e "$REPO_DIR"
 }
 
 install_pi() {
   if pi_native_package_conflict; then
-    echo "✗ El Pi Package nativo (chichex/skills) ya está instalado — 'pi list' lo muestra." >&2
+    echo "✗ El Pi Package nativo (chichex/chiche) ya está instalado — 'pi list' lo muestra." >&2
     echo "  No instales también las copias legacy encima: duplicarías skills, extensiones y comandos de Pi." >&2
-    echo "  Usá 'pi update --extensions' para actualizar el package, o 'pi remove git:github.com/chichex/skills'" >&2
+    echo "  Usá 'pi update --extensions' para actualizar el package, o 'pi remove git:github.com/chichex/chiche'" >&2
     echo "  (agregá -l si lo instalaste local) si preferís volver a las copias legacy." >&2
     return 1
   fi

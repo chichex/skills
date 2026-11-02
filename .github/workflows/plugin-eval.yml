@@ -4,12 +4,12 @@
 # NO se dispara solo en cada PR: cada corrida lanza un `claude` por caso con la
 # cuota de la suscripción. Lo pedís vos, cuando cambia un skill:
 #
-#   gh workflow run plugin-eval.yml --repo chichex/skills
+#   gh workflow run plugin-eval.yml --repo chichex/chiche
 #
 # …o desde la UI: Actions → Plugin Eval → Run workflow. Opcionalmente filtrás
 # casos, subís las corridas por caso, cambiás el modelo o pedís baseline:
 #
-#   gh workflow run plugin-eval.yml --repo chichex/skills -f case='trigger-*' -f runs=3 -f ablation=with-without
+#   gh workflow run plugin-eval.yml --repo chichex/chiche -f case='trigger-*' -f runs=3 -f ablation=with-without
 #
 # Requiere el secret CLAUDE_CODE_OAUTH_TOKEN (el mismo que claude-review.yml).
 # La suite vive en evals/ (ver README, sección "Claude Code: como plugin").

@@ -5,7 +5,7 @@ import * as orchestrator from "./index.ts";
 import { ACTIONABLE_ROUTE_CONTRACT } from "./route-contract.ts";
 
 function issue(number: number) {
-	return { repository: "chichex/skills", number };
+	return { repository: "chichex/chiche", number };
 }
 
 function resolution(overrides: Record<string, unknown> = {}) {
@@ -19,7 +19,7 @@ function resolution(overrides: Record<string, unknown> = {}) {
 		selectedRoute: "spec",
 		stage: "spec",
 		mode: "new",
-		repo: "chichex/skills",
+		repo: "chichex/chiche",
 		cwd: "/workspace/skills",
 		sources: [issue(14)],
 		canonicalIssue: issue(14),

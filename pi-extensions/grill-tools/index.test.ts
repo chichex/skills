@@ -757,7 +757,7 @@ test("CA-1: inventory discovery shares repository lookups and bounds git root co
 		}
 		if (args[0] === "config") {
 			repositoryCalls.set(cwd, (repositoryCalls.get(cwd) ?? 0) + 1);
-			return { code: 0, stdout: "git@github.com:chichex/skills.git\n", stderr: "" };
+			return { code: 0, stdout: "git@github.com:chichex/chiche.git\n", stderr: "" };
 		}
 		throw new Error(`unexpected git args: ${args.join(" ")}`);
 	};
@@ -835,7 +835,7 @@ test("persist_sdd_spec keeps local content normative while archiving an existing
 			return { code: 0, stdout: `${projectPath}\n`, stderr: "" };
 		}
 		if (command === "git" && args[0] === "config") {
-			return { code: 0, stdout: "git@github.com:chichex/skills.git\n", stderr: "" };
+			return { code: 0, stdout: "git@github.com:chichex/chiche.git\n", stderr: "" };
 		}
 		if (command === "gh" && args[0] === "issue" && args[1] === "view") {
 			return { code: 0, stdout: JSON.stringify({ body: remoteBody }), stderr: "" };
@@ -859,7 +859,7 @@ test("persist_sdd_spec keeps local content normative while archiving an existing
 		].join("\n");
 		const input = {
 			mode: "interactive",
-			repository: "chichex/skills",
+			repository: "chichex/chiche",
 			projectPath,
 			documents: [{
 				id: "successor",
@@ -904,7 +904,7 @@ test("review #105: reintentar con una spec v1 contra el issue que ya tiene la mi
 	].join("\n");
 	const currentBody = markdown
 		.replace("<!-- SDD-Tracking: version=1; ", "<!-- Chiche-Tracking: version=2; ")
-		.replace("issue=#34", "issue=chichex/skills#34");
+		.replace("issue=#34", "issue=chichex/chiche#34");
 	let remoteBody = currentBody;
 	const edits: string[] = [];
 	execHandler = async (command: string, args: string[]) => {
@@ -912,7 +912,7 @@ test("review #105: reintentar con una spec v1 contra el issue que ya tiene la mi
 			return { code: 0, stdout: `${projectPath}\n`, stderr: "" };
 		}
 		if (command === "git" && args[0] === "config") {
-			return { code: 0, stdout: "git@github.com:chichex/skills.git\n", stderr: "" };
+			return { code: 0, stdout: "git@github.com:chichex/chiche.git\n", stderr: "" };
 		}
 		if (command === "gh" && args[0] === "issue" && args[1] === "view") {
 			return { code: 0, stdout: JSON.stringify({ body: remoteBody }), stderr: "" };
@@ -927,7 +927,7 @@ test("review #105: reintentar con una spec v1 contra el issue que ya tiene la mi
 	try {
 		const result = await tool.execute("retry-v1-v2", {
 			mode: "interactive",
-			repository: "chichex/skills",
+			repository: "chichex/chiche",
 			projectPath,
 			documents: [{
 				id: "successor",
@@ -958,13 +958,13 @@ test("persist_sdd_spec creates a staging issue and publishes only after binding 
 			return { code: 0, stdout: `${projectPath}\n`, stderr: "" };
 		}
 		if (command === "git" && args[0] === "config") {
-			return { code: 0, stdout: "https://github.com/chichex/skills.git\n", stderr: "" };
+			return { code: 0, stdout: "https://github.com/chichex/chiche.git\n", stderr: "" };
 		}
 		if (command === "gh" && args[0] === "issue" && args[1] === "create") {
 			const bodyPath = args[args.indexOf("--body-file") + 1];
 			stagingBody = readFileSync(bodyPath, "utf8");
 			publishedBody = stagingBody;
-			return { code: 0, stdout: "https://github.com/chichex/skills/issues/77\n", stderr: "" };
+			return { code: 0, stdout: "https://github.com/chichex/chiche/issues/77\n", stderr: "" };
 		}
 		if (command === "gh" && args[0] === "issue" && args[1] === "edit") {
 			const bodyPath = args[args.indexOf("--body-file") + 1];
@@ -990,7 +990,7 @@ test("persist_sdd_spec creates a staging issue and publishes only after binding 
 			"persist-new-issue-spec",
 			{
 				mode: "interactive",
-				repository: "chichex/skills",
+				repository: "chichex/chiche",
 				projectPath,
 				documents: [{
 					id: "successor",
@@ -1011,7 +1011,7 @@ test("persist_sdd_spec creates a staging issue and publishes only after binding 
 		assert.match(publishedBody, /issue=#77/);
 		assert.doesNotMatch(publishedBody, /issue=none/);
 		assert.doesNotMatch(publishedBody, /<details>/, "staging is not archived into the final issue body");
-		assert.deepEqual(result.details.receipt.documents[0].destinations, ["issue:chichex/skills#77"]);
+		assert.deepEqual(result.details.receipt.documents[0].destinations, ["issue:chichex/chiche#77"]);
 	} finally {
 		execHandler = async (..._args: any[]) => ({ code: 0, stdout: "", stderr: "" });
 	}
@@ -1585,7 +1585,7 @@ test("#93 CA-4: grill_session pause y finalize agregan grill.paused y grill.fina
 			topic: "Eventos del grill",
 			projectPath: main,
 			estimate: { min: 1, likely: 2, max: 3 },
-			sourceIssue: { number: 93, repository: "chichex/skills" },
+			sourceIssue: { number: 93, repository: "chichex/chiche" },
 		},
 		undefined,
 		undefined,
@@ -1599,7 +1599,7 @@ test("#93 CA-4: grill_session pause y finalize agregan grill.paused y grill.fina
 	const paused = await tool.execute("pause-events", { action: "pause", sessionId: id, summary: "Pausa" }, undefined, undefined, { cwd: main });
 	const pausedMarker = parseSddArtifact(readFileSync(paused.details.repoHandoffPath, "utf8"));
 	assert.ok(pausedMarker.kind === "metadata" && pausedMarker.metadata.type === "grill");
-	assert.equal(pausedMarker.metadata.issue, "chichex/skills#93");
+	assert.equal(pausedMarker.metadata.issue, "chichex/chiche#93");
 	assert.equal(pausedMarker.metadata.grill, id);
 	let events = loggedEvents(common);
 	assert.equal(events.length, 1, "pause agrega exactamente una línea");
@@ -1787,7 +1787,7 @@ test("#93 CA-5: una spec publicada en un issue se registra con spec=#NN aunque t
 	let remoteBody = "Pedido original.\n";
 	execHandler = async (command: string, args: string[]) => {
 		if (command === "git" && args[0] === "rev-parse") return { code: 0, stdout: `${main}\n`, stderr: "" };
-		if (command === "git" && args[0] === "config") return { code: 0, stdout: "git@github.com:chichex/skills.git\n", stderr: "" };
+		if (command === "git" && args[0] === "config") return { code: 0, stdout: "git@github.com:chichex/chiche.git\n", stderr: "" };
 		if (command === "gh" && args[0] === "issue" && args[1] === "view") {
 			return { code: 0, stdout: JSON.stringify({ body: remoteBody }), stderr: "" };
 		}
@@ -1803,7 +1803,7 @@ test("#93 CA-5: una spec publicada en un issue se registra con spec=#NN aunque t
 			"persist-issue-events",
 			{
 				mode: "interactive",
-				repository: "chichex/skills",
+				repository: "chichex/chiche",
 				projectPath: main,
 				documents: [{
 					id: "successor",
@@ -1865,10 +1865,10 @@ test("#93 (review #94): llevar a issue una spec local registra spec.moved con la
 	let remoteBody = "";
 	execHandler = async (command: string, args: string[]) => {
 		if (command === "git" && args[0] === "rev-parse") return { code: 0, stdout: `${main}\n`, stderr: "" };
-		if (command === "git" && args[0] === "config") return { code: 0, stdout: "git@github.com:chichex/skills.git\n", stderr: "" };
+		if (command === "git" && args[0] === "config") return { code: 0, stdout: "git@github.com:chichex/chiche.git\n", stderr: "" };
 		if (command === "gh" && args[0] === "issue" && args[1] === "create") {
 			remoteBody = readFileSync(args[args.indexOf("--body-file") + 1]!, "utf8");
-			return { code: 0, stdout: "https://github.com/chichex/skills/issues/57\n", stderr: "" };
+			return { code: 0, stdout: "https://github.com/chichex/chiche/issues/57\n", stderr: "" };
 		}
 		if (command === "gh" && args[0] === "issue" && args[1] === "view") {
 			return { code: 0, stdout: JSON.stringify({ body: remoteBody }), stderr: "" };
@@ -1884,7 +1884,7 @@ test("#93 (review #94): llevar a issue una spec local registra spec.moved con la
 		callId,
 		{
 			mode: "assume",
-			repository: "chichex/skills",
+			repository: "chichex/chiche",
 			projectPath: main,
 			documents: [{ id: "successor", role: "successor", markdown: lifecycleSpec("Llevar", "draft", "grill-l"), grill: "grill-l", destinations }],
 		},
