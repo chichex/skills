@@ -15,7 +15,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -48,9 +48,9 @@ const OPTION_MIGRATE = "`Migrar a .chiche/ (Recomendado)`";
 const OPTION_KEEP = "`Mantener .sdd/`";
 const PROJECT_TEMPLATE = "<!-- Chiche-Tracking: version=2; type=project; generated-at=<YYYY-MM-DD> -->";
 const MARKER_UPDATE_RULE =
-	"El marker de un artefacto es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: el existente se reemplaza en su lugar conservando su nombre y su versión, y nunca se agrega otro al lado.";
+	"El marker de un artefacto existente es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: al reescribirlo se reemplaza en su lugar por `Chiche-Tracking: version=2` conservando los demás campos, y nunca se agrega otro al lado.";
 const REPORT_LINE =
-	"- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>) | mantenida .sdd/ | mejora disponible (--assume) | no aplica>";
+	"- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>; sin trackear o ignorado en .chiche/: <lista|ninguno>) | mantenida .sdd/ | mejora disponible (--assume) | no aplica>";
 const CHECKLIST_ROW =
 	'| Directorio .chiche/ | el contrato vive en .sdd/project.md — no entra al menú: lo ofrece la pregunta propia de "## Migración a .chiche/", antes que todo lo demás |';
 const MIGRATION_HEADING = "Migración a .chiche/ (corridas sobre un repo con .sdd/)";
@@ -173,21 +173,29 @@ test("CA-13: el bloque nombra la pregunta, las dos opciones, la regla de --assum
 		new RegExp(`^2\\. ${escapeRegExp(OPTION_KEEP)} — no cambia nada\\.$`, "m"),
 		/\*\*Cuándo\.\*\* En toda corrida sobre un repo con `\.sdd\/` trackeado: `--update` explícito, o el lanzador que detectó un contrato existente\. Es lo PRIMERO que hace la corrida, antes de re-explorar, de la checklist de "## Upgrade de contrato" y de escribir nada/,
 		/`git mv \.sdd \.chiche`/,
+		// Review de #107 (6) y (1a): la reescritura alcanza a lo que ESTA corrida movió y a los tres archivos de la raíz, `.gitignore` incluido.
+		/^- Reescribe a `\.chiche\/` toda referencia `\.sdd\/` dentro de lo que ESTA corrida movió a `\.chiche\/` y la de `CLAUDE\.md`, `AGENTS\.md` \(`@\.sdd\/project\.md`, el bloque `sdd-contract`\) y `\.gitignore` \(`\.sdd\/evidence\/` pasa a `\.chiche\/evidence\/`: lo ignorado sigue ignorado\)\.$/m,
 		/`Chiche-Tracking: version=2`, con los demás campos intactos \(contrato `docs\/chiche-tracking-v2\.md`\)/,
 		/Mueve `<git-common-dir>\/sdd\/` a `<git-common-dir>\/chiche\/`, incluido `events\.jsonl`/,
 		/## Decisiones humanas/,
 		/^- Anota la migración, con fecha, en `## Decisiones humanas` de `\.chiche\/project\.md`, una sola vez: si la nota ya está, una nueva corrida de la secuencia no la repite\.$/m,
 		/Con `\.chiche\/` ya presente, la secuencia mueve lo que falta y conserva lo que ya está en `\.chiche\/`/,
+		/La reescritura de una re-corrida alcanza solo a lo que esa corrida movió \(más `CLAUDE\.md`, `AGENTS\.md` y `\.gitignore`\): una mención histórica de `\.sdd\/` restaurada a mano en `\.chiche\/` no se vuelve a reescribir\./,
 		/chiche-init: conservado <ruta>; queda <ruta vieja>/,
 		/Si el harness no puede escribir en `<git-common-dir>\/chiche\/`, el paso del common-dir se saltea con el aviso/,
 		/`Mantener \.sdd\/` no cambia nada: el contrato sigue en `\.sdd\/project\.md`, la corrida lo lee de ahí y la oferta se repite en el próximo `--update`/,
-		/Con `--assume` \(y, cuando exista, con `--autonomy` A2 o más\) no se migra ni se pregunta: el reporte lo lista como `mejora disponible`/,
+		/Con `--assume` no se migra ni se pregunta: el reporte lo lista como `mejora disponible`/,
 		/Tras migrar, el resto de la corrida lee y escribe `\.chiche\/project\.md`/,
 		// El cierre `Commit + PR` copia solo paths escritos y no reproduce los renames de `git mv`: tras migrar queda sin commitear.
 		/^- Si la corrida migró, el cierre `Commit \+ PR` queda en `Dejar sin commitear` con el motivo `migración: los renames viven en el checkout principal`: ese cierre copia solo los paths que la corrida escribió y no reproduce los renames de `git mv`\. /m,
-		/El reporte nombra el commit sugerido para el humano: `git add -A -- \.chiche && git add -u && git commit -m "chore\(chiche-init\): migracion a \.chiche\/"` \(los `git mv` ya están en el índice; `git add -u` toma las reescrituras de `\.chiche\/\*\*`, `CLAUDE\.md` y `AGENTS\.md`, y supone el checkout limpio que el cierre comprobó antes de escribir\)\.$/m,
+		/El reporte nombra el commit sugerido para el humano: `git add -u -- \.chiche \$\(ls CLAUDE\.md AGENTS\.md \.gitignore 2>\/dev\/null\) && git commit -m "chore\(chiche-init\): migracion a \.chiche\/"` \(los `git mv` ya están en el índice; `git add -u` toma las reescrituras de `\.chiche\/\*\*`, `CLAUDE\.md`, `AGENTS\.md` y `\.gitignore`, y nunca agrega archivos sin trackear\)\.$/m,
+		// Review de #107 (1c): lo que `git mv` arrastró sin trackear o ignorado se lista en el reporte, para que lo decida el humano.
+		/^- El reporte de la migración lista lo que `git mv` arrastró a `\.chiche\/` sin trackear \(`git ls-files --others --exclude-standard \.chiche`\) y lo ignorado \(`git ls-files --others -i --exclude-standard \.chiche`\): el commit sugerido no lo toma y lo decide el humano\.$/m,
 	]), []);
 	const script = await canonicalSequence();
+	assert.equal(block.includes("--autonomy"), false, "el bloque no nombra un flag que no existe");
+	assert.equal(/git add -A|checkout limpio/.test(block), false, "el commit sugerido no suma todo ni supone un checkout limpio");
+	assert.match(script, /for f in CLAUDE\.md AGENTS\.md \.gitignore; do/, "la secuencia reescribe también el .gitignore de la raíz");
 	const bullet = block.split("\n").find((line) => line.startsWith("- Anota la migración")) ?? "";
 	assert.ok(bullet, "el bloque trae la bullet que describe la nota");
 	assert.equal(bullet.includes(".sdd/"), false, `la bullet de la nota no nombra .sdd/: ${bullet}`);
@@ -307,10 +315,11 @@ test("CA-13: la Fase 4 emite Chiche-Tracking v2 type=project con la regla del ma
 			/La línea `Chiche-Tracking` es el marker canónico de tracking \(contrato `docs\/chiche-tracking-v2\.md`\)/,
 			/exactamente un marker por contrato/,
 			new RegExp(escapeRegExp(MARKER_UPDATE_RULE)),
-			/el contrato se regenera en `--update`[^\n]*`SDD-Tracking: version=1` se reescribe a `Chiche-Tracking: version=2` en su lugar/,
 		]) {
 			if (!pattern.test(phase)) problems.push(`${path}: la Fase 4 no dice ${pattern}`);
 		}
+		// Review de #107 (4): una reescritura migra v1 → v2 en su lugar; ya no hay «conservando su nombre y su versión» ni excepción aparte para el contrato.
+		if (/conservando su nombre y su versión|Una excepción: el contrato se regenera/.test(phase)) problems.push(`${path}: la Fase 4 todavía conserva la versión del marker o trae la excepción del contrato`);
 	}
 	// El template de la Fase 4 instancia un marker canónico v2 de tipo project.
 	const instance = PROJECT_TEMPLATE.replace("<YYYY-MM-DD>", "2026-11-02");
@@ -366,8 +375,8 @@ function cleanEnv(): NodeJS.ProcessEnv {
 	return env;
 }
 
-function runSequence(script: string, cwd: string): { status: number | null; stdout: string; stderr: string } {
-	const result = spawnSync("bash", ["-c", script], { cwd, encoding: "utf8", env: cleanEnv() });
+function runSequence(script: string, cwd: string, env: NodeJS.ProcessEnv = {}): { status: number | null; stdout: string; stderr: string } {
+	const result = spawnSync("bash", ["-c", script], { cwd, encoding: "utf8", env: { ...cleanEnv(), ...env } });
 	return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
@@ -485,6 +494,10 @@ const FULL_TREE: Record<string, string> = {
 	"AGENTS.md": AGENTS_BLOCK,
 };
 
+// Review de #107 (1): un repo con `.gitignore` anclado a `.sdd/`.
+const GITIGNORE = "node_modules/\n.sdd/evidence/\n";
+const TREE_WITH_GITIGNORE: Record<string, string> = { ...FULL_TREE, ".gitignore": GITIGNORE };
+
 function eventLine(overrides: Partial<SddEvent>): string {
 	const event: SddEvent = {
 		v: 1,
@@ -504,11 +517,14 @@ function eventLine(overrides: Partial<SddEvent>): string {
 	return serialized.line;
 }
 
-test("CA-13: la secuencia migra .sdd/ a .chiche/ en un repo completo y deja git status solo con renames y los dos imports", async (t) => {
+test("CA-13: la secuencia migra .sdd/ a .chiche/ en un repo completo y deja git status solo con renames, los tres archivos de la raíz y lo que arrastró sin trackear", async (t) => {
 	const script = await canonicalSequence();
 	const base = scratch(t, "full");
-	const repo = initRepo(base, FULL_TREE);
+	const repo = initRepo(base, TREE_WITH_GITIGNORE);
 	const common = join(repo, ".git");
+	// Review de #107 (1): `git mv` arrastra lo ignorado y lo sin trackear de `.sdd/`.
+	writeTree(repo, { ".sdd/evidence/local.log": "evidencia local ignorada\n", ".sdd/grills/2026-01-03-draft.md": "# Grill — draft\nborrador sin trackear\n" });
+	assert.equal(git(repo, "check-ignore", ".sdd/evidence/local.log").trim(), ".sdd/evidence/local.log", "el fixture ignora la evidencia local");
 	const sddLines = [eventLine({ ts: "2026-10-01T10:00:00Z" }), eventLine({ ts: "2026-10-02T10:00:00Z", event: "run.committed" })];
 	const chicheLine = eventLine({ ts: "2026-10-30T10:00:00Z", harness: "codex", event: "land.merged", pr: [101] });
 	writeTree(common, {
@@ -516,19 +532,24 @@ test("CA-13: la secuencia migra .sdd/ a .chiche/ en un repo completo y deja git 
 		"sdd/grills/2026-01-02-y.md": "# Grill — y\nborrador del common-dir\n",
 		"chiche/events.jsonl": `${chicheLine}\n`,
 	});
-	const before = new Map(markdownFiles(join(repo, ".sdd")).map((path) => [path, canonical(parseSddArtifact(readFileSync(join(repo, ".sdd", path), "utf8")))]));
-	assert.equal(before.size, 4, "el fixture trae contrato, dos specs y un grill");
+	const tracked = markdownFiles(join(repo, ".sdd")).filter((path) => path !== "grills/2026-01-03-draft.md");
+	const before = new Map(tracked.map((path) => [path, canonical(parseSddArtifact(readFileSync(join(repo, ".sdd", path), "utf8")))]));
+	assert.equal(before.size, 4, "el fixture trae contrato, dos specs y un grill trackeados");
 	for (const parsed of before.values()) assert.equal(parsed.markerName, "SDD-Tracking");
 
+	const tmp = join(base, "tmp");
+	mkdirSync(tmp);
 	const first = utcToday();
-	const run = runSequence(script, repo);
+	const run = runSequence(script, repo, { TMPDIR: tmp });
 	const last = utcToday();
 	assert.equal(run.status, 0, run.stderr);
+	assert.deepEqual(readdirSync(tmp), [], "la lista temporal de la secuencia se borra al terminar");
 	assert.equal(run.stderr, "", "sin avisos en stderr");
 	assert.equal(run.stdout, "", "sin archivos repetidos, la secuencia no imprime nada");
 
 	assert.equal(existsSync(join(repo, ".sdd")), false, ".sdd/ desapareció");
-	assert.deepEqual(markdownFiles(join(repo, ".chiche")), [...before.keys()], "los mismos cuatro archivos bajo .chiche/");
+	assert.deepEqual(markdownFiles(join(repo, ".chiche")), [...before.keys(), "grills/2026-01-03-draft.md"].sort(), "los cuatro archivos trackeados y el borrador que git mv arrastró");
+	assert.equal(readFileSync(join(repo, ".chiche/grills/2026-01-03-draft.md"), "utf8"), "# Grill — draft\nborrador sin trackear\n", "lo que no está trackeado viaja sin reescribir");
 	for (const [path, previous] of before) {
 		const text = readFileSync(join(repo, ".chiche", path), "utf8");
 		const parsed = canonical(parseSddArtifact(text));
@@ -556,7 +577,17 @@ test("CA-13: la secuencia migra .sdd/ a .chiche/ en un repo completo y deja git 
 	const status = porcelain(repo);
 	const renames = status.filter((line) => /^R[M ] \.sdd\/\S+ -> \.chiche\/\S+$/.test(line));
 	assert.equal(renames.length, 4, `cuatro renames: ${status.join(" | ")}`);
-	assert.deepEqual(status.filter((line) => !renames.includes(line)).sort(), [" M AGENTS.md", " M CLAUDE.md"], "nada más que los dos imports, y nada untracked");
+	assert.deepEqual(
+		status.filter((line) => !renames.includes(line)).sort(),
+		[" M .gitignore", " M AGENTS.md", " M CLAUDE.md", "?? .chiche/grills/2026-01-03-draft.md"],
+		"nada más que los tres archivos de la raíz y el borrador que git mv arrastró sin trackear; la evidencia ignorada no aparece",
+	);
+	// Review de #107 (1a): el patrón anclado a `.sdd/` del .gitignore se reescribe y lo ignorado sigue ignorado bajo `.chiche/`.
+	assert.equal(readFileSync(join(repo, ".gitignore"), "utf8"), "node_modules/\n.chiche/evidence/\n");
+	assert.equal(git(repo, "check-ignore", ".chiche/evidence/local.log").trim(), ".chiche/evidence/local.log", "la evidencia local sigue ignorada");
+	// Review de #107 (1c): los dos comandos del reporte listan lo que git mv arrastró.
+	assert.equal(git(repo, "ls-files", "--others", ".chiche"), ".chiche/evidence/local.log\n.chiche/grills/2026-01-03-draft.md\n", "lo sin trackear, con lo ignorado adentro");
+	assert.equal(git(repo, "ls-files", "--others", "-i", "--exclude-standard", ".chiche"), ".chiche/evidence/local.log\n");
 
 	const decisions = readFileSync(join(repo, ".chiche/project.md"), "utf8").split("\n");
 	const heading = decisions.indexOf("## Decisiones humanas");
@@ -748,6 +779,104 @@ test("CA-13: re-correr la secuencia con duplicados conservados no reescribe ni d
 	assert.equal(readFileSync(join(repo, ".chiche/project.md"), "utf8"), once);
 });
 
+// Review de #107 (6)
+test("review #107 (6): una re-corrida con un duplicado conservado no pisa las menciones históricas restauradas y sí migra lo recién movido", async (t) => {
+	const script = await canonicalSequence();
+	const base = scratch(t, "rerun-moved");
+	const repo = initRepo(base, {
+		...FULL_TREE,
+		".chiche/specs/a.md": SPEC_A.replace("<!-- SDD-Tracking: version=1;", "<!-- Chiche-Tracking: version=2;"),
+	});
+	const tmp = join(base, "tmp");
+	mkdirSync(tmp);
+	assert.equal(runSequence(script, repo, { TMPDIR: tmp }).status, 0);
+	const historical = "- 2026-10-30: la spec vivia en `.sdd/specs/a.md` (mencion historica restaurada a mano).";
+	appendFileSync(join(repo, ".chiche/project.md"), `${historical}\n`);
+	writeTree(repo, { ".sdd/specs/d.md": SPEC_A.replace("Spec A.", "Spec D. Ver `.sdd/specs/a.md`.") });
+	git(repo, "add", "-A");
+	git(repo, "commit", "-q", "-m", "restaurar la mencion historica y sumar d");
+	const project = readFileSync(join(repo, ".chiche/project.md"), "utf8");
+
+	const again = runSequence(script, repo, { TMPDIR: tmp });
+	assert.equal(again.status, 0, again.stderr);
+	assert.equal(again.stdout, "chiche-init: conservado .chiche/specs/a.md; queda .sdd/specs/a.md\n");
+	assert.equal(readFileSync(join(repo, ".chiche/project.md"), "utf8"), project, "lo que ya estaba en .chiche/ no se reescribe");
+	assert.ok(project.includes(historical), "la mención histórica sigue en el contrato");
+	const moved = readFileSync(join(repo, ".chiche/specs/d.md"), "utf8");
+	const parsed = canonical(parseSddArtifact(moved));
+	assert.equal(parsed.markerName, "Chiche-Tracking", "lo recién movido sí se migra");
+	assert.equal(parsed.version, 2);
+	assert.match(moved, /Spec D\. Ver `\.chiche\/specs\/a\.md`\./);
+	assert.equal(existsSync(join(repo, ".sdd/specs/d.md")), false);
+	assert.equal(existsSync(join(repo, ".sdd/specs/a.md")), true, "el duplicado conservado queda donde estaba");
+	assert.deepEqual(readdirSync(tmp), [], "sin temporales");
+});
+
+// Review de #107 (1b): el commit sugerido toma la migración y nada más.
+function suggestedCommit(block: string): string {
+	const command = /commit sugerido para el humano: `(git add -u -- [^`]+)`/.exec(block)?.[1];
+	assert.ok(command, "el bloque nombra el commit sugerido entre backticks");
+	return command;
+}
+
+function runCommit(command: string, cwd: string): { status: number | null; stdout: string; stderr: string } {
+	return runSequence(command, cwd, {
+		GIT_AUTHOR_NAME: "chiche",
+		GIT_AUTHOR_EMAIL: "chiche@example.invalid",
+		GIT_COMMITTER_NAME: "chiche",
+		GIT_COMMITTER_EMAIL: "chiche@example.invalid",
+		GIT_CONFIG_COUNT: "1",
+		GIT_CONFIG_KEY_0: "commit.gpgsign",
+		GIT_CONFIG_VALUE_0: "false",
+	});
+}
+
+test("review #107 (1): el commit sugerido toma la migración y deja un cambio ajeno, un borrador sin trackear y lo ignorado fuera", async (t) => {
+	const script = await canonicalSequence();
+	const command = suggestedCommit(await referenceBlock());
+	const repo = initRepo(scratch(t, "suggested"), { ...TREE_WITH_GITIGNORE, "src/foo.ts": "export const foo = 1;\n" });
+	writeTree(repo, {
+		"src/foo.ts": "export const foo = 2;\n",
+		".sdd/evidence/local.log": "evidencia local ignorada\n",
+		".sdd/grills/2026-01-03-draft.md": "# Grill — draft\nborrador sin trackear\n",
+	});
+	assert.equal(runSequence(script, repo).status, 0);
+
+	const commit = runCommit(command, repo);
+	assert.equal(commit.status, 0, commit.stderr);
+	const changed = git(repo, "show", "--name-status", "--no-renames", "--format=%s").split("\n").filter(Boolean);
+	assert.equal(changed[0], "chore(chiche-init): migracion a .chiche/");
+	assert.deepEqual(
+		changed.slice(1).sort(),
+		[
+			"A\t.chiche/grills/2026-01-01-x.md",
+			"A\t.chiche/project.md",
+			"A\t.chiche/specs/a.md",
+			"A\t.chiche/specs/b.md",
+			"D\t.sdd/grills/2026-01-01-x.md",
+			"D\t.sdd/project.md",
+			"D\t.sdd/specs/a.md",
+			"D\t.sdd/specs/b.md",
+			"M\t.gitignore",
+			"M\tAGENTS.md",
+			"M\tCLAUDE.md",
+		],
+		"el commit lleva los cuatro archivos movidos y las reescrituras de los tres archivos de la raíz, y nada más",
+	);
+	assert.deepEqual(porcelain(repo).sort(), [" M src/foo.ts", "?? .chiche/grills/2026-01-03-draft.md"], "quedan fuera el cambio ajeno y el borrador sin trackear; la evidencia ignorada ni aparece");
+	assert.equal(git(repo, "check-ignore", ".chiche/evidence/local.log").trim(), ".chiche/evidence/local.log");
+});
+
+test("review #107 (1): el commit sugerido anda sin AGENTS.md ni .gitignore", async (t) => {
+	const script = await canonicalSequence();
+	const command = suggestedCommit(await referenceBlock());
+	const repo = initRepo(scratch(t, "suggested-min"), { ".sdd/project.md": CONTRACT_V1, ".sdd/specs/a.md": SPEC_A, "CLAUDE.md": "@.sdd/project.md\n" });
+	assert.equal(runSequence(script, repo).status, 0);
+	const commit = runCommit(command, repo);
+	assert.equal(commit.status, 0, commit.stderr);
+	assert.deepEqual(porcelain(repo), [], "la migración quedó entera en el commit");
+});
+
 // S13/S3
 test("CA-13: con <git-common-dir>/chiche/ presente y no escribible la secuencia avisa, sigue y anota", { skip: process.getuid?.() === 0 }, async (t) => {
 	const script = await canonicalSequence();
@@ -772,6 +901,15 @@ test("CA-13: la secuencia no depende de que pipefail esté apagado", async (t) =
 	const run = runSequence(`set -o pipefail\n${script}`, repo);
 	assert.equal(run.status, 0, run.stderr);
 	assert.ok(readFileSync(join(repo, ".chiche/project.md"), "utf8").includes(MIGRATION_NOTE));
+});
+
+// Review de #107 (8)
+test("CA-15 (review #107, 8): el .gitignore de este repo ignora las specs que el eval de adherencia escribe en .chiche/ y ya no nombra .sdd/", async () => {
+	const lines = (await readRepoFile(".gitignore")).split("\n").filter(Boolean);
+	assert.ok(lines.includes("evals/*/fixtures/*/.chiche/specs/"), `el fixture del eval escribe su spec en .chiche/specs/: ${lines.join(" | ")}`);
+	assert.deepEqual(lines.filter((line) => line.includes(".sdd")), [], "ningún patrón del .gitignore apunta a .sdd/");
+	const check = spawnSync("git", ["check-ignore", "-q", "--no-index", "evals/adherence-chiche-spec/fixtures/mini-cli/.chiche/specs/json-flag.md"], { cwd: repoPath(""), env: cleanEnv() });
+	assert.equal(check.status, 0, "la spec que escribe el caso de adherencia queda ignorada dentro del fixture");
 });
 
 // S15

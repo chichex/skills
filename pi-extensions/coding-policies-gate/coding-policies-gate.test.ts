@@ -112,6 +112,8 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/`--no-link` no afecta a esta fase/,
 	/«pregunta-multiple» — "¿Qué stacks entran\?"/,
 	/"¿Dónde lo genero\?": `\.chiche\/coding-policies\.md \(Recomendado\)`/,
+	// Review de #107 (2): sin `.chiche/coding-policies.md` y con `.sdd/coding-policies.md`, el destino por defecto es el viejo, regenerado en el lugar.
+	/Si `\.chiche\/coding-policies\.md` no existe y `\.sdd\/coding-policies\.md` sí \(repo sin migrar o con `Mantener \.sdd\/`\), ese es el default y la opción `\(Recomendado\)`: se regenera en el lugar preservando `## Ajustes de este proyecto`, `CLAUDE\.md` conserva su import y [^\n]*chiche-init[^\n]* --update[^\n]* lo migra después\./,
 	/raíz y hasta profundidad 2, excluyendo `node_modules`, `vendor`, `\.git`, `dist` y `build`/,
 	/`dependencies` y `devDependencies`/,
 	/registra dónde se vio/,

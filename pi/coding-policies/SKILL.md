@@ -24,7 +24,7 @@ En Pi, las dos preguntas del lanzador (stacks y destino) pueden agruparse en una
 - Stacks posicionales (`go`, `typescript`, `node`, `react`, `next`, `react-native`, `kotlin-multiplatform`, `kmp`, `kmm`, `kotlin-android`) — saltean la confirmación de stacks de la Fase 0: se toman como selección explícita aunque el marcador no se detecte (el usuario sabe más que el marcador), y después se normalizan aliases y dependencias. Un id desconocido frena con la lista de ids válidos y aliases.
 - Los aliases `kmp` y `kmm` se normalizan a `kotlin-multiplatform` antes de comprobar cobertura, escribir markers y reportar.
 - `next` incorpora `react` antes de comprobar cobertura, generar y reportar, tanto si se detectó como si llegó como stack posicional.
-- `--out <ruta>` — destino del archivo; saltea la pregunta de destino. Default: `.chiche/coding-policies.md`.
+- `--out <ruta>` — destino del archivo; saltea la pregunta de destino. Default: `.chiche/coding-policies.md`. Si `.chiche/coding-policies.md` no existe y `.sdd/coding-policies.md` sí (repo sin migrar o con `Mantener .sdd/`), ese es el default y la opción `(Recomendado)`: se regenera en el lugar preservando `## Ajustes de este proyecto`, `CLAUDE.md` conserva su import y `/skill:chiche-init --update` lo migra después.
 - `--no-link` — saltea el enganche de la Fase 4: genera el archivo y no toca ningún archivo de contexto.
 
 ## Fase 0 — Lanzador (pregunta solo lo que los argumentos no fijan)

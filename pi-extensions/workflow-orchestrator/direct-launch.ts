@@ -233,8 +233,9 @@ export async function resolveIssueDocument(
 
 // The contract lives in `<root>/.chiche/project.md`; a repo initialised before the
 // rename may still keep it in `<root>/.sdd/project.md`. The legacy path is read only
-// when the new one is absent: a present but non-canonical `.chiche/project.md` is
-// simply not canonical and does not fall back.
+// when the new one is absent (ENOENT): a present but non-canonical `.chiche/project.md`
+// is simply not canonical, and one that cannot be read (EACCES, EISDIR, EIO) is not
+// absent either, so neither falls back.
 async function hasCanonicalContract(
 	root: string,
 	readFile: (path: string, encoding: "utf8") => Promise<string>,
@@ -242,7 +243,8 @@ async function hasCanonicalContract(
 	let markdown: string;
 	try {
 		markdown = await readFile(join(root, ".chiche", "project.md"), "utf8");
-	} catch {
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") return false;
 		try {
 			markdown = await readFile(join(root, ".sdd", "project.md"), "utf8");
 		} catch {

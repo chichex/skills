@@ -202,7 +202,7 @@ En Claude Code, la pregunta de esta sección usa `AskUserQuestion`.
 **Qué hace `Migrar a .chiche/`.**
 
 - `git mv .sdd .chiche`: el contrato, las specs y los grills trackeados pasan a `.chiche/` como renames.
-- Reescribe a `.chiche/` toda referencia `.sdd/` dentro de `.chiche/**` y la de `CLAUDE.md` y `AGENTS.md` (`@.sdd/project.md`, el bloque `sdd-contract`).
+- Reescribe a `.chiche/` toda referencia `.sdd/` dentro de lo que ESTA corrida movió a `.chiche/` y la de `CLAUDE.md`, `AGENTS.md` (`@.sdd/project.md`, el bloque `sdd-contract`) y `.gitignore` (`.sdd/evidence/` pasa a `.chiche/evidence/`: lo ignorado sigue ignorado).
 - Reescribe el marker de cada artefacto a `Chiche-Tracking: version=2`, con los demás campos intactos (contrato `docs/chiche-tracking-v2.md`).
 - Mueve `<git-common-dir>/sdd/` a `<git-common-dir>/chiche/`, incluido `events.jsonl`: el log viejo va primero, el nuevo después.
 - Anota la migración, con fecha, en `## Decisiones humanas` de `.chiche/project.md`, una sola vez: si la nota ya está, una nueva corrida de la secuencia no la repite.
@@ -213,11 +213,13 @@ En Claude Code, la pregunta de esta sección usa `AskUserQuestion`.
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 common=$(git rev-parse --path-format=absolute --git-common-dir)
-if [ ! -e .chiche ]; then git mv .sdd .chiche; else
+moved=$(mktemp)
+trap 'rm -f "$moved"' EXIT
+if [ ! -e .chiche ]; then git mv .sdd .chiche; git ls-files -z -- .chiche > "$moved"; else
   git ls-files -z -- .sdd | while IFS= read -r -d '' f; do t=".chiche/${f#.sdd/}"
-    if [ -e "$t" ]; then echo "chiche-init: conservado $t; queda $f"; else mkdir -p "${t%/*}" && git mv "$f" "$t"; fi; done
+    if [ -e "$t" ]; then echo "chiche-init: conservado $t; queda $f"; else mkdir -p "${t%/*}" && git mv "$f" "$t"; printf '%s\0' "$t" >> "$moved"; fi; done
   find .sdd -type d -empty -delete 2>/dev/null || true; fi
-{ git ls-files -z -- .chiche; for f in CLAUDE.md AGENTS.md; do if [ -f "$f" ]; then printf '%s\0' "$f"; fi; done; } | while IFS= read -r -d '' f; do
+{ cat "$moved"; for f in CLAUDE.md AGENTS.md .gitignore; do if [ -f "$f" ]; then printf '%s\0' "$f"; fi; done; } | while IFS= read -r -d '' f; do
   grep -Iq -e '\.sdd/' -e 'SDD-Tracking: version=1;' "$f" || continue
   sed -e 's#\.sdd/#.chiche/#g' -e 's#<!-- SDD-Tracking: version=1;#<!-- Chiche-Tracking: version=2;#' "$f" > "$f.chiche-migrate" && cat "$f.chiche-migrate" > "$f" && rm "$f.chiche-migrate"; done
 if [ -d "$common/sdd" ] && mkdir -p "$common/chiche" 2>/dev/null && [ -w "$common/chiche" ]; then
@@ -235,12 +237,13 @@ fi
 
 **Reglas.**
 
-- Con `.chiche/` ya presente, la secuencia mueve lo que falta y conserva lo que ya está en `.chiche/`: por cada archivo repetido imprime `chiche-init: conservado <ruta>; queda <ruta vieja>` y deja el de `.sdd/` donde estaba, para que lo resuelva el humano. Lo mismo vale para `<git-common-dir>/chiche/`.
+- Con `.chiche/` ya presente, la secuencia mueve lo que falta y conserva lo que ya está en `.chiche/`: por cada archivo repetido imprime `chiche-init: conservado <ruta>; queda <ruta vieja>` y deja el de `.sdd/` donde estaba, para que lo resuelva el humano. Lo mismo vale para `<git-common-dir>/chiche/`. La reescritura de una re-corrida alcanza solo a lo que esa corrida movió (más `CLAUDE.md`, `AGENTS.md` y `.gitignore`): una mención histórica de `.sdd/` restaurada a mano en `.chiche/` no se vuelve a reescribir.
 - Si el harness no puede escribir en `<git-common-dir>/chiche/`, el paso del common-dir se saltea con el aviso `chiche-init: no se pudo escribir en <git-common-dir>/chiche` y el resto de la migración sigue: es la misma política que el append del log de eventos.
 - `Mantener .sdd/` no cambia nada: el contrato sigue en `.sdd/project.md`, la corrida lo lee de ahí y la oferta se repite en el próximo `--update`.
-- Con `--assume` (y, cuando exista, con `--autonomy` A2 o más) no se migra ni se pregunta: el reporte lo lista como `mejora disponible`.
+- Con `--assume` no se migra ni se pregunta: el reporte lo lista como `mejora disponible`.
 - Tras migrar, el resto de la corrida lee y escribe `.chiche/project.md`.
-- Si la corrida migró, el cierre `Commit + PR` queda en `Dejar sin commitear` con el motivo `migración: los renames viven en el checkout principal`: ese cierre copia solo los paths que la corrida escribió y no reproduce los renames de `git mv`. El reporte nombra el commit sugerido para el humano: `git add -A -- .chiche && git add -u && git commit -m "chore(chiche-init): migracion a .chiche/"` (los `git mv` ya están en el índice; `git add -u` toma las reescrituras de `.chiche/**`, `CLAUDE.md` y `AGENTS.md`, y supone el checkout limpio que el cierre comprobó antes de escribir).
+- El reporte de la migración lista lo que `git mv` arrastró a `.chiche/` sin trackear (`git ls-files --others --exclude-standard .chiche`) y lo ignorado (`git ls-files --others -i --exclude-standard .chiche`): el commit sugerido no lo toma y lo decide el humano.
+- Si la corrida migró, el cierre `Commit + PR` queda en `Dejar sin commitear` con el motivo `migración: los renames viven en el checkout principal`: ese cierre copia solo los paths que la corrida escribió y no reproduce los renames de `git mv`. El reporte nombra el commit sugerido para el humano: `git add -u -- .chiche $(ls CLAUDE.md AGENTS.md .gitignore 2>/dev/null) && git commit -m "chore(chiche-init): migracion a .chiche/"` (los `git mv` ya están en el índice; `git add -u` toma las reescrituras de `.chiche/**`, `CLAUDE.md`, `AGENTS.md` y `.gitignore`, y nunca agrega archivos sin trackear).
 <!-- chiche-init-migrate:end -->
 
 ## Fase 4 — Escribir el contrato
@@ -300,7 +303,7 @@ con /chiche-init --update." Formato tabla, cada fila con su gate concreto:
 <[NEEDS-INPUT] pendientes + comandos FALLA/no probados que un humano deberia mirar.>
 ```
 
-La línea `Chiche-Tracking` es el marker canónico de tracking (contrato `docs/chiche-tracking-v2.md`): `version` y `type` son fijos, y `generated-at` lleva la fecha de ESTA corrida en `YYYY-MM-DD`. Mantenerlo como upsert idempotente: exactamente un marker por contrato — en `--update` se actualiza la fecha en la línea existente (o se inserta si el contrato viejo no la tenía), nunca se duplica ni se mueve. El marker de un artefacto es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: el existente se reemplaza en su lugar conservando su nombre y su versión, y nunca se agrega otro al lado. Una excepción: el contrato se regenera en `--update`, así que un `SDD-Tracking: version=1` se reescribe a `Chiche-Tracking: version=2` en su lugar. El H1 y los headers de sección quedan intactos.
+La línea `Chiche-Tracking` es el marker canónico de tracking (contrato `docs/chiche-tracking-v2.md`): `version` y `type` son fijos, y `generated-at` lleva la fecha de ESTA corrida en `YYYY-MM-DD`. Mantenerlo como upsert idempotente: exactamente un marker por contrato — en `--update` se actualiza la fecha en la línea existente (o se inserta si el contrato viejo no la tenía), nunca se duplica ni se mueve. El marker de un artefacto existente es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: al reescribirlo se reemplaza en su lugar por `Chiche-Tracking: version=2` conservando los demás campos, y nunca se agrega otro al lado. El H1 y los headers de sección quedan intactos.
 
 En `--update`: regenerar todo salvo `## Decisiones humanas` y `## Politicas de generacion` (preservar verbatim — las políticas solo cambian si el usuario eligió `Revisar` en Fase 3.5) y los `[NEEDS-INPUT]` aún sin respuesta (mantenerlos, no duplicarlos).
 
@@ -321,7 +324,7 @@ Contrato de autonomia listo: .chiche/project.md
 - coding-policies: <referenciado|generado|no existe (ofrecido)|--assume: no ofrecido>
 - design-system: <referenciado|generado|no existe (ofrecido)|con sistema (no ofrecido)|--assume: no ofrecido|sin superficies UI>
 - import en CLAUDE.md: <agregado|ya estaba|--no-import>
-- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>) | mantenida .sdd/ | mejora disponible (--assume) | no aplica>
+- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>; sin trackear o ignorado en .chiche/: <lista|ninguno>) | mantenida .sdd/ | mejora disponible (--assume) | no aplica>
 <en corridas sobre contrato existente: mejoras de version agregadas, u ofrecidas y no
 tomadas ("mejoras disponibles" con --assume), una linea>
 <si hay FALLAs o gaps criticos, una linea por cada uno>

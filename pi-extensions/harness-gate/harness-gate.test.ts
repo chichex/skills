@@ -1210,10 +1210,11 @@ test("#84 CA-15, #103 CA-5: chiche-run toma los artefactos de entrada de <git-co
 
 // Issue #103, CA-14 (S14): chiche-run copia al worktree los artefactos de entrada bajo `.chiche/` aunque
 // vengan de `<git-common-dir>/sdd/` o de un `.sdd/` sin trackear, y deja su evidencia en
-// `.chiche/evidence/`. Un argumento `.sdd/specs/<x>.md` se sigue aceptando y se resuelve por nombre.
+// `.chiche/evidence/`. Un argumento `.chiche/specs/<x>.md` o `.sdd/specs/<x>.md` se resuelve por nombre
+// en los cuatro lugares (review de #107, 3); solo una ruta fuera de esas dos formas se lee tal cual.
 test("#103 CA-14: chiche-run copia los artefactos de entrada al worktree bajo .chiche/ y deja la evidencia en .chiche/evidence/", async () => {
 	const problems: string[] = [];
-	const argumentCompat = new RegExp(`Un argumento \`\\.sdd\\/specs\\/<x>\\.md\`[^\\n]*se resuelve por nombre[^\\n]*${fourPlacesInOrder("specs").source}[^\\n]*${DRAFTS_PRECEDENCE.source}`);
+	const argumentCompat = new RegExp(`Un argumento \`\\.chiche\\/specs\\/<x>\\.md\` o \`\\.sdd\\/specs\\/<x>\\.md\`[^\\n]*se resuelve por nombre[^\\n]*${fourPlacesInOrder("specs").source}[^\\n]*${DRAFTS_PRECEDENCE.source}[^\\n]*Solo una ruta que no es ninguna de esas dos formas se lee tal cual\\.`);
 	for (const harness of HARNESSES) {
 		const file = `${harness}/chiche-run/SKILL.md`;
 		const markdown = await readRepoFile(file);
@@ -1229,7 +1230,8 @@ test("#103 CA-14: chiche-run copia los artefactos de entrada al worktree bajo .c
 			if (!markdown.includes(literal)) problems.push(`${file}: no dice ${literal}`);
 		}
 		if (!/^\S*chiche-run \[\.chiche\/specs\/<spec>\.md \| #NN/m.test(markdown)) problems.push(`${file}: el argumento de ejemplo no es .chiche/specs/<spec>.md`);
-		if (!argumentCompat.test(markdown)) problems.push(`${file}: no dice que un argumento .sdd/specs/<x>.md se sigue aceptando y se resuelve por nombre`);
+		if (!argumentCompat.test(markdown)) problems.push(`${file}: no dice que un argumento .chiche/specs/<x>.md o .sdd/specs/<x>.md se resuelve por nombre en los cuatro lugares y que solo otra ruta se lee tal cual`);
+		if (/Ruta → leerla\./.test(markdown)) problems.push(`${file}: «Ruta → leerla.» manda a leer literal también las rutas .chiche/specs/ y .sdd/specs/`);
 	}
 	assert.deepEqual(problems, []);
 });
@@ -1287,6 +1289,9 @@ test("#103 CA-14: chiche-land barre en la Fase 5 los borradores ya aterrizados d
 // (`chiche-init --update`) la ofrece la frase misma, con la invocación de cada harness.
 const CONTRACT_FALLBACK_SKILLS = ["chiche-run", "chiche-land", "chiche-spec", "grill", "coding-policies", "design-system", "issue-triage"] as const;
 const CONTRACT_FALLBACK_SENTENCE = /Un repo inicializado antes del renombre lo tiene en `\.sdd\/project\.md`: se lee de ahí y `[^`\s]*chiche-init --update` ofrece la migración\./;
+// Review de #107 (2): `coding-policies` es el único skill que ESCRIBE un archivo del contrato viejo, así que suma una
+// segunda mención de `.sdd/coding-policies.md`: el destino por defecto de un repo sin migrar, regenerado en el lugar.
+const CODING_POLICIES_DESTINATION_FALLBACK = /Si `\.chiche\/coding-policies\.md` no existe y `\.sdd\/coding-policies\.md` sí \(repo sin migrar o con `Mantener \.sdd\/`\), ese es el default y la opción `\(Recomendado\)`: se regenera en el lugar preservando `## Ajustes de este proyecto`, `CLAUDE\.md` conserva su import y `[^`\s]*chiche-init --update` lo migra después\./;
 test("#103 L30 (a), T7c: los skills leen el contrato de .chiche/project.md con una sola frase de fallback a .sdd/project.md", async () => {
 	const problems: string[] = [];
 	for (const skill of CONTRACT_FALLBACK_SKILLS) {
@@ -1300,7 +1305,9 @@ test("#103 L30 (a), T7c: los skills leen el contrato de .chiche/project.md con u
 			const frontmatter = /^---\n([\s\S]*?)\n---/.exec(markdown)?.[1] ?? "";
 			if (frontmatter.includes(".sdd/")) problems.push(`${file}: el frontmatter todavía nombra .sdd/`);
 			if (skill === "coding-policies") {
-				if (markdown.includes(".sdd/coding-policies.md")) problems.push(`${file}: todavía nombra .sdd/coding-policies.md`);
+				if ((markdown.match(/\.sdd\/coding-policies\.md/g) ?? []).length !== 1) problems.push(`${file}: debe nombrar .sdd/coding-policies.md una sola vez, en la frase de fallback del destino`);
+				if (!CODING_POLICIES_DESTINATION_FALLBACK.test(markdown)) problems.push(`${file}: falta la frase de fallback del destino a .sdd/coding-policies.md`);
+				if ((markdown.match(/Si `\.chiche\/coding-policies\.md` no existe/g) ?? []).length !== 1) problems.push(`${file}: la frase de fallback del destino debe aparecer una sola vez`);
 				if (!markdown.includes("`.chiche/coding-policies.md`")) problems.push(`${file}: el destino por defecto no es .chiche/coding-policies.md`);
 			}
 		}
@@ -1328,6 +1335,21 @@ test("#84 CA-16, #103 CA-5: issue-triage resuelve el linaje en los cuatro lugare
 		const spanish = path === "README.md";
 		const migrates = spanish ? "`chiche-init --update` migra `.sdd/` a `.chiche/`" : "`chiche-init --update` migrates `.sdd/` to `.chiche/`";
 		if (!readme.includes(migrates)) problems.push(`${path}: no dice que ${migrates}`);
+		// Review de #107 (7): las filas `grill` y `chiche-spec` escriben en <git-common-dir>/chiche/grills/ y leen de los cuatro lugares.
+		const grillRow = readme.split("\n").find((line) => line.startsWith("| **`grill`** |")) ?? "";
+		const specRow = readme.split("\n").find((line) => line.startsWith("| **`chiche-spec`** |")) ?? "";
+		const places = "(`.chiche/grills/`, `.sdd/grills/`, `<git-common-dir>/chiche/grills/` and `<git-common-dir>/sdd/grills/`)";
+		const lugares = "(`.chiche/grills/`, `.sdd/grills/`, `<git-common-dir>/chiche/grills/` y `<git-common-dir>/sdd/grills/`)";
+		for (const literal of spanish
+			? [`persiste sesiones en \`<git-common-dir>/chiche/grills/\`, fuera del working tree, y las reanuda de los cuatro lugares ${lugares}`, "escribe además el handoff interoperable en `<git-common-dir>/chiche/grills/` del proyecto"]
+			: [`persists sessions in \`<git-common-dir>/chiche/grills/\`, outside the working tree, and resumes them from the four places ${places}`, "writes the interoperable handoff into the project's `<git-common-dir>/chiche/grills/`"]) {
+			if (!grillRow.includes(literal)) problems.push(`${path}: la fila grill no dice «${literal}»`);
+		}
+		const specLiteral = spanish ? `parte de un handoff finalizado de \`grill\` de los cuatro lugares ${lugares}` : `starts from a finalized \`grill\` handoff in the four places ${places}`;
+		if (!specRow.includes(specLiteral)) problems.push(`${path}: la fila chiche-spec no dice «${specLiteral}»`);
+		for (const [name, row] of [["grill", grillRow], ["chiche-spec", specRow]] as const) {
+			if (/(?:persiste|persists)[^|]*<git-common-dir>\/sdd\/grills\/`, (?:fuera|outside)|(?:en|in) `<git-common-dir>\/sdd\/grills\/` (?:o|or) `\.sdd\/grills\/`/.test(row)) problems.push(`${path}: la fila ${name} todavía escribe o lee solo en <git-common-dir>/sdd/grills/`);
+		}
 		if (!readme.includes(spanish ? "a `.chiche/` de su worktree" : "into its worktree's `.chiche/`")) problems.push(`${path}: chiche-run no copia a .chiche/ del worktree`);
 		if (/a `\.sdd\/` de su worktree|worktree's `\.sdd\/`/.test(readme)) problems.push(`${path}: chiche-run todavía copia a .sdd/ del worktree`);
 		const initRow = readme.match(/^\| \*\*`chiche-init`\*\* \|[^\n]*\|$/m)?.[0] ?? "";
@@ -1363,7 +1385,9 @@ test("#84 review #86, #103 CA-5, CA-14, review #105: en Codex, escribir o borrar
 	const doc = await readRepoFile("docs/harness-interaction-differences.md");
 	if (!/En Codex[^\n]*`codex sandbox -P :workspace`[^\n]*Codex 0\.146\.0[^\n]*borradores en `<git-common-dir>\/chiche\/`[^\n]*escalación[^\n]*sin permiso, escriben en `\.chiche\/` del cwd y lo dicen en el reporte, y esos borradores los resuelve `chiche-land` en su Fase 5/.test(doc)) problems.push("docs/harness-interaction-differences.md: falta la diferencia de Codex con `.git/`");
 	if (/borradores en `<git-common-dir>\/sdd\/`|escriben en `\.sdd\/` del cwd/.test(doc)) problems.push("docs/harness-interaction-differences.md: la diferencia de Codex todavía escribe borradores en sdd o cae a .sdd/");
-	if (!/`chiche-land` \(al barrer los borradores ya aterrizados de `<git-common-dir>\/chiche\/` y `<git-common-dir>\/sdd\/`\)/.test(doc)) problems.push("docs/harness-interaction-differences.md: la diferencia de Codex no incluye el barrido de chiche-land");
+	// Review de #107 (9): `chiche-land` no escribe borradores; su barrido tiene frase propia y, sin permiso, va a `sin resolver`.
+	if (!/\. `chiche-land` no escribe borradores: su barrido de la Fase 5 borra los ya aterrizados de `<git-common-dir>\/chiche\/` y `<git-common-dir>\/sdd\/`, pide escalación en Codex y, sin permiso, los manda a `sin resolver` con la ruta y el comando\./.test(doc)) problems.push("docs/harness-interaction-differences.md: la diferencia de Codex no trae la frase propia del barrido de chiche-land");
+	if (/y `chiche-land` \(al barrer/.test(doc)) problems.push("docs/harness-interaction-differences.md: chiche-land sigue agrupado entre los skills que escriben borradores");
 	if (!/La secuencia de migración de `chiche-init --update` pide la escalación entera en Codex[^\n]*`git mv` escribe `\.git\/index`[^\n]*sin permiso no se migra nada[^\n]*`mantenida \.sdd\/ \(sin permiso para escribir \.git\/\)`/.test(doc)) problems.push("docs/harness-interaction-differences.md: falta la escalación de la migración de chiche-init en Codex");
 	assert.deepEqual(problems, []);
 });
@@ -1376,7 +1400,10 @@ test("#84 review #86, #103 CA-5, CA-14, review #105: en Codex, escribir o borrar
 // arriba los exige v2.
 const MARKER_BOTH = "`SDD-Tracking: version=1` o `Chiche-Tracking: version=2`";
 const MARKER_NEVER_ANOTHER = "nunca se agrega otro";
-const MARKER_UPDATE_RULE = "El marker de un artefacto es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: el existente se reemplaza en su lugar conservando su nombre y su versión, y nunca se agrega otro al lado.";
+// Review de #107 (4): una reescritura migra v1 → v2 en su lugar (docs/chiche-tracking-v2.md; es lo que hace
+// `upsertSddMetadata` en Pi), así que ninguna regla promete conservar el nombre o la versión del marker.
+const MARKER_UPDATE_RULE = "El marker de un artefacto existente es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: al reescribirlo se reemplaza en su lugar por `Chiche-Tracking: version=2` conservando los demás campos, y nunca se agrega otro al lado.";
+const MARKER_KEEPS_VERSION = /conserv\w+ su nombre|preserva su nombre|su nombre y su versión|su nombre, su versión/;
 
 interface MarkerUpdateRule {
 	anchor: RegExp;
@@ -1412,6 +1439,7 @@ export function markerUpdateProblems(file: string, markdown: string, rules: Mark
 			if (!line.includes(MARKER_BOTH)) problems.push(`${file} ${rule.anchor}: no nombra ${MARKER_BOTH}`);
 			if (!line.includes(MARKER_NEVER_ANOTHER)) problems.push(`${file} ${rule.anchor}: no dice «${MARKER_NEVER_ANOTHER}»`);
 			if (rule.full && !line.includes(MARKER_UPDATE_RULE)) problems.push(`${file} ${rule.anchor}: no lleva la regla literal del marker existente`);
+			if (MARKER_KEEPS_VERSION.test(line)) problems.push(`${file} ${rule.anchor}: promete conservar el nombre o la versión del marker, y una reescritura migra v1 → v2`);
 		}
 	}
 	return problems;
@@ -1421,6 +1449,9 @@ test("autotest: markerUpdateProblems exige los dos markers y que nunca se agregu
 	const rules: MarkerUpdateRule[] = [{ anchor: /hace upsert/, full: true }];
 	assert.deepEqual(markerUpdateProblems("x", `Guardar hace upsert. ${MARKER_UPDATE_RULE}`, rules, "claude"), []);
 	assert.equal(markerUpdateProblems("x", "Guardar hace upsert del marker `SDD-Tracking`, nunca se agrega otro.", rules, "claude").length, 2);
+	const keeping = "Guardar hace upsert. El marker de un artefacto es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: el existente se reemplaza en su lugar conservando su nombre y su versión, y nunca se agrega otro al lado.";
+	assert.equal(markerUpdateProblems("x", keeping, rules, "claude").length, 2, "la regla vieja ni es la literal ni migra v1 → v2");
+	assert.equal(markerUpdateProblems("x", "Guardar hace upsert. `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: preserva su nombre, su versión; nunca se agrega otro.", [{ ...rules[0]!, full: false }], "claude").length, 1);
 	assert.deepEqual(markerUpdateProblems("x", "sin la regla", rules, "claude"), ["x: falta la regla /hace upsert/"]);
 	assert.deepEqual(markerUpdateProblems("x", "sin la regla", [{ ...rules[0]!, harnesses: ["pi"] }], "claude"), []);
 });

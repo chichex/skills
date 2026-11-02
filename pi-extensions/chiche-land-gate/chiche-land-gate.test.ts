@@ -210,6 +210,8 @@ const DOCTRINE_84: Record<string, RegExp[]> = {
 		/antes de preguntar, clasifica cada path/,
 		/\*\*ya aterrizado\*\*: un path sin trackear o modificado cuyo `git hash-object <path>` es igual a `git rev-parse origin\/<default>:<path>`[\s\S]*se resuelve sin preguntar justo antes del fast-forward y solo si el fast-forward va a correr[\s\S]*`ya aterrizados`/,
 		/Si no hay fast-forward[^\n]*no se toca y va al reporte como `ya aterrizados \(sin resolver\)`/,
+		// Review de #107 (5): chiche-run copia los borradores de `.sdd/` bajo `.chiche/` del worktree, así que el original de `.sdd/` también cuenta si su blob está en origin bajo `.chiche/`.
+		/\*\*ya aterrizado\*\*:[^\n]*También cuenta un `\.sdd\/<kind>\/<nombre>` \(con `<kind>` = `specs` o `grills`\) sin trackear o modificado cuyo `git hash-object` es igual a `git rev-parse origin\/<default>:\.chiche\/<kind>\/<nombre>`: `chiche-run` copia los borradores de `\.sdd\/` bajo `\.chiche\/` del worktree\./,
 		/`git rev-parse <branch>:<path>` por cada branch local salvo el actual y con `git hash-object` del path en cada worktree de `git worktree list --porcelain` salvo el checkout principal/,
 		/\*\*en otro branch\*\*: el mismo blob, en el mismo path, existe en otro branch local o worktree[\s\S]*se conserva, se reporta y nunca entra en `Descartar`/,
 		/\*\*sin dueño\*\*: el resto[\s\S]*sigue la pregunta/,

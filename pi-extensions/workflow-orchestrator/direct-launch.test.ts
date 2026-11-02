@@ -87,7 +87,8 @@ function missingContractMessage(root: string): string {
 }
 
 // Issue #103, CA-13: the gate reads <root>/.chiche/project.md first and falls back to
-// <root>/.sdd/project.md only when the first is absent. Virtual filesystem through the
+// <root>/.sdd/project.md only when the first is absent (ENOENT); any other read error on
+// the new path is not "absent" and does not fall back. Virtual filesystem through the
 // injected `readFile` port: no path exists on disk.
 describe("#103 CA-13: el gate de contrato de /chiche-run", () => {
 	const root = "/virtual/project";
@@ -97,7 +98,7 @@ describe("#103 CA-13: el gate de contrato de /chiche-run", () => {
 	const v1 = ["# Contract", "<!-- SDD-Tracking: version=1; type=project; generated-at=2026-08-15 -->", ""].join("\n");
 	const notCanonical = ["# Contract", "Sin marker de tracking.", ""].join("\n");
 
-	function project(files: Record<string, string>) {
+	function project(files: Record<string, string>, failures: Record<string, string> = {}) {
 		const reads: string[] = [];
 		let issueLookups = 0;
 		const dependencies = {
@@ -110,6 +111,7 @@ describe("#103 CA-13: el gate de contrato de /chiche-run", () => {
 			},
 			readFile: async (path: string) => {
 				reads.push(path);
+				if (path in failures) throw Object.assign(new Error(`${failures[path]}: ${path}`), { code: failures[path] });
 				if (path in files) return files[path]!;
 				throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });
 			},
@@ -141,6 +143,16 @@ describe("#103 CA-13: el gate de contrato de /chiche-run", () => {
 		const resolved = await orchestrator.resolveDirectRunRequest("#14", root, dependencies);
 		assert.deepEqual(resolved, { ok: false, code: "missing-contract", message: missingContractMessage(root) });
 		assert.equal(issueLookups(), 0, "el gate corre antes de cualquier consulta a GitHub");
+	});
+
+	// Review de #107 (10): solo la ausencia (ENOENT) habilita el fallback legacy.
+	test("un .chiche/project.md ilegible (EACCES) NO cae a un .sdd/project.md canónico", async () => {
+		const { dependencies, reads, issueLookups } = project({ [sddContract]: v1 }, { [chicheContract]: "EACCES" });
+		assert.equal(await orchestrator.isSddProject(root, dependencies), false);
+		const resolved = await orchestrator.resolveDirectRunRequest("#14", root, dependencies);
+		assert.deepEqual(resolved, { ok: false, code: "missing-contract", message: missingContractMessage(root) });
+		assert.equal(issueLookups(), 0, "el gate corre antes de cualquier consulta a GitHub");
+		assert.ok(!reads.includes(sddContract), "con .chiche/project.md ilegible no se lee .sdd/project.md");
 	});
 
 	test("ninguno de los dos: missing-contract con el mensaje que nombra .chiche/project.md y el fallback .sdd/", async () => {
