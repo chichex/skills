@@ -1040,6 +1040,46 @@ test("issue #103 CA-17: el grep mira archivos trackeados y deja afuera .chiche/g
 	}
 });
 
+// --- #103 CA-18: los README presentan chiche ------------------------------------
+
+const README_PITCH = [
+	{ path: "README.md", tagline: "anda un chiche", flow: "## El flujo chiche", retirement: "se retiraron en 4.0.0" },
+	{ path: "README.en.md", tagline: "you choose how much the agent decides", flow: "## The chiche workflow", retirement: "were retired in 4.0.0" },
+] as const;
+
+const CHICHE_FLOW_CHAIN = "chiche-init → chiche-spec → chiche-run → chiche-land";
+// La unica mencion de SDD como nombre de la suite: la nota tecnica del pitch.
+const SDD_TECHNICAL_NOTE = "Spec-Driven Development (SDD)";
+// SDD como palabra suelta; `SDD-Tracking`, `sdd-events-v1` o `SDD` entre backticks son identificadores.
+const SDD_STANDALONE = /(^|[^\w`-])SDD([^\w`-]|$)/;
+
+test("issue #103 CA-18: los README se titulan # chiche, abren con el tagline y nombran el flujo chiche", async () => {
+	const problems: string[] = [];
+	for (const readme of README_PITCH) {
+		const markdown = await readRepoFile(readme.path);
+		const lines = markdown.split("\n");
+		if (lines[0] !== "# chiche") problems.push(`${readme.path}: la línea 1 es «${lines[0]}» y debe ser «# chiche»`);
+		if (!lines.slice(0, 8).join("\n").toLowerCase().includes(readme.tagline)) problems.push(`${readme.path}: las primeras 8 líneas no dicen «${readme.tagline}»`);
+
+		const flowStart = lines.indexOf(readme.flow);
+		if (flowStart === -1) problems.push(`${readme.path}: falta el heading «${readme.flow}»`);
+		else {
+			const flowEnd = lines.findIndex((line, index) => index > flowStart && line.startsWith("## "));
+			const flow = lines.slice(flowStart, flowEnd === -1 ? undefined : flowEnd).join("\n");
+			if (!flow.includes(CHICHE_FLOW_CHAIN)) problems.push(`${readme.path}: la sección «${readme.flow}» no nombra «${CHICHE_FLOW_CHAIN}»`);
+		}
+
+		const noteCount = markdown.split(SDD_TECHNICAL_NOTE).length - 1;
+		if (noteCount !== 1) problems.push(`${readme.path}: «${SDD_TECHNICAL_NOTE}» aparece ${noteCount} veces y debe aparecer 1`);
+		lines.forEach((line, index) => {
+			if (!line.includes(SDD_TECHNICAL_NOTE) && SDD_STANDALONE.test(line)) problems.push(`${readme.path}:${index + 1}: nombra SDD como suite fuera de la nota técnica`);
+		});
+
+		if (!markdown.includes(readme.retirement)) problems.push(`${readme.path}: perdió la nota de retiro «${readme.retirement}»`);
+	}
+	assert.deepEqual(problems, []);
+});
+
 // --- Autotests del gate: puede fallar y con que diagnostico ------------------
 
 test("autotest: una divergencia entre harnesses se reporta con la linea que difiere", () => {

@@ -1,16 +1,16 @@
-# skills
+# chiche
 
 > 🇦🇷 [Leer en español](./README.md)
 
-This repo is built around my own **Spec-Driven Development (SDD)** workflow — plus the foundational skills it builds on. Everything I use day to day in **[Codex](https://developers.openai.com/codex/)**, **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[opencode](https://opencode.ai)**, **[Pi](https://github.com/badlogic/pi-mono)**, and **[Google Antigravity](https://antigravity.google)**.
+**You choose how much the agent decides.** chiche is a graduated-autonomy harness for coding agents: the same skill set runs in **[Codex](https://developers.openai.com/codex/)**, **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[opencode](https://opencode.ai)**, **[Pi](https://github.com/badlogic/pi-mono)** and **[Google Antigravity](https://antigravity.google)**, and each project's contract sets how far the agent goes on its own. Under the hood it is **Spec-Driven Development (SDD)**: contract → verifiable spec → execution → close, so "done" is defined by something verifiable rather than by a feeling.
 
 Skills are reusable pieces of knowledge an agent loads on demand: each folder is a skill with its `SKILL.md` (frontmatter `name` + `description` that decides when it applies) and, optionally, reference files the skill reads when it needs them.
 
 > Note: the skill files themselves are in Spanish (Rioplatense). This README is the translated entry point.
 
-## The SDD workflow
+## The chiche workflow
 
-The heart of the repo, and its original part. A development pipeline with an explicit contract — **contract → spec → execution → closing** — designed so "done" is defined by something verifiable, not by a feeling. Each stage is a skill that chains into the next:
+The heart of chiche, and its original part. A pipeline with an explicit contract — **contract → spec → execution → closing** — that runs as `chiche-init → chiche-spec → chiche-run → chiche-land`. Each stage is a skill that chains into the next:
 
 | Skill | Stage | What it does |
 |---|---|---|
@@ -29,7 +29,7 @@ In repos with a front end or mobile app, design comes first: `design-system` wri
 
 ## Foundational skills
 
-The disciplines SDD builds on — which I also use standalone, outside the pipeline. Some are **based on** [Matt Pocock](https://github.com/mattpocock)'s skills (see [Credits](#credits)); others are original.
+The disciplines chiche builds on — which I also use standalone, outside the pipeline. Some are **based on** [Matt Pocock](https://github.com/mattpocock)'s skills (see [Credits](#credits)); others are original.
 
 | Skill | What it does |
 |---|---|
@@ -40,7 +40,7 @@ The disciplines SDD builds on — which I also use standalone, outside the pipel
 | **`code-review`** *(Codex/Pi/opencode/Antigravity)* | Reviews a PR across three separate axes—correctness and risk, standards, and spec—runs available checks, and reports evidence-backed findings with an exact preview. By default it posts the comments to GitHub as a single COMMENT review; `--no-publish` keeps them in the conversation only. It never approves or requests changes. |
 | **`issue-triage`** | Analyzes one or more issues against code, tests, and dependencies; classifies the next stage and emits a structured handoff; after confirmation, Claude and OpenCode chain the stage skill (`grill`, `chiche-spec` or `chiche-run`); in Codex it chains `grill` and `chiche-spec`, and for `chiche-run` (which requires explicit invocation) leaves the command ready to send; in Antigravity it shows the command to continue or chains directly; in Pi, the `/issues` orchestrator opens the stage. Joint selections become one canonical issue while originals are closed as superseded. Available in all five harnesses. |
 
-SDD doesn't replace these skills — it orchestrates them. The design that precedes a spec is sharpened with `grill`, and `chiche-run` implements following the `tdd` discipline.
+The chiche workflow doesn't replace these skills — it orchestrates them. The design that precedes a spec is sharpened with `grill`, and `chiche-run` implements following the `tdd` discipline.
 
 Separately, the repo has an **internal skill** at `.claude/skills/harness-port/`: it guides porting and maintaining skills across the five harnesses (identical doctrine, only the interaction layer changes — question tool, invocation syntax, extras like the `agents/openai.yaml` sidecar in Codex or the `compatibility` field in Pi), with the codex/pi `code-review` pair as the canonical example. It's a Claude Code project skill: it only loads while working inside this repo, and it isn't distributed by `install.sh` or the plugin.
 
@@ -159,7 +159,7 @@ The repo was formerly `chichex/skills`; GitHub redirects the old URL, but update
 
 Since 3.0.0 the plugin is named `chiche` (formerly `chichex-skills`). If you have `chichex-skills@chichex` installed, run `/plugin uninstall chichex-skills@chichex` before installing `chiche@chichex`. The old names `sdd-init`, `sdd-spec`, `sdd-run`, and `sdd-land` were retired in 4.0.0.
 
-The plugin exposes every skill in `claude/` and the agents of `agents/` — the custom `implementer` and `reviewer` subagents that the SDD doctrine invokes by their `description`, not by a fixed name.
+The plugin exposes every skill in `claude/` and the agents of `agents/` — the custom `implementer` and `reviewer` subagents that the chiche doctrine invokes by their `description`, not by a fixed name.
 
 **Updates:** Claude Code does not refresh third-party marketplaces on its own: they ship with auto-update disabled, so the plugin stays on the commit you installed until you update it by hand. To make it follow every push to `main`, enable auto-update for the `chichex` marketplace in one of two ways:
 
@@ -320,7 +320,7 @@ In addition, `grill`'s **questionnaire export** is inspired by his `to-questionn
 
 `harness-port`'s writing reference (`.claude/skills/harness-port/references/escritura.md`, internal to this repo) adapts Matt Pocock's `writing-for-agents` (MIT).
 
-The **SDD** family (`chiche-init`, `chiche-spec`, `chiche-run`) is my own: inspired by the same way of working (tracer bullets, tests-first, spec → implementation) as his `to-spec` / `to-tickets` / `implement` / `wayfinder` skills, but with different artifacts — the `.chiche/project.md` autonomy contract and the verifiability verdict.
+The **chiche** family (`chiche-init`, `chiche-spec`, `chiche-run`) is my own: inspired by the same way of working (tracer bullets, tests-first, spec → implementation) as his `to-spec` / `to-tickets` / `implement` / `wayfinder` skills, but with different artifacts — the `.chiche/project.md` autonomy contract and the verifiability verdict.
 
 Also, the **red loop before touching code** in `chiche-run` adapts Matt Pocock's `diagnosing-bugs`, and the **Merge risk** section of the PR body adapts "Merge Danger" from his `pr` skill, which in turn comes from Dex Horthy's (Humanlayer) `show-me` skill. MIT.
 
