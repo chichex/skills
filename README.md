@@ -316,7 +316,7 @@ Además, la **exportación de cuestionario** de `grill` está inspirada en su sk
 
 La referencia de escritura de `harness-port` (`.claude/skills/harness-port/references/escritura.md`, de uso interno del repo) adapta `writing-for-agents` de Matt Pocock (MIT).
 
-La familia **SDD** (`chiche-init`, `chiche-spec`, `chiche-run`) es propia: está inspirada en el mismo enfoque de trabajo (tracer bullets, tests-first, spec → implementación) de sus skills `to-spec` / `to-tickets` / `implement` / `wayfinder`, pero con artefactos distintos — el contrato de autonomía `.sdd/project.md` y el veredicto de verificabilidad.
+La familia **SDD** (`chiche-init`, `chiche-spec`, `chiche-run`) es propia: está inspirada en el mismo enfoque de trabajo (tracer bullets, tests-first, spec → implementación) de sus skills `to-spec` / `to-tickets` / `implement` / `wayfinder`, pero con artefactos distintos — el contrato de autonomía `.chiche/project.md` y el veredicto de verificabilidad.
 
 Además, el **loop rojo antes de tocar código** de `chiche-run` adapta `diagnosing-bugs` de Matt Pocock, y la sección **Riesgo de merge** del body del PR adapta "Merge Danger" de su skill `pr`, que a su vez viene del skill `show-me` de Dex Horthy (Humanlayer). MIT.
 

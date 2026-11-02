@@ -682,14 +682,13 @@ test("CA-16: next.md no repite las reglas de web en celular que ya trae react.md
 test("CA-17: el contrato fecha los conteos nuevos y cita la corrida con Pi 0.85.1", async () => {
 	const contract = await readRepoFile(".chiche/project.md");
 	const commands = section(contract, /^## Comandos$/);
-	// Pi Package, frontmatter y la suite se re-verificaron el 2026-11-01 con la
-	// capa 2 del renombre a chiche (alias sdd-*); drift conserva la corrida del
-	// 15 con el port de issue-triage a OpenCode.
+	// Pi Package, frontmatter, drift y la suite se re-verificaron el 2026-11-02
+	// con la capa 3 del renombre a chiche (migración a .chiche/).
 	const verifiedOn: Record<string, string> = {
-		"gate focalizado de Pi Package": "2026-11-01",
-		"tests de extensiones": "2026-11-01",
-		"lint de frontmatter": "2026-11-01",
-		"reporte de drift": "2026-10-15",
+		"gate focalizado de Pi Package": "2026-11-02",
+		"tests de extensiones": "2026-11-02",
+		"lint de frontmatter": "2026-11-02",
+		"reporte de drift": "2026-11-02",
 	};
 	for (const [row, date] of Object.entries(verifiedOn)) {
 		assert.match(commands, new RegExp(`^\\| ${escapeRegExp(row)} \\|[^|]*\\|[^|]*\\| verificado ${date} \\|`, "m"), `${row}: conteo nuevo con fecha nueva`);

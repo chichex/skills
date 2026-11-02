@@ -773,3 +773,18 @@ test("CA-13: la secuencia no depende de que pipefail esté apagado", async (t) =
 	assert.equal(run.status, 0, run.stderr);
 	assert.ok(readFileSync(join(repo, ".chiche/project.md"), "utf8").includes(MIGRATION_NOTE));
 });
+
+// S15
+test("CA-15: el contrato suma la fila de este gate con el conteo real de este archivo y la doctrina que prueba", async () => {
+	const commands = section(await readRepoFile(".chiche/project.md"), /^Comandos$/);
+	const own = await readFile(new URL(import.meta.url), "utf8");
+	const count = own.match(/^test\(/gm)?.length ?? 0;
+	const row = commands.split("\n").find((line) => line.startsWith("| gate de migracion a .chiche/ |")) ?? "";
+	const cells = /^\| gate de migracion a \.chiche\/ \| `node --test pi-extensions\/chiche-migrate-gate\/chiche-migrate-gate\.test\.ts` \| raiz \| verificado \d{4}-\d{2}-\d{2} \| [^|]+ \| (\d+)\/(\d+);/.exec(row);
+	assert.ok(cells, "fila `gate de migracion a .chiche/` con comando, cwd, fecha y conteo");
+	assert.equal(Number(cells[1]), count, "pasan todos los tests del gate");
+	assert.equal(Number(cells[2]), count, "el conteo de la fila es el de este archivo");
+	for (const promise of [/sin index\.ts/, /identico byte a byte/, /Migrar a \.chiche\/ \(Recomendado\)/, /Mantener \.sdd\//, /--assume/, /sin commit/, /CA-20/]) {
+		assert.match(row, promise, `la fila promete lo que el gate prueba: ${promise}`);
+	}
+});

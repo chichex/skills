@@ -318,7 +318,7 @@ In addition, `grill`'s **questionnaire export** is inspired by his `to-questionn
 
 `harness-port`'s writing reference (`.claude/skills/harness-port/references/escritura.md`, internal to this repo) adapts Matt Pocock's `writing-for-agents` (MIT).
 
-The **SDD** family (`chiche-init`, `chiche-spec`, `chiche-run`) is my own: inspired by the same way of working (tracer bullets, tests-first, spec → implementation) as his `to-spec` / `to-tickets` / `implement` / `wayfinder` skills, but with different artifacts — the `.sdd/project.md` autonomy contract and the verifiability verdict.
+The **SDD** family (`chiche-init`, `chiche-spec`, `chiche-run`) is my own: inspired by the same way of working (tracer bullets, tests-first, spec → implementation) as his `to-spec` / `to-tickets` / `implement` / `wayfinder` skills, but with different artifacts — the `.chiche/project.md` autonomy contract and the verifiability verdict.
 
 Also, the **red loop before touching code** in `chiche-run` adapts Matt Pocock's `diagnosing-bugs`, and the **Merge risk** section of the PR body adapts "Merge Danger" from his `pr` skill, which in turn comes from Dex Horthy's (Humanlayer) `show-me` skill. MIT.
 
