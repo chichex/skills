@@ -111,7 +111,7 @@ Escribir el destino con EXACTAMENTE este template (crea `.chiche/` — o el dire
 
 ## Fase 4 — Enganche (saltear con `--no-link`)
 
-Detectar en la raíz `CLAUDE.md`, `AGENTS.md` y `.chiche/project.md`. Un repo inicializado antes del renombre lo tiene en `.sdd/project.md`: se lee de ahí y `/chiche-init --update` ofrece la migración. Solo se ofrecen los que existen: el skill nunca crea archivos de contexto; si no existe ninguno, lo informa y termina. Luego preguntar en texto plano con todas las opciones y terminar el turno — "¿Dónde agrego la referencia?": una opción por archivo existente. Editar únicamente los confirmados, de forma idempotente: en `CLAUDE.md` y `AGENTS.md`, verificando antes que `<ruta>` no esté ya presente (si ya está, se reporta `ya estaba` y no se toca); en `.chiche/project.md`, comparando la fila entera (igual → `ya estaba`; distinta, por ejemplo por otros stacks → `actualizado`):
+Detectar en la raíz `CLAUDE.md`, `AGENTS.md` y el contrato (`.chiche/project.md` o su fallback). Un repo inicializado antes del renombre lo tiene en `.sdd/project.md`: se lee y se escribe ahí, y `/chiche-init --update` ofrece migrarlo. Solo se ofrecen los que existen: el skill nunca crea archivos de contexto; si no existe ninguno, lo informa y termina. Luego preguntar en texto plano con todas las opciones y terminar el turno — "¿Dónde agrego la referencia?": una opción por archivo existente. Editar únicamente los confirmados, de forma idempotente: en `CLAUDE.md` y `AGENTS.md`, verificando antes que `<ruta>` no esté ya presente (si ya está, se reporta `ya estaba` y no se toca); en el contrato (`.chiche/project.md` o su fallback), comparando la fila entera (igual → `ya estaba`; distinta, por ejemplo por otros stacks → `actualizado`):
 
 1. **CLAUDE.md** — agregar al final una línea `@<ruta>` (Claude Code expande imports `@`).
 <!-- coding-policies-agents-link:start -->
@@ -122,7 +122,7 @@ Detectar en la raíz `CLAUDE.md`, `AGENTS.md` y `.chiche/project.md`. Un repo in
    Antes de escribir o modificar código en este proyecto, leer `<ruta>` y respetar sus reglas y la sección "Ajustes de este proyecto".
    ```
 <!-- coding-policies-agents-link:end -->
-3. **.chiche/project.md** — en la tabla de `## Politicas de generacion`, la fila `| coding-policies | <ruta> (<stacks>) | guia — sin gate: /chiche-run la sigue al generar, la juzga el reviewer |`, reemplazando el sentinel "Sin politicas activas" por la tabla (`| Politica | Valor | Gate |`) si está, actualizando la fila en su lugar si ya existe, y sin tocar nada si la sección no existe: lo informa y sugiere `/chiche-init --update`.
+3. **El contrato (`.chiche/project.md` o su fallback)** — en la tabla de `## Politicas de generacion`, la fila `| coding-policies | <ruta> (<stacks>) | guia — sin gate: /chiche-run la sigue al generar, la juzga el reviewer |`, reemplazando el sentinel "Sin politicas activas" por la tabla (`| Politica | Valor | Gate |`) si está, actualizando la fila en su lugar si ya existe, y sin tocar nada si la sección no existe: lo informa y sugiere `/chiche-init --update`.
 
 ## Fase 5 — Reporte
 
@@ -131,7 +131,7 @@ Coding policies listas: <ruta> (<generado|regenerado>)
 - baseline: clean-code@<version> (incluida)
 - stacks: <id>@<version> (cubierto) · <id> (sin practicas definidas todavia)
 - ajustes de este proyecto: <preservados, N lineas|vacios, primera generacion>
-- enganche: <no intentado> | CLAUDE.md <agregado|ya estaba|omitido|no existe> · AGENTS.md <agregado|ya estaba|omitido|no existe> · .chiche/project.md <agregado|actualizado|ya estaba|omitido|sin seccion|no existe>
+- enganche: <no intentado> | CLAUDE.md <agregado|ya estaba|omitido|no existe> · AGENTS.md <agregado|ya estaba|omitido|no existe> · contrato (.chiche/project.md o su fallback) <agregado|actualizado|ya estaba|omitido|sin seccion|no existe>
 - desactualizados antes de regenerar: <id: <vieja|ausente> → <nueva>, ... | ninguno>
 ```
 

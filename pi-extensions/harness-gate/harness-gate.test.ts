@@ -1288,7 +1288,8 @@ test("#103 CA-14: chiche-land barre en la Fase 5 los borradores ya aterrizados d
 // `.sdd/project.md` por skill, donde se lee por primera vez, y en ningún otro lugar. La migración
 // (`chiche-init --update`) la ofrece la frase misma, con la invocación de cada harness.
 const CONTRACT_FALLBACK_SKILLS = ["chiche-run", "chiche-land", "chiche-spec", "grill", "coding-policies", "design-system", "issue-triage"] as const;
-const CONTRACT_FALLBACK_SENTENCE = /Un repo inicializado antes del renombre lo tiene en `\.sdd\/project\.md`: se lee de ahí y `[^`\s]*chiche-init --update` ofrece la migración\./;
+// Review de #107-2 (3): `coding-policies` y `design-system` también ESCRIBEN el contrato, así que la frase dice «se lee y se escribe ahí».
+const CONTRACT_FALLBACK_SENTENCE = /Un repo inicializado antes del renombre lo tiene en `\.sdd\/project\.md`: se lee y se escribe ahí, y `[^`\s]*chiche-init --update` ofrece migrarlo\./;
 // Review de #107 (2): `coding-policies` es el único skill que ESCRIBE un archivo del contrato viejo, así que suma una
 // segunda mención de `.sdd/coding-policies.md`: el destino por defecto de un repo sin migrar, regenerado en el lugar.
 const CODING_POLICIES_DESTINATION_FALLBACK = /Si `\.chiche\/coding-policies\.md` no existe y `\.sdd\/coding-policies\.md` sí \(repo sin migrar o con `Mantener \.sdd\/`\), ese es el default y la opción `\(Recomendado\)`: se regenera en el lugar preservando `## Ajustes de este proyecto`, `CLAUDE\.md` conserva su import y `[^`\s]*chiche-init --update` lo migra después\./;
@@ -1311,6 +1312,56 @@ test("#103 L30 (a), T7c: los skills leen el contrato de .chiche/project.md con u
 				if (!markdown.includes("`.chiche/coding-policies.md`")) problems.push(`${file}: el destino por defecto no es .chiche/coding-policies.md`);
 			}
 		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+// Review de #107-2 (3): en un repo sin migrar `.chiche/project.md` no existe; el enganche y el reporte nombran el contrato con su fallback para no
+// leer «no existe» sobre un contrato que sí está (en `.sdd/project.md`).
+test("review #107-2 (3): el enganche y el reporte de coding-policies y design-system nombran el contrato con su fallback", async () => {
+	const problems: string[] = [];
+	const contract = "el contrato (`.chiche/project.md` o su fallback)";
+	for (const harness of HARNESSES) {
+		const policies = `${harness}/coding-policies/SKILL.md`;
+		const policiesText = await readRepoFile(policies);
+		for (const literal of [
+			`Detectar en la raíz \`CLAUDE.md\`, \`AGENTS.md\` y ${contract}.`,
+			`3. **El contrato (\`.chiche/project.md\` o su fallback)** — en la tabla de \`## Politicas de generacion\``,
+			`en ${contract}, comparando la fila entera`,
+		]) {
+			if (!policiesText.includes(literal)) problems.push(`${policies}: falta «${literal}»`);
+		}
+		if (!/^- enganche: .* · contrato \(\.chiche\/project\.md o su fallback\) <agregado\|actualizado\|ya estaba\|omitido\|sin seccion\|no existe>$/m.test(policiesText)) problems.push(`${policies}: el enum del reporte no dice «contrato (.chiche/project.md o su fallback)»`);
+		if (/ · \.chiche\/project\.md <agregado/.test(policiesText)) problems.push(`${policies}: el enum del reporte todavía nombra solo .chiche/project.md`);
+
+		const design = `${harness}/design-system/SKILL.md`;
+		const designText = await readRepoFile(design);
+		for (const literal of [
+			`**Rama de registro** (la superficie ya tenía sistema): solo ${contract}`,
+			`1. **El contrato (\`.chiche/project.md\` o su fallback)** — fila de la superficie en \`## Diseño\` del contrato`,
+		]) {
+			if (!designText.includes(literal)) problems.push(`${design}: falta «${literal}»`);
+		}
+		if (!/^- enganche: <no intentado> \| contrato \(\.chiche\/project\.md o su fallback\) <agregado\|actualizado\|ya estaba\|omitido\|sin seccion\|no existe> · /m.test(designText)) problems.push(`${design}: el enum del reporte no dice «contrato (.chiche/project.md o su fallback)»`);
+		if (/\| \.chiche\/project\.md <agregado/.test(designText)) problems.push(`${design}: el enum del reporte todavía nombra solo .chiche/project.md`);
+		for (const [file, text] of [[policies, policiesText], [design, designText]] as const) {
+			if ((text.match(/\.sdd\/project\.md/g) ?? []).length !== 1) problems.push(`${file}: debe nombrar .sdd/project.md una sola vez, en la frase de fallback`);
+		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+// Review de #107-2 (2): code-review lee la spec del PR de los cuatro lugares, con la precedencia de chiche-paths, y el contrato con su fallback.
+test("review #107-2 (2): code-review busca la spec del PR en los cuatro lugares y lee el contrato con su fallback", async () => {
+	const problems: string[] = [];
+	for (const harness of ["codex", "opencode", "pi", "antigravity"] as const) {
+		const file = `${harness}/code-review/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		const lookup = "4. `.chiche/specs/`, `.sdd/specs/`, `<git-common-dir>/chiche/specs/`, `<git-common-dir>/sdd/specs/` (en ese orden de precedencia), `specs/`, `docs/`, `prd/` u otra ruta explícita del repo que coincida con el PR;";
+		if (!markdown.split("\n").includes(lookup)) problems.push(`${file}: la lista de la spec no nombra los cuatro lugares en orden de precedencia`);
+		if (!markdown.includes("Usar `.chiche/project.md` o su fallback como fuente principal si existe.")) problems.push(`${file}: la fuente principal no nombra el fallback`);
+		if ((markdown.match(/\.sdd\/project\.md/g) ?? []).length !== 1) problems.push(`${file}: debe nombrar .sdd/project.md una sola vez, en la frase de fallback`);
+		if (!/\(un repo inicializado antes del renombre lo tiene en `\.sdd\/project\.md`: se lee y se escribe ahí, y `[^`\s]*chiche-init --update` ofrece migrarlo\)/.test(markdown)) problems.push(`${file}: falta la frase de fallback del contrato`);
 	}
 	assert.deepEqual(problems, []);
 });

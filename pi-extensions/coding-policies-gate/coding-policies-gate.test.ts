@@ -149,7 +149,7 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/^## Fase 4 — Enganche \(saltear con `--no-link`\)$/m,
 	/[Ss]olo se ofrecen los que existen: el skill nunca crea archivos de contexto/,
 	/«pregunta-multiple» — "¿Dónde agrego la referencia\?"/,
-	/idempotente: en `CLAUDE\.md` y `AGENTS\.md`, verificando antes que `<ruta>` no esté ya presente[^\n]*en `\.chiche\/project\.md`, comparando la fila entera/,
+	/idempotente: en `CLAUDE\.md` y `AGENTS\.md`, verificando antes que `<ruta>` no esté ya presente[^\n]*en el contrato \(`\.chiche\/project\.md` o su fallback\), comparando la fila entera/,
 	/\*\*CLAUDE\.md\*\* — agregar al final una línea `@<ruta>`/,
 	/«agents-link»/,
 	/\| coding-policies \| <ruta> \(<stacks>\) \| guia — sin gate: «skill:chiche-run» la sigue al generar, la juzga el reviewer \|/,

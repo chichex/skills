@@ -149,7 +149,7 @@ El skill evoluciona; los contratos generados por versiones anteriores no. En TOD
 | Señal de vida de procesos largos | comandos `run` sin el "cómo se reconoce que está arriba" |
 | Coding policies | existe `.chiche/coding-policies.md` pero `## Politicas de generacion` no tiene la fila `coding-policies` — no entra al menú: la Fase 3.5 la escribe sin preguntar y el reporte la lista como `referenciado` |
 | Diseño | no existe la sección `## Diseño` — no entra al menú: el censo de la Fase 1 corre siempre y la Fase 4 la escribe sin preguntar, también con `--assume`; el reporte la lista como mejora aplicada |
-| Directorio .chiche/ | el contrato vive en .sdd/project.md — no entra al menú: lo ofrece la pregunta propia de "## Migración a .chiche/", antes que todo lo demás |
+| Directorio .chiche/ | existe .sdd/project.md, trackeado o no — no entra al menú: lo ofrece la pregunta propia de "## Migración a .chiche/", antes que todo lo demás |
 
 Con faltantes: listarlos como texto visible (una línea por capacidad, con qué aporta) y usar `ask_user_question` con `selectionMode: "multiple"` y `allowEmptySelection: true` — "El contrato es de una versión anterior del skill; ¿qué mejoras le agrego?". SOLO lo elegido se releva, pregunta y escribe, cada capacidad con el mecanismo de su fase (ej. elegir `Politicas de generacion` se resuelve con el menú de la Fase 3.5); lo no elegido no se anota como gap — es una elección, no una deuda. Con `--assume`: no se agrega ninguna (varias exigen elección humana); quedan en el reporte como `mejoras disponibles`.
 
@@ -160,7 +160,7 @@ Con faltantes: listarlos como texto visible (una línea por capacidad, con qué 
 En Pi, la pregunta de esta sección usa `ask_user_question`.
 
 <!-- chiche-init-migrate:start -->
-**Cuándo.** En toda corrida sobre un repo con `.sdd/` trackeado: `--update` explícito, o el lanzador que detectó un contrato existente. Es lo PRIMERO que hace la corrida, antes de re-explorar, de la checklist de "## Upgrade de contrato" y de escribir nada. Sin `.sdd/`, esta sección no aplica.
+**Cuándo.** En toda corrida sobre un repo con `.sdd/project.md` (trackeado o no): `--update` explícito, o el lanzador que detectó un contrato existente. Es lo PRIMERO que hace la corrida, antes de re-explorar, de la checklist de "## Upgrade de contrato" y de escribir nada. Sin `.sdd/project.md`, esta sección no aplica.
 
 **La pregunta.** Una sola, "¿Migro el contrato y los artefactos a .chiche/?", con la recomendada primera:
 
@@ -170,10 +170,10 @@ En Pi, la pregunta de esta sección usa `ask_user_question`.
 **Qué hace `Migrar a .chiche/`.**
 
 - `git mv .sdd .chiche`: el contrato, las specs y los grills trackeados pasan a `.chiche/` como renames.
-- Reescribe a `.chiche/` toda referencia `.sdd/` dentro de lo que ESTA corrida movió a `.chiche/` y la de `CLAUDE.md`, `AGENTS.md` (`@.sdd/project.md`, el bloque `sdd-contract`) y `.gitignore` (`.sdd/evidence/` pasa a `.chiche/evidence/`: lo ignorado sigue ignorado).
-- Reescribe el marker de cada artefacto a `Chiche-Tracking: version=2`, con los demás campos intactos (contrato `docs/chiche-tracking-v2.md`).
+- Reescribe a `.chiche/` toda referencia `.sdd/` dentro de lo que ESTA corrida movió a `.chiche/` (también lo que `git mv` arrastró sin trackear y no está ignorado) y la de `CLAUDE.md`, `AGENTS.md` (`@.sdd/project.md`, el bloque `sdd-contract`) y `.gitignore` (`.sdd/evidence/` pasa a `.chiche/evidence/`: lo ignorado sigue ignorado).
+- Reescribe el marker de cada artefacto a `Chiche-Tracking: version=2`, con los demás campos intactos (contrato `docs/chiche-tracking-v2.md`). Solo cambia el primero de cada archivo, el del preámbulo: un ejemplo de marker dentro de un fence del cuerpo queda como estaba.
 - Mueve `<git-common-dir>/sdd/` a `<git-common-dir>/chiche/`, incluido `events.jsonl`: el log viejo va primero, el nuevo después.
-- Anota la migración, con fecha, en `## Decisiones humanas` de `.chiche/project.md`, una sola vez: si la nota ya está, una nueva corrida de la secuencia no la repite.
+- Anota la migración, con fecha, en `## Decisiones humanas` de `.chiche/project.md`, una sola vez: si la nota ya está, una nueva corrida de la secuencia no la repite. Dice que `<git-common-dir>/sdd/` pasó a `<git-common-dir>/chiche/` solo si esa corrida lo movió. Sin la sección `## Decisiones humanas`, la secuencia avisa `chiche-init: .chiche/project.md sin seccion '## Decisiones humanas'; anota la migracion a mano` y sigue.
 
 **Secuencia canónica.** Se ejecuta tal cual con `bash`, desde el repo o desde uno de sus worktrees. No se reordena ni se reescribe a mano:
 
@@ -181,16 +181,20 @@ En Pi, la pregunta de esta sección usa `ask_user_question`.
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 common=$(git rev-parse --path-format=absolute --git-common-dir)
+if [ -z "$(git ls-files -- .sdd)" ]; then echo "chiche-init: .sdd/ sin trackear; commitealo o movelo a mano, no se migra"; exit 0; fi
 moved=$(mktemp)
 trap 'rm -f "$moved"' EXIT
-if [ ! -e .chiche ]; then git mv .sdd .chiche; git ls-files -z -- .chiche > "$moved"; else
+if [ ! -e .chiche ]; then git mv .sdd .chiche; { git ls-files -z -- .chiche; git ls-files -z --others --exclude-standard -- .chiche; } > "$moved"; else
   git ls-files -z -- .sdd | while IFS= read -r -d '' f; do t=".chiche/${f#.sdd/}"
     if [ -e "$t" ]; then echo "chiche-init: conservado $t; queda $f"; else mkdir -p "${t%/*}" && git mv "$f" "$t"; printf '%s\0' "$t" >> "$moved"; fi; done
   find .sdd -type d -empty -delete 2>/dev/null || true; fi
 { cat "$moved"; for f in CLAUDE.md AGENTS.md .gitignore; do if [ -f "$f" ]; then printf '%s\0' "$f"; fi; done; } | while IFS= read -r -d '' f; do
+  [ -L "$f" ] && continue
   grep -Iq -e '\.sdd/' -e 'SDD-Tracking: version=1;' "$f" || continue
-  sed -e 's#\.sdd/#.chiche/#g' -e 's#<!-- SDD-Tracking: version=1;#<!-- Chiche-Tracking: version=2;#' "$f" > "$f.chiche-migrate" && cat "$f.chiche-migrate" > "$f" && rm "$f.chiche-migrate"; done
+  awk 'BEGIN{done=0} { if (!done && index($0,"<!-- SDD-Tracking: version=1;")==1) { sub(/<!-- SDD-Tracking: version=1;/,"<!-- Chiche-Tracking: version=2;"); done=1 } gsub(/\.sdd\//,".chiche/"); print }' "$f" > "$f.chiche-migrate" && cat "$f.chiche-migrate" > "$f" && rm "$f.chiche-migrate"; done
+common_note=
 if [ -d "$common/sdd" ] && mkdir -p "$common/chiche" 2>/dev/null && [ -w "$common/chiche" ]; then
+  common_note=" y <git-common-dir>/sdd/ paso a <git-common-dir>/chiche/"
   if [ -f "$common/sdd/events.jsonl" ]; then { awk 1 "$common/sdd/events.jsonl"; if [ -f "$common/chiche/events.jsonl" ]; then awk 1 "$common/chiche/events.jsonl"; fi; } > "$common/chiche/events.jsonl.chiche-migrate"
     mv "$common/chiche/events.jsonl.chiche-migrate" "$common/chiche/events.jsonl" && rm "$common/sdd/events.jsonl"; fi
   (cd "$common/sdd" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#./}; t="$common/chiche/$f"
@@ -198,20 +202,24 @@ if [ -d "$common/sdd" ] && mkdir -p "$common/chiche" 2>/dev/null && [ -w "$commo
   find "$common/sdd" -type d -empty -delete 2>/dev/null || true
 elif [ -d "$common/sdd" ]; then echo "chiche-init: no se pudo escribir en $common/chiche; $common/sdd queda como está"; fi
 if [ -f .chiche/project.md ] && ! grep -q 'migracion a .chiche/ con chiche-init --update' .chiche/project.md; then
-  today=$(date -u +%Y-%m-%d)
-  awk -v line="- $today: migracion a .chiche/ con chiche-init --update (antes .sdd); los artefactos llevan Chiche-Tracking: version=2 y <git-common-dir>/sdd/ paso a <git-common-dir>/chiche/." '{ print } /^## Decisiones humanas/ { print line }' .chiche/project.md > .chiche/project.md.chiche-migrate && cat .chiche/project.md.chiche-migrate > .chiche/project.md && rm .chiche/project.md.chiche-migrate
+  if grep -q '^## Decisiones humanas' .chiche/project.md; then
+    today=$(date -u +%Y-%m-%d)
+    awk -v line="- $today: migracion a .chiche/ con chiche-init --update (antes .sdd); los artefactos llevan Chiche-Tracking: version=2$common_note." '{ print } /^## Decisiones humanas/ { print line }' .chiche/project.md > .chiche/project.md.chiche-migrate && cat .chiche/project.md.chiche-migrate > .chiche/project.md && rm .chiche/project.md.chiche-migrate
+  else echo "chiche-init: .chiche/project.md sin seccion '## Decisiones humanas'; anota la migracion a mano"; fi
 fi
 ```
 
 **Reglas.**
 
 - Con `.chiche/` ya presente, la secuencia mueve lo que falta y conserva lo que ya está en `.chiche/`: por cada archivo repetido imprime `chiche-init: conservado <ruta>; queda <ruta vieja>` y deja el de `.sdd/` donde estaba, para que lo resuelva el humano. Lo mismo vale para `<git-common-dir>/chiche/`. La reescritura de una re-corrida alcanza solo a lo que esa corrida movió (más `CLAUDE.md`, `AGENTS.md` y `.gitignore`): una mención histórica de `.sdd/` restaurada a mano en `.chiche/` no se vuelve a reescribir.
+- Si `.sdd/` no tiene ningún archivo trackeado (`git ls-files -- .sdd` vacío), no se migra: la secuencia imprime `chiche-init: .sdd/ sin trackear; commitealo o movelo a mano, no se migra`, sale con 0 sin tocar nada y el reporte dice `mantenida .sdd/` con ese motivo. Con al menos un archivo trackeado, `git mv` mueve el directorio entero y la reescritura alcanza también al contrato sin trackear que viaja con él.
+- La reescritura saltea los symlinks: `CLAUDE.md -> AGENTS.md` queda como link y `AGENTS.md` se reescribe por su propio nombre; un link trackeado bajo `.chiche/` que apunta fuera nunca toca su destino.
 - Si el harness no puede escribir en `<git-common-dir>/chiche/`, el paso del common-dir se saltea con el aviso `chiche-init: no se pudo escribir en <git-common-dir>/chiche` y el resto de la migración sigue: es la misma política que el append del log de eventos.
 - `Mantener .sdd/` no cambia nada: el contrato sigue en `.sdd/project.md`, la corrida lo lee de ahí y la oferta se repite en el próximo `--update`.
 - Con `--assume` no se migra ni se pregunta: el reporte lo lista como `mejora disponible`.
 - Tras migrar, el resto de la corrida lee y escribe `.chiche/project.md`.
-- El reporte de la migración lista lo que `git mv` arrastró a `.chiche/` sin trackear (`git ls-files --others --exclude-standard .chiche`) y lo ignorado (`git ls-files --others -i --exclude-standard .chiche`): el commit sugerido no lo toma y lo decide el humano.
-- Si la corrida migró, el cierre `Commit + PR` queda en `Dejar sin commitear` con el motivo `migración: los renames viven en el checkout principal`: ese cierre copia solo los paths que la corrida escribió y no reproduce los renames de `git mv`. El reporte nombra el commit sugerido para el humano: `git add -u -- .chiche $(ls CLAUDE.md AGENTS.md .gitignore 2>/dev/null) && git commit -m "chore(chiche-init): migracion a .chiche/"` (los `git mv` ya están en el índice; `git add -u` toma las reescrituras de `.chiche/**`, `CLAUDE.md`, `AGENTS.md` y `.gitignore`, y nunca agrega archivos sin trackear).
+- Si la corrida migró, el cierre `Commit + PR` queda en `Dejar sin commitear` con el motivo `migración: los renames viven en el checkout principal`: ese cierre copia solo los paths que la corrida escribió y no reproduce los renames de `git mv`. El reporte nombra el commit sugerido para el humano: `git add -u -- .chiche $(ls CLAUDE.md AGENTS.md .gitignore 2>/dev/null) && git commit -m "chore(chiche-init): migracion a .chiche/"` (los `git mv` ya están en el índice; `git add -u` toma las reescrituras de `.chiche/**`, `CLAUDE.md`, `AGENTS.md` y `.gitignore`, también lo que el grupo (a) ya tenía cambiado en esos paths, y nunca agrega archivos sin trackear).
+- El reporte de la migración separa tres grupos con el `git status --porcelain=v1 -z` que `commit-pr-close` ya tomó antes de la primera escritura: (a) los paths que ya tenían cambios antes de migrar, que el humano saca del commit con `git restore --staged -- <ruta>` o commitea aparte; (b) lo que escribió esta corrida: los artefactos reescritos, los imports, `.gitignore` y lo que crearon `coding-policies` o `design-system` encadenados (`.chiche/coding-policies.md`, `DESIGN_SYSTEM.md`), que el commit sugerido no toma y el reporte nombra con `git add -- <ruta>`; (c) lo que `git mv` arrastró a `.chiche/` sin trackear (`git ls-files --others --exclude-standard .chiche`) o ignorado (`git ls-files --others -i --exclude-standard .chiche`), que el commit sugerido tampoco toma y decide el humano.
 <!-- chiche-init-migrate:end -->
 
 ## Fase 4 — Escribir el contrato
@@ -302,7 +310,7 @@ Contrato de autonomia listo: .chiche/project.md
 - coding-policies: <referenciado|generado|no existe (ofrecido)|--assume: no ofrecido>
 - design-system: <referenciado|generado|no existe (ofrecido)|con sistema (no ofrecido)|--assume: no ofrecido|sin superficies UI>
 - referencia en AGENTS.md: <agregada|ya estaba|--no-import> · CLAUDE.md: <import agregado|ya estaba|--no-import>
-- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>; sin trackear o ignorado en .chiche/: <lista|ninguno>) | mantenida .sdd/ | mejora disponible (--assume) | no aplica>
+- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>; con cambios previos: <lista|ninguno>; escritos fuera del commit sugerido: <lista|ninguno>; sin trackear o ignorado en .chiche/: <lista|ninguno>) | mantenida .sdd/ | mejora disponible (--assume) | no aplica>
 <en corridas sobre contrato existente: mejoras de version agregadas, u ofrecidas y no
 tomadas ("mejoras disponibles" con --assume), una linea>
 <si hay FALLAs o gaps criticos, una linea por cada uno>

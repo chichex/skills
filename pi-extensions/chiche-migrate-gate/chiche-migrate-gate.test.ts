@@ -15,7 +15,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -50,9 +50,9 @@ const PROJECT_TEMPLATE = "<!-- Chiche-Tracking: version=2; type=project; generat
 const MARKER_UPDATE_RULE =
 	"El marker de un artefacto existente es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: al reescribirlo se reemplaza en su lugar por `Chiche-Tracking: version=2` conservando los demás campos, y nunca se agrega otro al lado.";
 const REPORT_LINE =
-	"- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>; sin trackear o ignorado en .chiche/: <lista|ninguno>) | mantenida .sdd/ | mejora disponible (--assume) | no aplica>";
+	"- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>; con cambios previos: <lista|ninguno>; escritos fuera del commit sugerido: <lista|ninguno>; sin trackear o ignorado en .chiche/: <lista|ninguno>) | mantenida .sdd/ | mejora disponible (--assume) | no aplica>";
 const CHECKLIST_ROW =
-	'| Directorio .chiche/ | el contrato vive en .sdd/project.md — no entra al menú: lo ofrece la pregunta propia de "## Migración a .chiche/", antes que todo lo demás |';
+	'| Directorio .chiche/ | existe .sdd/project.md, trackeado o no — no entra al menú: lo ofrece la pregunta propia de "## Migración a .chiche/", antes que todo lo demás |';
 const MIGRATION_HEADING = "Migración a .chiche/ (corridas sobre un repo con .sdd/)";
 
 function repoPath(path: string): string {
@@ -171,14 +171,18 @@ test("CA-13: el bloque nombra la pregunta, las dos opciones, la regla de --assum
 		new RegExp(escapeRegExp(`"${QUESTION}"`)),
 		new RegExp(`^1\\. ${escapeRegExp(OPTION_MIGRATE)} — `, "m"),
 		new RegExp(`^2\\. ${escapeRegExp(OPTION_KEEP)} — no cambia nada\\.$`, "m"),
-		/\*\*Cuándo\.\*\* En toda corrida sobre un repo con `\.sdd\/` trackeado: `--update` explícito, o el lanzador que detectó un contrato existente\. Es lo PRIMERO que hace la corrida, antes de re-explorar, de la checklist de "## Upgrade de contrato" y de escribir nada/,
+		// Review de #107-2 (4): «Cuándo» y la fila de la checklist dicen lo mismo: aplica con `.sdd/project.md`, trackeado o no.
+		/\*\*Cuándo\.\*\* En toda corrida sobre un repo con `\.sdd\/project\.md` \(trackeado o no\): `--update` explícito, o el lanzador que detectó un contrato existente\. Es lo PRIMERO que hace la corrida, antes de re-explorar, de la checklist de "## Upgrade de contrato" y de escribir nada\. Sin `\.sdd\/project\.md`, esta sección no aplica\./,
 		/`git mv \.sdd \.chiche`/,
 		// Review de #107 (6) y (1a): la reescritura alcanza a lo que ESTA corrida movió y a los tres archivos de la raíz, `.gitignore` incluido.
-		/^- Reescribe a `\.chiche\/` toda referencia `\.sdd\/` dentro de lo que ESTA corrida movió a `\.chiche\/` y la de `CLAUDE\.md`, `AGENTS\.md` \(`@\.sdd\/project\.md`, el bloque `sdd-contract`\) y `\.gitignore` \(`\.sdd\/evidence\/` pasa a `\.chiche\/evidence\/`: lo ignorado sigue ignorado\)\.$/m,
-		/`Chiche-Tracking: version=2`, con los demás campos intactos \(contrato `docs\/chiche-tracking-v2\.md`\)/,
+		// Review de #107-2 (4): lo que `git mv` arrastró sin trackear (y no está ignorado) también se reescribe.
+		/^- Reescribe a `\.chiche\/` toda referencia `\.sdd\/` dentro de lo que ESTA corrida movió a `\.chiche\/` \(también lo que `git mv` arrastró sin trackear y no está ignorado\) y la de `CLAUDE\.md`, `AGENTS\.md` \(`@\.sdd\/project\.md`, el bloque `sdd-contract`\) y `\.gitignore` \(`\.sdd\/evidence\/` pasa a `\.chiche\/evidence\/`: lo ignorado sigue ignorado\)\.$/m,
+		// Review de #107-2 (6): solo el primer marker de cada archivo, el del preámbulo.
+		/^- Reescribe el marker de cada artefacto a `Chiche-Tracking: version=2`, con los demás campos intactos \(contrato `docs\/chiche-tracking-v2\.md`\)\. Solo cambia el primero de cada archivo, el del preámbulo: un ejemplo de marker dentro de un fence del cuerpo queda como estaba\.$/m,
 		/Mueve `<git-common-dir>\/sdd\/` a `<git-common-dir>\/chiche\/`, incluido `events\.jsonl`/,
 		/## Decisiones humanas/,
-		/^- Anota la migración, con fecha, en `## Decisiones humanas` de `\.chiche\/project\.md`, una sola vez: si la nota ya está, una nueva corrida de la secuencia no la repite\.$/m,
+		// Review de #107-2 (7): la nota nombra el common-dir solo si esa corrida lo movió; sin la sección, avisa.
+		/^- Anota la migración, con fecha, en `## Decisiones humanas` de `\.chiche\/project\.md`, una sola vez: si la nota ya está, una nueva corrida de la secuencia no la repite\. Dice que `<git-common-dir>\/sdd\/` pasó a `<git-common-dir>\/chiche\/` solo si esa corrida lo movió\. Sin la sección `## Decisiones humanas`, la secuencia avisa `chiche-init: \.chiche\/project\.md sin seccion '## Decisiones humanas'; anota la migracion a mano` y sigue\.$/m,
 		/Con `\.chiche\/` ya presente, la secuencia mueve lo que falta y conserva lo que ya está en `\.chiche\/`/,
 		/La reescritura de una re-corrida alcanza solo a lo que esa corrida movió \(más `CLAUDE\.md`, `AGENTS\.md` y `\.gitignore`\): una mención histórica de `\.sdd\/` restaurada a mano en `\.chiche\/` no se vuelve a reescribir\./,
 		/chiche-init: conservado <ruta>; queda <ruta vieja>/,
@@ -188,9 +192,10 @@ test("CA-13: el bloque nombra la pregunta, las dos opciones, la regla de --assum
 		/Tras migrar, el resto de la corrida lee y escribe `\.chiche\/project\.md`/,
 		// El cierre `Commit + PR` copia solo paths escritos y no reproduce los renames de `git mv`: tras migrar queda sin commitear.
 		/^- Si la corrida migró, el cierre `Commit \+ PR` queda en `Dejar sin commitear` con el motivo `migración: los renames viven en el checkout principal`: ese cierre copia solo los paths que la corrida escribió y no reproduce los renames de `git mv`\. /m,
-		/El reporte nombra el commit sugerido para el humano: `git add -u -- \.chiche \$\(ls CLAUDE\.md AGENTS\.md \.gitignore 2>\/dev\/null\) && git commit -m "chore\(chiche-init\): migracion a \.chiche\/"` \(los `git mv` ya están en el índice; `git add -u` toma las reescrituras de `\.chiche\/\*\*`, `CLAUDE\.md`, `AGENTS\.md` y `\.gitignore`, y nunca agrega archivos sin trackear\)\.$/m,
-		// Review de #107 (1c): lo que `git mv` arrastró sin trackear o ignorado se lista en el reporte, para que lo decida el humano.
-		/^- El reporte de la migración lista lo que `git mv` arrastró a `\.chiche\/` sin trackear \(`git ls-files --others --exclude-standard \.chiche`\) y lo ignorado \(`git ls-files --others -i --exclude-standard \.chiche`\): el commit sugerido no lo toma y lo decide el humano\.$/m,
+		/El reporte nombra el commit sugerido para el humano: `git add -u -- \.chiche \$\(ls CLAUDE\.md AGENTS\.md \.gitignore 2>\/dev\/null\) && git commit -m "chore\(chiche-init\): migracion a \.chiche\/"` \(los `git mv` ya están en el índice; `git add -u` toma las reescrituras de `\.chiche\/\*\*`, `CLAUDE\.md`, `AGENTS\.md` y `\.gitignore`, también lo que el grupo \(a\) ya tenía cambiado en esos paths, y nunca agrega archivos sin trackear\)\.$/m,
+		// Review de #107-2 (4): un `.sdd/` sin archivos trackeados no se migra; un link trackeado nunca se reescribe.
+		/^- Si `\.sdd\/` no tiene ningún archivo trackeado \(`git ls-files -- \.sdd` vacío\), no se migra: la secuencia imprime `chiche-init: \.sdd\/ sin trackear; commitealo o movelo a mano, no se migra`, sale con 0 sin tocar nada y el reporte dice `mantenida \.sdd\/` con ese motivo\. Con al menos un archivo trackeado, `git mv` mueve el directorio entero y la reescritura alcanza también al contrato sin trackear que viaja con él\.$/m,
+		/^- La reescritura saltea los symlinks: `CLAUDE\.md -> AGENTS\.md` queda como link y `AGENTS\.md` se reescribe por su propio nombre; un link trackeado bajo `\.chiche\/` que apunta fuera nunca toca su destino\.$/m,
 	]), []);
 	const script = await canonicalSequence();
 	assert.equal(block.includes("--autonomy"), false, "el bloque no nombra un flag que no existe");
@@ -204,6 +209,23 @@ test("CA-13: el bloque nombra la pregunta, las dos opciones, la regla de --assum
 	assert.ok(note.includes("(antes .sdd)"), `la nota recuerda el nombre anterior sin barra: ${note}`);
 	assert.equal(note.includes(".sdd/"), false, `la nota del awk no lleva .sdd/ (la reescritura de una nueva corrida no la cambia): ${note}`);
 	assert.ok(script.includes(`grep -q '${MIGRATION_NOTE}' .chiche/project.md`), "el awk va guardado por un grep de la misma frase");
+});
+
+// Review de #107-2 (1): el reporte separa lo que ya estaba sucio, lo que escribió la corrida (con el `git add -- <ruta>` de lo que el
+// comando no toma) y lo que `git mv` arrastró; nada del bloque dice que `git mv` arrastra un `.chiche/coding-policies.md` nuevo.
+test("review #107-2 (1): la doctrina del reporte separa tres grupos con el snapshot de commit-pr-close y nombra el git add de lo que escribió un encadenado", async () => {
+	const block = await referenceBlock();
+	const bullet = block.split("\n").find((line) => line.startsWith("- El reporte de la migración separa tres grupos")) ?? "";
+	assert.ok(bullet, "el bloque trae la bullet de los tres grupos");
+	assert.deepEqual(missing(bullet, [
+		/con el `git status --porcelain=v1 -z` que `commit-pr-close` ya tomó antes de la primera escritura:/,
+		/\(a\) los paths que ya tenían cambios antes de migrar, que el humano saca del commit con `git restore --staged -- <ruta>` o commitea aparte;/,
+		/\(b\) lo que escribió esta corrida: los artefactos reescritos, los imports, `\.gitignore` y lo que crearon `coding-policies` o `design-system` encadenados \(`\.chiche\/coding-policies\.md`, `DESIGN_SYSTEM\.md`\), que el commit sugerido no toma y el reporte nombra con `git add -- <ruta>`;/,
+		/\(c\) lo que `git mv` arrastró a `\.chiche\/` sin trackear \(`git ls-files --others --exclude-standard \.chiche`\) o ignorado \(`git ls-files --others -i --exclude-standard \.chiche`\), que el commit sugerido tampoco toma y decide el humano\.$/,
+	]), []);
+	assert.equal(/arrastró[^.;]*coding-policies/.test(block), false, "`git mv` no arrastra el coding-policies.md que crea un encadenado");
+	const report = section(await skillFile("claude"), /^Reporte$/);
+	assert.ok(report.includes("con cambios previos: <lista|ninguno>; escritos fuera del commit sugerido: <lista|ninguno>; sin trackear o ignorado en .chiche/: <lista|ninguno>"), "la línea del reporte lleva los tres grupos");
 });
 
 test("CA-13: el bloque no nombra ninguna tool de preguntas, literal de harness ni invocación de skill", async () => {
@@ -433,6 +455,24 @@ function utcToday(): string {
 	return new Date().toISOString().slice(0, 10);
 }
 
+// La línea que la secuencia agrega bajo `## Decisiones humanas`. Review de #107-2 (7): nombra el paso del common-dir solo si esa corrida lo hizo.
+const NOTE_MARKERS_CLAUSE = "los artefactos llevan Chiche-Tracking: version=2";
+const NOTE_COMMON_CLAUSE = " y <git-common-dir>/sdd/ paso a <git-common-dir>/chiche/";
+
+function migrationNote(repo: string): string {
+	const lines = readFileSync(join(repo, ".chiche/project.md"), "utf8").split("\n");
+	const heading = lines.indexOf("## Decisiones humanas");
+	assert.ok(heading >= 0, "el contrato tiene ## Decisiones humanas");
+	return lines[heading + 1] ?? "";
+}
+
+function assertShortNote(repo: string, why: string): void {
+	const note = migrationNote(repo);
+	assert.ok(note.includes(MIGRATION_NOTE), `${why}: la línea dice «${MIGRATION_NOTE}»: ${note}`);
+	assert.ok(note.endsWith(`${NOTE_MARKERS_CLAUSE}.`), `${why}: la nota termina después de la cláusula de los markers: ${note}`);
+	assert.equal(note.includes("<git-common-dir>"), false, `${why}: la nota no dice que el common-dir migró: ${note}`);
+}
+
 const CONTRACT_V1 = [
 	"# Contrato de autonomia — fixture",
 	"<!-- Generado por /chiche-init el 2026-08-15. Refrescar con /chiche-init --update. -->",
@@ -595,6 +635,7 @@ test("CA-13: la secuencia migra .sdd/ a .chiche/ en un repo completo y deja git 
 	const note = decisions[heading + 1] ?? "";
 	assert.ok([first, last].some((day) => note.startsWith(`- ${day}: `)), `la línea abre con la fecha UTC de hoy: ${note}`);
 	assert.ok(note.includes(MIGRATION_NOTE), `la línea dice «${MIGRATION_NOTE}»: ${note}`);
+	assert.ok(note.endsWith(`${NOTE_MARKERS_CLAUSE}${NOTE_COMMON_CLAUSE}.`), `el common-dir migró: la nota lo dice: ${note}`);
 	assert.equal(decisions[heading + 2], "- 2026-08-15: solo local.", "las decisiones previas se conservan");
 });
 
@@ -648,6 +689,7 @@ test("CA-13: sin <git-common-dir>/sdd/ la secuencia migra el árbol, sale con 0 
 	assert.equal(existsSync(join(common, "sdd")), false);
 	assert.equal(readFileSync(join(repo, "CLAUDE.md"), "utf8"), "@.chiche/project.md\n");
 	assert.equal(porcelain(repo).filter((line) => /^\?\?/.test(line)).length, 0, "nada untracked");
+	assertShortNote(repo, "sin <git-common-dir>/sdd/");
 });
 
 test("CA-13: sin CLAUDE.md ni AGENTS.md la secuencia no los crea", async (t) => {
@@ -697,6 +739,7 @@ test("CA-13: con el common-dir no escribible la secuencia avisa, migra el árbol
 	assert.equal(readFileSync(join(common, "sdd", "events.jsonl"), "utf8"), events, "el log viejo no se pierde");
 	assert.equal(existsSync(join(repo, ".sdd")), false, "el árbol migró igual");
 	assert.ok(readFileSync(join(repo, ".chiche/project.md"), "utf8").includes(MIGRATION_NOTE));
+	assertShortNote(repo, "common-dir no escribible");
 });
 
 test("CA-13: un .sdd/ sin project.md migra igual y sale con 0 sin inventar el contrato", async (t) => {
@@ -761,6 +804,8 @@ test("CA-13: la reescritura conserva symlinks y el modo de los archivos", async 
 	const run = runSequence(script, repo);
 	assert.equal(run.status, 0, run.stderr);
 	assert.ok(lstatSync(join(repo, "CLAUDE.md")).isSymbolicLink(), "CLAUDE.md sigue siendo symlink");
+	assert.equal(readlinkSync(join(repo, "CLAUDE.md")), "AGENTS.md", "el link no cambia de destino");
+	assert.match(readFileSync(join(repo, "AGENTS.md"), "utf8"), /leer `\.chiche\/project\.md` y respetar/, "AGENTS.md, el destino del link, se reescribe por su propio nombre");
 	assert.equal(statSync(join(repo, ".chiche/evidence/check.sh")).mode & 0o777, 0o755);
 	assert.equal(git(repo, "diff", "--summary"), "", "sin mode change");
 });
@@ -810,6 +855,107 @@ test("review #107 (6): una re-corrida con un duplicado conservado no pisa las me
 	assert.equal(existsSync(join(repo, ".sdd/specs/d.md")), false);
 	assert.equal(existsSync(join(repo, ".sdd/specs/a.md")), true, "el duplicado conservado queda donde estaba");
 	assert.deepEqual(readdirSync(tmp), [], "sin temporales");
+});
+
+// Review de #107-2 (4): un `.sdd/` sin ningún archivo trackeado no se migra.
+test("review #107-2 (4): con .sdd/ entero sin trackear la secuencia avisa, sale con 0 y no toca nada", async (t) => {
+	const script = await canonicalSequence();
+	const base = scratch(t, "untracked");
+	const repo = initRepo(base, { "README.md": "# repo\n", "CLAUDE.md": "@.sdd/project.md\n" });
+	const common = join(repo, ".git");
+	writeTree(repo, { ".sdd/project.md": CONTRACT_V1, ".sdd/specs/a.md": SPEC_A });
+	writeTree(common, { "sdd/events.jsonl": `${eventLine({})}\n` });
+	const before = porcelain(repo);
+	const sdd = allFiles(join(repo, ".sdd"));
+	const tmp = join(base, "tmp");
+	mkdirSync(tmp);
+
+	const run = runSequence(script, repo, { TMPDIR: tmp });
+	assert.equal(run.status, 0, run.stderr);
+	assert.equal(run.stderr, "");
+	assert.equal(run.stdout, "chiche-init: .sdd/ sin trackear; commitealo o movelo a mano, no se migra\n");
+	assert.equal(existsSync(join(repo, ".chiche")), false, "no se crea .chiche/");
+	assert.deepEqual(allFiles(join(repo, ".sdd")), sdd, ".sdd/ queda como estaba");
+	assert.equal(readFileSync(join(repo, ".sdd/project.md"), "utf8"), CONTRACT_V1, "el contrato sin trackear no se reescribe");
+	assert.equal(readFileSync(join(repo, "CLAUDE.md"), "utf8"), "@.sdd/project.md\n", "los imports no se reescriben");
+	assert.equal(existsSync(join(common, "sdd", "events.jsonl")), true, "el common-dir no se toca");
+	assert.equal(existsSync(join(common, "chiche")), false);
+	assert.deepEqual(porcelain(repo), before, "git status no cambia");
+	assert.deepEqual(readdirSync(tmp), [], "sin temporales");
+});
+
+test("review #107-2 (4): con una spec trackeada y el contrato sin trackear, git mv lo arrastra y la reescritura lo alcanza", async (t) => {
+	const script = await canonicalSequence();
+	const repo = initRepo(scratch(t, "mixed"), { ".sdd/specs/a.md": SPEC_A, "CLAUDE.md": "@.sdd/project.md\n" });
+	writeTree(repo, { ".sdd/project.md": CONTRACT_V1 });
+	assert.equal(git(repo, "ls-files", "--", ".sdd/project.md"), "", "el contrato del fixture no está trackeado");
+
+	const run = runSequence(script, repo);
+	assert.equal(run.status, 0, run.stderr);
+	assert.equal(existsSync(join(repo, ".sdd")), false);
+	const contract = readFileSync(join(repo, ".chiche/project.md"), "utf8");
+	const parsed = canonical(parseSddArtifact(contract));
+	assert.equal(parsed.markerName, "Chiche-Tracking", "el contrato sin trackear recibe el marker v2");
+	assert.equal(parsed.version, 2);
+	assert.equal(parsed.metadata.type, "project");
+	assert.equal(contract.includes(".sdd/"), false, "el contrato sin trackear no conserva referencias a .sdd/");
+	assert.ok(contract.includes(MIGRATION_NOTE), "la nota de la migración llega al contrato que viajó sin trackear");
+	assert.equal(canonical(parseSddArtifact(readFileSync(join(repo, ".chiche/specs/a.md"), "utf8"))).markerName, "Chiche-Tracking");
+	assert.deepEqual(porcelain(repo).sort(), [" M CLAUDE.md", "?? .chiche/project.md", "RM .sdd/specs/a.md -> .chiche/specs/a.md"]);
+});
+
+// Review de #107-2 (6)
+test("review #107-2 (6): solo el primer marker de cada archivo pasa a v2; un ejemplo de marker dentro de un fence queda como estaba", async (t) => {
+	const script = await canonicalSequence();
+	const example = "<!-- SDD-Tracking: version=1; type=spec; state=draft; issue=none; grill=none; superseded-by=none -->";
+	const body = `${SPEC_A}\n## Formato\n\n\`\`\`markdown\n${example}\n\`\`\`\n`;
+	const repo = initRepo(scratch(t, "fence"), { ".sdd/project.md": CONTRACT_V1, ".sdd/specs/a.md": body });
+	const run = runSequence(script, repo);
+	assert.equal(run.status, 0, run.stderr);
+	const text = readFileSync(join(repo, ".chiche/specs/a.md"), "utf8");
+	const markers = text.split("\n").filter((line) => /<!--\s*(?:SDD|Chiche)-Tracking\s*:/.test(line));
+	assert.equal(markers.length, 2, `el marker del preámbulo y el ejemplo del fence: ${markers.join(" | ")}`);
+	assert.ok(markers[0]?.startsWith("<!-- Chiche-Tracking: version=2; type=spec; state=approved;"), `el primero migró: ${markers[0]}`);
+	assert.equal(markers[1], example, "el ejemplo del cuerpo no cambia");
+	const parsed = canonical(parseSddArtifact(text));
+	assert.equal(parsed.markerName, "Chiche-Tracking");
+	assert.equal(parsed.version, 2);
+});
+
+test("review #107-2 (6): un symlink trackeado bajo .sdd/ que apunta fuera migra como link y no reescribe su destino", async (t) => {
+	const script = await canonicalSequence();
+	const base = scratch(t, "symlink-out");
+	const repo = join(base, "repo");
+	mkdirSync(repo);
+	git(repo, "init", "-q", "-b", "main");
+	const doc = `# Doc\n${SPEC_A.split("\n")[1]}\nVer \`.sdd/specs/a.md\` y \`.sdd/project.md\`.\n`;
+	writeTree(repo, { ".sdd/project.md": CONTRACT_V1, ".sdd/specs/a.md": SPEC_A, "docs/x.md": doc });
+	symlinkSync("../../docs/x.md", join(repo, ".sdd/specs/x.md"));
+	git(repo, "add", "-A");
+	git(repo, "commit", "-q", "-m", "fixture");
+
+	const run = runSequence(script, repo);
+	assert.equal(run.status, 0, run.stderr);
+	assert.equal(readFileSync(join(repo, "docs/x.md"), "utf8"), doc, "el destino del link no es de esta migración: queda byte a byte igual");
+	assert.ok(lstatSync(join(repo, ".chiche/specs/x.md")).isSymbolicLink(), "el link migra como link");
+	assert.equal(readlinkSync(join(repo, ".chiche/specs/x.md")), "../../docs/x.md");
+	assert.equal(porcelain(repo).some((line) => line.includes("docs/x.md")), false, "docs/x.md no aparece en git status");
+	assert.equal(canonical(parseSddArtifact(readFileSync(join(repo, ".chiche/specs/a.md"), "utf8"))).markerName, "Chiche-Tracking", "lo demás sí se migra");
+});
+
+// Review de #107-2 (7)
+test("review #107-2 (7): un contrato sin ## Decisiones humanas avisa, sale con 0 y no escribe la nota", async (t) => {
+	const script = await canonicalSequence();
+	const contract = CONTRACT_V1.replace(/\n## Decisiones humanas\n- 2026-08-15: solo local\.\n/, "");
+	assert.equal(contract.includes("## Decisiones humanas"), false, "el fixture no trae la sección");
+	const repo = initRepo(scratch(t, "nosection"), { ".sdd/project.md": contract, ".sdd/specs/a.md": SPEC_A });
+	const run = runSequence(script, repo);
+	assert.equal(run.status, 0, run.stderr);
+	assert.equal(run.stderr, "");
+	assert.equal(run.stdout, "chiche-init: .chiche/project.md sin seccion '## Decisiones humanas'; anota la migracion a mano\n");
+	const migrated = readFileSync(join(repo, ".chiche/project.md"), "utf8");
+	assert.equal(migrated.includes(MIGRATION_NOTE), false, "sin sección no se inventa una nota");
+	assert.equal(canonical(parseSddArtifact(migrated)).markerName, "Chiche-Tracking", "el resto de la migración sigue");
 });
 
 // Review de #107 (1b): el commit sugerido toma la migración y nada más.
@@ -867,6 +1013,20 @@ test("review #107 (1): el commit sugerido toma la migración y deja un cambio aj
 	assert.equal(git(repo, "check-ignore", ".chiche/evidence/local.log").trim(), ".chiche/evidence/local.log");
 });
 
+// Review de #107-2 (1): lo que crea un coding-policies o design-system encadenado queda fuera del comando; el reporte lo nombra con `git add -- <ruta>`.
+test("review #107-2 (1): el commit sugerido deja afuera lo que escribió un encadenado y el git add -- <ruta> del reporte lo suma", async (t) => {
+	const script = await canonicalSequence();
+	const command = suggestedCommit(await referenceBlock());
+	const repo = initRepo(scratch(t, "suggested-chained"), FULL_TREE);
+	assert.equal(runSequence(script, repo).status, 0);
+	writeTree(repo, { ".chiche/coding-policies.md": "# Coding policies\n", "DESIGN_SYSTEM.md": "# Design system\n" });
+
+	assert.equal(runCommit(command, repo).status, 0);
+	assert.deepEqual(porcelain(repo).sort(), ["?? .chiche/coding-policies.md", "?? DESIGN_SYSTEM.md"], "el comando no toma lo que escribió el encadenado");
+	assert.equal(runCommit("git add -- .chiche/coding-policies.md DESIGN_SYSTEM.md && git commit -q -m 'docs: policies y diseño'", repo).status, 0);
+	assert.deepEqual(porcelain(repo), [], "el git add -- <ruta> del reporte los suma");
+});
+
 test("review #107 (1): el commit sugerido anda sin AGENTS.md ni .gitignore", async (t) => {
 	const script = await canonicalSequence();
 	const command = suggestedCommit(await referenceBlock());
@@ -891,6 +1051,7 @@ test("CA-13: con <git-common-dir>/chiche/ presente y no escribible la secuencia 
 	assert.match(run.stdout, /chiche-init: no se pudo escribir en /);
 	assert.equal(readFileSync(join(common, "sdd", "events.jsonl"), "utf8"), events);
 	assert.ok(readFileSync(join(repo, ".chiche/project.md"), "utf8").includes(MIGRATION_NOTE));
+	assertShortNote(repo, "<git-common-dir>/chiche/ no escribible");
 });
 
 // S13/S4

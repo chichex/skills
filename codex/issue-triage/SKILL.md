@@ -147,7 +147,7 @@ gh issue view <N> --json number,title,body,url,state,updatedAt,author,labels,ass
    - issues explícitamente marcados como prerequisito/bloqueante;
    - catálogo de hasta 100 issues abiertos y cerrados con número, título, body, estado y labels;
    - componentes, seams o secuencias compartidas.
-6. Leé `.chiche/project.md` si existe. Un repo inicializado antes del renombre lo tiene en `.sdd/project.md`: se lee de ahí y `$chiche-init --update` ofrece la migración. Su ausencia **no bloquea el triage**; sí será manejada por `chiche-spec` si la ruta elegida es spec.
+6. Leé `.chiche/project.md` si existe. Un repo inicializado antes del renombre lo tiene en `.sdd/project.md`: se lee y se escribe ahí, y `$chiche-init --update` ofrece migrarlo. Su ausencia **no bloquea el triage**; sí será manejada por `chiche-spec` si la ruta elegida es spec.
 7. Para varias fuentes, buscá primero el issue combinado por su marker idempotente. Si no existe o no es utilizable, emití `canonicalization`, pedí autorización específica para la Fase 5 y no leas Markdown de artefactos; tras canonicalizar, reiniciá esta fase usando sólo el issue nuevo. Para una fuente o un canónico ya disponible, inventariá specs locales/body, handoffs y snapshots, construí evidencia temporal explícita y aplicá completo el contrato artifact-aware.
 8. Prepará una síntesis autocontenida del pedido antes de clasificar:
    - explicá en lenguaje llano qué pasa hoy, qué cambio o resultado se busca y quién o qué flujo se beneficia;

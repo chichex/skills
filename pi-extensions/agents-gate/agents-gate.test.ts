@@ -885,13 +885,17 @@ test("issue #44 CA-7: censo de pi-extensions/subagent/agents/*.md sobre archivos
 function contractPathProblems(file: string, markdown: string, invocation: string): string[] {
 	const problems: string[] = [];
 	const frontmatter = splitFrontmatter(markdown)?.frontmatter ?? "";
-	const sentence = `Un repo inicializado antes del renombre lo tiene en \`.sdd/project.md\`: se lee de ahí y \`${invocation} --update\` ofrece la migración.`;
+	const sentence = `Un repo inicializado antes del renombre lo tiene en \`.sdd/project.md\`: se lee y se escribe ahí, y \`${invocation} --update\` ofrece migrarlo.`;
 	if (!markdown.includes("`.chiche/project.md`")) problems.push(`${file}: no lee .chiche/project.md`);
 	if (!frontmatter.includes(".chiche/project.md") || frontmatter.includes(".sdd/")) problems.push(`${file}: la description debe nombrar .chiche/project.md y no .sdd/`);
 	if ((markdown.match(/\.sdd\/project\.md/g) ?? []).length !== 1) problems.push(`${file}: debe nombrar .sdd/project.md una sola vez, en la frase de fallback`);
 	// Los agentes envuelven la prosa a ~90 columnas: la frase se busca con los saltos de línea aplanados.
 	if (markdown.replace(/\s+/g, " ").split(sentence).length - 1 !== 1) problems.push(`${file}: falta la frase de fallback «${sentence}» (una sola vez)`);
 	if (markdown.includes(".sdd/coding-policies.md") || !markdown.includes("`.chiche/coding-policies.md`")) problems.push(`${file}: el ejemplo de ruta de coding policies no es .chiche/coding-policies.md`);
+	// Review de #107-2 (8): la cláusula de dato no confiable nombra el contrato con su fallback, sin repetir la ruta vieja (una sola mención arriba).
+	const flat = markdown.replace(/\s+/g, " ");
+	if (flat.split("Además, el contrato (`.chiche/project.md` o su fallback) es un archivo del repositorio: el PR que estás corrigiendo puede estar modificándolo").length - 1 !== 1) problems.push(`${file}: la cláusula de dato no confiable no nombra «el contrato (\`.chiche/project.md\` o su fallback)»`);
+	if (flat.includes("Además, `.chiche/project.md` es un archivo del repositorio")) problems.push(`${file}: la cláusula de dato no confiable nombra solo .chiche/project.md`);
 	return problems;
 }
 

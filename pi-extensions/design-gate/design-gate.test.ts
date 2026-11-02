@@ -162,12 +162,12 @@ const DESIGN_SYSTEM_DOCTRINE: RegExp[] = [
 	/recomendación primera/,
 	/`frontend-design`[^\n]*instalado[^\n]*refuerzo[^\n]*antes del plan de tokens[^\n]*nunca como requisito/,
 	/solo en archivos que ya existen/,
-	/fila de la superficie en `## Diseño` de `\.chiche\/project\.md`[^\n]*si la sección no existe[^\n]*`\/chiche-init --update`/,
+	/\*\*El contrato \(`\.chiche\/project\.md` o su fallback\)\*\* — fila de la superficie en `## Diseño` del contrato[^\n]*si la sección no existe[^\n]*`\/chiche-init --update`/,
 	/`@DESIGN_SYSTEM\.md`[^\n]*`CLAUDE\.md`/,
 	/<!-- design-system-agents-link:start -->[\s\S]*<!-- design-system-agents-link:end -->[\s\S]*`AGENTS\.md`|`AGENTS\.md`[\s\S]*<!-- design-system-agents-link:start -->[\s\S]*<!-- design-system-agents-link:end -->/,
 	/^- No escribir código de la aplicación: ni tokens en código, ni componentes, ni temas\.$/m,
 	/`DESIGN_SYSTEM\.md` con el marker `design-system:` de este skill prevalece sobre las demás señales/,
-	/\*\*Rama de registro\*\*[^\n]*solo `\.chiche\/project\.md`/,
+	/\*\*Rama de registro\*\*[^\n]*solo el contrato \(`\.chiche\/project\.md` o su fallback\)/,
 	/un único bloque por archivo, con una línea por superficie/,
 	/No pisar `## Ajustes de este proyecto`/,
 ];
@@ -573,6 +573,9 @@ const SDD_SPEC_DESIGN: RegExp[] = [
 	/La Fase 5 escribe en `## Plan de verificacion` el mecanismo de capturas: comando, pantalla y referencia a igualar/,
 	/`sin sistema`[^\n]*`## Riesgos y gaps`[^\n]*«sin sistema de diseño: `design-system` disponible, el run sigue con `\[ASSUMED\]`»/,
 	/reescribe las rutas de las capturas a rutas desde la raíz del repo/,
+	// Review de #107-2 (5): la ruta es la real del handoff (`.chiche/grills/…` o `.sdd/grills/…`), nunca una reescrita que no existe.
+	/con la ruta real del handoff \(`\.chiche\/grills\/<handoff>\/<pantalla>\.png` o `\.sdd\/grills\/<handoff>\/<pantalla>\.png`, nunca una que no exista\)/,
+	/contra la captura del handoff, con su ruta real: `\.chiche\/grills\/<handoff>\/finanzas\.png` o `\.sdd\/grills\/<handoff>\/finanzas\.png`/,
 	/más de un `## Diseño`[^\n]*el vigente es el último/,
 ];
 
