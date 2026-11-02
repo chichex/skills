@@ -1,11 +1,11 @@
 {
   "name": "chichex",
   "interface": {
-    "displayName": "chichex skills"
+    "displayName": "chiche"
   },
   "plugins": [
     {
-      "name": "chichex-skills",
+      "name": "chiche",
       "source": {
         "source": "local",
         "path": "./"

@@ -1,6 +1,6 @@
 ---
 name: coding-policies
-description: Genera en el proyecto un archivo Markdown autocontenido con una baseline transversal de Clean Code y SOLID más tus buenas prácticas por stack (contenido para Go, TypeScript, Node.js, React, Next.js, React Native y Kotlin Multiplatform) y lo engancha en CLAUDE.md, AGENTS.md o .sdd/project.md para que toda sesión las siga. Usar cuando el usuario pida "coding policies", "buenas prácticas", "políticas de código", "mis prácticas de …" (Go, TypeScript, Node, React, Next.js, React Native, Kotlin Multiplatform, KMP, KMM), que el agente siga sus prácticas en este repo, o que genere o regenere .sdd/coding-policies.md. También cuando sdd-init lo encadene al terminar el contrato.
+description: Genera en el proyecto un archivo Markdown autocontenido con una baseline transversal de Clean Code y SOLID más tus buenas prácticas por stack (contenido para Go, TypeScript, Node.js, React, Next.js, React Native y Kotlin Multiplatform) y lo engancha en CLAUDE.md, AGENTS.md o .sdd/project.md para que toda sesión las siga. Usar cuando el usuario pida "coding policies", "buenas prácticas", "políticas de código", "mis prácticas de …" (Go, TypeScript, Node, React, Next.js, React Native, Kotlin Multiplatform, KMP, KMM), que el agente siga sus prácticas en este repo, o que genere o regenere .sdd/coding-policies.md. También cuando chiche-init lo encadene al terminar el contrato.
 compatibility: Requiere las tools ask_user_question y ask_user_questions de la extensión Pi de este repo, más read/bash/edit/write para detectar stacks, generar el archivo y editar los archivos de contexto.
 ---
 
@@ -125,7 +125,7 @@ Detectar en la raíz `CLAUDE.md`, `AGENTS.md` y `.sdd/project.md`. Solo se ofrec
    Antes de escribir o modificar código en este proyecto, leer `<ruta>` y respetar sus reglas y la sección "Ajustes de este proyecto".
    ```
 <!-- coding-policies-agents-link:end -->
-3. **.sdd/project.md** — en la tabla de `## Politicas de generacion`, la fila `| coding-policies | <ruta> (<stacks>) | guia — sin gate: /skill:sdd-run la sigue al generar, la juzga el reviewer |`, reemplazando el sentinel "Sin politicas activas" por la tabla (`| Politica | Valor | Gate |`) si está, actualizando la fila en su lugar si ya existe, y sin tocar nada si la sección no existe: lo informa y sugiere `/skill:sdd-init --update`.
+3. **.sdd/project.md** — en la tabla de `## Politicas de generacion`, la fila `| coding-policies | <ruta> (<stacks>) | guia — sin gate: /skill:chiche-run la sigue al generar, la juzga el reviewer |`, reemplazando el sentinel "Sin politicas activas" por la tabla (`| Politica | Valor | Gate |`) si está, actualizando la fila en su lugar si ya existe, y sin tocar nada si la sección no existe: lo informa y sugiere `/skill:chiche-init --update`.
 
 ## Fase 5 — Reporte
 
@@ -147,13 +147,13 @@ Después del reporte, preguntar `Commit + PR (Recomendado)` / `Dejar sin commite
 
 `Commit + PR`:
 
-1. Comprobar la aptitud igual que `/skill:sdd-run`: hay remote y `gh` autenticado, y `## Limites` de `.sdd/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
+1. Comprobar la aptitud igual que `/skill:chiche-run`: hay remote y `gh` autenticado, y `## Limites` de `.sdd/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
 2. Revisar cada path que esta corrida escribió. Uno nuevo, ausente en `origin/<default>`, se copia. Uno que ya existía se copia solo si `HEAD:<path>` del checkout es igual a `origin/<default>:<path>` y el path no tenía cambios antes de la corrida; si no, el cierre queda en `Dejar sin commitear` con el motivo, para no meter cambios ajenos en el PR ni revertir lo que `origin/<default>` ya cambió.
 3. `git fetch origin` y crear el worktree con lock, con el branch `chore/coding-policies-<YYYY-MM-DD>` nacido de `origin/<default>`: `git worktree add --lock --reason "coding-policies <YYYY-MM-DD>" ../<repo>-coding-policies-<YYYY-MM-DD> -b chore/coding-policies-<YYYY-MM-DD> origin/<default>`. Si el branch o el path ya existen, usar en los dos el primer sufijo libre (`-2`, `-3`…).
 4. Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR con `gh pr create --base <default> --title "chore(coding-policies): <YYYY-MM-DD>" --body-file <archivo>`.
 5. `git worktree unlock` y después `git worktree remove` del worktree.
 
-Si el push o `gh pr create` fallan después del commit, el cierre queda como commit local sin PR: el reporte nombra el branch, el motivo y el comando para seguir (`git push -u origin <branch>` y el `gh pr create` del paso 4). La copia idéntica que queda en el checkout principal no se toca: después del merge, `/skill:sdd-land` la reconoce como `ya aterrizado` y la resuelve sin preguntar. `Dejar sin commitear` no toca nada. El reporte suma la línea `- cierre: <PR #<n> <url> | commit local sin PR en <branch> (<motivo>) · <comando> | sin commitear (<motivo>)>`. En modo desatendido, si el skill lo tiene, no se pregunta y el cierre queda en `Dejar sin commitear`. Si un skill encadena a otro (`/skill:sdd-init` encadena `/skill:coding-policies` y `/skill:design-system`), el cierre lo ofrece una sola vez el que encadenó, con todos los paths escritos.
+Si el push o `gh pr create` fallan después del commit, el cierre queda como commit local sin PR: el reporte nombra el branch, el motivo y el comando para seguir (`git push -u origin <branch>` y el `gh pr create` del paso 4). La copia idéntica que queda en el checkout principal no se toca: después del merge, `/skill:chiche-land` la reconoce como `ya aterrizado` y la resuelve sin preguntar. `Dejar sin commitear` no toca nada. El reporte suma la línea `- cierre: <PR #<n> <url> | commit local sin PR en <branch> (<motivo>) · <comando> | sin commitear (<motivo>)>`. En modo desatendido, si el skill lo tiene, no se pregunta y el cierre queda en `Dejar sin commitear`. Si un skill encadena a otro (`/skill:chiche-init` encadena `/skill:coding-policies` y `/skill:design-system`), el cierre lo ofrece una sola vez el que encadenó, con todos los paths escritos.
 <!-- commit-pr-close:end -->
 
 ## MUST DO

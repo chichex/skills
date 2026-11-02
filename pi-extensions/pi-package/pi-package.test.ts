@@ -5,6 +5,7 @@ import {
 	access,
 	chmod,
 	copyFile,
+	cp,
 	lstat,
 	mkdir,
 	mkdtemp,
@@ -12,6 +13,7 @@ import {
 	readdir,
 	readlink,
 	rm,
+	symlink,
 	writeFile,
 } from "node:fs/promises";
 import { builtinModules } from "node:module";
@@ -57,6 +59,7 @@ interface IsolatedPiEnvironment {
 interface PiCommand {
 	name: string;
 	source: string;
+	description?: string;
 }
 
 const REPO_ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
@@ -70,6 +73,10 @@ const EXPECTED_PEERS = {
 };
 
 const EXPECTED_SKILLS = [
+	"./pi/chiche-init/SKILL.md",
+	"./pi/chiche-land/SKILL.md",
+	"./pi/chiche-run/SKILL.md",
+	"./pi/chiche-spec/SKILL.md",
 	"./pi/code-review/SKILL.md",
 	"./pi/coding-policies/SKILL.md",
 	"./pi/design-system/SKILL.md",
@@ -95,6 +102,7 @@ const EXPECTED_THEMES = ["./pi-themes/claude-code.json"];
 
 const EXPECTED_EXTENSION_COMMANDS = [
 	"__sdd-dispatch",
+	"chiche-run",
 	"grill",
 	"grills",
 	"issues",
@@ -105,6 +113,11 @@ const EXPECTED_EXTENSION_COMMANDS = [
 	"subagents",
 	"visual-footer",
 ];
+
+// Las cuatro etapas que renombró el issue #103: cada una existe como
+// `chiche-<etapa>` y como alias deprecado `sdd-<etapa>` (skill de Pi; el
+// comando de extensión es solo `run`).
+const RENAMED_STAGES = ["init", "spec", "run", "land"] as const;
 
 const EXPECTED_SKILL_COMMANDS = EXPECTED_SKILLS.map((path) => `skill:${path.split("/").at(-2)}`).sort();
 const EXPECTED_COMMANDS = [...EXPECTED_EXTENSION_COMMANDS, ...EXPECTED_SKILL_COMMANDS].sort();
@@ -404,7 +417,7 @@ function validatePiPackage(manifest: PiPackageManifest, inventory: ProductionInv
 			problems.push("manifest extensions: paths must be sorted and match the tree exactly");
 		}
 		for (const path of extensions) {
-			if (/\.test\.ts$|\/lib\/|\/sdd-artifacts\/|\/workflow-resolution\//.test(path)) {
+			if (/\.test\.ts$|\/lib\/|\/chiche-artifacts\/|\/workflow-resolution\//.test(path)) {
 				problems.push(`manifest extensions: helper or test entrypoint rejected ${path}`);
 			}
 			if (!inventory.factoryCandidates.includes(path)) {
@@ -630,12 +643,37 @@ function assertExpectedPackageCommands(commands: PiCommand[]): void {
 		commands.filter((command) => command.source === "skill").map((command) => command.name).sort(),
 		EXPECTED_SKILL_COMMANDS,
 	);
+	assertRenamedStageCommands(commands);
+}
+
+// Issue #103, S11: get_commands expone `skill:chiche-*` y, marcados como alias
+// deprecados, `skill:sdd-*`; el comando de extensión `/sdd-run` también.
+function assertRenamedStageCommands(commands: PiCommand[]): void {
+	const byName = new Map(commands.map((command) => [command.name, command]));
+	for (const stage of RENAMED_STAGES) {
+		const current = byName.get(`skill:chiche-${stage}`);
+		const alias = byName.get(`skill:sdd-${stage}`);
+		assert.equal(current?.source, "skill", `skill:chiche-${stage} falta en get_commands`);
+		assert.equal(alias?.source, "skill", `skill:sdd-${stage} falta en get_commands`);
+		assert.match(
+			alias?.description ?? "",
+			new RegExp(`^alias deprecado de chiche-${stage}\\.`),
+			`skill:sdd-${stage} debe declararse alias de chiche-${stage}`,
+		);
+		assert.doesNotMatch(current?.description ?? "", /alias/i, `skill:chiche-${stage} no es un alias`);
+	}
+	const run = byName.get("chiche-run");
+	const runAlias = byName.get("sdd-run");
+	assert.equal(run?.source, "extension");
+	assert.equal(runAlias?.source, "extension", "/sdd-run falta como comando de extensión");
+	assert.match(runAlias?.description ?? "", /^alias deprecado de chiche-run\b/);
+	assert.doesNotMatch(run?.description ?? "", /alias/i, "/chiche-run no es un alias");
 }
 
 test("package manifest is deterministic, Git-only, and non-publishable", async () => {
 	const manifest = await readManifest();
 
-	assert.equal(manifest.name, "chichex-skills");
+	assert.equal(manifest.name, "chiche");
 	// VERSION es la fuente; scripts/version.sh exige el mismo valor en CI.
 	assert.equal(manifest.version, (await readFile(repoFile("VERSION"), "utf8")).trim());
 	assert.equal(manifest.private, true);
@@ -685,11 +723,11 @@ test("inventory gate diagnoses omitted resources, false modules, public metadata
 	const withHelper = structuredClone(manifest);
 	(withHelper.pi as Record<string, unknown>).extensions = [
 		...inventory.factories,
-		"./pi-extensions/sdd-artifacts/index.ts",
+		"./pi-extensions/chiche-artifacts/index.ts",
 	];
 	assert.ok(
 		validatePiPackage(withHelper, inventory).some(
-			(problem) => problem.includes("helper or test entrypoint rejected ./pi-extensions/sdd-artifacts/index.ts"),
+			(problem) => problem.includes("helper or test entrypoint rejected ./pi-extensions/chiche-artifacts/index.ts"),
 		),
 	);
 
@@ -946,18 +984,24 @@ test("Pi cleanup requires exact confirmation, never pulls, and removes only mana
 
 		// F2 regression: simula un nombre que un install.sh anterior instaló y
 		// que la version ACTUAL del checkout ya renombró/eliminó. Sin el
-		// manifest (.chichex-skills-managed), un clean derivado solo del árbol
+		// manifest (.chiche-managed), un clean derivado solo del árbol
 		// fuente actual nunca ve estos nombres y los deja huérfanos.
+		// Issue #103 CA-10: el manifest viejo (.chichex-skills-managed) se lee
+		// igual, solo o junto al nuevo, y ambos se olvidan tras la limpieza.
 		const orphanSkill = "legacy-orphan-skill";
+		const orphanSkillNewManifest = "chiche-orphan-skill";
 		const orphanExtension = "legacy-orphan-extension.ts";
 		const orphanTheme = "legacy-orphan-theme.json";
 		await mkdir(join(skillsDest, orphanSkill), { recursive: true });
 		await writeFile(join(skillsDest, orphanSkill, "SKILL.md"), "legacy\n");
+		await mkdir(join(skillsDest, orphanSkillNewManifest), { recursive: true });
+		await writeFile(join(skillsDest, orphanSkillNewManifest, "SKILL.md"), "legacy\n");
 		await writeFile(join(skillsDest, ".chichex-skills-managed"), `${orphanSkill}\n`);
+		await writeFile(join(skillsDest, ".chiche-managed"), `${orphanSkillNewManifest}\n`);
 		await writeFile(join(extensionsDest, orphanExtension), "legacy\n");
 		await writeFile(join(extensionsDest, ".chichex-skills-managed"), `${orphanExtension}\n`);
 		await writeFile(join(themesDest, orphanTheme), "{}\n");
-		await writeFile(join(themesDest, ".chichex-skills-managed"), `${orphanTheme}\n`);
+		await writeFile(join(themesDest, ".chiche-managed"), `${orphanTheme}\n`);
 
 		const env = {
 			HOME: join(root, "home"),
@@ -992,16 +1036,25 @@ test("Pi cleanup requires exact confirmation, never pulls, and removes only mana
 		// desaparecer, y el manifest se "olvida" tras una limpieza completa.
 		assert.equal(await absolutePathExists(join(skillsDest, orphanSkill)), false, "orphaned skill must be cleaned");
 		assert.equal(
+			await absolutePathExists(join(skillsDest, orphanSkillNewManifest)),
+			false,
+			"orphaned skill listed in .chiche-managed must be cleaned",
+		);
+		assert.equal(
 			await absolutePathExists(join(extensionsDest, orphanExtension)),
 			false,
 			"orphaned extension must be cleaned",
 		);
 		assert.equal(await absolutePathExists(join(themesDest, orphanTheme)), false, "orphaned theme must be cleaned");
-		assert.equal(
-			await absolutePathExists(join(skillsDest, ".chichex-skills-managed")),
-			false,
-			"manifest must be forgotten after a full clean",
-		);
+		for (const dest of [skillsDest, extensionsDest, themesDest]) {
+			for (const manifestName of [".chiche-managed", ".chichex-skills-managed"]) {
+				assert.equal(
+					await absolutePathExists(join(dest, manifestName)),
+					false,
+					`manifest ${manifestName} must be forgotten after a full clean (${dest})`,
+				);
+			}
+		}
 
 		const repeated = runInstaller(join(fixtureRepo, "install.sh"), ["pi-clean", "--confirm"], env);
 		assert.equal(repeated.status, 0, `${repeated.stdout}\n${repeated.stderr}`);
@@ -1026,17 +1079,6 @@ test("install.sh refuses to lay down legacy Pi copies when the native Pi Package
 		await writeFile(join(fixtureRepo, "pi", "grill", "SKILL.md"), "---\nname: grill\n---\n");
 		await copyFile(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
 		await mkdir(fakeBin, { recursive: true });
-		await writeFile(
-			join(fakeBin, "pi"),
-			"#!/bin/sh\n" +
-				'if [ "$1" = "list" ]; then\n' +
-				"  printf 'User packages:\\n  git:github.com/chichex/skills\\n    /cache/path\\n'\n" +
-				"  exit 0\n" +
-				"fi\n" +
-				"exit 0\n",
-		);
-		await chmod(join(fakeBin, "pi"), 0o755);
-
 		const env = {
 			HOME: join(root, "home"),
 			PI_SKILLS_DIR: skillsDest,
@@ -1045,14 +1087,29 @@ test("install.sh refuses to lay down legacy Pi copies when the native Pi Package
 			PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ""}`,
 		};
 
-		const result = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], env);
-		assert.notEqual(result.status, 0, `${result.stdout}\n${result.stderr}`);
-		assert.match(`${result.stdout}${result.stderr}`, /Pi Package nativo.*ya está instalado/is);
-		assert.equal(
-			await absolutePathExists(skillsDest),
-			false,
-			"install_pi must not copy anything when a native package is already registered",
-		);
+		// Issue #103 CA-10: el repo se renombra a chichex/chiche (capa 4); ambos
+		// nombres cuentan como el Pi Package nativo de este repo.
+		for (const source of ["git:github.com/chichex/skills", "git:github.com/chichex/chiche"]) {
+			await writeFile(
+				join(fakeBin, "pi"),
+				"#!/bin/sh\n" +
+					'if [ "$1" = "list" ]; then\n' +
+					`  printf 'User packages:\\n  ${source}\\n    /cache/path\\n'\n` +
+					"  exit 0\n" +
+					"fi\n" +
+					"exit 0\n",
+			);
+			await chmod(join(fakeBin, "pi"), 0o755);
+
+			const result = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], env);
+			assert.notEqual(result.status, 0, `${source}: ${result.stdout}\n${result.stderr}`);
+			assert.match(`${result.stdout}${result.stderr}`, /Pi Package nativo.*ya está instalado/is);
+			assert.equal(
+				await absolutePathExists(skillsDest),
+				false,
+				`install_pi must not copy anything when a native package is already registered (${source})`,
+			);
+		}
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
@@ -1137,6 +1194,8 @@ test("Pi cleanup reconciles the Codex managed skill-precedence block instead of 
 		await writeFile(join(skillsDest, "grill", "SKILL.md"), "installed\n");
 		await writeFile(join(skillsDest, ".chichex-skills-managed"), "grill\n");
 
+		// Issue #103 CA-10: el bloque escrito antes del renombre lleva el
+		// rotulo viejo chichex/skills; pi-clean lo reconoce y lo reescribe.
 		await mkdir(join(root, "codex"), { recursive: true });
 		await writeFile(
 			codexConfig,
@@ -1164,7 +1223,273 @@ test("Pi cleanup reconciles the Codex managed skill-precedence block instead of 
 		assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 		const configAfter = await readFile(codexConfig, "utf8");
 		assert.doesNotMatch(configAfter, /\[\[skills\.config\]\]/, "dead skills.config entries must be reconciled away");
-		assert.match(configAfter, /chichex\/skills: prefer Codex over Pi/, "managed block markers must remain");
+		const lines = configAfter.split("\n");
+		assert.equal(lines.filter((line) => line === "# >>> chichex/chiche: prefer Codex over Pi >>>").length, 1, "managed block begin must remain, relabeled");
+		assert.equal(lines.filter((line) => line === "# <<< chichex/chiche: prefer Codex over Pi <<<").length, 1, "managed block end must remain, relabeled");
+		assert.doesNotMatch(configAfter, /chichex\/skills/, "the old chichex/skills block must be replaced, not kept");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("issue #103 CA-10: install.sh pi migrates an old .chichex-skills-managed, replaces the old sdd-run copy with the alias, prunes retired extensions and themes, and pi-clean leaves unmanaged ones", async () => {
+	const root = await mkdtemp(join(tmpdir(), "chichex-pi-legacy-manifest-"));
+	const fixtureRepo = join(root, "repo");
+	const skillsDest = join(root, "dest", "skills");
+	const extensionsDest = join(root, "dest", "extensions");
+	const themesDest = join(root, "dest", "themes");
+	const sentinel = join(root, "dest", "sentinel");
+	try {
+		await mkdir(fixtureRepo, { recursive: true });
+		await copyFile(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+		await cp(repoPath("pi"), join(fixtureRepo, "pi"), { recursive: true });
+		await mkdir(join(fixtureRepo, "pi-extensions"), { recursive: true });
+		await writeFile(join(fixtureRepo, "pi-extensions", "live-extension.ts"), "export default () => {};\n");
+		await mkdir(join(fixtureRepo, "pi-themes"), { recursive: true });
+		await writeFile(join(fixtureRepo, "pi-themes", "live-theme.json"), "{}\n");
+
+		await mkdir(join(root, "dest"), { recursive: true });
+		await writeFile(sentinel, "no tocar");
+		// Destino de skills como lo dejaba un install.sh anterior al renombre.
+		await mkdir(join(skillsDest, "retired-skill"), { recursive: true });
+		await writeFile(join(skillsDest, "retired-skill", "SKILL.md"), "retirado\n");
+		await mkdir(join(skillsDest, "sdd-run", "references"), { recursive: true });
+		await writeFile(join(skillsDest, "sdd-run", "SKILL.md"), "---\nname: sdd-run\n---\nDoctrina completa vieja.\n");
+		await writeFile(join(skillsDest, "sdd-run", "references", "stale.md"), "viejo\n");
+		await mkdir(join(skillsDest, "user-skill"), { recursive: true });
+		await writeFile(join(skillsDest, "user-skill", "SKILL.md"), "ajeno\n");
+		await writeFile(join(skillsDest, ".chichex-skills-managed"), "retired-skill\nsdd-run\n../sentinel\n");
+		// Extensiones y themes se podan al instalar igual que los skills: lo que
+		// figura en el manifest viejo y el checkout ya no trae se borra entero.
+		// `sdd-artifacts/` es la carpeta que el renombre a chiche-artifacts dejó
+		// atrás, con un archivo anidado viejo que no puede sobrevivir.
+		await mkdir(extensionsDest, { recursive: true });
+		await writeFile(join(extensionsDest, "orphan-extension.ts"), "legacy\n");
+		await writeFile(join(extensionsDest, "user-extension.ts"), "ajeno\n");
+		await mkdir(join(extensionsDest, "sdd-artifacts", "lib"), { recursive: true });
+		await writeFile(join(extensionsDest, "sdd-artifacts", "index.ts"), "export const viejo = true;\n");
+		await writeFile(join(extensionsDest, "sdd-artifacts", "lib", "stale.ts"), "viejo\n");
+		await mkdir(join(extensionsDest, "user-dir-extension"), { recursive: true });
+		await writeFile(join(extensionsDest, "user-dir-extension", "index.ts"), "ajeno\n");
+		// Nombres hostiles en el manifest viejo de extensiones: ni la migración
+		// los copia ni la poda ni pi-clean los resuelven fuera de su lugar.
+		await mkdir(join(extensionsDest, "a"), { recursive: true });
+		await writeFile(join(extensionsDest, "a", "b"), "b-ajeno\n");
+		await writeFile(
+			join(extensionsDest, ".chichex-skills-managed"),
+			"orphan-extension.ts\nlive-extension.ts\nsdd-artifacts\n../sentinel\n.\n..\na/b\n\n",
+		);
+		await mkdir(themesDest, { recursive: true });
+		await writeFile(join(themesDest, "orphan-theme.json"), "{}\n");
+		await writeFile(join(themesDest, "user-theme.json"), "ajeno\n");
+		await writeFile(join(themesDest, ".chichex-skills-managed"), "orphan-theme.json\n../sentinel\n");
+		await writeFile(join(themesDest, ".chiche-managed"), "live-theme.json\n");
+
+		const env = {
+			HOME: join(root, "home"),
+			PI_SKILLS_DIR: skillsDest,
+			PI_EXTENSIONS_DIR: extensionsDest,
+			PI_THEMES_DIR: themesDest,
+			// Sin `pi` en PATH: el guard de conflicto degrada a "no hay conflicto".
+			PATH: "/usr/bin:/bin",
+		};
+		const installed = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], env);
+		assert.equal(installed.status, 0, `${installed.stdout}\n${installed.stderr}`);
+
+		assert.equal(await absolutePathExists(join(skillsDest, "retired-skill")), false, "the retired skill from the old manifest is pruned");
+		assert.equal(await absolutePathExists(join(skillsDest, "sdd-run", "references", "stale.md")), false, "no stale file survives in sdd-run");
+		assert.deepEqual(await fileTree(join(skillsDest, "sdd-run")), await fileTree(repoPath("pi/sdd-run")), "sdd-run is exactly the checkout alias");
+		assert.equal(
+			await readFile(join(skillsDest, "sdd-run", "SKILL.md"), "utf8"),
+			await readFile(repoPath("pi/sdd-run/SKILL.md"), "utf8"),
+		);
+		for (const name of ["chiche-init", "chiche-spec", "chiche-run", "chiche-land"]) {
+			assert.deepEqual(await fileTree(join(skillsDest, name)), await fileTree(repoPath(`pi/${name}`)), `${name} installed`);
+		}
+		const sourceSkills = (await readdir(repoPath("pi"), { withFileTypes: true }))
+			.filter((entry) => entry.isDirectory())
+			.map((entry) => entry.name)
+			.sort();
+		const manifestLines = async (dest: string) =>
+			(await readFile(join(dest, ".chiche-managed"), "utf8")).split("\n").filter(Boolean).sort();
+		assert.deepEqual(await manifestLines(skillsDest), sourceSkills, ".chiche-managed lists exactly the installed skills");
+		// Solo queda en el manifest lo que el checkout instala: lo retirado se
+		// podó y los nombres hostiles nunca se copiaron.
+		assert.deepEqual(await manifestLines(extensionsDest), ["live-extension.ts"]);
+		assert.deepEqual(await manifestLines(themesDest), ["live-theme.json"]);
+		for (const dest of [skillsDest, extensionsDest, themesDest]) {
+			assert.equal(await absolutePathExists(join(dest, ".chichex-skills-managed")), false, `old manifest removed (${dest})`);
+		}
+		assert.equal(await absolutePathExists(join(extensionsDest, "orphan-extension.ts")), false, "the retired extension file is pruned on install");
+		assert.equal(await absolutePathExists(join(extensionsDest, "sdd-artifacts")), false, "the renamed extension directory is pruned whole");
+		assert.equal(
+			await absolutePathExists(join(extensionsDest, "sdd-artifacts", "lib", "stale.ts")),
+			false,
+			"no stale nested file survives in the pruned extension directory",
+		);
+		assert.equal(await absolutePathExists(join(themesDest, "orphan-theme.json")), false, "the retired theme is pruned on install");
+		assert.match(installed.stdout, /✗ sdd-artifacts \(retirado del repo, podado\)/);
+		assert.match(installed.stdout, /✗ orphan-extension\.ts \(retirado del repo, podado\)/);
+		assert.match(installed.stdout, /✗ orphan-theme\.json \(retirado del repo, podado\)/);
+		assert.equal(await readFile(join(extensionsDest, "live-extension.ts"), "utf8"), "export default () => {};\n", "live extension installed");
+		assert.equal(await readFile(join(themesDest, "live-theme.json"), "utf8"), "{}\n", "live theme installed");
+		assert.equal(await readFile(join(skillsDest, "user-skill", "SKILL.md"), "utf8"), "ajeno\n", "unmanaged skill untouched");
+		assert.equal(await readFile(join(extensionsDest, "user-extension.ts"), "utf8"), "ajeno\n", "unmanaged extension file untouched");
+		assert.equal(await readFile(join(extensionsDest, "user-dir-extension", "index.ts"), "utf8"), "ajeno\n", "unmanaged extension directory untouched");
+		assert.equal(await readFile(join(themesDest, "user-theme.json"), "utf8"), "ajeno\n", "unmanaged theme untouched");
+		assert.equal(await readFile(join(extensionsDest, "a", "b"), "utf8"), "b-ajeno\n", "the prune ignores a manifest name with a slash");
+		assert.equal(await readFile(sentinel, "utf8"), "no tocar", "a hostile name in the old manifest never resolves outside the destination");
+
+		// pi-clean sigue borrando solo lo administrado: lo instalado desde el
+		// checkout, no lo ajeno ni lo que la poda ya había retirado.
+		const cleaned = runInstaller(join(fixtureRepo, "install.sh"), ["pi-clean", "--confirm"], env);
+		assert.equal(cleaned.status, 0, `${cleaned.stdout}\n${cleaned.stderr}`);
+		assert.equal(await readFile(sentinel, "utf8"), "no tocar", "pi-clean never resolves a hostile manifest name outside the destination");
+		assert.equal(await readFile(join(extensionsDest, "a", "b"), "utf8"), "b-ajeno\n", "pi-clean ignores a manifest name with a slash");
+		for (const name of sourceSkills) assert.equal(await absolutePathExists(join(skillsDest, name)), false, name);
+		assert.equal(await absolutePathExists(join(extensionsDest, "live-extension.ts")), false, "installed extension cleaned");
+		assert.equal(await absolutePathExists(join(themesDest, "live-theme.json")), false, "installed theme cleaned");
+		assert.equal(await readFile(join(extensionsDest, "user-extension.ts"), "utf8"), "ajeno\n");
+		assert.equal(await readFile(join(extensionsDest, "user-dir-extension", "index.ts"), "utf8"), "ajeno\n");
+		assert.equal(await readFile(join(themesDest, "user-theme.json"), "utf8"), "ajeno\n");
+		assert.equal(await readFile(join(skillsDest, "user-skill", "SKILL.md"), "utf8"), "ajeno\n");
+		assert.equal(await readFile(sentinel, "utf8"), "no tocar");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("review #106 (verify A1/A2): install.sh pi prunes managed names with spaces, a leading dash, a glob or a symlink only inside the destination, skips a directory named like a theme, and keeps stderr clean", async () => {
+	const root = await mkdtemp(join(tmpdir(), "chichex-pi-prune-shapes-"));
+	const repo = join(root, "repo");
+	const ext = join(root, "dest", "extensions");
+	const themes = join(root, "dest", "themes");
+	const outside = join(root, "outside");
+	try {
+		await mkdir(join(repo, "pi-extensions", "live"), { recursive: true });
+		await writeFile(join(repo, "pi-extensions", "live", "index.ts"), "export default () => {};\n");
+		await mkdir(join(repo, "pi-themes"), { recursive: true });
+		await writeFile(join(repo, "pi-themes", "live-theme.json"), "{}\n");
+		await copyFile(repoPath("install.sh"), join(repo, "install.sh"));
+		await cp(repoPath("pi"), join(repo, "pi"), { recursive: true });
+		await mkdir(join(ext, "old dir", "nested"), { recursive: true });
+		await writeFile(join(ext, "old dir", "nested", "f.ts"), "viejo\n");
+		await writeFile(join(ext, "-rf"), "viejo\n");
+		await writeFile(join(ext, "*"), "viejo\n");
+		await writeFile(join(ext, "star-sibling.ts"), "ajeno\n");
+		await writeFile(join(ext, "user ext.ts"), "ajeno\n");
+		await mkdir(outside, { recursive: true });
+		await writeFile(join(outside, "keep.txt"), "keep\n");
+		await symlink(outside, join(ext, "link-ext"));
+		// `-echiche-x` leido como opcion de grep quedaba sin podar (verify A2).
+		await writeFile(join(ext, "-elive"), "viejo\n");
+		await writeFile(join(ext, ".chiche-managed"), "old dir\n-rf\n*\nlink-ext\n-elive\n");
+		// Una carpeta con nombre de theme no es un theme: se saltea sin abortar
+		// la instalacion (verify A1: `rm -f` sobre un directorio + set -e).
+		await mkdir(join(themes, "old.json", "x"), { recursive: true });
+		await writeFile(join(themes, "old.json", "x", "f"), "carpeta\n");
+		await writeFile(join(themes, "gone.json"), "{}\n");
+		await writeFile(join(themes, ".chiche-managed"), "old.json\ngone.json\n");
+		const env = {
+			HOME: join(root, "home"),
+			PI_SKILLS_DIR: join(root, "dest", "skills"),
+			PI_EXTENSIONS_DIR: ext,
+			PI_THEMES_DIR: themes,
+			PATH: "/usr/bin:/bin",
+		};
+		const installed = runInstaller(join(repo, "install.sh"), ["pi"], env);
+		assert.equal(installed.status, 0, `${installed.stdout}\n${installed.stderr}`);
+		assert.equal(installed.stderr, "", "a manifest name that looks like a grep option never leaks an error");
+		for (const name of ["old dir", "-rf", "*", "link-ext", "-elive"]) {
+			assert.equal(await absolutePathExists(join(ext, name)), false, `${name} pruned`);
+		}
+		assert.equal(await readFile(join(ext, "star-sibling.ts"), "utf8"), "ajeno\n", "a literal * never globs");
+		assert.equal(await readFile(join(ext, "user ext.ts"), "utf8"), "ajeno\n");
+		assert.equal(await readFile(join(outside, "keep.txt"), "utf8"), "keep\n", "a symlink is unlinked, never followed");
+		assert.deepEqual((await readFile(join(ext, ".chiche-managed"), "utf8")).split("\n").filter(Boolean), ["live"]);
+		assert.equal(await readFile(join(themes, "old.json", "x", "f"), "utf8"), "carpeta\n", "a directory named like a theme is left alone");
+		assert.equal(await absolutePathExists(join(themes, "gone.json")), false, "the retired theme file is pruned");
+		assert.deepEqual((await readFile(join(themes, ".chiche-managed"), "utf8")).split("\n").filter(Boolean), ["live-theme.json"]);
+		const leftovers = (await readdir(themes)).filter((entry) => entry.startsWith(".chiche-managed."));
+		assert.deepEqual(leftovers, [], "no temporary manifest survives");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("issue #103 CA-10: install.sh pi prunes retired extensions and themes from .chiche-managed alone, ignores hostile names, and a second run changes nothing", async () => {
+	// Sin manifest viejo que migrar: la poda lee `.chiche-managed` tal cual, así
+	// que sus propias guardas (vacío, '/', '.', '..') son las únicas que frenan
+	// un nombre hostil.
+	const root = await mkdtemp(join(tmpdir(), "chichex-pi-prune-managed-"));
+	const fixtureRepo = join(root, "repo");
+	const extensionsDest = join(root, "dest", "extensions");
+	const themesDest = join(root, "dest", "themes");
+	const sentinel = join(root, "dest", "sentinel");
+	try {
+		await mkdir(join(fixtureRepo, "pi", "grill"), { recursive: true });
+		await writeFile(join(fixtureRepo, "pi", "grill", "SKILL.md"), "---\nname: grill\n---\n");
+		await copyFile(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+		await mkdir(join(fixtureRepo, "pi-extensions", "live-dir"), { recursive: true });
+		await writeFile(join(fixtureRepo, "pi-extensions", "live-dir", "index.ts"), "export default () => {};\n");
+		await mkdir(join(fixtureRepo, "pi-themes"), { recursive: true });
+		await writeFile(join(fixtureRepo, "pi-themes", "live-theme.json"), "{}\n");
+
+		await mkdir(join(root, "dest"), { recursive: true });
+		await writeFile(sentinel, "no tocar");
+		await mkdir(join(extensionsDest, "retired-dir", "nested"), { recursive: true });
+		await writeFile(join(extensionsDest, "retired-dir", "index.ts"), "viejo\n");
+		await writeFile(join(extensionsDest, "retired-dir", "nested", "stale.ts"), "viejo\n");
+		await writeFile(join(extensionsDest, "retired-file.ts"), "viejo\n");
+		await mkdir(join(extensionsDest, "user-dir"), { recursive: true });
+		await writeFile(join(extensionsDest, "user-dir", "index.ts"), "ajeno\n");
+		await writeFile(join(extensionsDest, "user-file.ts"), "ajeno\n");
+		await mkdir(join(extensionsDest, "a"), { recursive: true });
+		await writeFile(join(extensionsDest, "a", "b"), "b-ajeno\n");
+		// Un nombre registrado que ya no existe en disco no rompe la poda.
+		await writeFile(
+			join(extensionsDest, ".chiche-managed"),
+			"retired-dir\nretired-file.ts\nnever-on-disk.ts\n../sentinel\n.\n..\na/b\n\nlive-dir\n",
+		);
+		await mkdir(themesDest, { recursive: true });
+		await writeFile(join(themesDest, "retired-theme.json"), "{}\n");
+		await writeFile(join(themesDest, "user-theme.json"), "ajeno\n");
+		await writeFile(join(themesDest, ".chiche-managed"), "retired-theme.json\n../sentinel\n..\nlive-theme.json\n");
+
+		const env = {
+			HOME: join(root, "home"),
+			PI_SKILLS_DIR: join(root, "dest", "skills"),
+			PI_EXTENSIONS_DIR: extensionsDest,
+			PI_THEMES_DIR: themesDest,
+			// Sin `pi` en PATH: el guard de conflicto degrada a "no hay conflicto".
+			PATH: "/usr/bin:/bin",
+		};
+		const first = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], env);
+		assert.equal(first.status, 0, `${first.stdout}\n${first.stderr}`);
+
+		assert.equal(await absolutePathExists(join(extensionsDest, "retired-dir")), false, "the retired extension directory is pruned whole");
+		assert.equal(await absolutePathExists(join(extensionsDest, "retired-file.ts")), false, "the retired extension file is pruned");
+		assert.equal(await absolutePathExists(join(themesDest, "retired-theme.json")), false, "the retired theme is pruned");
+		assert.match(first.stdout, /✗ retired-dir \(retirado del repo, podado\)/);
+		assert.match(first.stdout, /✗ retired-theme\.json \(retirado del repo, podado\)/);
+		assert.doesNotMatch(first.stdout, /never-on-disk/, "a registered name that is not on disk is dropped silently");
+		assert.equal(await readFile(join(extensionsDest, "user-dir", "index.ts"), "utf8"), "ajeno\n", "unmanaged extension directory untouched");
+		assert.equal(await readFile(join(extensionsDest, "user-file.ts"), "utf8"), "ajeno\n", "unmanaged extension file untouched");
+		assert.equal(await readFile(join(themesDest, "user-theme.json"), "utf8"), "ajeno\n", "unmanaged theme untouched");
+		assert.equal(await readFile(join(extensionsDest, "a", "b"), "utf8"), "b-ajeno\n", "a manifest name with a slash is never resolved");
+		assert.equal(await readFile(sentinel, "utf8"), "no tocar", "a hostile name never resolves outside the destination");
+		assert.equal(await readFile(join(extensionsDest, "live-dir", "index.ts"), "utf8"), "export default () => {};\n");
+		assert.equal(await readFile(join(themesDest, "live-theme.json"), "utf8"), "{}\n");
+		const manifestLines = async (dest: string) =>
+			(await readFile(join(dest, ".chiche-managed"), "utf8")).split("\n").filter(Boolean).sort();
+		assert.deepEqual(await manifestLines(extensionsDest), ["live-dir"], "the manifest is rewritten without the pruned or hostile names");
+		assert.deepEqual(await manifestLines(themesDest), ["live-theme.json"]);
+
+		const before = await fileTree(join(root, "dest"));
+		const second = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], env);
+		assert.equal(second.status, 0, `${second.stdout}\n${second.stderr}`);
+		assert.deepEqual(await fileTree(join(root, "dest")), before, "a second install prunes nothing more and changes nothing");
+		assert.doesNotMatch(second.stdout, /podado/);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

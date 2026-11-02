@@ -151,7 +151,7 @@ gh issue view <N> --json number,title,body,url,state,updatedAt,author,labels,ass
    - issues explícitamente marcados como prerequisito/bloqueante;
    - catálogo de hasta 100 issues abiertos y cerrados con número, título, body, estado y labels;
    - componentes, seams o secuencias compartidas.
-6. Leé `.sdd/project.md` si existe. Su ausencia **no bloquea el triage**; sí será manejada por `sdd-spec` si la ruta elegida es spec.
+6. Leé `.sdd/project.md` si existe. Su ausencia **no bloquea el triage**; sí será manejada por `chiche-spec` si la ruta elegida es spec.
 7. Para varias fuentes, buscá primero el issue combinado por su marker idempotente. Si no existe o no es utilizable, emití `canonicalization`, pedí autorización específica para la Fase 5 y no leas Markdown de artefactos; tras canonicalizar, reiniciá esta fase usando sólo el issue nuevo. Para una fuente o un canónico ya disponible, inventariá specs locales/body, handoffs y snapshots, construí evidencia temporal explícita y aplicá completo el contrato artifact-aware.
 8. Prepará una síntesis autocontenida del pedido antes de clasificar:
    - explicá en lenguaje llano qué pasa hoy, qué cambio o resultado se busca y quién o qué flujo se beneficia;
@@ -238,7 +238,7 @@ Para todo resultado `outcome=start` —ruta nueva o artifact-aware— usá `ques
 - `Usar fallback: <ruta>`
 - `Cancelar`
 
-Antes de elegir, declará qué abre confirmar: el skill del stage según la tabla de la Fase 7. Si la ruta confirmable es `run-existing-spec`, aclará que abre un run aislado capaz de crear branch, commits y PR (nunca merge), sujeto a su preflight y verificaciones. Si es `spec|join-spec`, o `update-existing-spec|audit-existing-spec` sobre una spec que vive en el issue, aclará que `sdd-spec` reescribe el body del issue `#<N>` con la spec en `draft` (archivando el body original). Una confirmación registra `selectedRoute` y autoriza a encadenar ese skill en la Fase 7; no autoriza ampliar alcance ni saltear los gates del skill encadenado. Antes del gate vale `selectedRoute=null`; primaria y fallback preservan la recomendación, y cancelar emite `code=cancelled` sin crear issues, archivos, branches ni comentarios.
+Antes de elegir, declará qué abre confirmar: el skill del stage según la tabla de la Fase 7. Si la ruta confirmable es `run-existing-spec`, aclará que abre un run aislado capaz de crear branch, commits y PR (nunca merge), sujeto a su preflight y verificaciones. Si es `spec|join-spec`, o `update-existing-spec|audit-existing-spec` sobre una spec que vive en el issue, aclará que `chiche-spec` reescribe el body del issue `#<N>` con la spec en `draft` (archivando el body original). Una confirmación registra `selectedRoute` y autoriza a encadenar ese skill en la Fase 7; no autoriza ampliar alcance ni saltear los gates del skill encadenado. Antes del gate vale `selectedRoute=null`; primaria y fallback preservan la recomendación, y cancelar emite `code=cancelled` sin crear issues, archivos, branches ni comentarios.
 
 ## Fase 5 — Canonicalizar una selección múltiple
 
@@ -305,13 +305,13 @@ Desde este punto, la única fuente downstream es `#NEW`.
 1. Construí el `WorkflowResolutionV1` completo con la recomendación original, fallback, ruta artifact-aware, elección efectiva y toda la evidencia normalizada.
 2. Conservá `En pocas palabras` y `Ejemplo de impacto` en `summary`/`impactExample`; la fuente sigue siendo autoritativa.
 3. Mostrá el resultado serializado y una síntesis humana breve. Verificá el round-trip `JSON.parse(JSON.stringify(result))`.
-4. Cerrá el análisis. Este skill no ejecuta pasos de grill/sdd-spec/sdd-run ni crea branch/worktree/PR por su cuenta; si hubo un inicio confirmado, seguí a la Fase 7; si no, el workflow termina acá.
+4. Cerrá el análisis. Este skill no ejecuta pasos de grill/chiche-spec/chiche-run ni crea branch/worktree/PR por su cuenta; si hubo un inicio confirmado, seguí a la Fase 7; si no, el workflow termina acá.
 
 ## Fase 7 — Encadenar el stage confirmado
 
 Sólo con un inicio confirmado y coherente: `outcome=start`, `selectedRoute` no nulo, `code=selectedRoute` y `stage`/`mode` iguales a los de la matriz para esa ruta. Con `outcome=stop|error`, cancelación, `selectedRoute=null` o cualquier incoherencia no encadenes nada: el workflow termina en la Fase 6.
 
-Cargá con la tool `skill`, en el mismo turno y sin otra confirmación, el skill que corresponde a `selectedRoute`. Pasale sólo el nombre sin la barra (`grill`, `sdd-spec` o `sdd-run`), sin concatenar flags ni targets. La tool sólo carga instrucciones: después continuá con los argumentos de la tabla como argumentos de invocación del skill cargado, nunca como invocación pelada; no abras su Fase 0 ni elijas otro target.
+Cargá con la tool `skill`, en el mismo turno y sin otra confirmación, el skill que corresponde a `selectedRoute`. Pasale sólo el nombre sin la barra (`grill`, `chiche-spec` o `chiche-run`), sin concatenar flags ni targets. La tool sólo carga instrucciones: después continuá con los argumentos de la tabla como argumentos de invocación del skill cargado, nunca como invocación pelada; no abras su Fase 0 ni elijas otro target.
 
 Si el skill no está instalado o su carga queda denegada por `permission.skill`, informá cuál falta habilitar, mostrá el comando exacto de la tabla con el target validado y terminá; no ejecutes los pasos del stage por tu cuenta ni cambies de ruta.
 
@@ -320,10 +320,10 @@ Si el skill no está instalado o su carga queda denegada por `permission.skill`,
 |---|---|---|
 | `grill`, `join-grill` | `/grill` | `#<N>` del issue efectivo |
 | `resume-grill` | `/grill` | ruta del handoff del grill primario para retomar |
-| `spec`, `join-spec` | `/sdd-spec` | `#<N>` del issue efectivo |
-| `spec-from-grill` | `/sdd-spec` | `--from-grill <ruta del handoff finalized primario>` |
-| `update-existing-spec`, `audit-existing-spec` | `/sdd-spec` | ruta de la spec primaria local, o `#<N>` si vive en el issue, más `--triage-route <ruta>` |
-| `run-existing-spec` | `/sdd-run` | ruta de la spec primaria local, o `#<N>` si vive en el issue |
+| `spec`, `join-spec` | `/chiche-spec` | `#<N>` del issue efectivo |
+| `spec-from-grill` | `/chiche-spec` | `--from-grill <ruta del handoff finalized primario>` |
+| `update-existing-spec`, `audit-existing-spec` | `/chiche-spec` | ruta de la spec primaria local, o `#<N>` si vive en el issue, más `--triage-route <ruta>` |
+| `run-existing-spec` | `/chiche-run` | ruta de la spec primaria local, o `#<N>` si vive en el issue |
 <!-- stage-chain:end -->
 
 - El issue efectivo es `canonicalIssue`; para una sola fuente sin canónico, esa fuente. Una ruta `join-*` sin `canonicalIssue` no se despacha: no encadenes y reportá `missing-effective-issue`.

@@ -58,7 +58,7 @@ export interface DirectRunLaunchDescriptor {
 		artifactPath?: string;
 	};
 	skill: {
-		name: "sdd-run";
+		name: "chiche-run";
 		args: string;
 	};
 }
@@ -315,7 +315,7 @@ export function describeDirectRun(request: DirectRunRequestV1): DirectRunLaunchD
 				: { artifactPath: target.path }),
 		},
 		skill: {
-			name: "sdd-run",
+			name: "chiche-run",
 			args: target.type === "issue" ? `#${target.issue.number}` : target.path,
 		},
 	};

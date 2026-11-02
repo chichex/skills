@@ -7,9 +7,9 @@
   "description": "Marketplace de los skills de chichex, instalables como plugin de Claude Code.",
   "plugins": [
     {
-      "name": "chichex-skills",
+      "name": "chiche",
       "source": "./",
-      "description": "Skills de chichex para Claude Code: familia SDD (contrato de autonomía → spec verificable → ejecución → cierre del stack o PR con sdd-land), grill para desambiguar planes y pedidos, issue-triage para enrutar issues con evidencia, design-system para escribir el DESIGN_SYSTEM.md de una superficie UI sin sistema, TDD y coding-policies para generar en cada proyecto una baseline de Clean Code y SOLID más tus buenas prácticas para Go, TypeScript, Node.js, React, Next.js, React Native y Kotlin Multiplatform.",
+      "description": "chiche: skills de chichex para Claude Code: familia SDD (contrato de autonomía → spec verificable → ejecución → cierre del stack o PR con chiche-land), grill para desambiguar planes y pedidos, issue-triage para enrutar issues con evidencia, design-system para escribir el DESIGN_SYSTEM.md de una superficie UI sin sistema, TDD y coding-policies para generar en cada proyecto una baseline de Clean Code y SOLID más tus buenas prácticas para Go, TypeScript, Node.js, React, Next.js, React Native y Kotlin Multiplatform.",
       "category": "engineering",
       "keywords": [
         "skills",

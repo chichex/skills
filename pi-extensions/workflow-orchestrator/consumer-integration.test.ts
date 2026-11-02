@@ -24,9 +24,9 @@ test("/issues exposes localized actionable failures instead of internal material
 test("/specs calls the shared direct launcher and never injects run slash commands", async () => {
 	const source = await readFile(new URL("../grill-tools/index.ts", import.meta.url), "utf8");
 	assert.match(source, /requestSddRun\(\s*pi,\s*selected\.path,\s*ctx/s);
-	assert.doesNotMatch(source, /Ejecutar con \/skill:sdd-run/);
-	assert.doesNotMatch(source, /`?\/skill:sdd-run/);
-	assert.doesNotMatch(source, /sendUserMessage\([^\n]*sdd-run/);
+	assert.doesNotMatch(source, /Ejecutar con \/skill:chiche-run/);
+	assert.doesNotMatch(source, /`?\/skill:chiche-run/);
+	assert.doesNotMatch(source, /sendUserMessage\([^\n]*chiche-run/);
 });
 
 test("github issue selector materializes grill actions without slash dispatch and preserves results on launch failure", async () => {
@@ -46,17 +46,17 @@ test("grill consumers share inventory and materialize ID-or-path transitions in 
 	assert.match(source, /prepareMaterializedSkill\(pi, "grill", `--resume \$\{JSON\.stringify\(childId\)\}`\)/);
 	assert.match(source, /validatedFinalizedHandoffPath/);
 	assert.match(source, /`--from-grill \$\{JSON\.stringify\(sourceTarget\)\}`/);
-	assert.match(source, /continueWithMaterializedSkill\(\s*pi,\s*"sdd-spec",\s*argument/s);
+	assert.match(source, /continueWithMaterializedSkill\(\s*pi,\s*"chiche-spec",\s*argument/s);
 	assert.match(source, /continueWithSpec/);
-	assert.doesNotMatch(source, /`?\/skill:(?:grill|sdd-spec)/);
-	assert.doesNotMatch(source, /sendUserMessage\([^\n]*(?:grill|sdd-spec)/);
+	assert.doesNotMatch(source, /`?\/skill:(?:grill|chiche-spec)/);
+	assert.doesNotMatch(source, /sendUserMessage\([^\n]*(?:grill|chiche-spec)/);
 });
 
 test("Pi grill uses structured resume and finalize continuation instead of ad-hoc SKILL reads", async () => {
 	const skill = await readFile(new URL("../../pi/grill/SKILL.md", import.meta.url), "utf8");
 	assert.match(skill, /--resume <sessionId>/);
 	assert.match(skill, /continueWithSpec:\s*true/);
-	assert.doesNotMatch(skill, /le[eé] `~\/\.agents\/skills\/sdd-spec\/SKILL\.md`/i);
+	assert.doesNotMatch(skill, /le[eé] `~\/\.agents\/skills\/chiche-spec\/SKILL\.md`/i);
 });
 
 test("Pi grill delegates qualified GitHub issue targets and consumes the strict child launch envelope", async () => {
@@ -69,15 +69,15 @@ test("Pi grill delegates qualified GitHub issue targets and consumes the strict 
 	assert.match(skill, /no vuelvas a invocar `launch_grill`/i);
 });
 
-test("CA-11: Pi grill and sdd-spec document portable handoff-only recovery by physical path", async () => {
+test("CA-11: Pi grill and chiche-spec document portable handoff-only recovery by physical path", async () => {
 	const [grill, spec] = await Promise.all([
 		readFile(new URL("../../pi/grill/SKILL.md", import.meta.url), "utf8"),
-		readFile(new URL("../../pi/sdd-spec/SKILL.md", import.meta.url), "utf8"),
+		readFile(new URL("../../pi/chiche-spec/SKILL.md", import.meta.url), "utf8"),
 	]);
 	assert.match(grill, /snapshots[\s\S]*`\.sdd\/grills\/`[\s\S]*inventario/i);
 	assert.match(grill, /proyecto actual[\s\S]*roots? conocidos[\s\S]*no.*filesystem/is);
 	assert.match(grill, /handoff-only[\s\S]*pausado[\s\S]*Retomar[\s\S]*import/i);
-	assert.match(grill, /finalizado[\s\S]*ruta absoluta[\s\S]*sdd-spec/is);
+	assert.match(grill, /finalizado[\s\S]*ruta absoluta[\s\S]*chiche-spec/is);
 	assert.match(spec, /ruta absoluta[\s\S]*`\.sdd\/grills\/`[\s\S]*finalizado/is);
 	// Review de #86: raíz física para un handoff del árbol; en el common-dir, `Proyecto` o el worktree principal.
 	assert.match(spec, /ra[ií]z f[ií]sica para un handoff de `<root>\/\.sdd\/grills\/`/i);
@@ -87,8 +87,8 @@ test("CA-11: Pi grill and sdd-spec document portable handoff-only recovery by ph
 	assert.match(spec, /grill.*marker[\s\S]*spec/is);
 });
 
-test("Pi sdd-spec consumes orchestrated spec targets from the structured handoff", async () => {
-	const skill = await readFile(new URL("../../pi/sdd-spec/SKILL.md", import.meta.url), "utf8");
+test("Pi chiche-spec consumes orchestrated spec targets from the structured handoff", async () => {
+	const skill = await readFile(new URL("../../pi/chiche-spec/SKILL.md", import.meta.url), "utf8");
 	assert.match(skill, /workflow-handoff version="1"/);
 	assert.match(skill, /spec-from-grill/);
 	assert.match(skill, /update-existing-spec\|audit-existing-spec/);
@@ -96,8 +96,8 @@ test("Pi sdd-spec consumes orchestrated spec targets from the structured handoff
 	assert.match(skill, /nunca.*scrap/i);
 });
 
-test("Pi sdd-spec exposes Ejecutar ahora only after persistence and delegates to launch_sdd_run", async () => {
-	const skill = await readFile(new URL("../../pi/sdd-spec/SKILL.md", import.meta.url), "utf8");
+test("Pi chiche-spec exposes Ejecutar ahora only after persistence and delegates to launch_sdd_run", async () => {
+	const skill = await readFile(new URL("../../pi/chiche-spec/SKILL.md", import.meta.url), "utf8");
 	const reportIndex = skill.indexOf("## Reporte");
 	const executeIndex = skill.indexOf("Ejecutar ahora");
 	assert.ok(reportIndex >= 0 && executeIndex > reportIndex, "the execution gate follows persisted spec reporting");
@@ -106,16 +106,16 @@ test("Pi sdd-spec exposes Ejecutar ahora only after persistence and delegates to
 	assert.doesNotMatch(skill.slice(executeIndex), /encontrar.*ejecut/i);
 });
 
-test("Pi sdd-run delegates qualified GitHub issue targets to the cross-project launcher", async () => {
-	const skill = await readFile(new URL("../../pi/sdd-run/SKILL.md", import.meta.url), "utf8");
+test("Pi chiche-run delegates qualified GitHub issue targets to the cross-project launcher", async () => {
+	const skill = await readFile(new URL("../../pi/chiche-run/SKILL.md", import.meta.url), "utf8");
 	assert.match(skill, /owner\/repo#NN/);
 	assert.match(skill, /https:\/\/github\.com\/owner\/repo\/issues\/NN/);
 	assert.match(skill, /sin.*workflow-launch[\s\S]*launch_sdd_run/is);
 	assert.match(skill, /no (?:explores|implementes|toques Git)/i);
 });
 
-test("Pi sdd-run recognizes direct and triage envelopes without weakening its own preconditions", async () => {
-	const skill = await readFile(new URL("../../pi/sdd-run/SKILL.md", import.meta.url), "utf8");
+test("Pi chiche-run recognizes direct and triage envelopes without weakening its own preconditions", async () => {
+	const skill = await readFile(new URL("../../pi/chiche-run/SKILL.md", import.meta.url), "utf8");
 	assert.match(skill, /workflow-launch version="1"/);
 	assert.match(skill, /DirectRunRequestV1/);
 	assert.match(skill, /workflow-handoff version="1"/);

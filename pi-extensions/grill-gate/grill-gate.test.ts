@@ -5,7 +5,7 @@
 // SKILL.md reales, exige con regexes la doctrina de cada CA, compara el bloque delimitado
 // `grill-blocks` entre harnesses tras normalizar invocaciones y tool de preguntas, y observa el
 // wiring del repo (runtime de Pi, README, contrato, CI). Es solo-tests, igual que `design-gate`
-// y `sdd-land-gate`: esta carpeta no tiene `index.ts` ni factory, porque el gate del Pi Package
+// y `chiche-land-gate`: esta carpeta no tiene `index.ts` ni factory, porque el gate del Pi Package
 // censa exactamente las factories de produccion. La conducta de un agente siguiendo la doctrina
 // (CA-14) es prueba humana y no se verifica aca.
 
@@ -40,7 +40,7 @@ async function grillSkill(harness: Harness): Promise<string> {
 }
 
 // Archivos trackeados en git (el indice), no lo que haya en el working tree de un dev: un borrador
-// local sin trackear no entra al censo. Mismo criterio que pi-package y sdd-land-gate.
+// local sin trackear no entra al censo. Mismo criterio que pi-package y chiche-land-gate.
 function trackedFiles(...pathspecs: string[]): string[] {
 	const output = execFileSync("git", ["ls-files", "-z", "--", ...pathspecs], {
 		cwd: repoFile("."),
@@ -371,7 +371,7 @@ test("CA-12: el gate de grill es solo-tests: sin index.ts ni factory en su carpe
 
 test("CA-9 y CA-12: un scratch file untracked real no rompe el gate (solo cuentan los archivos trackeados)", async () => {
 	// Borradores locales de un dev (una nota que nombra el campo retirado, un prototipo con factory)
-	// no entran en el censo: el contrato habla de archivos trackeados, como pi-package y sdd-land-gate.
+	// no entran en el censo: el contrato habla de archivos trackeados, como pi-package y chiche-land-gate.
 	const notes = `${GATE_FOLDER}/.chichex-test-scratch-notes.md`;
 	const factory = `${GATE_FOLDER}/.chichex-test-scratch-factory.ts`;
 	try {

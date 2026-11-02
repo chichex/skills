@@ -18,8 +18,8 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { after, before, test } from "node:test";
 
-import { parseSddArtifact } from "../sdd-artifacts/index.ts";
-import { parseSddEventLine, type SddEvent } from "../sdd-artifacts/sdd-events.ts";
+import { parseSddArtifact } from "../chiche-artifacts/index.ts";
+import { parseSddEventLine, type SddEvent } from "../chiche-artifacts/sdd-events.ts";
 import { handoffFileNames } from "./logic.ts";
 import { snapshotStorageStem } from "./runtime-import.ts";
 
@@ -56,7 +56,7 @@ let commands = new Map<string, RegisteredCommand>();
 let grillEvents: any[] = [];
 let sentMessages: Array<{ content: string; options?: unknown }> = [];
 let appendedEntries: Array<{ type: string; data: unknown }> = [];
-let availableSkills = new Set(["grill", "sdd-spec"]);
+let availableSkills = new Set(["grill", "chiche-spec"]);
 let failMessageQueue = false;
 let skillPaths = new Map<string, string>();
 let execHandler = async (..._args: any[]) => ({ code: 0, stdout: "", stderr: "" });
@@ -85,7 +85,7 @@ before(async () => {
 	previousHome = process.env.HOME;
 	process.env.HOME = join(sandbox, "home");
 	mkdirSync(process.env.HOME, { recursive: true });
-	for (const name of ["grill", "sdd-spec"]) {
+	for (const name of ["grill", "chiche-spec"]) {
 		const path = join(sandbox, "skills", name, "SKILL.md");
 		mkdirSync(dirname(path), { recursive: true });
 		writeFileSync(path, `---\nname: ${name}\ndescription: Test ${name}\n---\n# ${name}\n`, "utf8");
@@ -584,7 +584,14 @@ test("CA-7/8: resume imports the exact logical identity and complete handoff bef
 	}
 });
 
-test("CA-9: finalized handoff-only queues sdd-spec by validated absolute path without importing", async () => {
+// Issue #103, S11: la continuación de grill a spec materializa siempre
+// `chiche-spec`; el alias `sdd-spec` no se despacha ni se nombra.
+function assertQueuedChicheSpec(content: string): void {
+	assert.match(content, new RegExp(`^<skill name="chiche-spec" location="${(skillPaths.get("chiche-spec") ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}">`));
+	assert.doesNotMatch(content, /sdd-spec/);
+}
+
+test("CA-9: finalized handoff-only queues chiche-spec by validated absolute path without importing", async () => {
 	const tool = tools.get("select_grill_session");
 	assert.ok(tool);
 	const projectPath = join(sandbox, "spec source with spaces");
@@ -606,6 +613,7 @@ test("CA-9: finalized handoff-only queues sdd-spec by validated absolute path wi
 	assert.equal(storedSnapshotIds().includes(id), false);
 	assert.equal(sentMessages.length, 1);
 	assert.match(sentMessages[0]!.content, new RegExp(`--from-grill ${JSON.stringify(handoffPath).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
+	assertQueuedChicheSpec(sentMessages[0]!.content);
 });
 
 test("CA-5/6: inventory inspection truncates oversized persisted handoffs", async () => {
@@ -676,6 +684,7 @@ test("CA-9: snapshot-backed spec dispatch quotes an unsafe logical grill id", as
 		assert.equal(result.details.sourceTarget, id);
 		assert.equal(sentMessages.length, 1);
 		assert.ok(sentMessages[0]!.content.endsWith(`--from-grill ${JSON.stringify(id)}`));
+		assertQueuedChicheSpec(sentMessages[0]!.content);
 	} finally {
 		removeStoredSnapshot(id);
 	}
@@ -782,7 +791,7 @@ test("persist_sdd_spec exposes the parser-backed boundary and returns a receipt 
 	mkdirSync(projectPath, { recursive: true });
 	const markdown = [
 		"# Spec — Canonical publication",
-		"<!-- Generada por /skill:sdd-spec. Estado: aprobada -->",
+		"<!-- Generada por /skill:chiche-spec. Estado: aprobada -->",
 		"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; grill=none; superseded-by=none -->",
 		"",
 		"## Contexto",
@@ -841,7 +850,7 @@ test("persist_sdd_spec keeps local content normative while archiving an existing
 	try {
 		const markdown = [
 			"# Spec — Ambos publication",
-			"<!-- Generada por /skill:sdd-spec. Estado: aprobada -->",
+			"<!-- Generada por /skill:chiche-spec. Estado: aprobada -->",
 			"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=#33; grill=none; superseded-by=none -->",
 			"",
 			"## Contexto",
@@ -970,7 +979,7 @@ test("persist_sdd_spec creates a staging issue and publishes only after binding 
 	try {
 		const markdown = [
 			"# Spec — New issue publication",
-			"<!-- Generada por /skill:sdd-spec. Estado: aprobada -->",
+			"<!-- Generada por /skill:chiche-spec. Estado: aprobada -->",
 			"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; grill=none; superseded-by=none -->",
 			"",
 			"## Contexto",
@@ -1042,7 +1051,7 @@ function gitStatus(cwd: string): string {
 function canonicalSpec(title: string): string {
 	return [
 		`# Spec — ${title}`,
-		"<!-- Generada por /skill:sdd-spec. Estado: aprobada -->",
+		"<!-- Generada por /skill:chiche-spec. Estado: aprobada -->",
 		"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; grill=none; superseded-by=none -->",
 		"",
 		"## Contexto",
@@ -1139,6 +1148,39 @@ test("#84 CA-10: grill_session pause y finalize escriben el handoff en <git-comm
 	assert.match(readFileSync(finalized.details.repoHandoffPath, "utf8"), /state=finalized/);
 	assert.equal(gitStatus(main), "", "checkout principal limpio después de finalize");
 	assert.equal(gitStatus(linked), "", "worktree linkeado limpio después de finalize");
+});
+
+test("issue #103 S11: grill_session finalize con continueWithSpec encola chiche-spec --from-grill en la misma sesión", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("grill_session");
+	assert.ok(tool);
+	const { base, main } = repoWithLinkedWorktree("continue-spec");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const created = await tool.execute(
+		"create-continue-spec",
+		{ action: "create", topic: "Continuar a spec", projectPath: main, estimate: { min: 1, likely: 2, max: 3 } },
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	const id = created.details.snapshot.id;
+	t.after(() => removeStoredSnapshot(id));
+	await tool.execute("configure-continue-spec", { action: "configure", sessionId: id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
+
+	sentMessages = [];
+	const finalized = await tool.execute(
+		"finalize-continue-spec",
+		{ action: "finalize", sessionId: id, continueWithSpec: true, handoffMarkdown: "# Grill — Continuar a spec\n\n## Handoff\nListo.\n" },
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	assert.equal(sentMessages.length, 1);
+	assert.ok(sentMessages[0]!.content.endsWith(`--from-grill ${JSON.stringify(id)}`));
+	assert.deepEqual(sentMessages[0]!.options, { deliverAs: "followUp" });
+	assertQueuedChicheSpec(sentMessages[0]!.content);
+	const text = finalized.content[0].text as string;
+	assert.match(text, /Next stage: canonical chiche-spec queued in this session\./);
+	assert.doesNotMatch(text, /sdd-spec/);
 });
 
 test("review #90: grill_session pause escribe el handoff con decisiones y ramas pendientes prefijadas por su bloque", { skip: !PI_PACKAGE_ROOT }, async (t) => {
@@ -1665,7 +1707,7 @@ function lifecycleSpec(title: string, state: "draft" | "approved" | "superseded"
 	const human = state === "draft" ? "draft" : state === "approved" ? "aprobada" : `reemplazada por ${decodeURIComponent(supersededBy)}`;
 	return [
 		`# Spec — ${title}`,
-		`<!-- Generada por /skill:sdd-spec. Estado: ${human} -->`,
+		`<!-- Generada por /skill:chiche-spec. Estado: ${human} -->`,
 		`<!-- SDD-Tracking: version=1; type=spec; state=${state}; issue=none; grill=${grill}; superseded-by=${supersededBy} -->`,
 		"",
 		"## Contexto",

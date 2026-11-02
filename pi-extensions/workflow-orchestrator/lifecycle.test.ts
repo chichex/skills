@@ -91,7 +91,7 @@ test("rejects stop, error, unconfirmed, mismatched, and incoherent dispatch befo
 
 	for (const handoff of cases) {
 		const result = await startFreshStage(
-			{ resolution: handoff, skill: { name: "sdd-spec", args: "" } },
+			{ resolution: handoff, skill: { name: "chiche-spec", args: "" } },
 			context as never,
 			dependencies as never,
 		);
@@ -164,7 +164,7 @@ test("starts a fresh linked same-project session and sends only materialized ski
 		const childFile = join(sessionDir, "child.jsonl");
 		await mkdir(skillDir);
 		await mkdir(sessionDir);
-		await writeFile(skillPath, "---\nname: sdd-spec\ndescription: Spec\n---\n# SDD spec\n", "utf8");
+		await writeFile(skillPath, "---\nname: chiche-spec\ndescription: Spec\n---\n# SDD spec\n", "utf8");
 		await writeFile(originFile, `${JSON.stringify({ type: "session", version: 3, id: "origin-id", cwd: project })}\n`, "utf8");
 
 		const handoff = resolution({ cwd: project, canonicalIssue: null });
@@ -203,7 +203,7 @@ test("starts a fresh linked same-project session and sends only materialized ski
 							cwd: project,
 							contextFiles: [{ path: join(project, "AGENTS.md"), content: "target" }],
 							skills: [{
-								name: "sdd-spec",
+								name: "chiche-spec",
 								description: "Spec",
 								filePath: skillPath,
 								sourceInfo: { path: skillPath, scope: "temporary" },
@@ -228,11 +228,11 @@ test("starts a fresh linked same-project session and sends only materialized ski
 			},
 		};
 		const result = await startFreshStage(
-			{ resolution: handoff, skill: { name: "sdd-spec", args: "  --assume  " } },
+			{ resolution: handoff, skill: { name: "chiche-spec", args: "  --assume  " } },
 			context as never,
 			{
 				commands: [{
-					name: "skill:sdd-spec",
+					name: "skill:chiche-spec",
 					source: "skill",
 					sourceInfo: {
 						path: skillPath,
@@ -291,7 +291,7 @@ test("starts a fresh linked same-project session and sends only materialized ski
 		const envelope = kickoff.match(/^([\s\S]+)\n\n<workflow-handoff version="1">\n([^\n]+)\n<\/workflow-handoff>$/);
 		assert.ok(envelope);
 		assert.equal(envelope[1], [
-			`<skill name="sdd-spec" location="${skillPath}">`,
+			`<skill name="chiche-spec" location="${skillPath}">`,
 			`References are relative to ${skillDir}.`,
 			"",
 			"# SDD spec",
@@ -323,7 +323,7 @@ test("accepts a project root reached through a symlink, matching Pi's resolve()-
 		const childFile = join(sessionDir, "child.jsonl");
 		await mkdir(skillDir);
 		await mkdir(sessionDir);
-		await writeFile(skillPath, "---\nname: sdd-spec\ndescription: Spec\n---\n# SDD spec\n", "utf8");
+		await writeFile(skillPath, "---\nname: chiche-spec\ndescription: Spec\n---\n# SDD spec\n", "utf8");
 		await writeFile(
 			originFile,
 			`${JSON.stringify({ type: "session", version: 3, id: "origin-id", cwd: symlinkProject })}\n`,
@@ -354,7 +354,7 @@ test("accepts a project root reached through a symlink, matching Pi's resolve()-
 						cwd: symlinkProject,
 						contextFiles: [],
 						skills: [{
-							name: "sdd-spec",
+							name: "chiche-spec",
 							description: "Spec",
 							filePath: skillPath,
 							sourceInfo: { path: skillPath, scope: "temporary" },
@@ -371,11 +371,11 @@ test("accepts a project root reached through a symlink, matching Pi's resolve()-
 		};
 
 		const result = await startFreshStage(
-			{ resolution: handoff, skill: { name: "sdd-spec", args: "" } },
+			{ resolution: handoff, skill: { name: "chiche-spec", args: "" } },
 			context as never,
 			{
 				commands: [{
-					name: "skill:sdd-spec",
+					name: "skill:chiche-spec",
 					source: "skill",
 					sourceInfo: { path: skillPath, baseDir: skillDir, source: "skills", scope: "temporary", origin: "top-level" },
 				}],
@@ -402,7 +402,7 @@ test("stages and switches to a fresh cross-project child using only the replacem
 		const sourceProject = join(root, "source");
 		const targetProject = join(root, "target");
 		const skillDir = join(root, "source-skill");
-		const targetSkillDir = join(targetProject, ".pi", "skills", "sdd-spec");
+		const targetSkillDir = join(targetProject, ".pi", "skills", "chiche-spec");
 		await mkdir(sourceProject);
 		await mkdir(targetProject);
 		await mkdir(skillDir);
@@ -425,8 +425,8 @@ test("stages and switches to a fresh cross-project child using only the replacem
 			}),
 			"",
 		].join("\n"), "utf8");
-		await writeFile(skillPath, "---\nname: sdd-spec\ndescription: Source spec\n---\n# Source spec stage\n", "utf8");
-		await writeFile(targetSkillPath, "---\nname: sdd-spec\ndescription: Target spec\n---\n# Target project spec stage\n", "utf8");
+		await writeFile(skillPath, "---\nname: chiche-spec\ndescription: Source spec\n---\n# Source spec stage\n", "utf8");
+		await writeFile(targetSkillPath, "---\nname: chiche-spec\ndescription: Target spec\n---\n# Target project spec stage\n", "utf8");
 
 		const handoff = resolution({
 			cwd: targetCwd,
@@ -498,7 +498,7 @@ test("stages and switches to a fresh cross-project child using only the replacem
 								{ path: join(targetCwd, "AGENTS.md"), content: "TARGET_MARKER" },
 							],
 							skills: [{
-								name: "sdd-spec",
+								name: "chiche-spec",
 								description: "Target spec",
 								filePath: targetSkillPath,
 								sourceInfo: { path: targetSkillPath, scope: "project" },
@@ -519,11 +519,11 @@ test("stages and switches to a fresh cross-project child using only the replacem
 		};
 
 		const result = await startFreshStage(
-			{ resolution: handoff, skill: { name: "sdd-spec", args: "#13" } },
+			{ resolution: handoff, skill: { name: "chiche-spec", args: "#13" } },
 			context as never,
 			{
 				commands: [{
-					name: "skill:sdd-spec",
+					name: "skill:chiche-spec",
 					source: "skill",
 					sourceInfo: {
 						path: skillPath,
@@ -588,7 +588,7 @@ test("stages and switches to a fresh cross-project child using only the replacem
 			issueNumber: 13,
 		});
 		assert.doesNotMatch(kickoff, new RegExp(`${originTranscriptMarker}|/skill:|Source spec stage`));
-		assert.match(kickoff, new RegExp(`<skill name="sdd-spec" location="${targetSkillPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}">`));
+		assert.match(kickoff, new RegExp(`<skill name="chiche-spec" location="${targetSkillPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}">`));
 		assert.match(kickoff, /# Target project spec stage/);
 		const envelopeJson = kickoff.match(/<workflow-handoff version="1">\n([^\n]+)\n<\/workflow-handoff>$/)?.[1];
 		assert.ok(envelopeJson);

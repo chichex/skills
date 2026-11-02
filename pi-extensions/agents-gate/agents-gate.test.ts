@@ -3,14 +3,14 @@
 //
 // Censa agents/*.md sobre archivos TRACKEADOS en git (no el working tree),
 // valida el frontmatter de cada agente y verifica los textos doctrinales que
-// las CA-1 a CA-3, CA-11 y CA-12 exigen en claude/sdd-run/SKILL.md,
+// las CA-1 a CA-3, CA-11 y CA-12 exigen en claude/chiche-run/SKILL.md,
 // .claude-plugin/plugin.json, ambos READMEs, harness-port y el contrato. Falla con diagnostico nombrando el archivo
 // ante cada forma de drift. No hay extension Pi en este directorio: es
-// solo-tests, igual que pi-extensions/sdd-land-gate.
+// solo-tests, igual que pi-extensions/chiche-land-gate.
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +50,18 @@ function runInstaller(script: string, args: string[], env: NodeJS.ProcessEnv) {
 		stdout: result.stdout ?? "",
 		stderr: result.stderr ?? "",
 	};
+}
+
+// Archivos de un arbol como `ruta relativa\0contenido`, ordenados: dos arboles
+// son iguales solo si tienen los mismos archivos con el mismo contenido.
+async function fileTreeOf(root: string, prefix = ""): Promise<string[]> {
+	const entries: string[] = [];
+	for (const entry of await readdir(join(root, prefix), { withFileTypes: true })) {
+		const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+		if (entry.isDirectory()) entries.push(...(await fileTreeOf(root, relativePath)));
+		else entries.push(`${relativePath}\0${await readFile(join(root, relativePath), "utf8")}`);
+	}
+	return entries.sort();
 }
 
 // --- Censo de agents/*.md sobre archivos trackeados en git -----------------
@@ -376,10 +388,10 @@ test("CA-9: censo de agents/*.md sobre archivos trackeados en git contra la list
 	assert.deepEqual(divergences, [], `censo de agents/: ${divergences.join("; ")}`);
 });
 
-test("CA-1: agents/implementer.md tiene frontmatter valido, skills: [chichex-skills:tdd, chichex-skills:sdd-run] y body en orden", async () => {
+test("CA-1: agents/implementer.md tiene frontmatter valido, skills: [chiche:tdd, chiche:chiche-run] y body en orden", async () => {
 	const markdown = await readRepoFile("agents/implementer.md");
-	// Hallazgo 1 del review de PR #46: `sdd-run con subagente` necesita el skill precargado.
-	const verdict = validateAgentFrontmatter("implementer", markdown, ["chichex-skills:tdd", "chichex-skills:sdd-run"]);
+	// Hallazgo 1 del review de PR #46: `chiche-run con subagente` necesita el skill precargado.
+	const verdict = validateAgentFrontmatter("implementer", markdown, ["chiche:tdd", "chiche:chiche-run"]);
 	assert.deepEqual(verdict.problems, [], `agents/implementer.md: ${verdict.problems.join("; ")}`);
 
 	const parts = splitFrontmatter(markdown);
@@ -423,8 +435,8 @@ test("CA-3: plugin.json autodescubre agents/ junto a skills, con description ide
 	const marketplace = JSON.parse(await readRepoFile(".claude-plugin/marketplace.json")) as {
 		plugins: Array<{ name: string; description: string }>;
 	};
-	const entry = marketplace.plugins.find((candidate) => candidate.name === "chichex-skills");
-	assert.ok(entry, "marketplace.json: plugin chichex-skills");
+	const entry = marketplace.plugins.find((candidate) => candidate.name === "chiche");
+	assert.ok(entry, "marketplace.json: plugin chiche");
 	assert.equal(entry?.description, plugin.description, "descripciones byte a byte iguales");
 });
 
@@ -476,32 +488,32 @@ test("CA-11: READMEs, harness-port y el contrato documentan el layer de agentes"
 	assert.match(contract, /## Decisiones humanas\n/);
 });
 
-test("CA-12: sdd-run nombra Explore + tool Agent en la Fase 2, sin agregar un tipo custom", async () => {
-	const markdown = await readRepoFile("claude/sdd-run/SKILL.md");
+test("CA-12: chiche-run nombra Explore + tool Agent en la Fase 2, sin agregar un tipo custom", async () => {
+	const markdown = await readRepoFile("claude/chiche-run/SKILL.md");
 	// Issue #45: la Fase 6 lanza el subagente `reviewer` para el code review
 	// post-PR; la restricción aplica solo a la exploración de la Fase 2.
 	const phase2 = markdown.match(/## Fase 2 —[\s\S]*?(?=\n## Fase 3 —)/)?.[0] ?? "";
-	assert.ok(phase2, "claude/sdd-run/SKILL.md tiene Fase 2");
+	assert.ok(phase2, "claude/chiche-run/SKILL.md tiene Fase 2");
 	assert.doesNotMatch(phase2, /subagents en repos grandes\)/);
 	assert.match(phase2, /subagents `Explore` con la tool `Agent`/);
 	assert.doesNotMatch(phase2, /`implementer`|`reviewer`/);
 });
 
-test("issue #66 CA-9, CA-10, CA-24: sdd-run acota el force a gh stack, sugiere sdd-land y el contrato y el plugin reconocen sdd-land", async () => {
-	const markdown = await readRepoFile("claude/sdd-run/SKILL.md");
+test("issue #66 CA-9, CA-10, CA-24: chiche-run acota el force a gh stack, sugiere chiche-land y el contrato y el plugin reconocen chiche-land", async () => {
+	const markdown = await readRepoFile("claude/chiche-run/SKILL.md");
 	assert.match(markdown, /único force permitido es el `--force-with-lease`[\s\S]*`gh stack push`[\s\S]*`gh stack sync`[\s\S]*`gh stack rebase`/);
-	assert.match(markdown, /siguiente paso: \/sdd-land <stack\|PR>/);
+	assert.match(markdown, /siguiente paso: \/chiche-land <stack\|PR>/);
 
 	const plugin = JSON.parse(await readRepoFile(".claude-plugin/plugin.json")) as { description: string };
-	assert.match(plugin.description, /sdd-land/, "plugin.json nombra sdd-land");
+	assert.match(plugin.description, /chiche-land/, "plugin.json nombra chiche-land");
 	const marketplace = JSON.parse(await readRepoFile(".claude-plugin/marketplace.json")) as {
 		plugins: Array<{ name: string; description: string }>;
 	};
-	assert.match(marketplace.plugins.find((entry) => entry.name === "chichex-skills")?.description ?? "", /sdd-land/, "marketplace.json nombra sdd-land");
+	assert.match(marketplace.plugins.find((entry) => entry.name === "chiche")?.description ?? "", /chiche-land/, "marketplace.json nombra chiche-land");
 
 	const contract = await readRepoFile(".sdd/project.md");
-	assert.match(contract, /salvo `\/sdd-land` invocado por el humano, que confirma el plan antes de mergear/, "contrato: excepción de merge para sdd-land en ## Limites");
-	assert.match(contract, /node --test pi-extensions\/sdd-land-gate\/sdd-land-gate\.test\.ts/, "contrato: fila del gate de sdd-land");
+	assert.match(contract, /salvo `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear/, "contrato: excepción de merge para chiche-land en ## Limites");
+	assert.match(contract, /node --test pi-extensions\/chiche-land-gate\/chiche-land-gate\.test\.ts/, "contrato: fila del gate de chiche-land");
 	assert.match(contract, /gh-stack/, "contrato: versión de gh-stack verificada en ## Gaps");
 	// Literales que pi-package.test.ts assertea sobre el mismo archivo.
 	assert.match(contract, /## Politicas de generacion\nSin politicas activas\./);
@@ -568,14 +580,17 @@ test("CA-7: install.sh copia agents/*.md a CLAUDE_AGENTS_DIR en 'claude', 'all' 
 			}
 
 			// Hallazgo #3 del review de PR #43: nada lee el manifest
-			// '.chichex-skills-managed' para el kind 'md' (clean_managed no
+			// '.chiche-managed' para el kind 'md' (clean_managed no
 			// tiene rama para agentes de Claude), asi que install_agents no
 			// debe escribirlo: un manifest sin lector es arbol incoherente.
-			assert.equal(
-				await absolutePathExists(join(agentsDest, ".chichex-skills-managed")),
-				false,
-				`install.sh ${which}: no debe escribir el manifest .chichex-skills-managed en CLAUDE_AGENTS_DIR (nada lo limpia para el kind md)`,
-			);
+			// Tampoco el nombre viejo de antes del issue #103.
+			for (const manifestName of [".chiche-managed", ".chichex-skills-managed"]) {
+				assert.equal(
+					await absolutePathExists(join(agentsDest, manifestName)),
+					false,
+					`install.sh ${which}: no debe escribir el manifest ${manifestName} en CLAUDE_AGENTS_DIR (nada lo limpia para el kind md)`,
+				);
+			}
 
 			const afterRun = await stat(realHomeAgentFile).catch(() => null);
 			if (beforeRun === null) {
@@ -598,7 +613,7 @@ test("CA-7: install.sh copia agents/*.md a CLAUDE_AGENTS_DIR en 'claude', 'all' 
 	}
 });
 
-test("CA-8: install.sh claude avisa la sombra del plugin chichex-skills solo cuando esta registrado, y salta agents/ sin abortar skills", async () => {
+test("CA-8: install.sh claude avisa la sombra del plugin chiche (o del viejo chichex-skills) solo cuando esta registrado, y salta agents/ sin abortar skills", async () => {
 	const root = await mkdtemp(join(tmpdir(), "chichex-claude-shadow-"));
 	try {
 		const fixtureRepo = join(root, "repo");
@@ -621,6 +636,8 @@ test("CA-8: install.sh claude avisa la sombra del plugin chichex-skills solo cua
 		// installed_plugins.json. Sumamos una segunda forma plausible sin
 		// sufijo de version para no reconfirmar la unica forma que inventamos.
 		const registryWithBareName = join(root, "installed_plugins_bare.json");
+		// Issue #103 CA-10: el plugin se publica como `chiche`.
+		const registryWithChiche = join(root, "installed_plugins_chiche.json");
 		const registryWithout = join(root, "installed_plugins_without.json");
 		await writeFile(
 			registryWith,
@@ -630,7 +647,23 @@ test("CA-8: install.sh claude avisa la sombra del plugin chichex-skills solo cua
 			registryWithBareName,
 			JSON.stringify({ version: 2, plugins: { "chichex-skills": [{ scope: "user" }] } }),
 		);
+		await writeFile(
+			registryWithChiche,
+			JSON.stringify({ version: 2, plugins: { "chiche@chichex": [{ scope: "user" }] } }),
+		);
 		await writeFile(registryWithout, JSON.stringify({ version: 2, plugins: { "other-plugin@marketplace": [] } }));
+		// Claves parecidas que no son el plugin, y un installPath bajo un home
+		// que se llama chiche: ninguno dispara el aviso.
+		const lookalikeRegistries: string[] = [];
+		for (const [index, plugins] of [
+			{ "chiche-foo@x": [{ scope: "user" }] },
+			{ "chichex-other@x": [{ scope: "user" }] },
+			{ "other@chiche": [{ scope: "user", installPath: "/home/chiche/.claude/plugins/cache/chiche/other/1.0.0" }] },
+		].entries()) {
+			const registry = join(root, `installed_plugins_lookalike_${index}.json`);
+			await writeFile(registry, JSON.stringify({ version: 2, plugins }));
+			lookalikeRegistries.push(registry);
+		}
 
 		const baseEnv = {
 			HOME: join(root, "home"),
@@ -639,7 +672,7 @@ test("CA-8: install.sh claude avisa la sombra del plugin chichex-skills solo cua
 			PATH: process.env.PATH ?? "",
 		};
 
-		for (const registry of [registryWith, registryWithBareName]) {
+		for (const registry of [registryWith, registryWithBareName, registryWithChiche]) {
 			const withPlugin = runInstaller(join(fixtureRepo, "install.sh"), ["claude"], {
 				...baseEnv,
 				CLAUDE_PLUGIN_REGISTRY_FILE: registry,
@@ -647,9 +680,27 @@ test("CA-8: install.sh claude avisa la sombra del plugin chichex-skills solo cua
 			assert.equal(withPlugin.status, 0, `${withPlugin.stdout}\n${withPlugin.stderr}`);
 			assert.match(
 				`${withPlugin.stdout}\n${withPlugin.stderr}`,
-				/chichex-skills[\s\S]{0,80}ya est[aá] instalado/i,
+				/plugin chiche ya est[aá] instalado/i,
 				`debe avisar cuando el plugin esta registrado (${registry})`,
 			);
+			assert.match(
+				`${withPlugin.stdout}\n${withPlugin.stderr}`,
+				/\/plugin update chiche\b/,
+				`el aviso nombra el comando de update con el plugin chiche (${registry})`,
+			);
+			assert.doesNotMatch(
+				`${withPlugin.stdout}\n${withPlugin.stderr}`,
+				/\/plugin update chichex-skills/,
+				`el aviso no nombra el plugin viejo (${registry})`,
+			);
+			// Review de la capa 2 (R4-legacy-plugin-remediation): `/plugin update
+			// chiche` no migra una instalacion del viejo chichex-skills.
+			const migration = /\/plugin uninstall chichex-skills@chichex[\s\S]*\/plugin install chiche@chichex/;
+			if (registry === registryWithChiche) {
+				assert.doesNotMatch(`${withPlugin.stdout}\n${withPlugin.stderr}`, migration, "con chiche instalado no hay nada que migrar");
+			} else {
+				assert.match(`${withPlugin.stdout}\n${withPlugin.stderr}`, migration, `con el plugin viejo, el aviso explica la migracion (${registry})`);
+			}
 			assert.ok(
 				await absolutePathExists(join(root, "dest", "skills", "dummy-skill", "SKILL.md")),
 				"CA-8 solo exige que el aviso no aborte la instalacion de skills: dummy-skill debe instalarse igual",
@@ -662,21 +713,23 @@ test("CA-8: install.sh claude avisa la sombra del plugin chichex-skills solo cua
 			await rm(join(root, "dest"), { recursive: true, force: true });
 		}
 
-		const withoutPlugin = runInstaller(join(fixtureRepo, "install.sh"), ["claude"], {
-			...baseEnv,
-			CLAUDE_PLUGIN_REGISTRY_FILE: registryWithout,
-		});
-		assert.equal(withoutPlugin.status, 0, `${withoutPlugin.stdout}\n${withoutPlugin.stderr}`);
-		assert.doesNotMatch(
-			`${withoutPlugin.stdout}\n${withoutPlugin.stderr}`,
-			/ya est[aá] instalado/i,
-			"no debe avisar cuando el plugin no esta registrado",
-		);
-		assert.ok(
-			await absolutePathExists(join(root, "dest", "agents", "implementer.md")),
-			"sin conflicto, agents/ se instala normalmente",
-		);
-		await rm(join(root, "dest"), { recursive: true, force: true });
+		for (const registry of [registryWithout, ...lookalikeRegistries]) {
+			const withoutPlugin = runInstaller(join(fixtureRepo, "install.sh"), ["claude"], {
+				...baseEnv,
+				CLAUDE_PLUGIN_REGISTRY_FILE: registry,
+			});
+			assert.equal(withoutPlugin.status, 0, `${withoutPlugin.stdout}\n${withoutPlugin.stderr}`);
+			assert.doesNotMatch(
+				`${withoutPlugin.stdout}\n${withoutPlugin.stderr}`,
+				/ya est[aá] instalado/i,
+				`no debe avisar cuando el plugin no esta registrado (${await readFile(registry, "utf8")})`,
+			);
+			assert.ok(
+				await absolutePathExists(join(root, "dest", "agents", "implementer.md")),
+				`sin conflicto, agents/ se instala normalmente (${registry})`,
+			);
+			await rm(join(root, "dest"), { recursive: true, force: true });
+		}
 
 		const missingRegistry = runInstaller(join(fixtureRepo, "install.sh"), ["claude"], {
 			...baseEnv,
@@ -753,9 +806,9 @@ test("autotest: cada campo prohibido individual dispara su propio diagnostico", 
 
 test("autotest: skills requeridas ausentes o distintas fallan con diagnostico", () => {
 	const markdown = "---\nname: implementer\ndescription: algo\n---\nBody.\n";
-	const verdict = validateAgentFrontmatter("implementer", markdown, ["chichex-skills:tdd"]);
+	const verdict = validateAgentFrontmatter("implementer", markdown, ["chiche:tdd"]);
 	assert.equal(verdict.ok, false);
-	assert.match(verdict.problems.join("\n"), /skills: esperado \[chichex-skills:tdd\], encontrado \[\]/);
+	assert.match(verdict.problems.join("\n"), /skills: esperado \[chiche:tdd\], encontrado \[\]/);
 });
 
 test("autotest: declarar agents en plugin.json falla con diagnostico", () => {
@@ -770,7 +823,7 @@ test("autotest: declarar agents en plugin.json falla con diagnostico", () => {
 
 test("autotest: un agents/ de scratch bajo claude/, opencode/ o pi/ se detecta; los sidecars de codex no", () => {
 	const paths = [
-		"claude/sdd-run/agents/scratch.md",
+		"claude/chiche-run/agents/scratch.md",
 		"opencode/grill/agents/scratch.yaml",
 		"pi/tdd/agents/scratch.md",
 		// Hallazgo #8 del review de PR #43: profundidad 1 (directo bajo el
@@ -785,7 +838,7 @@ test("autotest: un agents/ de scratch bajo claude/, opencode/ o pi/ se detecta; 
 	];
 	assert.deepEqual(forbiddenAgentDirs(paths).sort(), [
 		"claude/agents/x.md",
-		"claude/sdd-run/agents/scratch.md",
+		"claude/chiche-run/agents/scratch.md",
 		"opencode/grill/agents/scratch.yaml",
 		"pi/tdd/agents/scratch.md",
 	]);
@@ -836,12 +889,12 @@ test("issue #44 CA-7: el port Pi de implementer conserva la doctrina ordenada de
 
 	// Capa Pi: sin `skills:` en el frontmatter (Pi lo ignora), la precarga va
 	// por invocacion en el body: /skill:tdd antes de implementar y
-	// /skill:sdd-run cuando el task es una spec.
+	// /skill:chiche-run cuando el task es una spec.
 	assert.match(
 		body,
 		/`\/skill:tdd`[\s\S]{0,200}antes de (implementar|tocar)|antes de (implementar|tocar)[\s\S]{0,200}`\/skill:tdd`/i,
 	);
-	assert.match(body, /`\/skill:sdd-run`[\s\S]{0,200}spec|spec[\s\S]{0,200}`\/skill:sdd-run`/i);
+	assert.match(body, /`\/skill:chiche-run`[\s\S]{0,200}spec|spec[\s\S]{0,200}`\/skill:chiche-run`/i);
 	assert.doesNotMatch(markdown, /subagent_type|tool `Agent`|tool `Skill`|chichex-skills:/, "sin restos de la capa de Claude Code");
 
 	const finalReport = body.slice(body.search(/reporte final/i));
@@ -934,7 +987,7 @@ test("autotest (issue #44): el frontmatter Pi rechaza model, skills, tools en im
 		validatePiAgentFrontmatter("reviewer", withModel, tools).problems.join("\n"),
 		/campo prohibido presente en el port Pi: model/,
 	);
-	const withSkills = '---\nname: implementer\ndescription: "x"\nskills:\n	 - chichex-skills:tdd\n---\nBody.\n';
+	const withSkills = '---\nname: implementer\ndescription: "x"\nskills:\n	 - chiche:tdd\n---\nBody.\n';
 	assert.match(
 		validatePiAgentFrontmatter("implementer", withSkills, null).problems.join("\n"),
 		/campo prohibido presente en el port Pi: skills/,
@@ -1000,7 +1053,7 @@ test("install.sh poda los skills administrados retirados y respeta los no admini
 			}
 			// retired-skill figura en el manifest; user-skill no. "../sentinel" es un
 			// nombre hostil que la poda nunca debe resolver fuera del destino.
-			await writeFile(join(dest, ".chichex-skills-managed"), "retired-skill\n../sentinel\n");
+			await writeFile(join(dest, ".chiche-managed"), "retired-skill\n../sentinel\n");
 		}
 		const configFile = join(root, "dest", "codex-config.toml");
 		await writeFile(
@@ -1034,7 +1087,7 @@ test("install.sh poda los skills administrados retirados y respeta los no admini
 			assert.equal(await absolutePathExists(join(dest, "retired-skill")), false, `${harness}: el skill administrado retirado debe podarse`);
 			assert.ok(await absolutePathExists(join(dest, "user-skill", "SKILL.md")), `${harness}: el skill no administrado debe sobrevivir`);
 			assert.ok(await absolutePathExists(join(dest, "live-skill", "SKILL.md")), `${harness}: el skill vigente se instala`);
-			const manifest = await readFile(join(dest, ".chichex-skills-managed"), "utf8");
+			const manifest = await readFile(join(dest, ".chiche-managed"), "utf8");
 			assert.match(manifest, /^live-skill$/m, `${harness}: el manifest registra el skill vigente`);
 			assert.doesNotMatch(manifest, /retired-skill|sentinel/, `${harness}: el manifest se reescribe sin lo podado ni nombres hostiles`);
 		}
@@ -1046,34 +1099,197 @@ test("install.sh poda los skills administrados retirados y respeta los no admini
 	}
 });
 
+// --- Issue #103 CA-10: migracion del manifest viejo y del bloque de Codex -----
+
+const LEGACY_MANIFEST = ".chichex-skills-managed";
+const CHICHE_MANIFEST = ".chiche-managed";
+const CODEX_BEGIN = "# >>> chichex/chiche: prefer Codex over Pi >>>";
+const CODEX_END = "# <<< chichex/chiche: prefer Codex over Pi <<<";
+const LEGACY_CODEX_BEGIN = "# >>> chichex/skills: prefer Codex over Pi >>>";
+const LEGACY_CODEX_END = "# <<< chichex/skills: prefer Codex over Pi <<<";
+const SKILL_HARNESSES = ["claude", "codex", "opencode", "antigravity", "pi"] as const;
+
+// Un destino como lo dejaba un install.sh anterior al renombre: manifest viejo
+// con un skill retirado, sdd-run y un nombre hostil; una copia completa vieja
+// de sdd-run con un archivo extra; y un skill ajeno que nunca paso por el
+// manifest.
+async function seedLegacyChichexDestination(dest: string): Promise<void> {
+	await mkdir(join(dest, "retired-skill"), { recursive: true });
+	await writeFile(join(dest, "retired-skill", "SKILL.md"), "retirado\n");
+	await mkdir(join(dest, "sdd-run", "references"), { recursive: true });
+	await writeFile(join(dest, "sdd-run", "SKILL.md"), "---\nname: sdd-run\n---\nDoctrina completa vieja.\n");
+	await writeFile(join(dest, "sdd-run", "references", "stale.md"), "viejo\n");
+	await mkdir(join(dest, "user-skill"), { recursive: true });
+	await writeFile(join(dest, "user-skill", "SKILL.md"), "ajeno\n");
+	await writeFile(join(dest, LEGACY_MANIFEST), "retired-skill\nsdd-run\n../sentinel\n");
+}
+
+async function assertLegacyChichexDestinationMigrated(label: string, dest: string, source: string): Promise<void> {
+	assert.equal(await absolutePathExists(join(dest, "retired-skill")), false, `${label}: el skill retirado del manifest viejo debe podarse`);
+	assert.equal(
+		await absolutePathExists(join(dest, "sdd-run", "references", "stale.md")),
+		false,
+		`${label}: la copia completa vieja de sdd-run no deja archivos sueltos`,
+	);
+	assert.equal(
+		await readFile(join(dest, "sdd-run", "SKILL.md"), "utf8"),
+		await readFile(join(source, "sdd-run", "SKILL.md"), "utf8"),
+		`${label}: sdd-run/SKILL.md es el alias del checkout`,
+	);
+	assert.deepEqual(await fileTreeOf(join(dest, "sdd-run")), await fileTreeOf(join(source, "sdd-run")), `${label}: sdd-run es exactamente el alias`);
+	for (const name of ["chiche-init", "chiche-spec", "chiche-run", "chiche-land"]) {
+		assert.deepEqual(await fileTreeOf(join(dest, name)), await fileTreeOf(join(source, name)), `${label}: ${name} instalado`);
+	}
+	const sourceNames = (await readdir(source, { withFileTypes: true }))
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => entry.name)
+		.sort();
+	const manifest = (await readFile(join(dest, CHICHE_MANIFEST), "utf8")).split("\n").filter(Boolean).sort();
+	assert.deepEqual(manifest, sourceNames, `${label}: ${CHICHE_MANIFEST} lista exactamente lo instalado`);
+	assert.equal(await absolutePathExists(join(dest, LEGACY_MANIFEST)), false, `${label}: ${LEGACY_MANIFEST} desaparece`);
+	assert.equal(await readFile(join(dest, "user-skill", "SKILL.md"), "utf8"), "ajeno\n", `${label}: el skill ajeno queda intacto`);
+}
+
+test("issue #103 CA-10: install.sh claude|codex|all migra un .chichex-skills-managed viejo a .chiche-managed y reemplaza la copia vieja de sdd-run por el alias", async () => {
+	const realHomeManifests = [
+		join(homedir(), ".claude", "skills"),
+		join(homedir(), ".codex", "skills"),
+		join(homedir(), ".agents", "skills"),
+	].flatMap((dir) => [join(dir, CHICHE_MANIFEST), join(dir, LEGACY_MANIFEST)]);
+	const realHomeBefore = await Promise.all(realHomeManifests.map((path) => stat(path).then((info) => info.mtimeMs, () => null)));
+
+	const cases: Array<{ which: string; harnesses: readonly (typeof SKILL_HARNESSES)[number][] }> = [
+		{ which: "claude", harnesses: ["claude"] },
+		{ which: "codex", harnesses: ["codex"] },
+		{ which: "all", harnesses: SKILL_HARNESSES },
+	];
+	for (const { which, harnesses } of cases) {
+		const root = await mkdtemp(join(tmpdir(), "chichex-legacy-manifest-"));
+		try {
+			const fixtureRepo = join(root, "repo");
+			await mkdir(fixtureRepo, { recursive: true });
+			await cp(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+			for (const harness of SKILL_HARNESSES) {
+				await cp(repoPath(harness), join(fixtureRepo, harness), { recursive: true });
+			}
+			const dests: Record<(typeof SKILL_HARNESSES)[number], string> = {
+				claude: join(root, "dest", "claude-skills"),
+				codex: join(root, "dest", "codex-skills"),
+				opencode: join(root, "dest", "opencode-skills"),
+				antigravity: join(root, "dest", "antigravity-skills"),
+				pi: join(root, "dest", "pi-skills"),
+			};
+			const sentinel = join(root, "dest", "sentinel");
+			await mkdir(join(root, "dest"), { recursive: true });
+			await writeFile(sentinel, "no tocar");
+			for (const harness of harnesses) await seedLegacyChichexDestination(dests[harness]);
+
+			const result = runInstaller(join(fixtureRepo, "install.sh"), [which], {
+				HOME: join(root, "home"),
+				CLAUDE_SKILLS_DIR: dests.claude,
+				CLAUDE_AGENTS_DIR: join(root, "dest", "agents"),
+				CLAUDE_PLUGIN_REGISTRY_FILE: join(root, "no-registry.json"),
+				CODEX_SKILLS_DIR: dests.codex,
+				CODEX_CONFIG_FILE: join(root, "dest", "codex-config.toml"),
+				OPENCODE_SKILLS_DIR: dests.opencode,
+				ANTIGRAVITY_SKILLS_DIR: dests.antigravity,
+				PI_SKILLS_DIR: dests.pi,
+				PI_EXTENSIONS_DIR: join(root, "dest", "pi-extensions"),
+				PI_THEMES_DIR: join(root, "dest", "pi-themes"),
+				// Sin `pi` en PATH: el guard del Pi Package nativo degrada a "sin conflicto".
+				PATH: "/usr/bin:/bin",
+			});
+			assert.equal(result.status, 0, `install.sh ${which}: ${result.stdout}\n${result.stderr}`);
+			for (const harness of harnesses) {
+				await assertLegacyChichexDestinationMigrated(`install.sh ${which} (${harness})`, dests[harness], join(fixtureRepo, harness));
+			}
+			assert.equal(await readFile(sentinel, "utf8"), "no tocar", `install.sh ${which}: un nombre hostil del manifest viejo no borra fuera del destino`);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	}
+
+	const realHomeAfter = await Promise.all(realHomeManifests.map((path) => stat(path).then((info) => info.mtimeMs, () => null)));
+	assert.deepEqual(realHomeAfter, realHomeBefore, "los manifests del HOME real no cambian");
+});
+
+test("issue #103 CA-10: install.sh codex reemplaza el bloque viejo chichex/skills de config.toml por un unico bloque chichex/chiche", async () => {
+	const root = await mkdtemp(join(tmpdir(), "chichex-codex-block-"));
+	try {
+		const fixtureRepo = join(root, "repo");
+		for (const harness of ["codex", "pi"]) {
+			await mkdir(join(fixtureRepo, harness, "grill"), { recursive: true });
+			await writeFile(join(fixtureRepo, harness, "grill", "SKILL.md"), "---\nname: grill\n---\n");
+		}
+		await cp(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+		const piDest = join(root, "dest", "pi-skills");
+		const configFile = join(root, "dest", "codex-config.toml");
+		const staleEntry = ["", "[[skills.config]]", 'path = "/old/pi/grill/SKILL.md"', "enabled = false"];
+		const scenarios = {
+			"solo el bloque viejo": [LEGACY_CODEX_BEGIN, ...staleEntry, LEGACY_CODEX_END],
+			"bloque viejo y bloque nuevo": [LEGACY_CODEX_BEGIN, ...staleEntry, LEGACY_CODEX_END, "", CODEX_BEGIN, ...staleEntry, CODEX_END],
+		};
+		for (const [label, block] of Object.entries(scenarios)) {
+			await mkdir(join(root, "dest"), { recursive: true });
+			await writeFile(configFile, ['model = "user-model"', "", ...block, "", "[profiles.user]", 'name = "keep"', ""].join("\n"));
+			const env = {
+				HOME: join(root, "home"),
+				CODEX_SKILLS_DIR: join(root, "dest", "codex-skills"),
+				CODEX_CONFIG_FILE: configFile,
+				PI_SKILLS_DIR: piDest,
+				PATH: "/usr/bin:/bin",
+			};
+			const result = runInstaller(join(fixtureRepo, "install.sh"), ["codex"], env);
+			assert.equal(result.status, 0, `${label}: ${result.stdout}\n${result.stderr}`);
+			const config = await readFile(configFile, "utf8");
+			const lines = config.split("\n");
+			assert.equal(lines.filter((line) => line === CODEX_BEGIN).length, 1, `${label}: un solo inicio de bloque chichex/chiche\n${config}`);
+			assert.equal(lines.filter((line) => line === CODEX_END).length, 1, `${label}: un solo fin de bloque chichex/chiche\n${config}`);
+			assert.doesNotMatch(config, /chichex\/skills/, `${label}: no queda el bloque viejo\n${config}`);
+			assert.doesNotMatch(config, /\/old\/pi/, `${label}: no quedan entradas del bloque viejo\n${config}`);
+			assert.ok(config.includes(`path = "${join(piDest, "grill", "SKILL.md")}"`), `${label}: el bloque nuevo apunta a PI_SKILLS_DIR\n${config}`);
+			const order = ['model = "user-model"', CODEX_BEGIN, CODEX_END, "[profiles.user]", 'name = "keep"'].map((line) => lines.indexOf(line));
+			assert.deepEqual([...order].sort((a, b) => a - b), order, `${label}: la config ajena queda en su lugar alrededor del bloque\n${config}`);
+			assert.ok(order.every((index) => index >= 0), `${label}: la config ajena sobrevive\n${config}`);
+
+			const repeated = runInstaller(join(fixtureRepo, "install.sh"), ["codex"], env);
+			assert.equal(repeated.status, 0, `${label}: ${repeated.stdout}\n${repeated.stderr}`);
+			assert.equal(await readFile(configFile, "utf8"), config, `${label}: una segunda corrida no cambia config.toml`);
+			await rm(join(root, "dest"), { recursive: true, force: true });
+		}
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 // =============================================================================
 // Issue #82: run con subagente — modelo y effort elegibles con recomendado
 // =============================================================================
 
-// Doctrina de claude/sdd-run/SKILL.md (CA-1 a CA-7 de la spec #82) y del
-// parrafo Claude de claude/sdd-spec/SKILL.md (CA-8). Vive FUERA de los bloques
-// compartidos entre harnesses (sdd-run-flow, sdd-run-stack,
-// sdd-run-dirty-checkout, sdd-spec-flow) y fuera de la Fase 2, que CA-12 de
+// Doctrina de claude/chiche-run/SKILL.md (CA-1 a CA-7 de la spec #82) y del
+// parrafo Claude de claude/chiche-spec/SKILL.md (CA-8). Vive FUERA de los bloques
+// compartidos entre harnesses (chiche-run-flow, chiche-run-stack,
+// chiche-run-dirty-checkout, chiche-spec-flow) y fuera de la Fase 2, que CA-12 de
 // este gate y harness-gate ya acotan. Cada lista se evalua sobre la porcion del
 // SKILL.md que le corresponde (ver sliceSddRunSkill); un patron ausente se
 // reporta como `<archivo>: falta <patron> en <seccion>`.
 
-const SDD_RUN_SKILL = "claude/sdd-run/SKILL.md";
-const SDD_SPEC_SKILL = "claude/sdd-spec/SKILL.md";
+const SDD_RUN_SKILL = "claude/chiche-run/SKILL.md";
+const SDD_SPEC_SKILL = "claude/chiche-spec/SKILL.md";
 
 const SDD_RUN_SUBAGENT_SYNTAX =
-	"/sdd-run [.sdd/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>] [--subagent] [--model M] [--effort E]";
+	"/chiche-run [.sdd/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>] [--subagent] [--model M] [--effort E]";
 const SDD_RUN_SUBAGENT_HEADING = "## Run con subagente (solo con --subagent, --model o --effort)";
-const SDD_RUN_SHARED_BLOCKS = ["sdd-run-flow", "sdd-run-stack", "sdd-run-design", "sdd-run-dirty-checkout"];
+const SDD_RUN_SHARED_BLOCKS = ["chiche-run-flow", "chiche-run-stack", "chiche-run-design", "chiche-run-dirty-checkout"];
 
 function escapeRegExp(text: string): string {
 	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// CA-1: flags en ## Argumentos (antes del bloque sdd-run-flow).
+// CA-1: flags en ## Argumentos (antes del bloque chiche-run-flow).
 const SUBAGENT_ARGUMENTS_DOCTRINE: RegExp[] = [
 	new RegExp(`^${escapeRegExp(SDD_RUN_SUBAGENT_SYNTAX)}$`, "m"),
-	/`--subagent`[^\n]*delega el run completo[^\n]*`implementer`[^\n]*background[^\n]*`\/sdd-run <target> --assume`/,
+	/`--subagent`[^\n]*delega el run completo[^\n]*`implementer`[^\n]*background[^\n]*`\/chiche-run <target> --assume`/,
 	/`--model M`[^\n]*`sonnet`[^\n]*`opus`[^\n]*`fable`[^\n]*`haiku`/,
 	/`--effort E`[^\n]*`low`[^\n]*`medium`[^\n]*`high`[^\n]*`xhigh`[^\n]*`max`/,
 	/sin `--subagent` implican `--subagent`/,
@@ -1083,11 +1299,11 @@ const SUBAGENT_ARGUMENTS_DOCTRINE: RegExp[] = [
 
 // CA-1: atajo del lanzador de la Fase 0.
 const SUBAGENT_LAUNCHER_SHORTCUT =
-	/Atajo: \/sdd-run <spec\|#NN> \[--assume\] \[--no-pr\] \[--subagent\] \[--model M\] \[--effort E\] saltea este menu\./;
+	/Atajo: \/chiche-run <spec\|#NN> \[--assume\] \[--no-pr\] \[--subagent\] \[--model M\] \[--effort E\] saltea este menu\./;
 
 // Review #83 (h3): la Fase 0 dispara sin target; los flags sin target pasan por
 // el lanzador (antes decia «Si trajo spec, issue o flags, saltear», que
-// contradecia a «/sdd-run --subagent sin target pasa por la Fase 0»).
+// contradecia a «/chiche-run --subagent sin target pasa por la Fase 0»).
 const SUBAGENT_LAUNCHER_PHRASE =
 	/Dispara cuando no hay target\. Si trajo spec o issue, saltear; flags sin target \(`--subagent`, `--model`, `--effort`, `--assume`…\) pasan por el lanzador igual para elegir la spec/;
 
@@ -1104,9 +1320,9 @@ const SUBAGENT_LAUNCHER_DOCTRINE: RegExp[] = [
 	/ni crea worktree/,
 	/no ofrece la Fase 6/,
 	/`--no-pr`[^\n]*`--base`[^\n]*propagan/,
-	/`\/sdd-init --assume`/,
-	/ofrecer `\/sdd-spec <target>`/,
-	/`\/sdd-spec <target> --assume`/,
+	/`\/chiche-init --assume`/,
+	/ofrecer `\/chiche-spec <target>`/,
+	/`\/chiche-spec <target> --assume`/,
 	/gh extension install github\/gh-stack/,
 ];
 
@@ -1152,7 +1368,7 @@ const SUBAGENT_LAUNCH_DOCTRINE: RegExp[] = [
 	/subagent_type: "implementer"/,
 	/run_in_background: true/,
 	/pide explícitamente pasar `effort`/,
-	/`\/sdd-run <target> --assume`/,
+	/`\/chiche-run <target> --assume`/,
 	/subagente: <modelo> · <effort>/,
 	/subagente: modelo de la sesión · <effort>/,
 	/`general-purpose`[^\n]*anunciarlo/,
@@ -1172,18 +1388,18 @@ const SUBAGENT_TRACE_DOCTRINE: RegExp[] = [
 
 // CA-7: ownership coherente con la sesion lanzadora.
 const SUBAGENT_OWNERSHIP_DOCTRINE: RegExp[] = [
-	/`implementer` lanzado por `--subagent` o por `sdd-run con subagente`/,
+	/`implementer` lanzado por `--subagent` o por `chiche-run con subagente`/,
 	/NO delegar "completar toda la spec"/,
 	/La sesión que lanza con `--subagent` no es el agente que corre/,
 ];
 
-// CA-8: el parrafo Claude de sdd-spec (fuera de sdd-spec-flow) reusa la
+// CA-8: el parrafo Claude de chiche-spec (fuera de chiche-spec-flow) reusa la
 // doctrina y conserva los literales que harness-gate ya exige.
 const SDD_SPEC_SUBAGENT_DOCTRINE: RegExp[] = [
 	// Review #83 (h1): la opcion dice como se llega a la seccion: cargando
-	// sdd-run con --subagent en esta sesion (sin el flag correria inline).
-	/carga el skill `sdd-run` sobre el target con `--subagent` \(`\/sdd-run <target> --subagent`\)/,
-	/sigue la sección «Run con subagente» de `sdd-run`/,
+	// chiche-run con --subagent en esta sesion (sin el flag correria inline).
+	/carga el skill `chiche-run` sobre el target con `--subagent` \(`\/chiche-run <target> --subagent`\)/,
+	/sigue la sección «Run con subagente» de `chiche-run`/,
 	/dos preguntas/,
 	/subagent_type: "implementer"/,
 	/run_in_background/,
@@ -1210,7 +1426,7 @@ export interface SddRunSubagentSlices {
 
 export function sliceSddRunSkill(markdown: string): SddRunSubagentSlices {
 	return {
-		argumentos: sliceBetween(markdown, /^## Argumentos$/m, /\n(?:## |<!-- sdd-run-flow:start -->)/),
+		argumentos: sliceBetween(markdown, /^## Argumentos$/m, /\n(?:## |<!-- chiche-run-flow:start -->)/),
 		fase0: sliceBetween(markdown, /^## Fase 0 /m, /\n## /),
 		section: sliceBetween(markdown, /^## Run con subagente/m, /\n## /),
 		ownership: sliceBetween(markdown, /^### Ownership y tareas$/m, /\n##/),
@@ -1222,7 +1438,7 @@ export function missingPatterns(path: string, text: string | null, patterns: Reg
 	return patterns.filter((pattern) => !pattern.test(text)).map((pattern) => `${path}: falta ${pattern} en ${where}`);
 }
 
-// CA-2: la seccion vive entre `<!-- sdd-run-stack:end -->` y `## Fase 0`, fuera
+// CA-2: la seccion vive entre `<!-- chiche-run-stack:end -->` y `## Fase 0`, fuera
 // de todo bloque compartido y sin contener markers de bloque.
 export function checkSubagentSectionPlacement(path: string, markdown: string): string[] {
 	const heading = markdown.search(/^## Run con subagente/m);
@@ -1233,9 +1449,9 @@ export function checkSubagentSectionPlacement(path: string, markdown: string): s
 	}
 	const fase0 = markdown.search(/^## Fase 0 /m);
 	if (fase0 === -1 || heading > fase0) problems.push(`${path}: ## Run con subagente debe ir antes de ## Fase 0`);
-	const stackEnd = markdown.indexOf("<!-- sdd-run-stack:end -->");
+	const stackEnd = markdown.indexOf("<!-- chiche-run-stack:end -->");
 	if (stackEnd === -1 || heading < stackEnd) {
-		problems.push(`${path}: ## Run con subagente debe ir después de ## Entrega por capas (marker sdd-run-stack:end)`);
+		problems.push(`${path}: ## Run con subagente debe ir después de ## Entrega por capas (marker chiche-run-stack:end)`);
 	}
 	for (const block of SDD_RUN_SHARED_BLOCKS) {
 		const start = markdown.indexOf(`<!-- ${block}:start -->`);
@@ -1244,7 +1460,7 @@ export function checkSubagentSectionPlacement(path: string, markdown: string): s
 			problems.push(`${path}: ## Run con subagente está dentro del bloque compartido ${block}`);
 		}
 	}
-	if (/<!-- sdd-run-/.test(sliceSddRunSkill(markdown).section ?? "")) {
+	if (/<!-- chiche-run-/.test(sliceSddRunSkill(markdown).section ?? "")) {
 		problems.push(`${path}: ## Run con subagente contiene un marker de bloque compartido`);
 	}
 	return problems;
@@ -1297,8 +1513,8 @@ export function syntheticSddRunSkill({
 		"",
 		"La sesión que recibe `--subagent` es **lanzadora, no corredora**: resuelve el target (leyendo el body con `gh issue view` cuando es issue), imprime la traza con el recomendado, pregunta lo que falte, imprime la traza con la elección final y lanza el subagente; no ejecuta ninguna fase del run más allá de las precondiciones de la Fase 1 (pasos 1 a 3) y el preflight de stack, ni crea worktree ni branch, y no ofrece la Fase 6. `--no-pr` y `--base` se propagan tal cual al prompt del subagente.",
 		"",
-		"- Contrato: si falta, interactivo → ofrecer `/sdd-init`; `--assume` → correr `/sdd-init --assume`.",
-		"- Spec: si el target no resuelve a una spec SDD, interactivo → frenar y ofrecer `/sdd-spec <target>`; `--assume` → encadenar `/sdd-spec <target> --assume`.",
+		"- Contrato: si falta, interactivo → ofrecer `/chiche-init`; `--assume` → correr `/chiche-init --assume`.",
+		"- Spec: si el target no resuelve a una spec SDD, interactivo → frenar y ofrecer `/chiche-spec <target>`; `--assume` → encadenar `/chiche-spec <target> --assume`.",
 		"- Stack: con 2 o más capas, preflight de stack; interactivo → ofrecer `gh extension install github/gh-stack`; `--assume` → frenar con el comando exacto.",
 		"",
 		"- **Conteo de CAs**: ids únicos `CA-N` en los headings de `## Comportamiento esperado`; si da 0, las filas `| CA-N |` de `## Plan de verificacion`; si ambos dan 0, el recomendado es `opus` con el aviso «no pude contar CAs».",
@@ -1311,7 +1527,7 @@ export function syntheticSddRunSkill({
 		"- Con `--assume` nunca se pregunta.",
 		"- `Modelo de la sesión` significa no pasar `model` a la tool `Agent` (hereda el de la sesión o `CLAUDE_CODE_SUBAGENT_MODEL`); `effort` se pasa siempre. Antes de preguntar, chequear `printenv CLAUDE_CODE_SUBAGENT_MODEL`: si está definida, la opción, la traza y la línea `subagente:` dicen `modelo heredado (CLAUDE_CODE_SUBAGENT_MODEL=<valor>)` en vez de `modelo de la sesión`.",
 		'- Lanzar la tool `Agent` con `subagent_type: "implementer"`, `run_in_background: true`, `model` y `effort`. Este skill pide explícitamente pasar `effort`.',
-		"- El prompt pide `/sdd-run <target> --assume` y la línea `subagente: <modelo> · <effort>` (con `Modelo de la sesión`, `subagente: modelo de la sesión · <effort>`).",
+		"- El prompt pide `/chiche-run <target> --assume` y la línea `subagente: <modelo> · <effort>` (con `Modelo de la sesión`, `subagente: modelo de la sesión · <effort>`).",
 		"- Si el tipo `implementer` no está disponible, usar `general-purpose` y anunciarlo. Si la tool no acepta `effort`, anunciarlo y lanzar sin él.",
 		"- Traza: `Subagente implementer: modelo <m> (<escalón>: <N> CAs · <k> capas) · effort <e> · verificabilidad: ALTA <a> · MEDIA/BAJA <b> · NULA <c>`.",
 		"- Con el fallback la traza nombra el tipo real: `Subagente general-purpose: modelo <m> …`.",
@@ -1320,15 +1536,15 @@ export function syntheticSddRunSkill({
 		"",
 	].join("\n");
 	const fase0 = [
-		"## Fase 0 — Lanzador (solo con `/sdd-run` pelado)",
+		"## Fase 0 — Lanzador (solo con `/chiche-run` pelado)",
 		"",
 		"```text",
-		"Atajo: /sdd-run <spec|#NN> [--assume] [--no-pr] [--subagent] [--model M] [--effort E] saltea este menu.",
+		"Atajo: /chiche-run <spec|#NN> [--assume] [--no-pr] [--subagent] [--model M] [--effort E] saltea este menu.",
 		"```",
 		"",
 	].join("\n");
 	return [
-		"---\nname: sdd-run\ndescription: sintético\n---",
+		"---\nname: chiche-run\ndescription: sintético\n---",
 		"",
 		"## Argumentos",
 		"",
@@ -1337,26 +1553,26 @@ export function syntheticSddRunSkill({
 		"```",
 		"",
 		"- `--assume` — cero preguntas.",
-		"- `--subagent` — delega el run completo a un subagente `implementer` en background que corre `/sdd-run <target> --assume`; la sesión queda libre.",
+		"- `--subagent` — delega el run completo a un subagente `implementer` en background que corre `/chiche-run <target> --assume`; la sesión queda libre.",
 		"- `--model M` — modelo del subagente; `M` es un alias de la tool `Agent`: `sonnet`, `opus`, `fable` o `haiku`.",
 		"- `--effort E` — effort del subagente; `E` es `low`, `medium`, `high`, `xhigh` o `max`.",
 		"- `--model` o `--effort` sin `--subagent` implican `--subagent`.",
 		"- `--model`/`--effort` con un valor fuera de su lista o sin valor: interactivo → se trata como ausente, se avisa y se pregunta; `--assume` → abortar con diagnóstico antes de preguntar y antes de lanzar.",
 		"",
-		"<!-- sdd-run-flow:start -->",
+		"<!-- chiche-run-flow:start -->",
 		"### Flujo sin fricción",
-		"<!-- sdd-run-flow:end -->",
+		"<!-- chiche-run-flow:end -->",
 		"",
-		"<!-- sdd-run-stack:start -->",
+		"<!-- chiche-run-stack:start -->",
 		"## Entrega por capas",
-		"<!-- sdd-run-stack:end -->",
+		"<!-- chiche-run-stack:end -->",
 		"",
 		sectionAfterFase0 ? fase0 + section : section + fase0,
 		"## Fase 3 — Implementar",
 		"",
 		"### Ownership y tareas",
 		"",
-		'- El agente que corre el run (la sesión principal, o el `implementer` lanzado por `--subagent` o por `sdd-run con subagente` de `sdd-spec`) conserva ownership. NO delegar "completar toda la spec".',
+		'- El agente que corre el run (la sesión principal, o el `implementer` lanzado por `--subagent` o por `chiche-run con subagente` de `chiche-spec`) conserva ownership. NO delegar "completar toda la spec".',
 		"- La sesión que lanza con `--subagent` no es el agente que corre.",
 		"",
 		"### Timeouts",
@@ -1364,7 +1580,7 @@ export function syntheticSddRunSkill({
 	].join("\n");
 }
 
-test("issue #82 CA-1: sdd-run declara --subagent, --model M y --effort E en ## Argumentos y en el atajo de la Fase 0", async () => {
+test("issue #82 CA-1: chiche-run declara --subagent, --model M y --effort E en ## Argumentos y en el atajo de la Fase 0", async () => {
 	const markdown = await readRepoFile(SDD_RUN_SKILL);
 	const slices = sliceSddRunSkill(markdown);
 	const problems = [
@@ -1432,41 +1648,41 @@ test("issue #82 CA-7: Ownership y tareas nombra al implementer lanzado por --sub
 // Review #83 (h9): la funcion compuesta que validan los autotests corre tambien
 // sobre el SKILL.md real, asi una lista sumada a checkSddRunSubagentDoctrine y
 // no a un test por CA sigue gateando el archivo real.
-test("issue #82 CA-10: checkSddRunSubagentDoctrine corre sobre el claude/sdd-run/SKILL.md real sin hallazgos", async () => {
+test("issue #82 CA-10: checkSddRunSubagentDoctrine corre sobre el claude/chiche-run/SKILL.md real sin hallazgos", async () => {
 	const markdown = await readRepoFile(SDD_RUN_SKILL);
 	const problems = checkSddRunSubagentDoctrine(SDD_RUN_SKILL, markdown);
 	assert.deepEqual(problems, [], problems.join("\n"));
 });
 
-test("issue #82 CA-8: el párrafo Claude de sdd-spec reusa la sección Run con subagente de sdd-run fuera de sdd-spec-flow", async () => {
+test("issue #82 CA-8: el párrafo Claude de chiche-spec reusa la sección Run con subagente de chiche-run fuera de chiche-spec-flow", async () => {
 	const markdown = await readRepoFile(SDD_SPEC_SKILL);
-	const flowEnd = markdown.indexOf("<!-- sdd-spec-flow:end -->");
-	const gateStart = markdown.indexOf("<!-- sdd-spec-publication-gate:start -->");
-	assert.ok(flowEnd !== -1 && gateStart !== -1 && flowEnd < gateStart, `${SDD_SPEC_SKILL}: markers sdd-spec-flow:end y sdd-spec-publication-gate:start`);
+	const flowEnd = markdown.indexOf("<!-- chiche-spec-flow:end -->");
+	const gateStart = markdown.indexOf("<!-- chiche-spec-publication-gate:start -->");
+	assert.ok(flowEnd !== -1 && gateStart !== -1 && flowEnd < gateStart, `${SDD_SPEC_SKILL}: markers chiche-spec-flow:end y chiche-spec-publication-gate:start`);
 	const claudeParagraph = markdown.slice(flowEnd, gateStart);
 	const problems = missingPatterns(SDD_SPEC_SKILL, claudeParagraph, SDD_SPEC_SUBAGENT_DOCTRINE, "párrafo Claude del menú final");
 	assert.deepEqual(problems, [], problems.join("\n"));
-	const flow = markdown.match(/<!-- sdd-spec-flow:start -->([\s\S]*?)<!-- sdd-spec-flow:end -->/)?.[1] ?? "";
-	assert.doesNotMatch(flow, /Run con subagente|`effort`|subagent_type/, `${SDD_SPEC_SKILL}: el bloque compartido sdd-spec-flow no debe ganar la doctrina Claude`);
+	const flow = markdown.match(/<!-- chiche-spec-flow:start -->([\s\S]*?)<!-- chiche-spec-flow:end -->/)?.[1] ?? "";
+	assert.doesNotMatch(flow, /Run con subagente|`effort`|subagent_type/, `${SDD_SPEC_SKILL}: el bloque compartido chiche-spec-flow no debe ganar la doctrina Claude`);
 });
 
 test("issue #82 CA-11: READMEs y contrato documentan --subagent, modelo/effort con recomendado, y el contrato lleva el conteo real del gate", async () => {
 	const readmeEs = await readRepoFile("README.md");
 	const readmeEn = await readRepoFile("README.en.md");
-	const rowEs = readmeEs.match(/^\| \*\*`sdd-run`\*\* \|.*$/m)?.[0] ?? "";
-	const rowEn = readmeEn.match(/^\| \*\*`sdd-run`\*\* \|.*$/m)?.[0] ?? "";
-	assert.ok(rowEs, "README.md: fila sdd-run");
-	assert.ok(rowEn, "README.en.md: fila sdd-run");
+	const rowEs = readmeEs.match(/^\| \*\*`chiche-run`\*\* \|.*$/m)?.[0] ?? "";
+	const rowEn = readmeEn.match(/^\| \*\*`chiche-run`\*\* \|.*$/m)?.[0] ?? "";
+	assert.ok(rowEs, "README.md: fila chiche-run");
+	assert.ok(rowEn, "README.en.md: fila chiche-run");
 	for (const pattern of [/--subagent/, /modelo[^|]*effort/i, /recomendado/i, /`--model`\/`--effort`/, /`xhigh`/]) {
-		assert.match(rowEs, pattern, `README.md fila sdd-run: falta ${pattern}`);
+		assert.match(rowEs, pattern, `README.md fila chiche-run: falta ${pattern}`);
 	}
 	for (const pattern of [/--subagent/, /model[^|]*effort/i, /recommended/i, /`--model`\/`--effort`/, /`xhigh`/]) {
-		assert.match(rowEn, pattern, `README.en.md fila sdd-run: falta ${pattern}`);
+		assert.match(rowEn, pattern, `README.en.md fila chiche-run: falta ${pattern}`);
 	}
-	const specRowEs = readmeEs.match(/^\| \*\*`sdd-spec`\*\* \|.*$/m)?.[0] ?? "";
-	const specRowEn = readmeEn.match(/^\| \*\*`sdd-spec`\*\* \|.*$/m)?.[0] ?? "";
-	assert.match(specRowEs, /`sdd-run con subagente`[^|]*misma elección/i, "README.md fila sdd-spec: el menú de Claude usa la misma elección de modelo y effort");
-	assert.match(specRowEn, /`sdd-run con subagente`[^|]*same[^|]*(choice|selection)/i, "README.en.md fila sdd-spec: the Claude menu uses the same model/effort choice");
+	const specRowEs = readmeEs.match(/^\| \*\*`chiche-spec`\*\* \|.*$/m)?.[0] ?? "";
+	const specRowEn = readmeEn.match(/^\| \*\*`chiche-spec`\*\* \|.*$/m)?.[0] ?? "";
+	assert.match(specRowEs, /`chiche-run con subagente`[^|]*misma elección/i, "README.md fila chiche-spec: el menú de Claude usa la misma elección de modelo y effort");
+	assert.match(specRowEn, /`chiche-run con subagente`[^|]*same[^|]*(choice|selection)/i, "README.en.md fila chiche-spec: the Claude menu uses the same model/effort choice");
 
 	const contract = await readRepoFile(".sdd/project.md");
 	const gateRow = contract.match(/^\| gate anti-drift de agentes de plugin \|.*$/m)?.[0] ?? "";

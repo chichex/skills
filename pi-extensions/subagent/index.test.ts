@@ -533,10 +533,10 @@ test("CA-3: con PI_SUBAGENT_DEPTH >= 1 en el padre, la tool rechaza sin lanzar n
 
 test("CA-4: con background la tool devuelve antes del close y al terminar inyecta subagent-result como followUp con triggerTurn", async () => {
 	const h = harness();
-	const result = await h.execute("call-1", { agent: "implementer", task: "/skill:sdd-run #44 --assume", background: true }, undefined, undefined, h.ctx);
+	const result = await h.execute("call-1", { agent: "implementer", task: "/skill:chiche-run #44 --assume", background: true }, undefined, undefined, h.ctx);
 	assert.equal(h.calls.length, 1, "spawn ya ocurrio");
 	assert.equal(h.calls[0]!.child.exitCode, null, "el hijo sigue vivo");
-	assert.equal(h.calls[0]!.args.at(-1), "/skill:sdd-run #44 --assume", "el task viaja literal, sin prefijo");
+	assert.equal(h.calls[0]!.args.at(-1), "/skill:chiche-run #44 --assume", "el task viaja literal, sin prefijo");
 	assert.equal(text(result), "Job sa-1 lanzado (implementer)");
 	assert.deepEqual(result.details, { jobId: "sa-1", agent: "implementer", pid: 4242, status: "running" });
 	assert.equal(h.registry.get("sa-1")?.status, "running");

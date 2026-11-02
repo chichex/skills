@@ -181,7 +181,7 @@ export function resolveWorkflowDispatch(input: unknown, sddDirs?: WorkflowDispat
 			return request(resolution, "grill", `#${issue.number}`);
 		case "spec":
 		case "join-spec":
-			return request(resolution, "sdd-spec", `#${issue.number}`);
+			return request(resolution, "chiche-spec", `#${issue.number}`);
 		case "resume-grill": {
 			const grill = validatedGrill(resolution, issue, true);
 			return grill
@@ -193,7 +193,7 @@ export function resolveWorkflowDispatch(input: unknown, sddDirs?: WorkflowDispat
 			return source
 				? request(
 					resolution,
-					"sdd-spec",
+					"chiche-spec",
 					`--from-grill ${JSON.stringify(source.value)}`,
 				)
 				: failure("invalid-grill-reference", "spec-from-grill requires one canonical finalized grill source");
@@ -205,7 +205,7 @@ export function resolveWorkflowDispatch(input: unknown, sddDirs?: WorkflowDispat
 			if (!spec) return failure("invalid-spec-reference", `${route} requires one canonical in-project primary spec`);
 			return request(
 				resolution,
-				route === "run-existing-spec" ? "sdd-run" : "sdd-spec",
+				route === "run-existing-spec" ? "chiche-run" : "chiche-spec",
 				specArgument(spec),
 			);
 		}

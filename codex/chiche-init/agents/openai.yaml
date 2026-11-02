@@ -1,0 +1,4 @@
+interface:
+  display_name: "Chiche Init"
+  short_description: "Documentá el contrato de autonomía del repo"
+  default_prompt: "Usá $chiche-init para inicializar el contrato de autonomía de este repositorio."

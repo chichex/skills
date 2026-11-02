@@ -1,11 +1,11 @@
 // Tests de la logica pura del handoff interoperable de grill (CA-6, issue #10):
 // composicion desde el snapshot, naming en .sdd/grills/, mapeo a metadata v1 y
-// upsert idempotente via sdd-artifacts. Sin I/O ni APIs de Pi.
+// upsert idempotente via chiche-artifacts. Sin I/O ni APIs de Pi.
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseSddArtifact } from "../sdd-artifacts/index.ts";
+import { parseSddArtifact } from "../chiche-artifacts/index.ts";
 import {
 	composeHandoffMarkdown,
 	grillMetadataFromSnapshot,

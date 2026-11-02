@@ -1,4 +1,6 @@
 interface:
-  display_name: "SDD Spec"
-  short_description: "Convertí pedidos en specs verificables"
-  default_prompt: "Usá $sdd-spec para convertir este pedido en una spec verificable."
+  display_name: "sdd-spec (alias deprecado)"
+  short_description: "Alias deprecado de chiche-spec"
+  default_prompt: "Usá $chiche-spec: sdd-spec es un alias deprecado."
+policy:
+  allow_implicit_invocation: false

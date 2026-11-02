@@ -14,7 +14,9 @@ import {
 import {
 	applyInlineSkillCompletion,
 	extractInlineSkillToken,
+	orderSkillCommands,
 	promoteInlineSkillInvocation,
+	skillSuggestions,
 } from "./logic";
 
 const MAX_SUGGESTIONS = 20;
@@ -33,20 +35,19 @@ function skillCommands(pi: ExtensionAPI): SlashCommandInfo[] {
 }
 
 function matchingSkills(commands: SlashCommandInfo[], query: string): SlashCommandInfo[] {
-	if (!query) return commands.slice(0, MAX_SUGGESTIONS);
+	const matches = query
+		? fuzzyFilter(commands, query, (command) => {
+			const skillName = command.name.slice("skill:".length);
+			return `${skillName} ${command.name}`;
+		})
+		: commands;
 
-	return fuzzyFilter(commands, query, (command) => {
-		const skillName = command.name.slice("skill:".length);
-		return `${skillName} ${command.name}`;
-	}).slice(0, MAX_SUGGESTIONS);
+	// Los alias deprecados `sdd-*` van al final: nunca desplazan a `chiche-*`.
+	return orderSkillCommands(matches).slice(0, MAX_SUGGESTIONS);
 }
 
 function autocompleteItems(commands: SlashCommandInfo[]): AutocompleteItem[] {
-	return commands.map((command) => ({
-		value: command.name,
-		label: command.name,
-		description: command.description,
-	}));
+	return skillSuggestions(commands);
 }
 
 function createInlineSkillProvider(pi: ExtensionAPI, current: AutocompleteProvider): AutocompleteProvider {

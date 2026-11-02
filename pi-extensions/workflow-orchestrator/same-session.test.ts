@@ -11,19 +11,19 @@ function fakeStripFrontmatter(content: string): string {
 test("same-session transition sends one canonical materialized skill and never a slash invocation", async () => {
 	assert.equal(typeof (orchestrator as Record<string, unknown>).continueWithMaterializedSkill, "function");
 	const sent: Array<{ content: string; options?: unknown }> = [];
-	const path = "/canonical/sdd-spec/SKILL.md";
+	const path = "/canonical/chiche-spec/SKILL.md";
 	const pi = {
-		getCommands: () => [{ name: "skill:sdd-spec", source: "skill", sourceInfo: { path } }],
+		getCommands: () => [{ name: "skill:chiche-spec", source: "skill", sourceInfo: { path } }],
 		sendUserMessage(content: string, options?: unknown) { sent.push({ content, options }); },
 	};
 
 	const result = await orchestrator.continueWithMaterializedSkill(
 		pi as never,
-		"sdd-spec",
+		"chiche-spec",
 		"--from-grill grill-14",
 		{
 			deliverAs: "followUp",
-			readSkillFile: async () => "---\nname: sdd-spec\ndescription: Spec\n---\n# SDD spec\n",
+			readSkillFile: async () => "---\nname: chiche-spec\ndescription: Spec\n---\n# SDD spec\n",
 			stripSkillFrontmatter: fakeStripFrontmatter,
 		},
 	);
@@ -31,13 +31,13 @@ test("same-session transition sends one canonical materialized skill and never a
 	assert.deepEqual(result, {
 		ok: true,
 		queued: true,
-		source: { path, baseDir: "/canonical/sdd-spec" },
+		source: { path, baseDir: "/canonical/chiche-spec" },
 	});
 	assert.deepEqual(sent, [{
-		content: `<skill name="sdd-spec" location="${path}">\nReferences are relative to /canonical/sdd-spec.\n\n# SDD spec\n</skill>\n\n--from-grill grill-14`,
+		content: `<skill name="chiche-spec" location="${path}">\nReferences are relative to /canonical/chiche-spec.\n\n# SDD spec\n</skill>\n\n--from-grill grill-14`,
 		options: { deliverAs: "followUp" },
 	}]);
-	assert.doesNotMatch(sent[0]!.content, /\/skill:sdd-spec/);
+	assert.doesNotMatch(sent[0]!.content, /\/skill:chiche-spec/);
 });
 
 test("same-session skill can be materialized before a caller persists state", async () => {
