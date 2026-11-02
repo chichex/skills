@@ -136,7 +136,7 @@ Con EXACTAMENTE esta estructura:
 ```markdown
 # Spec — <titulo>
 <!-- Generada por $chiche-spec el <fecha>. Fuente: <pedido libre | issue #NN | grill <ref>>. Estado: <aprobada|draft> -->
-<!-- SDD-Tracking: version=1; type=spec; state=<draft|approved>; issue=<#NN|owner/repo#NN|none>; grill=<ref|none>; superseded-by=none -->
+<!-- Chiche-Tracking: version=2; type=spec; state=<draft|approved>; issue=<#NN|owner/repo#NN|none>; grill=<ref|none>; superseded-by=none -->
 
 ## Contexto
 <por que existe el pedido + que hay en el codigo hoy; 2-4 lineas con referencias reales>
@@ -187,7 +187,7 @@ Toda spec lleva la sección `## Plan de entrega` inmediatamente después de `## 
 
 Estado: siempre `draft` al publicar; `aprobada` solo por la transición del menú final al elegir un run (ver "Flujo sin fricción").
 
-El marker `SDD-Tracking` es la identidad machine-readable de la spec (contrato SDD-Tracking v1): permite a los consumidores asociar artefactos sin ensuciar GitHub con labels o comments de tracking, y acompaña al comentario humano, nunca lo reemplaza. `state` refleja el `Estado:` (`approved` ↔ `aprobada`, `draft` ↔ `draft`); `issue` lleva la referencia de origen (`#NN`, `owner/repo#NN` o `none`); `grill` la referencia del handoff de origen (o `none`); `superseded-by` nace `none`. Re-correr sobre la misma spec hace upsert. El marker de un artefacto es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: el existente se reemplaza en su lugar conservando su nombre y su versión, y nunca se agrega otro al lado. Un marker `SDD-Tracking` legacy (sin `version=`) se migra al formato v1 en la misma pasada. Si la spec vive en el body del issue, el marker viaja con ella.
+El marker `Chiche-Tracking` es la identidad machine-readable de la spec (contrato `docs/chiche-tracking-v2.md`): permite a los consumidores asociar artefactos sin ensuciar GitHub con labels o comments de tracking, y acompaña al comentario humano, nunca lo reemplaza. `state` refleja el `Estado:` (`approved` ↔ `aprobada`, `draft` ↔ `draft`); `issue` lleva la referencia de origen (`#NN`, `owner/repo#NN` o `none`); `grill` la referencia del handoff de origen (o `none`); `superseded-by` nace `none`. Re-correr sobre la misma spec hace upsert. El marker de un artefacto es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: el existente se reemplaza en su lugar conservando su nombre y su versión, y nunca se agrega otro al lado. Un marker `SDD-Tracking` legacy (sin `version=`) se migra al formato v1 en la misma pasada. Si la spec vive en el body del issue, el marker viaja con ella.
 
 Destino: automático, según la regla de "Flujo sin fricción" (debajo); `--out` la fuerza. Con destino issue, la spec no crea además una copia en `.sdd/specs/`; la excepción es `Llevar a issue`, que parte de una spec local y la conserva.
 
@@ -196,7 +196,7 @@ Destino: automático, según la regla de "Flujo sin fricción" (debajo); `--out`
 Cuando la corrida re-especifica un pedido hacia un archivo nuevo o una revisión (la spec anterior queda obsoleta pero no se borra), la spec reemplazada se marca con:
 
 ```markdown
-<!-- SDD-Tracking: version=1; type=spec; state=superseded; issue=<#NN|owner/repo#NN|none>; grill=<ref|none>; superseded-by=<ref> -->
+<!-- Chiche-Tracking: version=2; type=spec; state=superseded; issue=<#NN|owner/repo#NN|none>; grill=<ref|none>; superseded-by=<ref> -->
 ```
 
 `superseded-by` apunta a la sucesora (ruta del archivo nuevo o referencia del issue); `issue` y `grill` conservan los valores que la spec reemplazada ya tenía, y su campo `Estado:` humano se reconcilia a `reemplazada por <ref>`. El invariante no se negocia: en todo estado distinto de `superseded`, `superseded-by` es `none`.
@@ -312,7 +312,7 @@ Después del reporte, el menú final de "Flujo sin fricción" (salvo con `--assu
 - Proponer el mecanismo de verificación más barato que observe el comportamiento real, con alternativas escritas para que el usuario lo cambie desde el menú.
 - Escribir criterios de aceptación observables: pasó/no pasó sin interpretación.
 - Ser idempotente: re-correr sobre el mismo pedido actualiza la spec existente y upsertea en su lugar su único marker, `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`, no crea otra copia y nunca se agrega otro marker.
-- Emitir el marker `SDD-Tracking` v1 en toda spec nueva y preservar la referencia al issue heredada del pedido o del grill de origen.
+- Emitir el marker `Chiche-Tracking` v2 en toda spec nueva y preservar la referencia al issue heredada del pedido o del grill de origen.
 - Terminar con el menú final (salvo `--assume`): publicar primero, preguntar después.
 
 ## MUST NOT DO

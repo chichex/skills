@@ -1,11 +1,13 @@
 // Gate anti-drift de los productores SDD (issue #10).
 //
-// Extrae los templates de artefactos con marker SDD-Tracking de los 16
+// Extrae los templates de artefactos con marker Chiche-Tracking de los 16
 // SKILL.md ({claude,codex,opencode,pi} × {chiche-init,chiche-spec,chiche-run,grill}),
-// valida cada template contra el contrato docs/sdd-tracking-v1.md usando el
+// valida cada template contra el contrato docs/chiche-tracking-v2.md usando el
 // parser de referencia (chiche-artifacts), y exige igualdad byte a byte entre
 // harnesses tolerando SOLO las diferencias documentadas en
-// docs/harness-interaction-differences.md.
+// docs/harness-interaction-differences.md. El censo lee los dos markers
+// (`SDD-Tracking` v1 y `Chiche-Tracking` v2), pero un template de artefacto
+// nuevo con `SDD-Tracking: version=1` es un defecto (issue #103, CA-13).
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -263,7 +265,9 @@ const PLACEHOLDER_SAMPLE: Record<string, string> = {
 	"YYYY-MM-DD": "2026-08-08",
 };
 
-const MARKER_LINE = /^[ \t]*<!--\s*SDD-Tracking\s*:.*-->[ \t]*$/i;
+const MARKER_LINE = /^[ \t]*<!--\s*(?:SDD|Chiche)-Tracking\s*:.*-->[ \t]*$/i;
+const V1_MARKER = /^<!--\s*SDD-Tracking\s*:/i;
+const V2_TEMPLATE_PREFIX = "<!-- Chiche-Tracking: version=2; ";
 
 function repoFile(path: string): URL {
 	return new URL(`../../${path}`, import.meta.url);
@@ -282,12 +286,15 @@ interface CanonicalTemplate {
 interface Census {
 	canonical: CanonicalTemplate[];
 	legacy: { line: string; fenceLine: number }[];
+	// Templates que todavía instruyen `SDD-Tracking`: un artefacto nuevo nace v2.
+	v1: { line: string; fenceLine: number }[];
 	markerFences: Fence[];
 }
 
 export function censusTemplates(markdown: string): Census {
 	const canonical: CanonicalTemplate[] = [];
 	const legacy: { line: string; fenceLine: number }[] = [];
+	const v1: { line: string; fenceLine: number }[] = [];
 	const markerFences: Fence[] = [];
 	for (const fence of fencedBlocks(markdown)) {
 		const markers = fence.content.split("\n").filter((line) => MARKER_LINE.test(line));
@@ -298,12 +305,13 @@ export function censusTemplates(markdown: string): Census {
 			if (/\bversion\s*=/i.test(line) || /\btype\s*=/i.test(line)) {
 				const type = line.match(/\btype=(spec|grill|project)\b/)?.[1] as TemplateType | undefined;
 				canonical.push({ line, type: type ?? null, fenceLine: fence.line });
+				if (V1_MARKER.test(line)) v1.push({ line, fenceLine: fence.line });
 			} else {
 				legacy.push({ line, fenceLine: fence.line });
 			}
 		}
 	}
-	return { canonical, legacy, markerFences };
+	return { canonical, legacy, v1, markerFences };
 }
 
 export function instantiations(template: string): string[] {
@@ -352,6 +360,9 @@ export function validateTemplateLine(line: string, expectedType: TemplateType): 
 		if (parsed.metadata.type !== expectedType) {
 			problems.push(`instancia \`${variant}\` parsea como type=${parsed.metadata.type}, esperado ${expectedType}`);
 		}
+		if (parsed.markerName !== "Chiche-Tracking" || parsed.version !== 2) {
+			problems.push(`instancia \`${variant}\` es un template ${parsed.markerName} v${parsed.version}: los artefactos nuevos nacen Chiche-Tracking: version=2`);
+		}
 	}
 	return { ok: problems.length === 0, problems };
 }
@@ -398,13 +409,24 @@ function countByType(census: Census): Record<TemplateType, number> {
 
 for (const skill of SKILLS) {
 	for (const harness of HARNESSES) {
-		test(`${harness}/${skill}: templates de marker v1 esperados y sin marker legacy`, async () => {
+		test(`${harness}/${skill}: templates de marker v2 esperados, sin template v1 y sin marker legacy`, async () => {
 			const census = censusTemplates(await readRepoFile(`${harness}/${skill}/SKILL.md`));
 			assert.deepEqual(
 				census.legacy,
 				[],
-				`${harness}/${skill}/SKILL.md instruye un marker SDD-Tracking legacy (sin version/type)`,
+				`${harness}/${skill}/SKILL.md instruye un marker legacy (sin version/type)`,
 			);
+			assert.deepEqual(
+				census.v1,
+				[],
+				`${harness}/${skill}/SKILL.md instruye un template SDD-Tracking v1: los artefactos nuevos nacen Chiche-Tracking: version=2`,
+			);
+			for (const entry of census.canonical) {
+				assert.ok(
+					entry.line.startsWith(V2_TEMPLATE_PREFIX),
+					`${harness}/${skill}/SKILL.md linea de fence ${entry.fenceLine}: el template no abre con \`${V2_TEMPLATE_PREFIX}\``,
+				);
+			}
 			for (const entry of census.canonical) {
 				assert.notEqual(
 					entry.type,
@@ -415,7 +437,7 @@ for (const skill of SKILLS) {
 			assert.deepEqual(
 				countByType(census),
 				EXPECTED_TEMPLATES[skill],
-				`${harness}/${skill}/SKILL.md no instruye los templates de marker v1 esperados`,
+				`${harness}/${skill}/SKILL.md no instruye los templates de marker v2 esperados`,
 			);
 		});
 	}
@@ -971,11 +993,30 @@ test("autotest: un template que falta en un harness se reporta como diferencia d
 
 test("autotest: un template no canonico falla la validacion con diagnostico del contrato", () => {
 	const verdict = validateTemplateLine(
-		"<!-- SDD-Tracking: version=1; type=spec; state=<draft|approved>; issue=<#NN|owner/repo#NN|none>; grill=<ref|none> -->",
+		"<!-- Chiche-Tracking: version=2; type=spec; state=<draft|approved>; issue=<#NN|owner/repo#NN|none>; grill=<ref|none> -->",
 		"spec",
 	);
 	assert.equal(verdict.ok, false);
 	assert.match(verdict.problems.join("\n"), /missing-key/);
+});
+
+test("autotest: un template Chiche-Tracking v2 canonico pasa la validacion", () => {
+	const line = "<!-- Chiche-Tracking: version=2; type=spec; state=<draft|approved>; issue=<#NN|owner/repo#NN|none>; grill=<ref|none>; superseded-by=none -->";
+	assert.deepEqual(validateTemplateLine(line, "spec"), { ok: true, problems: [] });
+	const census = censusTemplates(["```markdown", "# Spec — X", line, "```"].join("\n"));
+	assert.equal(census.canonical.length, 1);
+	assert.deepEqual(census.v1, []);
+	assert.deepEqual(census.legacy, []);
+});
+
+test("autotest: un template SDD-Tracking v1 se censa y se reporta como template v1", () => {
+	const line = "<!-- SDD-Tracking: version=1; type=spec; state=<draft|approved>; issue=<#NN|owner/repo#NN|none>; grill=<ref|none>; superseded-by=none -->";
+	const census = censusTemplates(["```markdown", "# Spec — X", line, "```"].join("\n"));
+	assert.equal(census.canonical.length, 1, "el censo todavia lee el marker v1");
+	assert.equal(census.v1.length, 1, "pero lo clasifica como template v1");
+	const verdict = validateTemplateLine(line, "spec");
+	assert.equal(verdict.ok, false);
+	assert.match(verdict.problems.join("\n"), /template SDD-Tracking v1: los artefactos nuevos nacen Chiche-Tracking: version=2/);
 });
 
 test("autotest: un marker legacy dentro de un template se clasifica como legacy", () => {
@@ -1213,7 +1254,8 @@ test("#84 review #86, #103 CA-5, review #105: en Codex, escribir en <git-common-
 // artefacto que otro harness actualiza puede traer cualquiera de los dos
 // markers. Cada regla de actualización lo dice, y la regla principal de cada
 // skill lo dice con esta frase literal. Los templates de artefactos nuevos
-// siguen en v1 en esta capa.
+// ya emiten `Chiche-Tracking: version=2` (issue #103, CA-13): el census de
+// arriba los exige v2.
 const MARKER_BOTH = "`SDD-Tracking: version=1` o `Chiche-Tracking: version=2`";
 const MARKER_NEVER_ANOTHER = "nunca se agrega otro";
 const MARKER_UPDATE_RULE = "El marker de un artefacto es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: el existente se reemplaza en su lugar conservando su nombre y su versión, y nunca se agrega otro al lado.";

@@ -257,7 +257,7 @@ test("CA-5: los cuatro harnesses cierran, reanudan y pausan por bloques sin camb
 		for (const problem of missing(skill, BLOCKS_LIFECYCLE)) problems.push(`${harness}/grill: ${problem}`);
 		const templates = fencedBlocks(skill).filter((fence) => fence.content.includes("type=grill"));
 		if (templates.length !== 1) problems.push(`${harness}/grill: ${templates.length} templates con marker type=grill`);
-		for (const problem of missing(templates[0]?.content ?? "", [/SDD-Tracking: version=1; type=grill; state=<paused\|finalized>; issue=<#NN\|owner\/repo#NN\|none>; grill=<ref>; project=<ref>/, /## Hechos comprobados[\s\S]*## Decisiones resueltas[\s\S]*## Ramas pendientes[\s\S]*## Diseño[\s\S]*## Handoff/])) problems.push(`${harness}/grill: template del handoff ${problem}`);
+		for (const problem of missing(templates[0]?.content ?? "", [/Chiche-Tracking: version=2; type=grill; state=<paused\|finalized>; issue=<#NN\|owner\/repo#NN\|none>; grill=<ref>; project=<ref>/, /## Hechos comprobados[\s\S]*## Decisiones resueltas[\s\S]*## Ramas pendientes[\s\S]*## Diseño[\s\S]*## Handoff/])) problems.push(`${harness}/grill: template del handoff ${problem}`);
 	}
 	assert.deepEqual(problems, []);
 });

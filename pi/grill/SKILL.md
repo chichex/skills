@@ -284,7 +284,7 @@ El handoff es el artefacto interoperable del grill: los cuatro harnesses lo escr
 ```markdown
 # Grill — <tema>
 <!-- Estado: paused|finalized. Proyecto: <ruta absoluta>. Fuente: <issue o pedido>. -->
-<!-- SDD-Tracking: version=1; type=grill; state=<paused|finalized>; issue=<#NN|owner/repo#NN|none>; grill=<ref>; project=<ref> -->
+<!-- Chiche-Tracking: version=2; type=grill; state=<paused|finalized>; issue=<#NN|owner/repo#NN|none>; grill=<ref>; project=<ref> -->
 
 ## Hechos comprobados
 ...

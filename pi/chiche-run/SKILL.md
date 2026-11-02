@@ -224,10 +224,10 @@ Antes de levantar o presentar la app para validación humana:
    - `git diff --name-status <base>..HEAD` es la autoridad sobre qué cambió: cada CA verificado tiene que ser consistente con ese diff — sus tests nuevos aparecen, los archivos tocados son los del plan. Un CA "verificado" cuyos tests no están en el diff no está verificado.
    - Diffear los tests contra el base buscando verificación falsificada: asserts aflojados, `skip`/`only` colados, tests borrados, umbrales bajados. Si aparece algo, ese CA vuelve a rojo — no se narra.
    - La columna Evidencia cita SOLO comandos corridos en esta corrida (comando + resultado observado), y el título de la tabla anota el sha de HEAD sobre el que corrió la verificación final.
-5. Actualizar la spec (único artefacto que el run modifica después del commit de entrada; los artefactos upstream importados se preservan sin reescribir): estado del header a `implementada` — tanto el campo `Estado:` del comentario humano (reconciliarlo si discrepa) como su marker (`SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: conserva su nombre y su versión y nunca se agrega otro), que en v1 queda:
+5. Actualizar la spec (único artefacto que el run modifica después del commit de entrada; los artefactos upstream importados se preservan sin reescribir): estado del header a `implementada` — tanto el campo `Estado:` del comentario humano (reconciliarlo si discrepa) como su marker (`SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: conserva su nombre y su versión y nunca se agrega otro), que con un marker v2 queda:
 
 ```markdown
-<!-- SDD-Tracking: version=1; type=spec; state=implemented; issue=<#NN|owner/repo#NN|none>; grill=<ref|none>; superseded-by=none -->
+<!-- Chiche-Tracking: version=2; type=spec; state=implemented; issue=<#NN|owner/repo#NN|none>; grill=<ref|none>; superseded-by=none -->
 ```
 
 La transición preserva la identidad: `issue`, `grill` y `superseded-by` conservan exactamente los valores que la spec ya tenía (fuera de `superseded`, `superseded-by` es siempre `none`). Es un upsert. El marker de un artefacto es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: el existente se reemplaza en su lugar conservando su nombre y su versión, y nunca se agrega otro al lado. Si la spec solo trae un marker legacy (sin `version=`) o ninguno, se inserta el v1 completo derivando `issue` y `grill` del preámbulo. Además, una sección nueva al final:
