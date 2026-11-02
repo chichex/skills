@@ -848,118 +848,33 @@ test(".chiche/project.md lleva el marker canonico type=project", async () => {
 	);
 });
 
-// --- #103 CA-7: alias deprecados sdd-<x> -------------------------------------
+// --- #103 CA-21: los alias sdd-<x> se retiraron en 4.0.0 ---------------------
 
-const ALIAS_SUFFIXES = ["init", "spec", "run", "land"] as const;
-const ALIAS_MAX_LINES = 25;
+const RETIRED_ALIASES = ["sdd-init", "sdd-spec", "sdd-run", "sdd-land"] as const;
 
-// Problemas de un alias `sdd-<suffix>`: tope de lineas, frontmatter, aviso
-// literal e invocacion del `chiche-<suffix>` con el prefijo del harness.
-function aliasProblems(path: string, text: string, suffix: string, prefix: string): string[] {
+// Lineas que el grep de CA-21 puede devolver: solo la nota de retiro de los README.
+const RETIREMENT_NOTE = /^README(?:\.en)?\.md:\d+:.*\bretir/;
+
+test("#103 CA-21: ninguna carpeta sdd-* reaparece en ningun harness", async () => {
 	const problems: string[] = [];
-	const lines = text.replace(/\n$/, "").split("\n");
-	if (lines.length > ALIAS_MAX_LINES) problems.push(`${path}: ${lines.length} lineas, el alias no puede superar ${ALIAS_MAX_LINES}`);
-	const frontmatter = text.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? "";
-	if (!new RegExp(`^name: sdd-${suffix}$`, "m").test(frontmatter)) problems.push(`${path}: name no es sdd-${suffix}`);
-	if (!new RegExp(`^description: .*alias deprecado de chiche-${suffix}\\b`, "m").test(frontmatter)) {
-		problems.push(`${path}: la description no dice "alias deprecado de chiche-${suffix}"`);
-	}
-	const notice = `sdd-${suffix} es un alias deprecado: usá chiche-${suffix}`;
-	if (lines.filter((line) => line.trim() === notice).length !== 1) problems.push(`${path}: falta una sola linea "${notice}"`);
-	if (!text.includes(`\`${prefix}chiche-${suffix}\``)) problems.push(`${path}: no carga \`${prefix}chiche-${suffix}\``);
-	return problems;
-}
-
-// El frontmatter de un alias (sin los `---`) y su cuerpo (todo lo que sigue).
-function splitAlias(text: string): { frontmatter: string; body: string } {
-	const match = text.match(/^---\n([\s\S]*?)\n---\n/);
-	return { frontmatter: match?.[1] ?? "", body: match ? text.slice(match[0].length) : text };
-}
-
-// Solo Claude Code corta la autoinvocación del alias en el frontmatter
-// (`disable-model-invocation: true`; el usuario igual puede escribir `/sdd-<x>`).
-// En Codex lo hace el sidecar, y los demás harnesses no reconocen el campo: uno
-// desconocido puede romper su loader, así que ahí no va.
-function aliasInvocationProblems(path: string, text: string, harness: Harness): string[] {
-	const { frontmatter } = splitAlias(text);
-	const declared = /^disable-model-invocation: true$/m.test(frontmatter);
-	if (harness === "claude" && !declared) return [`${path}: falta disable-model-invocation: true en el frontmatter`];
-	if (harness !== "claude" && /^disable-model-invocation:/m.test(frontmatter)) {
-		return [`${path}: disable-model-invocation es solo de Claude Code`];
-	}
-	return [];
-}
-
-test("#103 CA-7: cada sdd-<x> es un alias mínimo de chiche-<x>, con el cuerpo idéntico entre los cinco harnesses", async () => {
-	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
-	const problems: string[] = [];
-	for (const suffix of ALIAS_SUFFIXES) {
-		const normalized = new Map<Harness, string>();
-		for (const harness of HARNESSES) {
-			const path = `${harness}/sdd-${suffix}/SKILL.md`;
-			const text = await readRepoFile(path).catch(() => null);
-			if (text === null) {
-				problems.push(`${path}: falta el alias`);
-				continue;
-			}
-			problems.push(...aliasProblems(path, text, suffix, prefixes[harness]));
-			problems.push(...aliasInvocationProblems(path, text, harness));
-			// Frontmatter y cuerpo identicos entre harnesses, salvo el campo que solo
-			// lleva Claude Code y el token de invocacion (review de #106).
-			const { frontmatter, body } = splitAlias(text);
-			const comparable = `${frontmatter.replace(/^disable-model-invocation: true$/m, "").replace(/\n+$/, "")}\n---\n${body}`;
-			normalized.set(harness, normalizeInvocations(comparable, prefixes[harness]));
-		}
-		const reference = normalized.get("claude");
-		for (const [harness, candidate] of normalized) {
-			if (reference !== undefined && candidate !== reference) {
-				problems.push(`${harness}/sdd-${suffix}/SKILL.md difiere de claude: ${firstDifference(reference, candidate)}`);
-			}
+	for (const harness of HARNESSES) {
+		for (const alias of RETIRED_ALIASES) {
+			const text = await readRepoFile(`${harness}/${alias}/SKILL.md`).catch(() => null);
+			if (text !== null) problems.push(`${harness}/${alias}/SKILL.md: el alias se retiro en 4.0.0`);
 		}
 	}
 	assert.deepEqual(problems, []);
 });
 
-test("#103 CA-7: en Codex el sidecar de cada alias apaga la invocación implícita", async () => {
-	for (const suffix of ALIAS_SUFFIXES) {
-		const sidecar = await readRepoFile(`codex/sdd-${suffix}/agents/openai.yaml`);
-		assert.match(sidecar, /^\s+allow_implicit_invocation: false$/m, `codex/sdd-${suffix}`);
-		assert.match(sidecar, new RegExp(`\\$chiche-${suffix}\\b`), `codex/sdd-${suffix} apunta a $chiche-${suffix}`);
-	}
-});
-
-test("autotest: un alias de 26 líneas o sin aviso literal falla con diagnóstico", () => {
-	const valid = [
-		"---",
-		"name: sdd-run",
-		"description: alias deprecado de chiche-run.",
-		"---",
-		"",
-		"sdd-run es un alias deprecado: usá chiche-run",
-		"",
-		"Cargá `/chiche-run`.",
-	];
-	assert.deepEqual(aliasProblems("x", `${valid.join("\n")}\n`, "run", "/"), []);
-	const long = [...valid, ...Array.from({ length: 26 - valid.length }, () => "relleno")];
-	assert.deepEqual(aliasProblems("x", `${long.join("\n")}\n`, "run", "/"), ["x: 26 lineas, el alias no puede superar 25"]);
-	const silent = valid.filter((line) => !line.startsWith("sdd-run es"));
-	assert.deepEqual(aliasProblems("x", silent.join("\n"), "run", "/"), [
-		'x: falta una sola linea "sdd-run es un alias deprecado: usá chiche-run"',
-	]);
-});
-
-test("autotest: la invocación del alias es de Claude Code y la comparación entre harnesses mira solo el cuerpo", () => {
-	const alias = (extra: string[]) => ["---", "name: sdd-run", "description: alias deprecado de chiche-run.", ...extra, "---", "", "sdd-run es un alias deprecado: usá chiche-run", "", "Cargá `/chiche-run`.", ""].join("\n");
-	const gated = alias(["disable-model-invocation: true"]);
-	assert.deepEqual(aliasInvocationProblems("c", gated, "claude"), []);
-	assert.deepEqual(aliasInvocationProblems("c", alias([]), "claude"), ["c: falta disable-model-invocation: true en el frontmatter"]);
-	assert.deepEqual(aliasInvocationProblems("c", alias(["disable-model-invocation: false"]), "claude"), ["c: falta disable-model-invocation: true en el frontmatter"]);
-	for (const harness of ["codex", "opencode", "pi", "antigravity"] as const) {
-		assert.deepEqual(aliasInvocationProblems("x", alias([]), harness), [], harness);
-		assert.deepEqual(aliasInvocationProblems("x", gated, harness), ["x: disable-model-invocation es solo de Claude Code"], harness);
-	}
-	assert.equal(splitAlias(gated).body, splitAlias(alias([])).body, "el campo del frontmatter no cuenta como diferencia de cuerpo");
-	assert.deepEqual(aliasProblems("c", gated, "run", "/"), [], "el campo no afecta el nombre ni la description");
+test("#103 CA-21: fuera de los README nadie nombra sdd-init|spec|run|land", () => {
+	const grep = spawnSync(
+		"grep",
+		["-rn", "sdd-init\\|sdd-spec\\|sdd-run\\|sdd-land", "claude", "codex", "opencode", "pi", "antigravity", "agents", "evals", "README.md", "README.en.md"],
+		{ cwd: fileURLToPath(repoFile("")), encoding: "utf8" },
+	);
+	const lines = grep.stdout.split("\n").filter((line) => line.length > 0);
+	assert.deepEqual(lines.filter((line) => !RETIREMENT_NOTE.test(line)), [], "solo queda la nota de retiro de los README");
+	assert.ok(lines.length > 0, "los README registran el retiro");
 });
 
 // --- Autotests del gate: puede fallar y con que diagnostico ------------------

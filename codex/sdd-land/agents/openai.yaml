@@ -1,6 +1,0 @@
-interface:
-  display_name: "sdd-land (alias deprecado)"
-  short_description: "Alias deprecado de chiche-land"
-  default_prompt: "Usá $chiche-land: sdd-land es un alias deprecado."
-policy:
-  allow_implicit_invocation: false

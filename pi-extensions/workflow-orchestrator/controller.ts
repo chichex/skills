@@ -487,15 +487,6 @@ export function createWorkflowController(
 		description: "Run an SDD spec target in a fresh linked session: /chiche-run <ruta|#NN|owner/repo#NN|GitHub issue URL>",
 		handler: launchRun,
 	});
-	// Issue #103, S11: el nombre viejo sigue andando como alias deprecado de
-	// /chiche-run: avisa y delega en el mismo handler con los mismos argumentos.
-	pi.registerCommand("sdd-run", {
-		description: "alias deprecado de chiche-run: usá /chiche-run <ruta|#NN|owner/repo#NN|GitHub issue URL>",
-		async handler(args, context) {
-			notify(context, "sdd-run es un alias deprecado: usá chiche-run", "info");
-			await launchRun(args, context);
-		},
-	});
 	pi.registerCommand("grill", {
 		description: "Grill a GitHub issue in its local project: /grill <#NN|owner/repo#NN|GitHub issue URL>",
 		async handler(args, context) {

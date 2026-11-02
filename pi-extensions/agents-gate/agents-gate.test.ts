@@ -1134,34 +1134,31 @@ const LEGACY_CODEX_BEGIN = "# >>> chichex/skills: prefer Codex over Pi >>>";
 const LEGACY_CODEX_END = "# <<< chichex/skills: prefer Codex over Pi <<<";
 const SKILL_HARNESSES = ["claude", "codex", "opencode", "antigravity", "pi"] as const;
 
-// Un destino como lo dejaba un install.sh anterior al renombre: manifest viejo
-// con un skill retirado, sdd-run y un nombre hostil; una copia completa vieja
-// de sdd-run con un archivo extra; y un skill ajeno que nunca paso por el
-// manifest.
+// Un destino como lo dejaban los install.sh anteriores a 4.0.0 (CA-23): el
+// manifest viejo con un skill retirado, la copia completa de sdd-run (2.x) y un
+// nombre hostil; el manifest nuevo de 3.x con el alias sdd-spec; y un skill
+// ajeno que nunca paso por ningun manifest.
 async function seedLegacyChichexDestination(dest: string): Promise<void> {
 	await mkdir(join(dest, "retired-skill"), { recursive: true });
 	await writeFile(join(dest, "retired-skill", "SKILL.md"), "retirado\n");
 	await mkdir(join(dest, "sdd-run", "references"), { recursive: true });
 	await writeFile(join(dest, "sdd-run", "SKILL.md"), "---\nname: sdd-run\n---\nDoctrina completa vieja.\n");
 	await writeFile(join(dest, "sdd-run", "references", "stale.md"), "viejo\n");
+	await mkdir(join(dest, "sdd-spec"), { recursive: true });
+	await writeFile(join(dest, "sdd-spec", "SKILL.md"), "---\nname: sdd-spec\ndescription: alias deprecado de chiche-spec.\n---\n");
 	await mkdir(join(dest, "user-skill"), { recursive: true });
 	await writeFile(join(dest, "user-skill", "SKILL.md"), "ajeno\n");
 	await writeFile(join(dest, LEGACY_MANIFEST), "retired-skill\nsdd-run\n../sentinel\n");
+	await writeFile(join(dest, CHICHE_MANIFEST), "sdd-spec\n");
 }
 
 async function assertLegacyChichexDestinationMigrated(label: string, dest: string, source: string): Promise<void> {
 	assert.equal(await absolutePathExists(join(dest, "retired-skill")), false, `${label}: el skill retirado del manifest viejo debe podarse`);
-	assert.equal(
-		await absolutePathExists(join(dest, "sdd-run", "references", "stale.md")),
-		false,
-		`${label}: la copia completa vieja de sdd-run no deja archivos sueltos`,
-	);
-	assert.equal(
-		await readFile(join(dest, "sdd-run", "SKILL.md"), "utf8"),
-		await readFile(join(source, "sdd-run", "SKILL.md"), "utf8"),
-		`${label}: sdd-run/SKILL.md es el alias del checkout`,
-	);
-	assert.deepEqual(await fileTreeOf(join(dest, "sdd-run")), await fileTreeOf(join(source, "sdd-run")), `${label}: sdd-run es exactamente el alias`);
+	assert.equal(await absolutePathExists(join(dest, "sdd-run")), false, `${label}: la copia 2.x de sdd-run se poda entera`);
+	assert.equal(await absolutePathExists(join(dest, "sdd-spec")), false, `${label}: el alias sdd-spec de 3.x se poda`);
+	for (const alias of ["sdd-init", "sdd-spec", "sdd-run", "sdd-land"]) {
+		assert.equal(await absolutePathExists(join(source, alias)), false, `${label}: el checkout no trae ${alias}`);
+	}
 	for (const name of ["chiche-init", "chiche-spec", "chiche-run", "chiche-land"]) {
 		assert.deepEqual(await fileTreeOf(join(dest, name)), await fileTreeOf(join(source, name)), `${label}: ${name} instalado`);
 	}
@@ -1175,7 +1172,7 @@ async function assertLegacyChichexDestinationMigrated(label: string, dest: strin
 	assert.equal(await readFile(join(dest, "user-skill", "SKILL.md"), "utf8"), "ajeno\n", `${label}: el skill ajeno queda intacto`);
 }
 
-test("issue #103 CA-10: install.sh claude|codex|all migra un .chichex-skills-managed viejo a .chiche-managed y reemplaza la copia vieja de sdd-run por el alias", async () => {
+test("issue #103 CA-23: install.sh claude|codex|all migra un .chichex-skills-managed viejo a .chiche-managed y poda las copias sdd-* instaladas por 2.x y 3.x sin tocar skills ajenos", async () => {
 	const realHomeManifests = [
 		join(homedir(), ".claude", "skills"),
 		join(homedir(), ".codex", "skills"),
@@ -1227,6 +1224,13 @@ test("issue #103 CA-10: install.sh claude|codex|all migra un .chichex-skills-man
 			assert.equal(result.status, 0, `install.sh ${which}: ${result.stdout}\n${result.stderr}`);
 			for (const harness of harnesses) {
 				await assertLegacyChichexDestinationMigrated(`install.sh ${which} (${harness})`, dests[harness], join(fixtureRepo, harness));
+			}
+			assert.match(result.stdout, /✗ sdd-run \(retirado del repo, podado\)/, `install.sh ${which}: avisa la poda de sdd-run`);
+			assert.match(result.stdout, /✗ sdd-spec \(retirado del repo, podado\)/, `install.sh ${which}: avisa la poda de sdd-spec`);
+			if (harnesses.includes("codex")) {
+				const codexConfig = await readFile(join(root, "dest", "codex-config.toml"), "utf8");
+				assert.ok(codexConfig.includes(join(dests.pi, "chiche-run", "SKILL.md")), `install.sh ${which}: el bloque Codex lista chiche-run\n${codexConfig}`);
+				assert.doesNotMatch(codexConfig, /sdd-(?:init|spec|run|land)/, `install.sh ${which}: el bloque Codex no lista alias sdd-*\n${codexConfig}`);
 			}
 			assert.equal(await readFile(sentinel, "utf8"), "no tocar", `install.sh ${which}: un nombre hostil del manifest viejo no borra fuera del destino`);
 		} finally {

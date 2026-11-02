@@ -104,7 +104,7 @@ test("workflow orchestrator exposes a controller without globally activating the
 		["launch_sdd_run", "launch_grill"],
 		"only explicitly confirmed direct launch tools are global; terminal triage remains lazy",
 	);
-	assert.deepEqual(commands, ["__sdd-dispatch", "chiche-run", "sdd-run", "grill"]);
+	assert.deepEqual(commands, ["__sdd-dispatch", "chiche-run", "grill"]);
 	assert.ok(events.includes("agent_settled"));
 	assert.ok(events.includes("before_agent_start"));
 	assert.ok(events.includes("resources_discover"));
@@ -620,17 +620,14 @@ test("/chiche-run validates its target and calls the shared direct launcher from
 	assert.deepEqual(notifications, []);
 });
 
-// Issue #103, S11: `/sdd-run` sigue funcionando como alias deprecado de
-// `/chiche-run`: avisa una vez y delega, con los mismos argumentos, en el mismo
-// handler.
-test("/sdd-run avisa que es un alias deprecado y después hace exactamente lo mismo que /chiche-run", async () => {
-	const commands = new Map<string, { description?: string; handler: (args: string, context: unknown) => Promise<void> }>();
-	const events: string[] = [];
-	const starts: unknown[] = [];
+// Issue #103, CA-22: `/sdd-run` se retiro en 4.0.0. Solo queda `/chiche-run`,
+// y ninguna descripcion de comando habla de alias.
+test("/sdd-run ya no existe y /chiche-run no es un alias", () => {
+	const commands = new Map<string, { description?: string }>();
 	const pi = {
 		events: createEventBus(),
 		registerTool() {},
-		registerCommand(name: string, command: { description?: string; handler: (args: string, context: unknown) => Promise<void> }) {
+		registerCommand(name: string, command: { description?: string }) {
 			commands.set(name, command);
 		},
 		on() {},
@@ -639,55 +636,10 @@ test("/sdd-run avisa que es un alias deprecado y después hace exactamente lo mi
 		setActiveTools() {},
 		sendUserMessage() {},
 	};
-	let failTarget: string | null = null;
-	orchestrator.createWorkflowController(pi as never, {
-		resolveDirectRunRequest: async (target: string, cwd: string) => {
-			events.push(`resolve:${target}@${cwd}`);
-			if (target === failTarget) return { ok: false, code: "invalid-target", message: "nope" };
-			return { ok: true, request: directRunRequest() };
-		},
-		startDirectRun: async (request: unknown) => {
-			events.push("start");
-			starts.push(request);
-			return { ok: true, code: "started" } as never;
-		},
-	} as never);
-	const context = (log: string[]) => ({
-		cwd: "/workspace/skills",
-		sessionManager: { getSessionId: () => "origin-session" },
-		async waitForIdle() { log.push("waitForIdle"); },
-		ui: { notify(message: string, level?: string) { log.push(`notify:${level}:${message}`); } },
-	});
-	const alias = commands.get("sdd-run");
-	const current = commands.get("chiche-run");
-	assert.ok(alias, "/sdd-run está registrado");
-	assert.ok(current);
-	assert.match(alias.description ?? "", /^alias deprecado de chiche-run\b/);
-	assert.doesNotMatch(current.description ?? "", /alias/i);
-
-	const notice = "notify:info:sdd-run es un alias deprecado: usá chiche-run";
-	const viaAlias: string[] = [];
-	await alias.handler("  #14  ", context(viaAlias));
-	const aliasStarts = starts.splice(0);
-	const aliasEvents = events.splice(0);
-	assert.equal(viaAlias[0], notice, "el aviso sale primero y exacto");
-	assert.deepEqual(aliasEvents, ["resolve:#14@/workspace/skills", "start"]);
-
-	const viaCurrent: string[] = [];
-	await current.handler("  #14  ", context(viaCurrent));
-	assert.deepEqual(events.splice(0), aliasEvents, "mismos efectos que /chiche-run");
-	assert.deepEqual(starts.splice(0), aliasStarts);
-	assert.deepEqual(viaAlias.slice(1), viaCurrent, "después del aviso, las mismas notificaciones y esperas");
-	assert.deepEqual(viaCurrent, ["waitForIdle"], "/chiche-run no emite el aviso");
-
-	// Un fallo se reporta igual por ambas rutas, con el aviso adelante solo en el alias.
-	failTarget = "#99";
-	const failedViaAlias: string[] = [];
-	const failedViaCurrent: string[] = [];
-	await alias.handler("#99", context(failedViaAlias));
-	await current.handler("#99", context(failedViaCurrent));
-	assert.equal(failedViaCurrent.length, 2);
-	assert.deepEqual(failedViaAlias, [notice, ...failedViaCurrent]);
+	orchestrator.createWorkflowController(pi as never, {} as never);
+	assert.equal(commands.has("sdd-run"), false, "/sdd-run se retiro en 4.0.0");
+	assert.ok(commands.has("chiche-run"));
+	for (const [name, command] of commands) assert.doesNotMatch(command.description ?? "", /alias/i, name);
 });
 
 test("/grill resolves a GitHub issue URL and starts Grill from a fresh command context", async () => {

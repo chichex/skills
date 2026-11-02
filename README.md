@@ -19,7 +19,7 @@ El corazón del repo, y su parte propia. Un pipeline de desarrollo con contrato 
 
 Invocados pelados (sin args) abren una **Fase 0 — Lanzador** que expone las opciones; pasarles args/flags saltea el menú.
 
-Los nombres anteriores `sdd-init`, `sdd-spec`, `sdd-run` y `sdd-land` siguen disponibles como alias deprecados de `chiche-*`: cada uno imprime una línea de aviso y carga el skill nuevo con los mismos argumentos.
+Los nombres anteriores `sdd-init`, `sdd-spec`, `sdd-run` y `sdd-land` se retiraron en 4.0.0: `chiche-init --update` migra los repos que todavía usan `.sdd/`, e `install.sh` poda las copias que instaló una 3.x.
 
 Los borradores de planificación no ensucian el checkout: `grill` escribe sus handoffs, cuestionarios y capturas en `<git-common-dir>/chiche/grills/` y `chiche-spec` sus specs locales en `<git-common-dir>/chiche/specs/`, donde `<git-common-dir>` es la salida de `git rev-parse --path-format=absolute --git-common-dir` (el `.git` del checkout principal, compartido por todos sus worktrees). No aparecen en `git status` ni viajan con un clon nuevo, y los reportes imprimen su ruta absoluta. Los skills leen cuatro lugares por tipo: `.chiche/<tipo>/` y `.sdd/<tipo>/` del árbol, con lo que un PR ya commiteó, y `<git-common-dir>/chiche/<tipo>/` y `<git-common-dir>/sdd/<tipo>/`. Ante el mismo nombre gana el del árbol sobre el del common-dir y `chiche` sobre `sdd`; un borrador que ya existe se actualiza en su lugar. Los lugares `sdd` quedan de lectura mientras dure la transición a la marca chiche (issue #103): `chiche-init --update` migra `.sdd/` a `.chiche/` y `<git-common-dir>/sdd/` a `<git-common-dir>/chiche/`. `chiche-run` los copia a `.chiche/` de su worktree en el primer commit del branch y después los borra de los dos common-dirs. Fuera de un repo git se escriben en `.chiche/` del cwd. El log de eventos sigue la misma regla: se escribe en `<git-common-dir>/chiche/events.jsonl` y se lee junto con el `<git-common-dir>/sdd/events.jsonl` previo.
 
@@ -54,7 +54,7 @@ En Pi, `grill` es el único entry point de entrevista: solo desambigua y produce
 
 #### Riel orquestado y fronteras de sesión
 
-Los entrypoints públicos son `/issues` para triage, `/grill <#NN|owner/repo#NN|URL de issue>` para iniciar una entrevista en el checkout correcto, `/grills` para retomar entrevistas, `/specs` para buscar/inspeccionar specs y `/chiche-run <ruta|#NN|owner/repo#NN|URL de issue>` para autorizar directamente una ejecución. `/sdd-run` sigue andando como alias deprecado de `/chiche-run`: avisa y hace lo mismo.
+Los entrypoints públicos son `/issues` para triage, `/grill <#NN|owner/repo#NN|URL de issue>` para iniciar una entrevista en el checkout correcto, `/grills` para retomar entrevistas, `/specs` para buscar/inspeccionar specs y `/chiche-run <ruta|#NN|owner/repo#NN|URL de issue>` para autorizar directamente una ejecución.
 
 `/grills` y `select_grill_session` comparten un inventario que reconcilia snapshots runtime globales con handoffs portables bajo `.chiche/grills/` y `.sdd/grills/` en cada root conocido y en `<git-common-dir>/chiche/grills/` y `<git-common-dir>/sdd/grills/`, leídos una sola vez por repo. Abre en el proyecto actual; «Ver todos» incorpora sólo proyectos conocidos por Pi, sin escanear el disco. Un handoff pausado sin snapshot se importa únicamente al confirmar **Retomar** y conserva el Markdown completo. Si el marker declara otra ruta histórica, se muestra como advertencia y manda la raíz física; en el common-dir manda el `Proyecto` si nombra un worktree del repo y, si no, el worktree principal. Para un handoff finalizado sin snapshot, Grill → Spec pasa la ruta absoluta validada a `chiche-spec --from-grill "<ruta>"`; con snapshot compatible conserva el flujo por ID. Listar, inspeccionar o importar no reescribe el handoff fuente.
 
@@ -77,7 +77,7 @@ El repo también conserva todas las extensiones globales de Pi usadas por este w
 | **`ask-user-question`** | Herramientas `ask_user_question` para una decisión y `ask_user_questions` para rondas de 2 a 4 decisiones independientes, ambas con selección simple/múltiple, recomendaciones, respuesta libre y envío vacío opcional. |
 | **`claude-tool-renderer.ts`** | Presenta las ediciones con encabezado y diff compacto al estilo Claude Code. |
 | **`grill-tools`** | Persistencia con `grill_session`, publicación canónica de specs con `persist_sdd_spec`, selector `select_grill_session` y comandos `/grills` y `/specs`; resume Grill y Grill → Spec conservan la conversación. |
-| **`workflow-orchestrator`** | Consume `WorkflowResolutionV1`, materializa skills canónicos, administra receipts one-shot acotados y abre sesiones hijas same/cross-project. También registra `/chiche-run` (con `/sdd-run` como alias deprecado), `/grill`, `launch_sdd_run` y `launch_grill`; el gate de ejecución `launch_sdd_run` sólo queda activo cuando la raíz tiene un `.chiche/project.md` canónico (o un `.sdd/project.md` canónico en un repo todavía sin migrar). |
+| **`workflow-orchestrator`** | Consume `WorkflowResolutionV1`, materializa skills canónicos, administra receipts one-shot acotados y abre sesiones hijas same/cross-project. También registra `/chiche-run`, `/grill`, `launch_sdd_run` y `launch_grill`; el gate de ejecución `launch_sdd_run` sólo queda activo cuando la raíz tiene un `.chiche/project.md` canónico (o un `.sdd/project.md` canónico en un repo todavía sin migrar). |
 | **`inline-skill-autocomplete`** | Abre el autocomplete de skills al escribir `/` o `/skill:…` en cualquier punto del borrador. Al enviar, antepone la invocación para que Pi la expanda correctamente. Ofrece `skill:chiche-*` y, al final, los alias deprecados marcados como `skill:sdd-x (alias)`, para que no desplacen a los vigentes. |
 | **`github-issue-selector.ts`** + **`github-issues.ts`** | Herramienta `select_github_issue` y comando `/issues` con selección múltiple. El menú unificado permite analizar mediante `issue-triage`, cerrar en bulk o eliminar en bulk. |
 | **`github-prs`** | Comando `/prs`; su acción de review invoca `/skill:code-review`. |
@@ -153,7 +153,7 @@ Los skills de `claude/` se pueden instalar como plugin de Claude Code, sin clona
 /plugin install chiche@chichex
 ```
 
-Desde la 3.0.0 el plugin se llama `chiche` (antes `chichex-skills`). Si tenés instalado `chichex-skills@chichex`, corré `/plugin uninstall chichex-skills@chichex` antes de instalar `chiche@chichex`. Los nombres viejos `sdd-init`, `sdd-spec`, `sdd-run` y `sdd-land` siguen como alias deprecados de `chiche-*`.
+Desde la 3.0.0 el plugin se llama `chiche` (antes `chichex-skills`). Si tenés instalado `chichex-skills@chichex`, corré `/plugin uninstall chichex-skills@chichex` antes de instalar `chiche@chichex`. Los nombres viejos `sdd-init`, `sdd-spec`, `sdd-run` y `sdd-land` se retiraron en 4.0.0.
 
 El plugin expone todos los skills de `claude/` y los agentes de `agents/` — los subagentes custom `implementer` y `reviewer` que la doctrina SDD invoca por su `description`, no por nombre fijo.
 
@@ -266,7 +266,7 @@ cp -R pi-extensions/*  ~/.pi/agent/extensions/
 cp pi-themes/*.json    ~/.pi/agent/themes/
 ```
 
-Una vez instalados, Codex los invoca como `$grill`, `$code-review`, `$chiche-spec`, etc., o los carga según su `description` — salvo `chiche-run`: su sidecar `agents/openai.yaml` declara `policy.allow_implicit_invocation: false`, así que sólo se ejecuta al invocarlo explícitamente con `$chiche-run`. Antigravity, Claude Code y opencode usan sus comandos habituales (`/nombre`). En Pi se usan como `/skill:grill`, `/skill:code-review`, `/skill:chiche-spec` y equivalentes; `/skill:sdd-init`, `/skill:sdd-spec`, `/skill:sdd-run` y `/skill:sdd-land` siguen andando como alias deprecados.
+Una vez instalados, Codex los invoca como `$grill`, `$code-review`, `$chiche-spec`, etc., o los carga según su `description` — salvo `chiche-run`: su sidecar `agents/openai.yaml` declara `policy.allow_implicit_invocation: false`, así que sólo se ejecuta al invocarlo explícitamente con `$chiche-run`. Antigravity, Claude Code y opencode usan sus comandos habituales (`/nombre`). En Pi se usan como `/skill:grill`, `/skill:code-review`, `/skill:chiche-spec` y equivalentes.
 
 En OpenCode, si `permission.skill` usa una allowlist, habilitá también el nombre del skill en `opencode.json`. [Gana la última regla que coincide](https://opencode.ai/docs/permissions/#granular-rules-object-syntax): poné `"*"` primero y las reglas específicas después. Ejemplo completo para este flujo:
 
@@ -284,7 +284,7 @@ En OpenCode, si `permission.skill` usa una allowlist, habilitá también el nomb
 }
 ```
 
-**Si venís de la versión anterior:** agregá `chiche-spec` y `chiche-run` a tu allowlist. Con `"*": "deny"` quedan denegados aunque `sdd-spec` y `sdd-run` sigan en `allow`. Los `sdd-*` solo hacen falta si seguís usando los alias.
+**Si venís de la versión anterior:** agregá `chiche-spec` y `chiche-run` a tu allowlist. Las entradas `sdd-spec` y `sdd-run` de la allowlist anterior ya no hacen falta: esos alias se retiraron en 4.0.0.
 
 Para encadenar desde `issue-triage`, también deben estar instalados y habilitados `grill`, `chiche-spec` y `chiche-run`. Si la carga del skill elegido falla o queda denegada, el triage muestra el comando exacto y termina sin ejecutar el stage. Copiar los skills no cambia esos permisos; si no aparecen en la sesión abierta, abrí una nueva.
 
