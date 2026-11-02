@@ -96,7 +96,7 @@ const DOCTRINE: Record<string, RegExp[]> = {
 	"CA-14": [
 		/`gh auth status`/,
 		/branch default leído del remote[\s\S]*nunca asumir `main`/,
-		/Leer `\.sdd\/project\.md` si existe[\s\S]*`## Comandos` verifican un branch actualizado[\s\S]*`## Limites` rigen como siempre, salvo las prohibiciones de merge[\s\S]*invocarlo y confirmar el plan es la autorización humana[\s\S]*el plan de la Fase 2 cita la línea textual y avisa que confirmar la pisa/,
+		/Leer `\.chiche\/project\.md` si existe[\s\S]*`## Comandos` verifican un branch actualizado[\s\S]*`## Limites` rigen como siempre, salvo las prohibiciones de merge[\s\S]*invocarlo y confirmar el plan es la autorización humana[\s\S]*el plan de la Fase 2 cita la línea textual y avisa que confirmar la pisa/,
 		/Respetar los `## Limites` del contrato, salvo las prohibiciones de merge[\s\S]*solo cae la parte de merge/,
 		/`gh stack` exigido solo si algún target es un stack/,
 		/un PR pertenece a un stack si su `baseRefName` no es el default o si existe algún PR abierto cuyo `baseRefName` es su `headRefName`[\s\S]*se confirma con `gh stack view --json`/,

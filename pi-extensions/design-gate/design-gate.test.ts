@@ -574,7 +574,7 @@ const SDD_SPEC_DESIGN: RegExp[] = [
 ];
 
 const SDD_RUN_DESIGN: RegExp[] = [
-	/La Fase 1 lee `## Diseño` de `\.sdd\/project\.md`/,
+	/La Fase 1 lee `## Diseño` de `\.chiche\/project\.md`/,
 	/La Fase 2 imprime, junto al plan efímero y solo si la spec trae `## Diseño`, el plan de diseño/,
 	/por pantalla o componente: tokens y componentes del inventario que reusa, qué crea nuevo y qué referencia o captura debe igualar/,
 	/Si la superficie está `sin sistema`, aplica la doctrina mínima de `\/design-system`: plan de tokens, revisar contra el pedido y el inventario, construir y autocrítica/,
@@ -583,10 +583,10 @@ const SDD_RUN_DESIGN: RegExp[] = [
 	/En la Fase 3, cada CA de UI con mecanismo de captura produce la captura de la implementación con el comando que la spec declara/,
 	/la celda `Evidencia` cita el comando y la ruta de la captura; la cabecera `\| CA \| Capa \| Estado \| Evidencia \|` no cambia/,
 	/`## Fidelidad visual` con la tabla `\| Pantalla o estado \| Referencia \| Implementacion \| Diferencias declaradas \|`, ubicada antes de `## Riesgo de merge`, que sigue siendo la última sección/,
-	/se commitean en el branch bajo `\.sdd\/evidence\/<slug>\/` y se embeben por URL raw del sha del commit que las agrega/,
+	/se commitean en el branch bajo `\.chiche\/evidence\/<slug>\/` y se embeben por URL raw del sha del commit que las agrega/,
 	/`gh stack sync`[^\n]*reescriben las URLs/,
-	/`\.sdd\/grills\/<nombre-real-del-handoff>\/`[^\n]*artefactos de entrada de la Fase 1\.4/,
-	/`\.sdd\/evidence\/` queda fuera de los gates de tamaño de PR y de líneas por archivo/,
+	/`\.chiche\/grills\/<nombre-real-del-handoff>\/`[^\n]*artefactos de entrada de la Fase 1\.4/,
+	/`\.chiche\/evidence\/` queda fuera de los gates de tamaño de PR y de líneas por archivo/,
 	/resincronización del body[^\n]*conserva `## Fidelidad visual`/,
 	/un fix sobre un CA de UI rehace su captura/,
 	/En una capa superior[^\n]*al final de su sección de capa, antes de la línea de riesgo si la hay/,
