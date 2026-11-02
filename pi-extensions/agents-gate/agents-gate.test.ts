@@ -693,6 +693,14 @@ test("CA-8: install.sh claude avisa la sombra del plugin chiche (o del viejo chi
 				/\/plugin update chichex-skills/,
 				`el aviso no nombra el plugin viejo (${registry})`,
 			);
+			// Review de la capa 2 (R4-legacy-plugin-remediation): `/plugin update
+			// chiche` no migra una instalacion del viejo chichex-skills.
+			const migration = /\/plugin uninstall chichex-skills@chichex[\s\S]*\/plugin install chiche@chichex/;
+			if (registry === registryWithChiche) {
+				assert.doesNotMatch(`${withPlugin.stdout}\n${withPlugin.stderr}`, migration, "con chiche instalado no hay nada que migrar");
+			} else {
+				assert.match(`${withPlugin.stdout}\n${withPlugin.stderr}`, migration, `con el plugin viejo, el aviso explica la migracion (${registry})`);
+			}
 			assert.ok(
 				await absolutePathExists(join(root, "dest", "skills", "dummy-skill", "SKILL.md")),
 				"CA-8 solo exige que el aviso no aborte la instalacion de skills: dummy-skill debe instalarse igual",
