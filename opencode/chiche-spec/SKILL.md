@@ -1,14 +1,14 @@
 ---
 name: chiche-spec
 description: >-
-  Convierte un pedido de feature (texto libre, issue de GitHub o handoff confirmado de grill) en una spec verificable — el "qué" contra el que /chiche-run trabaja después. Usar SIEMPRE para especificar una feature antes de implementarla, convertir un handoff de grill o un issue en spec, escribir criterios de aceptación, o cuando el usuario diga "hagamos la spec de X" o "definamos bien esto antes de codear". Exige .sdd/project.md: si no existe, correr /chiche-init primero.
+  Convierte un pedido de feature (texto libre, issue de GitHub o handoff confirmado de grill) en una spec verificable — el "qué" contra el que /chiche-run trabaja después. Usar SIEMPRE para especificar una feature antes de implementarla, convertir un handoff de grill o un issue en spec, escribir criterios de aceptación, o cuando el usuario diga "hagamos la spec de X" o "definamos bien esto antes de codear". Exige .chiche/project.md: si no existe, correr /chiche-init primero.
 ---
 
 Convierte un pedido en una spec: el **"qué" verificable** que `/chiche-run` usa como criterio de terminado. La spec no es prosa aspiracional: cada criterio de aceptación declara CÓMO se va a verificar y qué tan confiable es esa verificación en ESTE repo. Los argumentos pueden traer el pedido libre ("agregar dark mode al settings"), una referencia a issue (`#42` o URL), una ruta de spec para actualizarla, un handoff confirmado de `grill`, y/o flags.
 
 Dos ideas fuerza:
 
-1. **Sin contrato no hay spec.** El veredicto de verificabilidad sale de cruzar el pedido con lo que `.sdd/project.md` dice que este repo puede correr HOY. Sin contrato, ese veredicto sería inventado.
+1. **Sin contrato no hay spec.** El veredicto de verificabilidad sale de cruzar el pedido con lo que `.chiche/project.md` dice que este repo puede correr HOY. Sin contrato, ese veredicto sería inventado.
 2. **Las inferencias van sobre la mesa, sin frenar.** Toda decisión que el pedido no fija explícitamente es una inferencia del modelo y queda escrita en la spec como `[ASSUMED]`; el usuario la revisa sobre el issue o el `.md` publicado y pide cambios desde el menú final. Inferencias ocultas producen specs que parecen completas pero encodean decisiones que nadie tomó.
 
 ## Argumentos
@@ -31,7 +31,7 @@ Dos ideas fuerza:
 - Sin `--triage-route`, una `ruta de spec` se trata igual que `update-existing-spec`.
 
 <!-- chiche-spec-drafts:start -->
-**Dónde viven los borradores.** La spec local se escribe en `<git-common-dir>/chiche/specs/<slug>.md`, fuera del working tree: `<git-common-dir>` es la salida de `git rev-parse --path-format=absolute --git-common-dir`, el mismo directorio para todos los worktrees del repo; fuera de un repo git, en `.chiche/specs/` del cwd. Las specs se leen de cuatro lugares, en este orden: `.chiche/specs/` y `.sdd/specs/` del árbol trackeado, y `<git-common-dir>/chiche/specs/` y `<git-common-dir>/sdd/specs/`; ante el mismo nombre gana el trackeado sobre el local y `chiche` sobre `sdd`. `.chiche/specs/<slug>.md` es su ruta lógica (`.sdd/specs/<slug>.md` si ya vive en un lugar `sdd`): si el nombre ya existe en alguno de los cuatro lugares, se actualiza en su lugar; si no, se escribe en `<git-common-dir>/chiche/specs/`. Los handoffs de `--from-grill` y la Fase 0 se listan de los cuatro lugares, en este orden: `.chiche/grills/`, `.sdd/grills/`, `<git-common-dir>/chiche/grills/` y `<git-common-dir>/sdd/grills/`, con la misma precedencia. La raíz operativa de un handoff depende de dónde está: en `.chiche/grills/` o `.sdd/grills/` del árbol es la raíz física del checkout que lo contiene; en `<git-common-dir>/chiche/grills/` o `<git-common-dir>/sdd/grills/` es su campo `Proyecto` si nombra un worktree del mismo repo (`git worktree list --porcelain`) y, si no, el worktree principal de ese common-dir (el primero de esa lista). Si el harness no puede escribir en `<git-common-dir>/chiche/`, su capa de interacción dice cómo pedir permiso o caer a `.sdd/` del cwd. La spec local no se ve en el editor ni viaja con un clon nuevo, así que el reporte imprime la ruta absoluta de la spec local.
+**Dónde viven los borradores.** La spec local se escribe en `<git-common-dir>/chiche/specs/<slug>.md`, fuera del working tree: `<git-common-dir>` es la salida de `git rev-parse --path-format=absolute --git-common-dir`, el mismo directorio para todos los worktrees del repo; fuera de un repo git, en `.chiche/specs/` del cwd. Las specs se leen de cuatro lugares, en este orden: `.chiche/specs/` y `.sdd/specs/` del árbol trackeado, y `<git-common-dir>/chiche/specs/` y `<git-common-dir>/sdd/specs/`; ante el mismo nombre gana el trackeado sobre el local y `chiche` sobre `sdd`. `.chiche/specs/<slug>.md` es su ruta lógica (`.sdd/specs/<slug>.md` si ya vive en un lugar `sdd`): si el nombre ya existe en alguno de los cuatro lugares, se actualiza en su lugar; si no, se escribe en `<git-common-dir>/chiche/specs/`. Los handoffs de `--from-grill` y la Fase 0 se listan de los cuatro lugares, en este orden: `.chiche/grills/`, `.sdd/grills/`, `<git-common-dir>/chiche/grills/` y `<git-common-dir>/sdd/grills/`, con la misma precedencia. La raíz operativa de un handoff depende de dónde está: en `.chiche/grills/` o `.sdd/grills/` del árbol es la raíz física del checkout que lo contiene; en `<git-common-dir>/chiche/grills/` o `<git-common-dir>/sdd/grills/` es su campo `Proyecto` si nombra un worktree del mismo repo (`git worktree list --porcelain`) y, si no, el worktree principal de ese common-dir (el primero de esa lista). Si el harness no puede escribir en `<git-common-dir>/chiche/`, su capa de interacción dice cómo pedir permiso o caer a `.chiche/` del cwd. La spec local no se ve en el editor ni viaja con un clon nuevo, así que el reporte imprime la ruta absoluta de la spec local.
 <!-- chiche-spec-drafts:end -->
 
 ## Fase 0 — Lanzador (solo con `/chiche-spec` pelado)
@@ -41,7 +41,7 @@ Dispara SOLO cuando el pedido viene vacío y no vino `--from-grill`. Si trajo pe
 ```text
 /chiche-spec convierte un pedido en una spec verificable: expone lo que el modelo esta
 infiriendo para que lo desambigues, y te dice que tan verificable va a ser la
-ejecucion segun el contrato de autonomia (.sdd/project.md).
+ejecucion segun el contrato de autonomia (.chiche/project.md).
 
   • De una descripcion   — me escribis el pedido y arranco.
   • De un issue abierto  — listo los issues del repo y elegis cual especificar.
@@ -59,7 +59,7 @@ Luego usar `question` — una pregunta, "¿De dónde sale la spec?":
 ## Fase 1 — Raíz y contrato primero (bloqueante)
 
 1. Resolver la raíz del proyecto sin explorar código: cwd para pedido/issue; para `--from-grill`, la que fija «Dónde viven los borradores». Si el handoff pertenece a otro proyecto, avisar y ejecutar todas las tools con ese `cwd`; nunca escribir la spec en el cwd equivocado.
-2. Leer `<raiz>/.sdd/project.md` ANTES de explorar el código; interesan sobre todo `## Comandos`, `## Verificacion autonoma`, `## Limites` y `## Politicas de generacion` (los gates duros que `/chiche-run` va a aplicar — condicionan el veredicto y el tamaño sano de la spec).
+2. Leer `<raiz>/.chiche/project.md` ANTES de explorar el código; interesan sobre todo `## Comandos`, `## Verificacion autonoma`, `## Limites` y `## Politicas de generacion` (los gates duros que `/chiche-run` va a aplicar — condicionan el veredicto y el tamaño sano de la spec). Un repo inicializado antes del renombre lo tiene en `.sdd/project.md`: se lee de ahí y `/chiche-init --update` ofrece la migración.
 
 - **Si NO existe**: frenar. Explicar en una línea por qué (sin contrato el veredicto de verificabilidad es inventado) y usar `question`: 1. `Correr /chiche-init ahora (Recomendado)` — invocarlo, esperar el contrato y seguir; 2. `Abortar`. NO generar spec "provisoria" sin contrato, ni siquiera si el usuario insiste con que es una feature chica: ofrecer `/chiche-init --assume` como vía rápida.
 - **Con `--assume` y sin contrato**: correr `/chiche-init --assume` automáticamente, anotarlo en el reporte, y seguir.
@@ -116,11 +116,11 @@ Elegir con criterio = proponer el mecanismo MÁS BARATO que observe el comportam
 ## Diseño en la spec
 
 <!-- chiche-spec-design:start -->
-La Fase 1 lee `## Diseño` de `.sdd/project.md` junto con el resto del contrato. La Fase 2 clasifica el pedido cruzando las raíces de cada superficie con los paths que el pedido tocaría, igual que `/grill`; si queda ambiguo, la clasificación va a la tabla como inferencia `[ASSUMED]`, sin preguntar. Un pedido sin UI no lleva `## Diseño`.
+La Fase 1 lee `## Diseño` de `.chiche/project.md` junto con el resto del contrato. La Fase 2 clasifica el pedido cruzando las raíces de cada superficie con los paths que el pedido tocaría, igual que `/grill`; si queda ambiguo, la clasificación va a la tabla como inferencia `[ASSUMED]`, sin preguntar. Un pedido sin UI no lleva `## Diseño`.
 
-Si el pedido toca UI: con `--from-grill`, el `## Diseño` del handoff entra confirmado a `## Diseño` de la spec, con sus capturas (si el handoff trae más de un `## Diseño`, el vigente es el último). Al copiarlo, reescribe las rutas de las capturas a rutas desde la raíz del repo (`.sdd/grills/<handoff>/<pantalla>.png`), o a URL raw si la spec vive en un issue y la captura ya está pusheada; sin grill y con UI, las decisiones de diseño van a `## Diseño` y a la tabla de inferencias como `[ASSUMED]`, sin preguntar. Cada CA de UI cita el componente o token concreto del inventario (ej. «el filtro usa `Select` de `components/ui/select.tsx` y el color `--color-primary`»).
+Si el pedido toca UI: con `--from-grill`, el `## Diseño` del handoff entra confirmado a `## Diseño` de la spec, con sus capturas (si el handoff trae más de un `## Diseño`, el vigente es el último). Al copiarlo, reescribe las rutas de las capturas a rutas desde la raíz del repo (`.chiche/grills/<handoff>/<pantalla>.png`), o a URL raw si la spec vive en un issue y la captura ya está pusheada; sin grill y con UI, las decisiones de diseño van a `## Diseño` y a la tabla de inferencias como `[ASSUMED]`, sin preguntar. Cada CA de UI cita el componente o token concreto del inventario (ej. «el filtro usa `Select` de `components/ui/select.tsx` y el color `--color-primary`»).
 
-La Fase 4 gradúa la fidelidad: grep o test sobre componentes y tokens = ALTA; capturas de la implementación contra la referencia = MEDIA; mobile sin simulador declarado en el contrato = NULA, con protocolo humano. La Fase 5 escribe en `## Plan de verificacion` el mecanismo de capturas: comando, pantalla y referencia a igualar (ej. Playwright MCP sobre `/finanzas` contra `.sdd/grills/<handoff>/finanzas.png`).
+La Fase 4 gradúa la fidelidad: grep o test sobre componentes y tokens = ALTA; capturas de la implementación contra la referencia = MEDIA; mobile sin simulador declarado en el contrato = NULA, con protocolo humano. La Fase 5 escribe en `## Plan de verificacion` el mecanismo de capturas: comando, pantalla y referencia a igualar (ej. Playwright MCP sobre `/finanzas` contra `.chiche/grills/<handoff>/finanzas.png`).
 
 Una superficie `sin sistema` genera en `## Riesgos y gaps` el gap «sin sistema de diseño: `design-system` disponible, el run sigue con `[ASSUMED]`».
 <!-- chiche-spec-design:end -->
@@ -183,7 +183,7 @@ Toda spec lleva la sección `## Plan de entrega` inmediatamente después de `## 
 
 Estado: siempre `draft` al publicar; `aprobada` solo por la transición del menú final al elegir un run (ver "Flujo sin fricción").
 
-El marker `Chiche-Tracking` es la identidad machine-readable de la spec (contrato `docs/chiche-tracking-v2.md`): permite a los consumidores asociar artefactos sin ensuciar GitHub con labels o comments de tracking, y acompaña al comentario humano, nunca lo reemplaza. `state` refleja el `Estado:` (`approved` ↔ `aprobada`, `draft` ↔ `draft`); `issue` lleva la referencia de origen (`#NN`, `owner/repo#NN` o `none`); `grill` la referencia del handoff de origen (o `none`); `superseded-by` nace `none`. Re-correr sobre la misma spec hace upsert. El marker de un artefacto es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: el existente se reemplaza en su lugar conservando su nombre y su versión, y nunca se agrega otro al lado. Un marker `SDD-Tracking` legacy (sin `version=`) se migra al formato v1 en la misma pasada. Si la spec vive en el body del issue, el marker viaja con ella.
+El marker `Chiche-Tracking` es la identidad machine-readable de la spec (contrato `docs/chiche-tracking-v2.md`): permite a los consumidores asociar artefactos sin ensuciar GitHub con labels o comments de tracking, y acompaña al comentario humano, nunca lo reemplaza. `state` refleja el `Estado:` (`approved` ↔ `aprobada`, `draft` ↔ `draft`); `issue` lleva la referencia de origen (`#NN`, `owner/repo#NN` o `none`); `grill` la referencia del handoff de origen (o `none`); `superseded-by` nace `none`. Re-correr sobre la misma spec hace upsert. El marker de un artefacto es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: el existente se reemplaza en su lugar conservando su nombre y su versión, y nunca se agrega otro al lado. Un marker `SDD-Tracking` legacy (sin `version=`) se migra a `Chiche-Tracking: version=2` en la misma pasada, con los mismos campos. Si la spec vive en el body del issue, el marker viaja con ella.
 
 Destino: automático, según la regla de "Flujo sin fricción" (debajo); `--out` la fuerza.
 
@@ -298,7 +298,7 @@ Después del reporte, el menú final de "Flujo sin fricción" (salvo con `--assu
 
 ## MUST DO
 
-- Leer `.sdd/project.md` antes que nada; si no existe, exigir `/chiche-init` primero (u orquestarlo con `--assume`).
+- Leer `.chiche/project.md` antes que nada; si no existe, exigir `/chiche-init` primero (u orquestarlo con `--assume`).
 - Si la fuente es grill, validar que esté finalizado, trabajar en el proyecto declarado por el handoff y conservar sus decisiones como confirmadas.
 - Listar TODAS las inferencias nuevas en la spec, también las de confianza alta, marcadas `[ASSUMED]` — el usuario las revisa sobre la spec publicada.
 - Anclar cada grado de verificabilidad en lo que el contrato dice que corre HOY, citando el comando o gap concreto.

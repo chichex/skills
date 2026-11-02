@@ -1051,10 +1051,9 @@ test("autotest: la normalizacion reduce las tres sintaxis de invocacion al mismo
 const COMMON_DIR_COMMAND = /`git rev-parse --path-format=absolute --git-common-dir`/;
 const DRAFTS_PRECEDENCE = /ante el mismo nombre gana el trackeado sobre el local y `chiche` sobre `sdd`/;
 // Decisión humana del review de #86: Codex no escribe en `.git/` con su sandbox por defecto.
-// Review de #105 (F3): mientras un skill no copie al worktree bajo `.chiche/`, su fallback sin escalación
-// sigue en `.sdd/` del cwd. chiche-run ya copia bajo `.chiche/` (CA-14, S14): su fallback es `.chiche/` del cwd.
-// grill y chiche-spec siguen en `.sdd/` hasta la segunda mitad de T7c.
-const CODEX_NEUTRAL_LINE = /Si el harness no puede escribir en `<git-common-dir>\/chiche\/`, su capa de interacción dice cómo pedir permiso o caer a `\.sdd\/` del cwd/;
+// Issue #103, T7c (S14): grill, chiche-spec y chiche-run escriben o copian bajo `.chiche/`, así que el fallback sin
+// escalación de los tres es `.chiche/` del cwd, nunca `.sdd/`; esos borradores los resuelve chiche-land en su Fase 5.
+const CODEX_NEUTRAL_LINE = /Si el harness no puede escribir en `<git-common-dir>\/chiche\/`, su capa de interacción dice cómo pedir permiso o caer a `\.chiche\/` del cwd/;
 const SDD_RUN_NEUTRAL_LINE = /Si el harness no puede escribir en `<git-common-dir>\/chiche\/` o `<git-common-dir>\/sdd\/`, su capa de interacción dice cómo pedir permiso o caer a `\.chiche\/` del cwd/;
 
 // Los cuatro lugares de `kind`, en el orden de precedencia de CA-1 y dentro
@@ -1116,8 +1115,8 @@ const ISSUE_TRIAGE_DRAFTS_DOCTRINE = [
 ];
 
 // Ningún bloque de borradores conserva la doctrina de dos lugares ni un
-// fallback a `.chiche/` del cwd, que chiche-run todavía no copia (review de #105, F3).
-const DRAFTS_STALE = [/los dos lugares/, /gana el del árbol/, /caer a `\.chiche\/` del cwd/];
+// fallback a `.sdd/` del cwd: desde T7c todo se escribe y se copia bajo `.chiche/` (S14).
+const DRAFTS_STALE = [/los dos lugares/, /gana el del árbol/, /caer a `\.sdd\/` del cwd/];
 
 async function draftsBlocks(skill: string, block: string, patterns: RegExp[]): Promise<string[]> {
 	const problems: string[] = [];
@@ -1283,20 +1282,27 @@ test("#103 CA-14: chiche-land barre en la Fase 5 los borradores ya aterrizados d
 	assert.deepEqual(problems, []);
 });
 
-// Issue #103, decisión (a) de L30: el contrato es `.chiche/project.md`; una sola frase de fallback a
-// `.sdd/project.md` por skill, donde se lee por primera vez, y en ningún otro lugar.
-test("#103 L30 (a): chiche-run y chiche-land leen el contrato de .chiche/project.md con una sola frase de fallback a .sdd/project.md", async () => {
+// Issue #103, decisión (a) de L30 y T7c: el contrato es `.chiche/project.md`; una sola frase de fallback a
+// `.sdd/project.md` por skill, donde se lee por primera vez, y en ningún otro lugar. La migración
+// (`chiche-init --update`) la ofrece la frase misma, con la invocación de cada harness.
+const CONTRACT_FALLBACK_SKILLS = ["chiche-run", "chiche-land", "chiche-spec", "grill", "coding-policies", "design-system", "issue-triage"] as const;
+const CONTRACT_FALLBACK_SENTENCE = /Un repo inicializado antes del renombre lo tiene en `\.sdd\/project\.md`: se lee de ahí y `[^`\s]*chiche-init --update` ofrece la migración\./;
+test("#103 L30 (a), T7c: los skills leen el contrato de .chiche/project.md con una sola frase de fallback a .sdd/project.md", async () => {
 	const problems: string[] = [];
-	for (const skill of ["chiche-run", "chiche-land"]) {
+	for (const skill of CONTRACT_FALLBACK_SKILLS) {
 		for (const harness of HARNESSES) {
 			const file = `${harness}/${skill}/SKILL.md`;
 			const markdown = await readRepoFile(file);
 			if (!markdown.includes("`.chiche/project.md`")) problems.push(`${file}: no lee .chiche/project.md`);
 			if ((markdown.match(/\.sdd\/project\.md/g) ?? []).length !== 1) problems.push(`${file}: debe nombrar .sdd/project.md una sola vez, en la frase de fallback`);
-			if (!/Un repo inicializado antes del renombre lo tiene en `\.sdd\/project\.md`: se lee de ahí y `[^`\s]*chiche-init --update` ofrece la migración\./.test(markdown)) {
-				problems.push(`${file}: falta la frase de fallback del contrato`);
+			if (!CONTRACT_FALLBACK_SENTENCE.test(markdown)) problems.push(`${file}: falta la frase de fallback del contrato`);
+			if ((markdown.match(/Un repo inicializado antes del renombre lo tiene en/g) ?? []).length !== 1) problems.push(`${file}: la frase de fallback debe aparecer una sola vez`);
+			const frontmatter = /^---\n([\s\S]*?)\n---/.exec(markdown)?.[1] ?? "";
+			if (frontmatter.includes(".sdd/")) problems.push(`${file}: el frontmatter todavía nombra .sdd/`);
+			if (skill === "coding-policies") {
+				if (markdown.includes(".sdd/coding-policies.md")) problems.push(`${file}: todavía nombra .sdd/coding-policies.md`);
+				if (!markdown.includes("`.chiche/coding-policies.md`")) problems.push(`${file}: el destino por defecto no es .chiche/coding-policies.md`);
 			}
-			if (/^description:.*\.sdd\//m.test(markdown)) problems.push(`${file}: la description todavía nombra .sdd/`);
 		}
 	}
 	assert.deepEqual(problems, []);
@@ -1317,6 +1323,15 @@ test("#84 CA-16, #103 CA-5: issue-triage resuelve el linaje en los cuatro lugare
 		for (const literal of ["`<git-common-dir>/chiche/grills/`", "`<git-common-dir>/chiche/specs/`", "`<git-common-dir>/chiche/events.jsonl`", "`<git-common-dir>/sdd/events.jsonl`", "`git rev-parse --path-format=absolute --git-common-dir`"]) {
 			if (!readme.includes(literal)) problems.push(`${path}: no menciona ${literal}`);
 		}
+		// Issue #103, T7c: el README dice que `.sdd/` se sigue leyendo, que `chiche-init --update` lo migra y que
+		// chiche-run copia bajo `.chiche/`; la fila de chiche-init nombra el contrato nuevo.
+		const spanish = path === "README.md";
+		const migrates = spanish ? "`chiche-init --update` migra `.sdd/` a `.chiche/`" : "`chiche-init --update` migrates `.sdd/` to `.chiche/`";
+		if (!readme.includes(migrates)) problems.push(`${path}: no dice que ${migrates}`);
+		if (!readme.includes(spanish ? "a `.chiche/` de su worktree" : "into its worktree's `.chiche/`")) problems.push(`${path}: chiche-run no copia a .chiche/ del worktree`);
+		if (/a `\.sdd\/` de su worktree|worktree's `\.sdd\/`/.test(readme)) problems.push(`${path}: chiche-run todavía copia a .sdd/ del worktree`);
+		const initRow = readme.match(/^\| \*\*`chiche-init`\*\* \|[^\n]*\|$/m)?.[0] ?? "";
+		if (!initRow.includes("`.chiche/project.md`") || initRow.includes(".sdd/project.md")) problems.push(`${path}: la fila de chiche-init no nombra solo .chiche/project.md`);
 	}
 	assert.deepEqual(problems, []);
 });
@@ -1325,16 +1340,15 @@ test("#84 review #86, #103 CA-5, CA-14, review #105: en Codex, escribir o borrar
 	const problems: string[] = [];
 	const shared = /En Codex, el sandbox por defecto deja `\.git\/` en solo lectura \(`mkdir: \.git\/chiche: Operation not permitted`\): pedir escalación para escribir en `<git-common-dir>\/chiche\/`/;
 	const fallback: Record<string, RegExp> = {
-		grill: /sin permiso, escribir en `\.sdd\/` del cwd y decirlo en el reporte[^\n]*`\$chiche-land`/,
-		"chiche-spec": /sin permiso, escribir en `\.sdd\/` del cwd y decirlo en el reporte[^\n]*`\$chiche-land`/,
+		grill: /sin permiso, escribir en `\.chiche\/` del cwd y decirlo en el reporte[^\n]*`\$chiche-land`/,
+		"chiche-spec": /sin permiso, escribir en `\.chiche\/` del cwd y decirlo en el reporte[^\n]*`\$chiche-land`/,
 		"chiche-run": /pedir escalación para escribir en `<git-common-dir>\/chiche\/` y `<git-common-dir>\/sdd\/`, donde se borran las copias; sin permiso, dejarlas y decirlo en el reporte\. Los borradores que `\$grill` y `\$chiche-spec` hayan dejado en `\.chiche\/` o `\.sdd\/` del cwd entran/,
 	};
 	for (const [skill, pattern] of Object.entries(fallback)) {
 		const codex = await readRepoFile(`codex/${skill}/SKILL.md`);
 		if (!shared.test(codex)) problems.push(`codex/${skill}/SKILL.md: falta la escalación de Codex`);
 		if (!pattern.test(codex)) problems.push(`codex/${skill}/SKILL.md: falta el fallback ${pattern}`);
-		// grill y chiche-spec siguen en `.sdd/` del cwd hasta la segunda mitad de T7c; chiche-run ya habla de `.chiche/`.
-		if (skill !== "chiche-run" && /sin permiso, escribir en `\.chiche\/` del cwd|dejado en `\.chiche\/`/.test(codex)) problems.push(`codex/${skill}/SKILL.md: el fallback todavía va a .chiche/ del cwd`);
+		if (/sin permiso, escribir en `\.sdd\/` del cwd/.test(codex)) problems.push(`codex/${skill}/SKILL.md: el fallback todavía va a .sdd/ del cwd`);
 		for (const harness of ["claude", "opencode", "pi", "antigravity"] as const) {
 			if (/pedir escalación para escribir en `<git-common-dir>/.test(await readRepoFile(`${harness}/${skill}/SKILL.md`))) problems.push(`${harness}/${skill}/SKILL.md: la escalación es solo de Codex`);
 		}
@@ -1422,6 +1436,14 @@ test("review #105 (F2): toda regla que actualiza el marker de un artefacto exist
 	const pi = await readRepoFile("pi/grill/SKILL.md");
 	if (/garantiza el marker `SDD-Tracking`/.test(pi)) problems.push("pi/grill/SKILL.md: la tool todavía «garantiza el marker `SDD-Tracking`»");
 	if (!/cada `pause` y `finalize` upsertea [^\n]* y escribe el marker `Chiche-Tracking: version=2`/.test(pi)) problems.push("pi/grill/SKILL.md: no dice que la tool escribe `Chiche-Tracking: version=2`");
+	// Issue #103, T7c: un marker legacy sin `version=` migra a v2 con los mismos campos (no "al formato v1").
+	const legacyMigration = "Un marker `SDD-Tracking` legacy (sin `version=`) se migra a `Chiche-Tracking: version=2` en la misma pasada, con los mismos campos.";
+	for (const harness of HARNESSES) {
+		const file = `${harness}/chiche-spec/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		if (!markdown.includes(legacyMigration)) problems.push(`${file}: el marker legacy sin version= no migra a Chiche-Tracking: version=2`);
+		if (/se migra al formato v1/.test(markdown)) problems.push(`${file}: todavía migra el marker legacy al formato v1`);
+	}
 	assert.deepEqual(problems, []);
 });
 
@@ -1500,7 +1522,7 @@ test("#84 CA-20: chiche-init, coding-policies y design-system cierran con Commit
 				/`git worktree unlock` y después `git worktree remove`/,
 				/`ya aterrizado`/,
 				// Review de #87.
-				/`## Limites` de `\.sdd\/project\.md` permite pushear un branch nuevo/,
+				/`## Limites` de `\.chiche\/project\.md` permite pushear un branch nuevo/,
 				/se copia solo si `HEAD:<path>` del checkout es igual a `origin\/<default>:<path>` y el path no tenía cambios antes de la corrida/,
 				/`git status --porcelain=v1 -z` que la corrida tomó antes de escribir su primer archivo/,
 				/el primer sufijo libre \(`-2`, `-3`…\)/,

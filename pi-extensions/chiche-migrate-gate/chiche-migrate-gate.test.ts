@@ -183,6 +183,9 @@ test("CA-13: el bloque nombra la pregunta, las dos opciones, la regla de --assum
 		/`Mantener \.sdd\/` no cambia nada: el contrato sigue en `\.sdd\/project\.md`, la corrida lo lee de ahí y la oferta se repite en el próximo `--update`/,
 		/Con `--assume` \(y, cuando exista, con `--autonomy` A2 o más\) no se migra ni se pregunta: el reporte lo lista como `mejora disponible`/,
 		/Tras migrar, el resto de la corrida lee y escribe `\.chiche\/project\.md`/,
+		// El cierre `Commit + PR` copia solo paths escritos y no reproduce los renames de `git mv`: tras migrar queda sin commitear.
+		/^- Si la corrida migró, el cierre `Commit \+ PR` queda en `Dejar sin commitear` con el motivo `migración: los renames viven en el checkout principal`: ese cierre copia solo los paths que la corrida escribió y no reproduce los renames de `git mv`\. /m,
+		/El reporte nombra el commit sugerido para el humano: `git add -A -- \.chiche && git add -u && git commit -m "chore\(chiche-init\): migracion a \.chiche\/"` \(los `git mv` ya están en el índice; `git add -u` toma las reescrituras de `\.chiche\/\*\*`, `CLAUDE\.md` y `AGENTS\.md`, y supone el checkout limpio que el cierre comprobó antes de escribir\)\.$/m,
 	]), []);
 	const script = await canonicalSequence();
 	const bullet = block.split("\n").find((line) => line.startsWith("- Anota la migración")) ?? "";

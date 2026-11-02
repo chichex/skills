@@ -162,12 +162,12 @@ const DESIGN_SYSTEM_DOCTRINE: RegExp[] = [
 	/recomendación primera/,
 	/`frontend-design`[^\n]*instalado[^\n]*refuerzo[^\n]*antes del plan de tokens[^\n]*nunca como requisito/,
 	/solo en archivos que ya existen/,
-	/fila de la superficie en `## Diseño` de `\.sdd\/project\.md`[^\n]*si la sección no existe[^\n]*`\/chiche-init --update`/,
+	/fila de la superficie en `## Diseño` de `\.chiche\/project\.md`[^\n]*si la sección no existe[^\n]*`\/chiche-init --update`/,
 	/`@DESIGN_SYSTEM\.md`[^\n]*`CLAUDE\.md`/,
 	/<!-- design-system-agents-link:start -->[\s\S]*<!-- design-system-agents-link:end -->[\s\S]*`AGENTS\.md`|`AGENTS\.md`[\s\S]*<!-- design-system-agents-link:start -->[\s\S]*<!-- design-system-agents-link:end -->/,
 	/^- No escribir código de la aplicación: ni tokens en código, ni componentes, ni temas\.$/m,
 	/`DESIGN_SYSTEM\.md` con el marker `design-system:` de este skill prevalece sobre las demás señales/,
-	/\*\*Rama de registro\*\*[^\n]*solo `\.sdd\/project\.md`/,
+	/\*\*Rama de registro\*\*[^\n]*solo `\.chiche\/project\.md`/,
 	/un único bloque por archivo, con una línea por superficie/,
 	/No pisar `## Ajustes de este proyecto`/,
 ];
@@ -294,6 +294,9 @@ test("CA-8: design-system queda cableado en pi-package, harness-gate, README y m
 		const markdown = await readRepoFile(path);
 		const skills = section(markdown, readmeHeadings.skills);
 		if (!/^\| \*\*`design-system`\*\*[^|]*\|.*DESIGN_SYSTEM\.md.*$/m.test(skills)) problems.push(`${path}: sin fila design-system en la tabla de skills fundacionales`);
+		// Issue #103, T7c: el contrato vive en `.chiche/project.md`.
+		const designRow = skills.match(/^\| \*\*`design-system`\*\*[^\n]*$/m)?.[0] ?? "";
+		if (!designRow.includes(".chiche/project.md") || designRow.includes(".sdd/")) problems.push(`${path}: la fila design-system no nombra solo .chiche/project.md`);
 		if (!/design-system/.test(section(markdown, readmeHeadings.sdd))) problems.push(`${path}: el workflow SDD no nombra design-system`);
 	}
 
@@ -447,7 +450,7 @@ test("CA-5: el contrato de este repo gana ## Diseño sin superficies, la fila de
 // ---------------------------------------------------------------------------
 
 const GRILL_DESIGN_BRANCH: RegExp[] = [
-	/lee `## Diseño` de `\.sdd\/project\.md`/,
+	/lee `## Diseño` de `\.chiche\/project\.md`/,
 	/si falta o es `Sin superficies UI\.` con señales de UI en el repo[^\n]*explora una vez[^\n]*`\/chiche-init --update`/i,
 	/cruzando las raíces de cada superficie con los paths que el pedido tocaría/,
 	/solo si queda ambiguo[^\n]*una única pregunta/i,
@@ -561,7 +564,7 @@ const SPEC_TEMPLATE_DESIGN: RegExp[] = [
 ];
 
 const SDD_SPEC_DESIGN: RegExp[] = [
-	/La Fase 1 lee `## Diseño` de `\.sdd\/project\.md`/,
+	/La Fase 1 lee `## Diseño` de `\.chiche\/project\.md`/,
 	/La Fase 2 clasifica el pedido cruzando las raíces de cada superficie con los paths que el pedido tocaría/,
 	/con `--from-grill`, el `## Diseño` del handoff entra confirmado/,
 	/sin grill y con UI, las decisiones de diseño van a `## Diseño` y a la tabla de inferencias como `\[ASSUMED\]`, sin preguntar/i,

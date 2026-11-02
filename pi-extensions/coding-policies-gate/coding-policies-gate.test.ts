@@ -111,7 +111,7 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/Con argumentos vacíos dispara completo\. Con argumentos, pregunta solo lo que no fijaron/,
 	/`--no-link` no afecta a esta fase/,
 	/«pregunta-multiple» — "¿Qué stacks entran\?"/,
-	/"¿Dónde lo genero\?": `\.sdd\/coding-policies\.md \(Recomendado\)`/,
+	/"¿Dónde lo genero\?": `\.chiche\/coding-policies\.md \(Recomendado\)`/,
 	/raíz y hasta profundidad 2, excluyendo `node_modules`, `vendor`, `\.git`, `dist` y `build`/,
 	/`dependencies` y `devDependencies`/,
 	/registra dónde se vio/,
@@ -136,7 +136,7 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/[Ss]i ningún stack confirmado está cubierto, no se genera archivo y se informa; el skill termina ahí, sin enganche/,
 	/no lo pisa: lo dice, termina ahí sin enganche/,
 	/`no intentado` cubre `--no-link` y las corridas que terminaron antes del enganche/,
-	/crea `\.sdd\/`[^\n]*si no existe/,
+	/crea `\.chiche\/`[^\n]*si no existe/,
 	/copiado verbatim/,
 	/^### Regeneración \(el destino ya existe\)$/m,
 	/baseline o stacks desactualizados \(`<id>: <version vieja\|ausente> → <version nueva>`\)/,
@@ -147,7 +147,7 @@ const PROCEDURE_DOCTRINE: RegExp[] = [
 	/^## Fase 4 — Enganche \(saltear con `--no-link`\)$/m,
 	/[Ss]olo se ofrecen los que existen: el skill nunca crea archivos de contexto/,
 	/«pregunta-multiple» — "¿Dónde agrego la referencia\?"/,
-	/idempotente: en `CLAUDE\.md` y `AGENTS\.md`, verificando antes que `<ruta>` no esté ya presente[^\n]*en `\.sdd\/project\.md`, comparando la fila entera/,
+	/idempotente: en `CLAUDE\.md` y `AGENTS\.md`, verificando antes que `<ruta>` no esté ya presente[^\n]*en `\.chiche\/project\.md`, comparando la fila entera/,
 	/\*\*CLAUDE\.md\*\* — agregar al final una línea `@<ruta>`/,
 	/«agents-link»/,
 	/\| coding-policies \| <ruta> \(<stacks>\) \| guia — sin gate: «skill:chiche-run» la sigue al generar, la juzga el reviewer \|/,
@@ -1045,7 +1045,8 @@ test("READMEs y manifests del plugin documentan coding-policies", async () => {
 		const text = await readRepoFile(readme);
 		const row = text.match(/^\| \*\*`coding-policies`\*\* \|[^\n]*\|$/m)?.[0] ?? "";
 		assert.notEqual(row, "", `${readme} tiene la fila coding-policies en la tabla de skills`);
-		assert.match(row, /\.sdd\/coding-policies\.md/, `${readme}: la fila dice dónde genera`);
+		assert.match(row, /\.chiche\/coding-policies\.md/, `${readme}: la fila dice dónde genera`);
+		assert.doesNotMatch(row, /\.sdd\//, `${readme}: la fila ya no nombra .sdd/`);
 		assert.match(row, /Go/, `${readme}: la fila anuncia cobertura para Go`);
 		assert.match(row, /TypeScript/, `${readme}: la fila anuncia cobertura para TypeScript`);
 		assert.match(

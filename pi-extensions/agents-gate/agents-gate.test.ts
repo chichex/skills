@@ -254,7 +254,7 @@ export function validateAgentFrontmatter(
 // modulo porque el port Pi (issue #44 CA-7, pi-extensions/subagent/agents/
 // implementer.md) tiene que pasar EXACTAMENTE los mismos patrones.
 const IMPLEMENTER_DOCTRINE: RegExp[] = [
-	/`\.sdd\/project\.md`/,
+	/`\.chiche\/project\.md`/,
 	/fila `guia`[\s\S]*?coding policies|coding policies[\s\S]*?fila `guia`/i,
 	/sin asumir su ruta|no asumas una ruta fija/i,
 	/`## Limites`/,
@@ -402,6 +402,7 @@ test("CA-1: agents/implementer.md tiene frontmatter valido, skills: [chiche:tdd,
 	// anterior (lista compartida con el port Pi, ver IMPLEMENTER_DOCTRINE).
 	const orderProblems = checkOrderedPatterns(body, IMPLEMENTER_DOCTRINE);
 	assert.deepEqual(orderProblems, [], `agents/implementer.md: ${orderProblems.join("; ")}`);
+	assert.deepEqual(contractPathProblems("agents/implementer.md", markdown, "/chiche-init"), []);
 
 	// El reporte final nombra las cuatro cosas que exige CA-1.
 	const finalReport = body.slice(body.search(/reporte final/i));
@@ -878,6 +879,22 @@ test("issue #44 CA-7: censo de pi-extensions/subagent/agents/*.md sobre archivos
 	assert.deepEqual(divergences, [], `censo de ${PI_AGENTS_DIR}/: ${divergences.join("; ")}`);
 });
 
+// Issue #103, L30 (a) y T7c: el contrato es `.chiche/project.md`. Un repo inicializado antes del renombre lo tiene en
+// `.sdd/project.md`; cada implementer (Claude y su port Pi) lo dice una sola vez, en la frase de fallback, con la
+// invocación de su harness. Ni el frontmatter ni el ejemplo de ruta de coding policies nombran `.sdd/`.
+function contractPathProblems(file: string, markdown: string, invocation: string): string[] {
+	const problems: string[] = [];
+	const frontmatter = splitFrontmatter(markdown)?.frontmatter ?? "";
+	const sentence = `Un repo inicializado antes del renombre lo tiene en \`.sdd/project.md\`: se lee de ahí y \`${invocation} --update\` ofrece la migración.`;
+	if (!markdown.includes("`.chiche/project.md`")) problems.push(`${file}: no lee .chiche/project.md`);
+	if (!frontmatter.includes(".chiche/project.md") || frontmatter.includes(".sdd/")) problems.push(`${file}: la description debe nombrar .chiche/project.md y no .sdd/`);
+	if ((markdown.match(/\.sdd\/project\.md/g) ?? []).length !== 1) problems.push(`${file}: debe nombrar .sdd/project.md una sola vez, en la frase de fallback`);
+	// Los agentes envuelven la prosa a ~90 columnas: la frase se busca con los saltos de línea aplanados.
+	if (markdown.replace(/\s+/g, " ").split(sentence).length - 1 !== 1) problems.push(`${file}: falta la frase de fallback «${sentence}» (una sola vez)`);
+	if (markdown.includes(".sdd/coding-policies.md") || !markdown.includes("`.chiche/coding-policies.md`")) problems.push(`${file}: el ejemplo de ruta de coding policies no es .chiche/coding-policies.md`);
+	return problems;
+}
+
 test("issue #44 CA-7: el port Pi de implementer conserva la doctrina ordenada de CA-1 y precarga skills por /skill:", async () => {
 	const markdown = await readRepoFile(`${PI_AGENTS_DIR}/implementer.md`);
 	const verdict = validatePiAgentFrontmatter("implementer", markdown, null);
@@ -886,6 +903,10 @@ test("issue #44 CA-7: el port Pi de implementer conserva la doctrina ordenada de
 	const body = splitFrontmatter(markdown)?.body ?? "";
 	const orderProblems = checkOrderedPatterns(body, IMPLEMENTER_DOCTRINE);
 	assert.deepEqual(orderProblems, [], `${PI_AGENTS_DIR}/implementer.md: ${orderProblems.join("; ")}`);
+	assert.deepEqual(contractPathProblems(`${PI_AGENTS_DIR}/implementer.md`, markdown, "/skill:chiche-init"), []);
+	for (const file of [`${PI_AGENTS_DIR}/reviewer.md`, `${PI_AGENTS_DIR}/scout.md`, "agents/reviewer.md"]) {
+		assert.equal((await readRepoFile(file)).includes(".sdd/"), false, `${file} todavía nombra .sdd/`);
+	}
 
 	// Capa Pi: sin `skills:` en el frontmatter (Pi lo ignora), la precarga va
 	// por invocacion en el body: /skill:tdd antes de implementar y
