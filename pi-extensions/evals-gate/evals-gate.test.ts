@@ -58,6 +58,7 @@ test("#103 CA-12: un grader positivo matchea solo (?:[\\w-]+:)?chiche-<x>, con o
 		assert.match(`{"skill": "${skill}"}`, pattern, `${path}: sin namespace`);
 		assert.match(`{"skill":"chiche:${skill}"}`, pattern, `${path}: con namespace chiche:`);
 		assert.doesNotMatch(`{"skill": "${skill.replace("chiche-", "sdd-")}"}`, pattern, `${path}: no matchea el alias`);
+		assert.doesNotMatch(`{"skill": "${skill}-extra"}`, pattern, `${path}: la comilla de cierre ancla el nombre, no matchea un prefijo`);
 	}
 });
 
@@ -74,7 +75,7 @@ test("#103 CA-23: un grader negativo matchea solo (?:[\\w-]+:)?chiche-<x>: los a
 		assert.match(`{"skill":"chiche:${skill}"}`, pattern, `${path}: con namespace chiche:`);
 		assert.doesNotMatch(`{"skill": "sdd-${suffix}"}`, pattern, `${path}: el alias retirado ya no se contempla`);
 		assert.doesNotMatch(`{"skill": "grill"}`, pattern, `${path}: no matchea otro skill`);
-		assert.doesNotMatch(`{"skill": "sdd-${suffix}-extra"}`, pattern, `${path}: no matchea un prefijo`);
+		assert.doesNotMatch(`{"skill": "${skill}-extra"}`, pattern, `${path}: la comilla de cierre ancla el nombre, no matchea un prefijo`);
 	}
 });
 

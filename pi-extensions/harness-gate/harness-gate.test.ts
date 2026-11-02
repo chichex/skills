@@ -11,7 +11,9 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
@@ -852,8 +854,20 @@ test(".chiche/project.md lleva el marker canonico type=project", async () => {
 
 const RETIRED_ALIASES = ["sdd-init", "sdd-spec", "sdd-run", "sdd-land"] as const;
 
-// Lineas que el grep de CA-21 puede devolver: solo la nota de retiro de los README.
-const RETIREMENT_NOTE = /^README(?:\.en)?\.md:\d+:.*\bretir/;
+// Lineas que el grep de CA-21 puede devolver: solo las de los README que dicen que los
+// nombres "se retiraron en 4.0.0" / "were retired in 4.0.0" (una linea que solo menciona
+// "retirar" otra cosa no cuenta).
+const RETIREMENT_NOTE = /^README(?:\.en)?\.md:\d+:.*(?:\bse retiraron en 4\.0\.0|\bwere retired in 4\.0\.0)/;
+
+// Los nombres retirados en los archivos TRACKEADOS (git grep): un archivo suelto sin
+// trackear no cuenta. Estado 0 si hay coincidencias, 1 si no hay, mayor que 1 si git falla.
+function grepRetiredNames(cwd: string) {
+	return spawnSync(
+		"git",
+		["grep", "-n", "-E", "sdd-(init|spec|run|land)\\b", "--", "claude", "codex", "opencode", "pi", "antigravity", "agents", "evals", "README.md", "README.en.md"],
+		{ cwd, encoding: "utf8" },
+	);
+}
 
 test("#103 CA-21: ninguna carpeta sdd-* reaparece en ningun harness", async () => {
 	const problems: string[] = [];
@@ -866,15 +880,46 @@ test("#103 CA-21: ninguna carpeta sdd-* reaparece en ningun harness", async () =
 	assert.deepEqual(problems, []);
 });
 
-test("#103 CA-21: fuera de los README nadie nombra sdd-init|spec|run|land", () => {
-	const grep = spawnSync(
-		"grep",
-		["-rn", "sdd-init\\|sdd-spec\\|sdd-run\\|sdd-land", "claude", "codex", "opencode", "pi", "antigravity", "agents", "evals", "README.md", "README.en.md"],
-		{ cwd: fileURLToPath(repoFile("")), encoding: "utf8" },
-	);
+test("#103 CA-21: fuera de la nota de retiro de los README nadie nombra sdd-init|spec|run|land", () => {
+	const grep = grepRetiredNames(fileURLToPath(repoFile("")));
+	assert.equal(grep.status, 0, `el grep debe hallar la nota de retiro de los README (estado ${grep.status}): ${grep.stderr}`);
 	const lines = grep.stdout.split("\n").filter((line) => line.length > 0);
 	assert.deepEqual(lines.filter((line) => !RETIREMENT_NOTE.test(line)), [], "solo queda la nota de retiro de los README");
-	assert.ok(lines.length > 0, "los README registran el retiro");
+	for (const readme of ["README.md", "README.en.md"]) {
+		assert.ok(lines.some((line) => line.startsWith(`${readme}:`)), `${readme} registra el retiro`);
+	}
+});
+
+test("#103 CA-21: el grep mira archivos trackeados: un archivo suelto sin trackear que nombra sdd-run no falla el gate", async () => {
+	const repo = await mkdtemp(join(tmpdir(), "chiche-ca21-"));
+	try {
+		const git = (...args: string[]) => {
+			const result = spawnSync("git", args, { cwd: repo, encoding: "utf8" });
+			assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
+		};
+		git("init", "-q");
+		for (const dir of ["claude", "codex", "opencode", "pi", "antigravity", "agents", "evals"]) await mkdir(join(repo, dir), { recursive: true });
+		await writeFile(join(repo, "README.md"), "Los nombres `sdd-run` y `sdd-land` se retiraron en 4.0.0.\n");
+		await writeFile(join(repo, "README.en.md"), "The names `sdd-run` and `sdd-land` were retired in 4.0.0.\n");
+		git("add", "README.md", "README.en.md");
+		await writeFile(join(repo, "claude", "scratch.md"), "borrador suelto: sdd-run\n");
+
+		const grep = grepRetiredNames(repo);
+		assert.equal(grep.status, 0, grep.stderr);
+		const lines = grep.stdout.split("\n").filter((line) => line.length > 0);
+		assert.equal(lines.length, 2, `solo las lineas trackeadas de los dos README: ${lines.join(" | ")}`);
+		for (const line of lines) assert.match(line, RETIREMENT_NOTE);
+	} finally {
+		await rm(repo, { recursive: true, force: true });
+	}
+});
+
+test("autotest: RETIREMENT_NOTE acepta las dos frases de retiro de los README y rechaza cualquier otra linea", () => {
+	assert.match("README.md:22:Los nombres anteriores `sdd-init` y `sdd-run` se retiraron en 4.0.0: migrá.", RETIREMENT_NOTE);
+	assert.match("README.en.md:24:The previous names `sdd-init` were retired in 4.0.0: migrate.", RETIREMENT_NOTE);
+	assert.doesNotMatch("README.md:30:Para retirar el tag de `sdd-run` usá git tag -d.", RETIREMENT_NOTE);
+	assert.doesNotMatch("README.md:31:`sdd-spec` se retiraron en 3.0.0.", RETIREMENT_NOTE);
+	assert.doesNotMatch("claude/grill/SKILL.md:9:`sdd-run` se retiraron en 4.0.0.", RETIREMENT_NOTE);
 });
 
 // --- Autotests del gate: puede fallar y con que diagnostico ------------------

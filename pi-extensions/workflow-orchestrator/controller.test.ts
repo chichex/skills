@@ -639,7 +639,7 @@ test("/sdd-run ya no existe y /chiche-run no es un alias", () => {
 	orchestrator.createWorkflowController(pi as never, {} as never);
 	assert.equal(commands.has("sdd-run"), false, "/sdd-run se retiro en 4.0.0");
 	assert.ok(commands.has("chiche-run"));
-	for (const [name, command] of commands) assert.doesNotMatch(command.description ?? "", /alias/i, name);
+	for (const [name, command] of commands) assert.doesNotMatch(command.description ?? "", /^alias deprecado de /, name);
 });
 
 test("/grill resolves a GitHub issue URL and starts Grill from a fresh command context", async () => {

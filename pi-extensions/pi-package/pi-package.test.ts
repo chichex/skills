@@ -113,9 +113,6 @@ const EXPECTED_EXTENSION_COMMANDS = [
 // `chiche-<etapa>`; los alias `sdd-<etapa>` se retiraron en 4.0.0 (CA-22).
 const RENAMED_STAGES = ["init", "spec", "run", "land"] as const;
 
-// CA-22: 10 comandos de extensión y 10 de skill.
-const EXPECTED_COMMAND_COUNT = 20;
-
 const EXPECTED_SKILL_COMMANDS = EXPECTED_SKILLS.map((path) => `skill:${path.split("/").at(-2)}`).sort();
 const EXPECTED_COMMANDS = [...EXPECTED_EXTENSION_COMMANDS, ...EXPECTED_SKILL_COMMANDS].sort();
 
@@ -640,21 +637,19 @@ function assertExpectedPackageCommands(commands: PiCommand[]): void {
 		commands.filter((command) => command.source === "skill").map((command) => command.name).sort(),
 		EXPECTED_SKILL_COMMANDS,
 	);
-	assert.equal(commands.length, EXPECTED_COMMAND_COUNT, "CA-22: 10 comandos de extensión y 10 de skill");
 	assertRetiredAliasesAbsent(commands);
 }
 
-// Issue #103, CA-22: get_commands expone `skill:chiche-*` y nada más de la
-// familia: ni `skill:sdd-*`, ni el comando `/sdd-run`, ni descripciones de alias.
+// Issue #103, CA-22: get_commands expone `skill:chiche-*` y ninguna descripción
+// de alias. Que no haya `skill:sdd-*` ni `/sdd-run` (y que sean 10 de extensión
+// y 10 de skill) ya lo fija el deepEqual de los nombres de arriba.
 function assertRetiredAliasesAbsent(commands: PiCommand[]): void {
 	const byName = new Map(commands.map((command) => [command.name, command]));
 	for (const stage of RENAMED_STAGES) {
 		assert.equal(byName.get(`skill:chiche-${stage}`)?.source, "skill", `skill:chiche-${stage} falta en get_commands`);
-		assert.equal(byName.has(`skill:sdd-${stage}`), false, `skill:sdd-${stage} se retiró en 4.0.0`);
 	}
 	assert.equal(byName.get("chiche-run")?.source, "extension");
-	assert.equal(byName.has("sdd-run"), false, "/sdd-run se retiró en 4.0.0");
-	for (const command of commands) assert.doesNotMatch(command.description ?? "", /alias/i, `${command.name} no es un alias`);
+	for (const command of commands) assert.doesNotMatch(command.description ?? "", /^alias deprecado de /, `${command.name} no es un alias`);
 }
 
 test("package manifest is deterministic, Git-only, and non-publishable", async () => {
@@ -1219,10 +1214,12 @@ test("Pi cleanup reconciles the Codex managed skill-precedence block instead of 
 	}
 });
 
-test("issue #103 CA-23: install.sh pi migrates an old .chichex-skills-managed, prunes the sdd-* copies installed by 2.x and 3.x, prunes retired extensions and themes, and pi-clean leaves unmanaged ones", async () => {
+test("issue #103 CA-23: install.sh pi migrates an old .chichex-skills-managed, prunes the sdd-* copies installed by 2.x (old manifest) and by 3.x (.chiche-managed only), prunes retired extensions and themes, and pi-clean leaves unmanaged ones", async () => {
 	const root = await mkdtemp(join(tmpdir(), "chichex-pi-legacy-manifest-"));
 	const fixtureRepo = join(root, "repo");
 	const skillsDest = join(root, "dest", "skills");
+	// El estado que dejaba una 3.x: solo `.chiche-managed`, con los alias sdd-* adentro.
+	const skillsDest3x = join(root, "dest", "skills-3x");
 	const extensionsDest = join(root, "dest", "extensions");
 	const themesDest = join(root, "dest", "themes");
 	const sentinel = join(root, "dest", "sentinel");
@@ -1237,19 +1234,33 @@ test("issue #103 CA-23: install.sh pi migrates an old .chichex-skills-managed, p
 
 		await mkdir(join(root, "dest"), { recursive: true });
 		await writeFile(sentinel, "no tocar");
-		// Destino de skills como lo dejaba un install.sh anterior al renombre.
+		// Destino de skills como lo dejaba un install.sh 2.x: solo el manifest viejo,
+		// con la copia completa de sdd-run y sin `.chiche-managed`.
 		await mkdir(join(skillsDest, "retired-skill"), { recursive: true });
 		await writeFile(join(skillsDest, "retired-skill", "SKILL.md"), "retirado\n");
 		await mkdir(join(skillsDest, "sdd-run", "references"), { recursive: true });
 		await writeFile(join(skillsDest, "sdd-run", "SKILL.md"), "---\nname: sdd-run\n---\nDoctrina completa vieja.\n");
 		await writeFile(join(skillsDest, "sdd-run", "references", "stale.md"), "viejo\n");
-		// El alias que dejó un install.sh 3.x, ya con el manifest nuevo (CA-23).
-		await mkdir(join(skillsDest, "sdd-spec"), { recursive: true });
-		await writeFile(join(skillsDest, "sdd-spec", "SKILL.md"), "---\nname: sdd-spec\ndescription: alias deprecado de chiche-spec.\n---\n");
 		await mkdir(join(skillsDest, "user-skill"), { recursive: true });
 		await writeFile(join(skillsDest, "user-skill", "SKILL.md"), "ajeno\n");
 		await writeFile(join(skillsDest, ".chichex-skills-managed"), "retired-skill\nsdd-run\n../sentinel\n");
-		await writeFile(join(skillsDest, ".chiche-managed"), "sdd-spec\n");
+		// Destino como lo dejaba una 3.x (CA-23): solo `.chiche-managed`, con los cuatro
+		// alias sdd-* (copias mínimas), los chiche-* y un skill retirado; sin manifest viejo.
+		const aliases = RENAMED_STAGES.map((stage) => `sdd-${stage}`);
+		const stages3x = RENAMED_STAGES.map((stage) => `chiche-${stage}`);
+		await mkdir(join(skillsDest3x, "retired-skill"), { recursive: true });
+		await writeFile(join(skillsDest3x, "retired-skill", "SKILL.md"), "retirado\n");
+		for (const alias of aliases) {
+			await mkdir(join(skillsDest3x, alias), { recursive: true });
+			await writeFile(join(skillsDest3x, alias, "SKILL.md"), `---\nname: ${alias}\ndescription: alias deprecado de ${alias.replace("sdd-", "chiche-")}.\n---\n`);
+		}
+		for (const name of stages3x) {
+			await mkdir(join(skillsDest3x, name), { recursive: true });
+			await writeFile(join(skillsDest3x, name, "SKILL.md"), "copia 3.x vieja\n");
+		}
+		await mkdir(join(skillsDest3x, "user-skill"), { recursive: true });
+		await writeFile(join(skillsDest3x, "user-skill", "SKILL.md"), "ajeno\n");
+		await writeFile(join(skillsDest3x, ".chiche-managed"), ["retired-skill", ...aliases, ...stages3x, ""].join("\n"));
 		// Extensiones y themes se podan al instalar igual que los skills: lo que
 		// figura en el manifest viejo y el checkout ya no trae se borra entero.
 		// `sdd-artifacts/` es la carpeta que el renombre a chiche-artifacts dejó
@@ -1289,10 +1300,8 @@ test("issue #103 CA-23: install.sh pi migrates an old .chichex-skills-managed, p
 
 		assert.equal(await absolutePathExists(join(skillsDest, "retired-skill")), false, "the retired skill from the old manifest is pruned");
 		assert.equal(await absolutePathExists(join(skillsDest, "sdd-run")), false, "the 2.x sdd-run copy is pruned whole");
-		assert.equal(await absolutePathExists(join(skillsDest, "sdd-spec")), false, "the 3.x sdd-spec alias is pruned");
 		assert.equal(await absolutePathExists(repoPath("pi/sdd-run")), false, "the checkout no longer ships sdd-run");
 		assert.match(installed.stdout, /✗ sdd-run \(retirado del repo, podado\)/);
-		assert.match(installed.stdout, /✗ sdd-spec \(retirado del repo, podado\)/);
 		for (const name of ["chiche-init", "chiche-spec", "chiche-run", "chiche-land"]) {
 			assert.deepEqual(await fileTree(join(skillsDest, name)), await fileTree(repoPath(`pi/${name}`)), `${name} installed`);
 		}
@@ -1329,6 +1338,22 @@ test("issue #103 CA-23: install.sh pi migrates an old .chichex-skills-managed, p
 		assert.equal(await readFile(join(themesDest, "user-theme.json"), "utf8"), "ajeno\n", "unmanaged theme untouched");
 		assert.equal(await readFile(join(extensionsDest, "a", "b"), "utf8"), "b-ajeno\n", "the prune ignores a manifest name with a slash");
 		assert.equal(await readFile(sentinel, "utf8"), "no tocar", "a hostile name in the old manifest never resolves outside the destination");
+
+		// El destino 3.x (solo `.chiche-managed`): los cuatro alias se podan enteros, los
+		// chiche-* viejos se reemplazan, el manifest queda con lo instalado y lo ajeno sobrevive.
+		const installed3x = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], { ...env, PI_SKILLS_DIR: skillsDest3x });
+		assert.equal(installed3x.status, 0, `${installed3x.stdout}\n${installed3x.stderr}`);
+		for (const alias of aliases) {
+			assert.equal(await absolutePathExists(join(skillsDest3x, alias)), false, `the 3.x ${alias} alias is pruned`);
+			assert.match(installed3x.stdout, new RegExp(`✗ ${alias} \\(retirado del repo, podado\\)`));
+		}
+		assert.equal(await absolutePathExists(join(skillsDest3x, "retired-skill")), false, "the retired skill of the 3.x manifest is pruned");
+		for (const name of stages3x) {
+			assert.deepEqual(await fileTree(join(skillsDest3x, name)), await fileTree(repoPath(`pi/${name}`)), `${name} installed over the old 3.x copy`);
+		}
+		assert.deepEqual(await manifestLines(skillsDest3x), sourceSkills, ".chiche-managed of the 3.x destination lists exactly the installed skills");
+		assert.equal(await absolutePathExists(join(skillsDest3x, ".chichex-skills-managed")), false, "no old manifest appears in the 3.x destination");
+		assert.equal(await readFile(join(skillsDest3x, "user-skill", "SKILL.md"), "utf8"), "ajeno\n", "unmanaged skill untouched in the 3.x destination");
 
 		// pi-clean sigue borrando solo lo administrado: lo instalado desde el
 		// checkout, no lo ajeno ni lo que la poda ya había retirado.

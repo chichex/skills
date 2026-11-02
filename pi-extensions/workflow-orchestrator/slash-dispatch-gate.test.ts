@@ -112,4 +112,6 @@ test("the alias dispatch gate keeps the persisted identifiers and rejects the re
 	}
 	// La excepción es por forma, no por archivo: el mismo nombre suelto en otra posición sigue prohibido.
 	assert.notDeepEqual(aliasDispatches('registerCommand("sdd-run", () => dispatch(pi, "sdd-run"))'), []);
+	// Y el comando retirado solo, sin nada más que lo delate, también se rechaza.
+	assert.notDeepEqual(aliasDispatches('pi.registerCommand("sdd-run", {'), []);
 });

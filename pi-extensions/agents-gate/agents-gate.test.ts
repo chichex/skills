@@ -10,9 +10,10 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { access, cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { readdirSync } from "node:fs";
+import { access, chmod, cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
@@ -1134,29 +1135,54 @@ const LEGACY_CODEX_BEGIN = "# >>> chichex/skills: prefer Codex over Pi >>>";
 const LEGACY_CODEX_END = "# <<< chichex/skills: prefer Codex over Pi <<<";
 const SKILL_HARNESSES = ["claude", "codex", "opencode", "antigravity", "pi"] as const;
 
-// Un destino como lo dejaban los install.sh anteriores a 4.0.0 (CA-23): el
-// manifest viejo con un skill retirado, la copia completa de sdd-run (2.x) y un
-// nombre hostil; el manifest nuevo de 3.x con el alias sdd-spec; y un skill
-// ajeno que nunca paso por ningun manifest.
-async function seedLegacyChichexDestination(dest: string): Promise<void> {
+const RETIRED_ALIASES = ["sdd-init", "sdd-spec", "sdd-run", "sdd-land"] as const;
+type SkillHarness = (typeof SKILL_HARNESSES)[number];
+type InstalledState = "2.x" | "3.x";
+
+// Un destino como lo dejaba un install.sh 2.x (CA-23): solo el manifest viejo
+// `.chichex-skills-managed` (sin `.chiche-managed`), con un skill retirado, la
+// copia completa de sdd-run y un nombre hostil; y un skill ajeno que nunca pasó
+// por ningún manifest.
+async function seedInstalled2xDestination(dest: string): Promise<void> {
 	await mkdir(join(dest, "retired-skill"), { recursive: true });
 	await writeFile(join(dest, "retired-skill", "SKILL.md"), "retirado\n");
 	await mkdir(join(dest, "sdd-run", "references"), { recursive: true });
 	await writeFile(join(dest, "sdd-run", "SKILL.md"), "---\nname: sdd-run\n---\nDoctrina completa vieja.\n");
 	await writeFile(join(dest, "sdd-run", "references", "stale.md"), "viejo\n");
-	await mkdir(join(dest, "sdd-spec"), { recursive: true });
-	await writeFile(join(dest, "sdd-spec", "SKILL.md"), "---\nname: sdd-spec\ndescription: alias deprecado de chiche-spec.\n---\n");
 	await mkdir(join(dest, "user-skill"), { recursive: true });
 	await writeFile(join(dest, "user-skill", "SKILL.md"), "ajeno\n");
 	await writeFile(join(dest, LEGACY_MANIFEST), "retired-skill\nsdd-run\n../sentinel\n");
-	await writeFile(join(dest, CHICHE_MANIFEST), "sdd-spec\n");
+}
+
+// Un destino como lo dejaba un install.sh 3.x: solo `.chiche-managed`, con los
+// cuatro alias sdd-* (copias mínimas), los chiche-* y un skill retirado; y el
+// skill ajeno. Ningún manifest viejo.
+async function seedInstalled3xDestination(dest: string): Promise<void> {
+	await mkdir(join(dest, "retired-skill"), { recursive: true });
+	await writeFile(join(dest, "retired-skill", "SKILL.md"), "retirado\n");
+	for (const alias of RETIRED_ALIASES) {
+		await mkdir(join(dest, alias), { recursive: true });
+		await writeFile(join(dest, alias, "SKILL.md"), `---\nname: ${alias}\ndescription: alias deprecado de ${alias.replace("sdd-", "chiche-")}.\n---\n`);
+	}
+	const chicheNames = RETIRED_ALIASES.map((alias) => alias.replace("sdd-", "chiche-"));
+	for (const name of chicheNames) {
+		await mkdir(join(dest, name), { recursive: true });
+		await writeFile(join(dest, name, "SKILL.md"), "copia 3.x vieja\n");
+	}
+	await mkdir(join(dest, "user-skill"), { recursive: true });
+	await writeFile(join(dest, "user-skill", "SKILL.md"), "ajeno\n");
+	await writeFile(join(dest, CHICHE_MANIFEST), ["retired-skill", ...RETIRED_ALIASES, ...chicheNames, ""].join("\n"));
+}
+
+async function seedInstalledDestination(dest: string, state: InstalledState): Promise<void> {
+	if (state === "2.x") await seedInstalled2xDestination(dest);
+	else await seedInstalled3xDestination(dest);
 }
 
 async function assertLegacyChichexDestinationMigrated(label: string, dest: string, source: string): Promise<void> {
 	assert.equal(await absolutePathExists(join(dest, "retired-skill")), false, `${label}: el skill retirado del manifest viejo debe podarse`);
-	assert.equal(await absolutePathExists(join(dest, "sdd-run")), false, `${label}: la copia 2.x de sdd-run se poda entera`);
-	assert.equal(await absolutePathExists(join(dest, "sdd-spec")), false, `${label}: el alias sdd-spec de 3.x se poda`);
-	for (const alias of ["sdd-init", "sdd-spec", "sdd-run", "sdd-land"]) {
+	for (const alias of RETIRED_ALIASES) {
+		assert.equal(await absolutePathExists(join(dest, alias)), false, `${label}: la copia ${alias} instalada por 2.x o 3.x se poda entera`);
 		assert.equal(await absolutePathExists(join(source, alias)), false, `${label}: el checkout no trae ${alias}`);
 	}
 	for (const name of ["chiche-init", "chiche-spec", "chiche-run", "chiche-land"]) {
@@ -1180,12 +1206,19 @@ test("issue #103 CA-23: install.sh claude|codex|all migra un .chichex-skills-man
 	].flatMap((dir) => [join(dir, CHICHE_MANIFEST), join(dir, LEGACY_MANIFEST)]);
 	const realHomeBefore = await Promise.all(realHomeManifests.map((path) => stat(path).then((info) => info.mtimeMs, () => null)));
 
-	const cases: Array<{ which: string; harnesses: readonly (typeof SKILL_HARNESSES)[number][] }> = [
-		{ which: "claude", harnesses: ["claude"] },
-		{ which: "codex", harnesses: ["codex"] },
-		{ which: "all", harnesses: SKILL_HARNESSES },
+	// `seeded` es lo que ya hay en cada destino antes de correr; `installs`, lo que
+	// el subcomando instala. `install.sh codex` no toca el destino de Pi, pero lo
+	// siembra: ahí es donde Codex ve las copias Pi retiradas.
+	const cases: Array<{ which: string; installs: readonly SkillHarness[]; seeded: Partial<Record<SkillHarness, InstalledState>> }> = [
+		{ which: "claude", installs: ["claude"], seeded: { claude: "2.x" } },
+		{ which: "codex", installs: ["codex"], seeded: { codex: "3.x", pi: "3.x" } },
+		{
+			which: "all",
+			installs: SKILL_HARNESSES,
+			seeded: { claude: "2.x", codex: "3.x", opencode: "2.x", antigravity: "3.x", pi: "3.x" },
+		},
 	];
-	for (const { which, harnesses } of cases) {
+	for (const { which, installs, seeded } of cases) {
 		const root = await mkdtemp(join(tmpdir(), "chichex-legacy-manifest-"));
 		try {
 			const fixtureRepo = join(root, "repo");
@@ -1194,25 +1227,28 @@ test("issue #103 CA-23: install.sh claude|codex|all migra un .chichex-skills-man
 			for (const harness of SKILL_HARNESSES) {
 				await cp(repoPath(harness), join(fixtureRepo, harness), { recursive: true });
 			}
-			const dests: Record<(typeof SKILL_HARNESSES)[number], string> = {
+			const dests: Record<SkillHarness, string> = {
 				claude: join(root, "dest", "claude-skills"),
 				codex: join(root, "dest", "codex-skills"),
 				opencode: join(root, "dest", "opencode-skills"),
 				antigravity: join(root, "dest", "antigravity-skills"),
 				pi: join(root, "dest", "pi-skills"),
 			};
+			const configFile = join(root, "dest", "codex-config.toml");
 			const sentinel = join(root, "dest", "sentinel");
 			await mkdir(join(root, "dest"), { recursive: true });
 			await writeFile(sentinel, "no tocar");
-			for (const harness of harnesses) await seedLegacyChichexDestination(dests[harness]);
+			for (const [harness, state] of Object.entries(seeded) as Array<[SkillHarness, InstalledState]>) {
+				await seedInstalledDestination(dests[harness], state);
+			}
 
-			const result = runInstaller(join(fixtureRepo, "install.sh"), [which], {
+			const env = {
 				HOME: join(root, "home"),
 				CLAUDE_SKILLS_DIR: dests.claude,
 				CLAUDE_AGENTS_DIR: join(root, "dest", "agents"),
 				CLAUDE_PLUGIN_REGISTRY_FILE: join(root, "no-registry.json"),
 				CODEX_SKILLS_DIR: dests.codex,
-				CODEX_CONFIG_FILE: join(root, "dest", "codex-config.toml"),
+				CODEX_CONFIG_FILE: configFile,
 				OPENCODE_SKILLS_DIR: dests.opencode,
 				ANTIGRAVITY_SKILLS_DIR: dests.antigravity,
 				PI_SKILLS_DIR: dests.pi,
@@ -1220,19 +1256,50 @@ test("issue #103 CA-23: install.sh claude|codex|all migra un .chichex-skills-man
 				PI_THEMES_DIR: join(root, "dest", "pi-themes"),
 				// Sin `pi` en PATH: el guard del Pi Package nativo degrada a "sin conflicto".
 				PATH: "/usr/bin:/bin",
-			});
+			};
+			const result = runInstaller(join(fixtureRepo, "install.sh"), [which], env);
 			assert.equal(result.status, 0, `install.sh ${which}: ${result.stdout}\n${result.stderr}`);
-			for (const harness of harnesses) {
+			for (const harness of installs) {
 				await assertLegacyChichexDestinationMigrated(`install.sh ${which} (${harness})`, dests[harness], join(fixtureRepo, harness));
 			}
-			assert.match(result.stdout, /✗ sdd-run \(retirado del repo, podado\)/, `install.sh ${which}: avisa la poda de sdd-run`);
-			assert.match(result.stdout, /✗ sdd-spec \(retirado del repo, podado\)/, `install.sh ${which}: avisa la poda de sdd-spec`);
-			if (harnesses.includes("codex")) {
-				const codexConfig = await readFile(join(root, "dest", "codex-config.toml"), "utf8");
-				assert.ok(codexConfig.includes(join(dests.pi, "chiche-run", "SKILL.md")), `install.sh ${which}: el bloque Codex lista chiche-run\n${codexConfig}`);
-				assert.doesNotMatch(codexConfig, /sdd-(?:init|spec|run|land)/, `install.sh ${which}: el bloque Codex no lista alias sdd-*\n${codexConfig}`);
+			// Cada alias se poda una vez por cada destino instalado que lo traía:
+			// los de 3.x traen los cuatro; los de 2.x, solo la copia completa de sdd-run.
+			for (const alias of RETIRED_ALIASES) {
+				const expected = installs.filter((harness) => seeded[harness] === "3.x" || (seeded[harness] === "2.x" && alias === "sdd-run")).length;
+				const pruned = result.stdout.match(new RegExp(`✗ ${alias} \\(retirado del repo, podado\\)`, "g")) ?? [];
+				assert.equal(pruned.length, expected, `install.sh ${which}: avisa ${expected} poda(s) de ${alias}\n${result.stdout}`);
 			}
 			assert.equal(await readFile(sentinel, "utf8"), "no tocar", `install.sh ${which}: un nombre hostil del manifest viejo no borra fuera del destino`);
+
+			if (installs.includes("codex")) {
+				const codexConfig = await readFile(configFile, "utf8");
+				assert.ok(codexConfig.includes(join(dests.pi, "chiche-run", "SKILL.md")), `install.sh ${which}: el bloque Codex lista chiche-run\n${codexConfig}`);
+			}
+			if (which === "codex") {
+				// `install.sh codex` no poda $PI_DEST: las copias Pi sdd-* siguen ahí y
+				// Codex las tiene que ver deshabilitadas, además de las de siempre.
+				const codexConfig = await readFile(configFile, "utf8");
+				const names = (root: string) => readdirSync(join(fixtureRepo, root), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+				const piNames = new Set(names("pi"));
+				const regular = names("codex").filter((name) => piNames.has(name)).map((name) => join(dests.pi, name, "SKILL.md"));
+				const stale = ["retired-skill", ...RETIRED_ALIASES].map((name) => join(dests.pi, name, "SKILL.md"));
+				const disabled = [...codexConfig.matchAll(/\[\[skills\.config\]\]\npath = "([^"\n]*)"\nenabled = false\n/g)].map((match) => match[1]);
+				assert.equal(disabled.length, (codexConfig.match(/\[\[skills\.config\]\]/g) ?? []).length, `install.sh codex: toda entrada es path + enabled = false\n${codexConfig}`);
+				assert.deepEqual([...disabled].sort(), [...regular, ...stale].sort(), `install.sh codex: deshabilita las copias Pi de siempre y las retiradas (sdd-* incluidas), nada más\n${codexConfig}`);
+				for (const alias of RETIRED_ALIASES) {
+					assert.ok(await absolutePathExists(join(dests.pi, alias, "SKILL.md")), `install.sh codex no poda ${alias} de $PI_DEST`);
+					assert.ok(
+						result.stdout.includes(`   ↳ ${alias}: copia Pi retirada; corré ./install.sh pi o ./install.sh pi-clean --confirm para podarla`),
+						`install.sh codex: avisa cómo podar ${alias}\n${result.stdout}`,
+					);
+				}
+			}
+			if (which === "all") {
+				// install_pi corre antes que install_codex: el bloque no lista lo que esta
+				// misma corrida poda de $PI_DEST.
+				assert.doesNotMatch(await readFile(configFile, "utf8"), /sdd-(?:init|spec|run|land)/, "install.sh all: el bloque Codex no lista alias sdd-*");
+				assert.doesNotMatch(result.stdout, /copia Pi retirada/, "install.sh all: no avisa copias Pi que ya podó");
+			}
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
@@ -1240,6 +1307,61 @@ test("issue #103 CA-23: install.sh claude|codex|all migra un .chichex-skills-man
 
 	const realHomeAfter = await Promise.all(realHomeManifests.map((path) => stat(path).then((info) => info.mtimeMs, () => null)));
 	assert.deepEqual(realHomeAfter, realHomeBefore, "los manifests del HOME real no cambian");
+});
+
+test("issue #103 CA-23: install.sh all con el Pi Package nativo instalado instala los otros sets, no toca $PI_DEST, falla al final y Codex sigue viendo las copias Pi retiradas", async () => {
+	const root = await mkdtemp(join(tmpdir(), "chichex-all-pi-conflict-"));
+	try {
+		const fixtureRepo = join(root, "repo");
+		const fakeBin = join(root, "bin");
+		await mkdir(fakeBin, { recursive: true });
+		await mkdir(fixtureRepo, { recursive: true });
+		await cp(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+		for (const harness of SKILL_HARNESSES) {
+			await mkdir(join(fixtureRepo, harness, "grill"), { recursive: true });
+			await writeFile(join(fixtureRepo, harness, "grill", "SKILL.md"), "---\nname: grill\n---\n");
+		}
+		await writeFile(join(fakeBin, "pi"), "#!/bin/sh\nif [ \"$1\" = \"list\" ]; then\n  printf 'User packages:\\n  git:github.com/chichex/chiche\\n'\nfi\nexit 0\n");
+		await chmod(join(fakeBin, "pi"), 0o755);
+		const dests: Record<SkillHarness, string> = {
+			claude: join(root, "dest", "claude-skills"),
+			codex: join(root, "dest", "codex-skills"),
+			opencode: join(root, "dest", "opencode-skills"),
+			antigravity: join(root, "dest", "antigravity-skills"),
+			pi: join(root, "dest", "pi-skills"),
+		};
+		const configFile = join(root, "dest", "codex-config.toml");
+		await seedInstalled3xDestination(dests.pi);
+
+		const result = runInstaller(join(fixtureRepo, "install.sh"), ["all"], {
+			HOME: join(root, "home"),
+			CLAUDE_SKILLS_DIR: dests.claude,
+			CLAUDE_AGENTS_DIR: join(root, "dest", "agents"),
+			CLAUDE_PLUGIN_REGISTRY_FILE: join(root, "no-registry.json"),
+			CODEX_SKILLS_DIR: dests.codex,
+			CODEX_CONFIG_FILE: configFile,
+			OPENCODE_SKILLS_DIR: dests.opencode,
+			ANTIGRAVITY_SKILLS_DIR: dests.antigravity,
+			PI_SKILLS_DIR: dests.pi,
+			PI_EXTENSIONS_DIR: join(root, "dest", "pi-extensions"),
+			PI_THEMES_DIR: join(root, "dest", "pi-themes"),
+			PATH: `${fakeBin}${delimiter}/usr/bin${delimiter}/bin`,
+		});
+		assert.notEqual(result.status, 0, `${result.stdout}\n${result.stderr}`);
+		assert.match(result.stderr, /Pi Package nativo.*ya está instalado/is);
+		assert.doesNotMatch(result.stdout, /^Listo\.$/m, "una instalación que falla no dice Listo");
+		for (const harness of ["claude", "codex", "opencode", "antigravity"] as const) {
+			assert.ok(await absolutePathExists(join(dests[harness], "grill", "SKILL.md")), `${harness}: el set se instala aunque Pi falle`);
+		}
+		assert.equal(await absolutePathExists(join(root, "dest", "pi-extensions")), false, "install_pi no copia nada con el package nativo registrado");
+		for (const alias of RETIRED_ALIASES) {
+			assert.ok(await absolutePathExists(join(dests.pi, alias, "SKILL.md")), `${alias} sigue en $PI_DEST: install_pi no corrió`);
+		}
+		const config = await readFile(configFile, "utf8");
+		assert.ok(config.includes(`path = "${join(dests.pi, "sdd-run", "SKILL.md")}"\nenabled = false`), `Codex sigue deshabilitando la copia Pi sdd-run que no se podó\n${config}`);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
 
 test("issue #103 CA-10: install.sh codex reemplaza el bloque viejo chichex/skills de config.toml por un unico bloque chichex/chiche", async () => {
