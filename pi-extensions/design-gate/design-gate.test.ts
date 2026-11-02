@@ -162,12 +162,12 @@ const DESIGN_SYSTEM_DOCTRINE: RegExp[] = [
 	/recomendación primera/,
 	/`frontend-design`[^\n]*instalado[^\n]*refuerzo[^\n]*antes del plan de tokens[^\n]*nunca como requisito/,
 	/solo en archivos que ya existen/,
-	/fila de la superficie en `## Diseño` de `\.sdd\/project\.md`[^\n]*si la sección no existe[^\n]*`\/chiche-init --update`/,
+	/\*\*El contrato \(`\.chiche\/project\.md` o su fallback\)\*\* — fila de la superficie en `## Diseño` del contrato[^\n]*si la sección no existe[^\n]*`\/chiche-init --update`/,
 	/`@DESIGN_SYSTEM\.md`[^\n]*`CLAUDE\.md`/,
 	/<!-- design-system-agents-link:start -->[\s\S]*<!-- design-system-agents-link:end -->[\s\S]*`AGENTS\.md`|`AGENTS\.md`[\s\S]*<!-- design-system-agents-link:start -->[\s\S]*<!-- design-system-agents-link:end -->/,
 	/^- No escribir código de la aplicación: ni tokens en código, ni componentes, ni temas\.$/m,
 	/`DESIGN_SYSTEM\.md` con el marker `design-system:` de este skill prevalece sobre las demás señales/,
-	/\*\*Rama de registro\*\*[^\n]*solo `\.sdd\/project\.md`/,
+	/\*\*Rama de registro\*\*[^\n]*solo el contrato \(`\.chiche\/project\.md` o su fallback\)/,
 	/un único bloque por archivo, con una línea por superficie/,
 	/No pisar `## Ajustes de este proyecto`/,
 ];
@@ -294,6 +294,9 @@ test("CA-8: design-system queda cableado en pi-package, harness-gate, README y m
 		const markdown = await readRepoFile(path);
 		const skills = section(markdown, readmeHeadings.skills);
 		if (!/^\| \*\*`design-system`\*\*[^|]*\|.*DESIGN_SYSTEM\.md.*$/m.test(skills)) problems.push(`${path}: sin fila design-system en la tabla de skills fundacionales`);
+		// Issue #103, T7c: el contrato vive en `.chiche/project.md`.
+		const designRow = skills.match(/^\| \*\*`design-system`\*\*[^\n]*$/m)?.[0] ?? "";
+		if (!designRow.includes(".chiche/project.md") || designRow.includes(".sdd/")) problems.push(`${path}: la fila design-system no nombra solo .chiche/project.md`);
 		if (!/design-system/.test(section(markdown, readmeHeadings.sdd))) problems.push(`${path}: el workflow SDD no nombra design-system`);
 	}
 
@@ -427,7 +430,7 @@ test("CA-4: la tabla de Upgrade de contrato gana la fila Diseño", async () => {
 });
 
 test("CA-5: el contrato de este repo gana ## Diseño sin superficies, la fila del gate y los conteos nuevos", async () => {
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	const contractHeadings = headings(contract);
 	assert.notEqual(contractHeadings.indexOf("## Stack"), -1, "el contrato tiene ## Stack");
 	assert.equal(contractHeadings[contractHeadings.indexOf("## Stack") + 1], "## Diseño", "## Diseño va inmediatamente después de ## Stack");
@@ -447,7 +450,7 @@ test("CA-5: el contrato de este repo gana ## Diseño sin superficies, la fila de
 // ---------------------------------------------------------------------------
 
 const GRILL_DESIGN_BRANCH: RegExp[] = [
-	/lee `## Diseño` de `\.sdd\/project\.md`/,
+	/lee `## Diseño` de `\.chiche\/project\.md`/,
 	/si falta o es `Sin superficies UI\.` con señales de UI en el repo[^\n]*explora una vez[^\n]*`\/chiche-init --update`/i,
 	/cruzando las raíces de cada superficie con los paths que el pedido tocaría/,
 	/solo si queda ambiguo[^\n]*una única pregunta/i,
@@ -561,7 +564,7 @@ const SPEC_TEMPLATE_DESIGN: RegExp[] = [
 ];
 
 const SDD_SPEC_DESIGN: RegExp[] = [
-	/La Fase 1 lee `## Diseño` de `\.sdd\/project\.md`/,
+	/La Fase 1 lee `## Diseño` de `\.chiche\/project\.md`/,
 	/La Fase 2 clasifica el pedido cruzando las raíces de cada superficie con los paths que el pedido tocaría/,
 	/con `--from-grill`, el `## Diseño` del handoff entra confirmado/,
 	/sin grill y con UI, las decisiones de diseño van a `## Diseño` y a la tabla de inferencias como `\[ASSUMED\]`, sin preguntar/i,
@@ -570,11 +573,14 @@ const SDD_SPEC_DESIGN: RegExp[] = [
 	/La Fase 5 escribe en `## Plan de verificacion` el mecanismo de capturas: comando, pantalla y referencia a igualar/,
 	/`sin sistema`[^\n]*`## Riesgos y gaps`[^\n]*«sin sistema de diseño: `design-system` disponible, el run sigue con `\[ASSUMED\]`»/,
 	/reescribe las rutas de las capturas a rutas desde la raíz del repo/,
+	// Review de #107-2 (5): la ruta es la real del handoff (`.chiche/grills/…` o `.sdd/grills/…`), nunca una reescrita que no existe.
+	/con la ruta real del handoff \(`\.chiche\/grills\/<handoff>\/<pantalla>\.png` o `\.sdd\/grills\/<handoff>\/<pantalla>\.png`, nunca una que no exista\)/,
+	/contra la captura del handoff, con su ruta real: `\.chiche\/grills\/<handoff>\/finanzas\.png` o `\.sdd\/grills\/<handoff>\/finanzas\.png`/,
 	/más de un `## Diseño`[^\n]*el vigente es el último/,
 ];
 
 const SDD_RUN_DESIGN: RegExp[] = [
-	/La Fase 1 lee `## Diseño` de `\.sdd\/project\.md`/,
+	/La Fase 1 lee `## Diseño` de `\.chiche\/project\.md`/,
 	/La Fase 2 imprime, junto al plan efímero y solo si la spec trae `## Diseño`, el plan de diseño/,
 	/por pantalla o componente: tokens y componentes del inventario que reusa, qué crea nuevo y qué referencia o captura debe igualar/,
 	/Si la superficie está `sin sistema`, aplica la doctrina mínima de `\/design-system`: plan de tokens, revisar contra el pedido y el inventario, construir y autocrítica/,
@@ -583,10 +589,10 @@ const SDD_RUN_DESIGN: RegExp[] = [
 	/En la Fase 3, cada CA de UI con mecanismo de captura produce la captura de la implementación con el comando que la spec declara/,
 	/la celda `Evidencia` cita el comando y la ruta de la captura; la cabecera `\| CA \| Capa \| Estado \| Evidencia \|` no cambia/,
 	/`## Fidelidad visual` con la tabla `\| Pantalla o estado \| Referencia \| Implementacion \| Diferencias declaradas \|`, ubicada antes de `## Riesgo de merge`, que sigue siendo la última sección/,
-	/se commitean en el branch bajo `\.sdd\/evidence\/<slug>\/` y se embeben por URL raw del sha del commit que las agrega/,
+	/se commitean en el branch bajo `\.chiche\/evidence\/<slug>\/` y se embeben por URL raw del sha del commit que las agrega/,
 	/`gh stack sync`[^\n]*reescriben las URLs/,
-	/`\.sdd\/grills\/<nombre-real-del-handoff>\/`[^\n]*artefactos de entrada de la Fase 1\.4/,
-	/`\.sdd\/evidence\/` queda fuera de los gates de tamaño de PR y de líneas por archivo/,
+	/`\.chiche\/grills\/<nombre-real-del-handoff>\/`[^\n]*artefactos de entrada de la Fase 1\.4/,
+	/`\.chiche\/evidence\/` queda fuera de los gates de tamaño de PR y de líneas por archivo/,
 	/resincronización del body[^\n]*conserva `## Fidelidad visual`/,
 	/un fix sobre un CA de UI rehace su captura/,
 	/En una capa superior[^\n]*al final de su sección de capa, antes de la línea de riesgo si la hay/,
@@ -677,16 +683,15 @@ test("CA-16: next.md no repite las reglas de web en celular que ya trae react.md
 });
 
 test("CA-17: el contrato fecha los conteos nuevos y cita la corrida con Pi 0.85.1", async () => {
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	const commands = section(contract, /^## Comandos$/);
-	// Pi Package, frontmatter y la suite se re-verificaron el 2026-11-01 con la
-	// capa 2 del renombre a chiche (alias sdd-*); drift conserva la corrida del
-	// 15 con el port de issue-triage a OpenCode.
+	// Pi Package, frontmatter, drift y la suite se re-verificaron el 2026-11-02
+	// con la capa 3 del renombre a chiche (migración a .chiche/).
 	const verifiedOn: Record<string, string> = {
-		"gate focalizado de Pi Package": "2026-11-01",
-		"tests de extensiones": "2026-11-01",
-		"lint de frontmatter": "2026-11-01",
-		"reporte de drift": "2026-10-15",
+		"gate focalizado de Pi Package": "2026-11-02",
+		"tests de extensiones": "2026-11-02",
+		"lint de frontmatter": "2026-11-02",
+		"reporte de drift": "2026-11-02",
 	};
 	for (const [row, date] of Object.entries(verifiedOn)) {
 		assert.match(commands, new RegExp(`^\\| ${escapeRegExp(row)} \\|[^|]*\\|[^|]*\\| verificado ${date} \\|`, "m"), `${row}: conteo nuevo con fecha nueva`);

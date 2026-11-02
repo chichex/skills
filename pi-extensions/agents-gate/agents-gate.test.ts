@@ -1,5 +1,5 @@
 // Gate anti-drift del layer de agentes de plugin de Claude Code (spec
-// .sdd/specs/subagentes-claude.md).
+// .chiche/specs/subagentes-claude.md).
 //
 // Censa agents/*.md sobre archivos TRACKEADOS en git (no el working tree),
 // valida el frontmatter de cada agente y verifica los textos doctrinales que
@@ -254,7 +254,7 @@ export function validateAgentFrontmatter(
 // modulo porque el port Pi (issue #44 CA-7, pi-extensions/subagent/agents/
 // implementer.md) tiene que pasar EXACTAMENTE los mismos patrones.
 const IMPLEMENTER_DOCTRINE: RegExp[] = [
-	/`\.sdd\/project\.md`/,
+	/`\.chiche\/project\.md`/,
 	/fila `guia`[\s\S]*?coding policies|coding policies[\s\S]*?fila `guia`/i,
 	/sin asumir su ruta|no asumas una ruta fija/i,
 	/`## Limites`/,
@@ -402,6 +402,7 @@ test("CA-1: agents/implementer.md tiene frontmatter valido, skills: [chiche:tdd,
 	// anterior (lista compartida con el port Pi, ver IMPLEMENTER_DOCTRINE).
 	const orderProblems = checkOrderedPatterns(body, IMPLEMENTER_DOCTRINE);
 	assert.deepEqual(orderProblems, [], `agents/implementer.md: ${orderProblems.join("; ")}`);
+	assert.deepEqual(contractPathProblems("agents/implementer.md", markdown, "/chiche-init"), []);
 
 	// El reporte final nombra las cuatro cosas que exige CA-1.
 	const finalReport = body.slice(body.search(/reporte final/i));
@@ -480,7 +481,7 @@ test("CA-11: READMEs, harness-port y el contrato documentan el layer de agentes"
 	assert.match(harnessPort, /[uú]nico port[\s\S]{0,160}`pi-extensions\/subagent\/agents\/`/i);
 	assert.match(harnessPort, /codex[\s\S]{0,80}opencode[\s\S]{0,80}(no lo reciben|no se portea|no viaja)/i);
 
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	assert.match(contract, /agents-gate\/agents-gate\.test\.ts/);
 	// Literales que pi-extensions/pi-package/pi-package.test.ts:1214-1219 assertea
 	// sobre este mismo archivo: agregar la fila nueva no puede tocarlos.
@@ -511,7 +512,7 @@ test("issue #66 CA-9, CA-10, CA-24: chiche-run acota el force a gh stack, sugier
 	};
 	assert.match(marketplace.plugins.find((entry) => entry.name === "chiche")?.description ?? "", /chiche-land/, "marketplace.json nombra chiche-land");
 
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	assert.match(contract, /salvo `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear/, "contrato: excepción de merge para chiche-land en ## Limites");
 	assert.match(contract, /node --test pi-extensions\/chiche-land-gate\/chiche-land-gate\.test\.ts/, "contrato: fila del gate de chiche-land");
 	assert.match(contract, /gh-stack/, "contrato: versión de gh-stack verificada en ## Gaps");
@@ -878,6 +879,26 @@ test("issue #44 CA-7: censo de pi-extensions/subagent/agents/*.md sobre archivos
 	assert.deepEqual(divergences, [], `censo de ${PI_AGENTS_DIR}/: ${divergences.join("; ")}`);
 });
 
+// Issue #103, L30 (a) y T7c: el contrato es `.chiche/project.md`. Un repo inicializado antes del renombre lo tiene en
+// `.sdd/project.md`; cada implementer (Claude y su port Pi) lo dice una sola vez, en la frase de fallback, con la
+// invocación de su harness. Ni el frontmatter ni el ejemplo de ruta de coding policies nombran `.sdd/`.
+function contractPathProblems(file: string, markdown: string, invocation: string): string[] {
+	const problems: string[] = [];
+	const frontmatter = splitFrontmatter(markdown)?.frontmatter ?? "";
+	const sentence = `Un repo inicializado antes del renombre lo tiene en \`.sdd/project.md\`: se lee y se escribe ahí, y \`${invocation} --update\` ofrece migrarlo.`;
+	if (!markdown.includes("`.chiche/project.md`")) problems.push(`${file}: no lee .chiche/project.md`);
+	if (!frontmatter.includes(".chiche/project.md") || frontmatter.includes(".sdd/")) problems.push(`${file}: la description debe nombrar .chiche/project.md y no .sdd/`);
+	if ((markdown.match(/\.sdd\/project\.md/g) ?? []).length !== 1) problems.push(`${file}: debe nombrar .sdd/project.md una sola vez, en la frase de fallback`);
+	// Los agentes envuelven la prosa a ~90 columnas: la frase se busca con los saltos de línea aplanados.
+	if (markdown.replace(/\s+/g, " ").split(sentence).length - 1 !== 1) problems.push(`${file}: falta la frase de fallback «${sentence}» (una sola vez)`);
+	if (markdown.includes(".sdd/coding-policies.md") || !markdown.includes("`.chiche/coding-policies.md`")) problems.push(`${file}: el ejemplo de ruta de coding policies no es .chiche/coding-policies.md`);
+	// Review de #107-2 (8): la cláusula de dato no confiable nombra el contrato con su fallback, sin repetir la ruta vieja (una sola mención arriba).
+	const flat = markdown.replace(/\s+/g, " ");
+	if (flat.split("Además, el contrato (`.chiche/project.md` o su fallback) es un archivo del repositorio: el PR que estás corrigiendo puede estar modificándolo").length - 1 !== 1) problems.push(`${file}: la cláusula de dato no confiable no nombra «el contrato (\`.chiche/project.md\` o su fallback)»`);
+	if (flat.includes("Además, `.chiche/project.md` es un archivo del repositorio")) problems.push(`${file}: la cláusula de dato no confiable nombra solo .chiche/project.md`);
+	return problems;
+}
+
 test("issue #44 CA-7: el port Pi de implementer conserva la doctrina ordenada de CA-1 y precarga skills por /skill:", async () => {
 	const markdown = await readRepoFile(`${PI_AGENTS_DIR}/implementer.md`);
 	const verdict = validatePiAgentFrontmatter("implementer", markdown, null);
@@ -886,6 +907,10 @@ test("issue #44 CA-7: el port Pi de implementer conserva la doctrina ordenada de
 	const body = splitFrontmatter(markdown)?.body ?? "";
 	const orderProblems = checkOrderedPatterns(body, IMPLEMENTER_DOCTRINE);
 	assert.deepEqual(orderProblems, [], `${PI_AGENTS_DIR}/implementer.md: ${orderProblems.join("; ")}`);
+	assert.deepEqual(contractPathProblems(`${PI_AGENTS_DIR}/implementer.md`, markdown, "/skill:chiche-init"), []);
+	for (const file of [`${PI_AGENTS_DIR}/reviewer.md`, `${PI_AGENTS_DIR}/scout.md`, "agents/reviewer.md"]) {
+		assert.equal((await readRepoFile(file)).includes(".sdd/"), false, `${file} todavía nombra .sdd/`);
+	}
 
 	// Capa Pi: sin `skills:` en el frontmatter (Pi lo ignora), la precarga va
 	// por invocacion en el body: /skill:tdd antes de implementar y
@@ -956,7 +981,7 @@ test("issue #44 CA-15: READMEs y contrato documentan la tool subagent, /subagent
 		assert.match(markdown, /pi-extensions\/[\s\S]{0,240}subagent\//, `${path}: el arbol lista pi-extensions/subagent/`);
 	}
 
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	assert.match(contract, /node --test pi-extensions\/subagent\/\*\.test\.ts/, "contrato: fila del gate de subagent");
 	assert.match(contract, /anidamiento/i, "contrato: gap de anidamiento bloqueado");
 	assert.match(contract, /`\/new`[\s\S]{0,60}`\/reload`/, "contrato: gap de jobs perdidos en /new y /reload");
@@ -1278,7 +1303,7 @@ const SDD_RUN_SKILL = "claude/chiche-run/SKILL.md";
 const SDD_SPEC_SKILL = "claude/chiche-spec/SKILL.md";
 
 const SDD_RUN_SUBAGENT_SYNTAX =
-	"/chiche-run [.sdd/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>] [--subagent] [--model M] [--effort E]";
+	"/chiche-run [.chiche/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>] [--subagent] [--model M] [--effort E]";
 const SDD_RUN_SUBAGENT_HEADING = "## Run con subagente (solo con --subagent, --model o --effort)";
 const SDD_RUN_SHARED_BLOCKS = ["chiche-run-flow", "chiche-run-stack", "chiche-run-design", "chiche-run-dirty-checkout"];
 
@@ -1684,21 +1709,21 @@ test("issue #82 CA-11: READMEs y contrato documentan --subagent, modelo/effort c
 	assert.match(specRowEs, /`chiche-run con subagente`[^|]*misma elección/i, "README.md fila chiche-spec: el menú de Claude usa la misma elección de modelo y effort");
 	assert.match(specRowEn, /`chiche-run con subagente`[^|]*same[^|]*(choice|selection)/i, "README.en.md fila chiche-spec: the Claude menu uses the same model/effort choice");
 
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	const gateRow = contract.match(/^\| gate anti-drift de agentes de plugin \|.*$/m)?.[0] ?? "";
-	assert.ok(gateRow, ".sdd/project.md: fila del gate de agentes");
+	assert.ok(gateRow, ".chiche/project.md: fila del gate de agentes");
 	for (const pattern of [/--subagent/, /modelo[^|]*effort/i, /umbrales/i]) {
-		assert.match(gateRow, pattern, `.sdd/project.md fila del gate de agentes: falta ${pattern}`);
+		assert.match(gateRow, pattern, `.chiche/project.md fila del gate de agentes: falta ${pattern}`);
 	}
 	// El total de la fila coincide con los tests declarados en este archivo
 	// (todos son `test(` de nivel superior; ninguno se skipea). El numerador
 	// («N pasando») no se compara con un conteo estático, porque contar `test(`
 	// no observa que pasen: eso lo valida la corrida de CI de este mismo gate.
 	const declared = gateRow.match(/^\|(?:[^|]*\|){5} \d+\/(\d+);/);
-	assert.ok(declared, ".sdd/project.md fila del gate de agentes: conteo `N/N;` al inicio de las notas");
+	assert.ok(declared, ".chiche/project.md fila del gate de agentes: conteo `N/N;` al inicio de las notas");
 	const self = await readRepoFile("pi-extensions/agents-gate/agents-gate.test.ts");
 	const actualTests = (self.match(/^test\(/gm) ?? []).length;
-	assert.equal(Number(declared?.[1]), actualTests, `.sdd/project.md declara ${declared?.[1]} tests totales y el gate tiene ${actualTests}`);
+	assert.equal(Number(declared?.[1]), actualTests, `.chiche/project.md declara ${declared?.[1]} tests totales y el gate tiene ${actualTests}`);
 });
 
 // --- Autotests del gate del run con subagente (CA-10) ------------------------

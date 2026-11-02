@@ -6,4 +6,4 @@ timeout_seconds: 180
 allowed_tools: [Read, Glob, Grep, Skill]
 ---
 
-Dale para adelante con la spec de .sdd/specs/flag-json.md, correla.
+Dale para adelante con la spec de .chiche/specs/flag-json.md, correla.

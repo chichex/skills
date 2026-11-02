@@ -1,15 +1,15 @@
 # Grill — Visualización del harness SDD
 <!-- Estado: finalized. Proyecto: /home/chiche/workspace/skills. Fuente: pedido libre. -->
-<!-- SDD-Tracking: version=1; type=grill; state=finalized; issue=none; grill=2026-10-14-visualizacion-harness; project=%2Fhome%2Fchiche%2Fworkspace%2Fskills -->
+<!-- Chiche-Tracking: version=2; type=grill; state=finalized; issue=none; grill=2026-10-14-visualizacion-harness; project=%2Fhome%2Fchiche%2Fworkspace%2Fskills -->
 
 ## Hechos comprobados
-- Los grills viven en `<git-common-dir>/sdd/grills/` (borrador local) y en `.sdd/grills/` (commiteados); estados `paused|finalized`. [verificado: `claude/grill/SKILL.md`]
-- Las specs viven en `.sdd/specs/`, en el common-dir o en el body de un issue; estados `draft|approved|implemented|superseded`, con `issue=` y `grill=`. [verificado: `docs/sdd-tracking-v1.md`, `claude/sdd-spec/SKILL.md:189`]
+- Los grills viven en `<git-common-dir>/sdd/grills/` (borrador local) y en `.chiche/grills/` (commiteados); estados `paused|finalized`. [verificado: `claude/grill/SKILL.md`]
+- Las specs viven en `.chiche/specs/`, en el common-dir o en el body de un issue; estados `draft|approved|implemented|superseded`, con `issue=` y `grill=`. [verificado: `docs/sdd-tracking-v1.md`, `claude/sdd-spec/SKILL.md:189`]
 - Los PRs SDD salen de `sdd/<slug>` o del stack `sdd/<slug>/<n>-<etapa>`, con `Closes/Refs #NN`. [verificado: `claude/sdd-run/SKILL.md:45-48,152`]
 - `implemented` se escribe antes del merge, así que el estado de la spec no alcanza para saber si algo se mergeó. [verificado: `claude/sdd-run/SKILL.md:47,213`]
 - Hoy no hay estado de run ni fechas de transición. [verificado: schemas de `docs/sdd-tracking-v1.md`]
 - El parser canónico `parseSddArtifact` existe en `pi-extensions/sdd-artifacts/`. [verificado]
-- `gh` está autenticado con capacidad de PR. [verificado: `.sdd/project.md`]
+- `gh` está autenticado con capacidad de PR. [verificado: `.chiche/project.md`]
 
 ## Decisiones resueltas
 1. Propósito: tres usos, bandeja de "qué me toca", panorama por etapa y métricas. Bandeja y panorama van primero; las métricas, en una segunda etapa.

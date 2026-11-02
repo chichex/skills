@@ -1,6 +1,6 @@
 ---
 name: coding-policies
-description: Genera en el proyecto un archivo Markdown autocontenido con una baseline transversal de Clean Code y SOLID más tus buenas prácticas por stack (contenido para Go, TypeScript, Node.js, React, Next.js, React Native y Kotlin Multiplatform) y lo engancha en CLAUDE.md, AGENTS.md o .sdd/project.md para que toda sesión las siga. Usar cuando el usuario pida "coding policies", "buenas prácticas", "políticas de código", "mis prácticas de …" (Go, TypeScript, Node, React, Next.js, React Native, Kotlin Multiplatform, KMP, KMM), que el agente siga sus prácticas en este repo, o que genere o regenere .sdd/coding-policies.md. También cuando chiche-init lo encadene al terminar el contrato.
+description: Genera en el proyecto un archivo Markdown autocontenido con una baseline transversal de Clean Code y SOLID más tus buenas prácticas por stack (contenido para Go, TypeScript, Node.js, React, Next.js, React Native y Kotlin Multiplatform) y lo engancha en CLAUDE.md, AGENTS.md o .chiche/project.md para que toda sesión las siga. Usar cuando el usuario pida "coding policies", "buenas prácticas", "políticas de código", "mis prácticas de …" (Go, TypeScript, Node, React, Next.js, React Native, Kotlin Multiplatform, KMP, KMM), que el agente siga sus prácticas en este repo, o que genere o regenere .chiche/coding-policies.md. También cuando chiche-init lo encadene al terminar el contrato.
 ---
 
 Genera en el proyecto un archivo Markdown **autocontenido** con una baseline transversal de Clean Code y SOLID más las buenas prácticas del usuario por stack — reglas cortas MUST/SHOULD con su porqué y su gate — copiadas desde las referencias de este skill (`references/<id>.md`), y lo engancha en los archivos de contexto existentes para que toda sesión lo cargue. Las prácticas viven una sola vez en el skill; cada proyecto recibe un snapshot versionado que puede afinar en una sección propia que la regeneración preserva. Los argumentos pueden traer stacks explícitos, el destino y flags, o ir vacíos.
@@ -23,7 +23,7 @@ $coding-policies [go|typescript|node|react|next|react-native|kotlin-multiplatfor
 - Stacks posicionales (`go`, `typescript`, `node`, `react`, `next`, `react-native`, `kotlin-multiplatform`, `kmp`, `kmm`, `kotlin-android`) — saltean la confirmación de stacks de la Fase 0: se toman como selección explícita aunque el marcador no se detecte (el usuario sabe más que el marcador), y después se normalizan aliases y dependencias. Un id desconocido frena con la lista de ids válidos y aliases.
 - Los aliases `kmp` y `kmm` se normalizan a `kotlin-multiplatform` antes de comprobar cobertura, escribir markers y reportar.
 - `next` incorpora `react` antes de comprobar cobertura, generar y reportar, tanto si se detectó como si llegó como stack posicional.
-- `--out <ruta>` — destino del archivo; saltea la pregunta de destino. Default: `.sdd/coding-policies.md`.
+- `--out <ruta>` — destino del archivo; saltea la pregunta de destino. Default: `.chiche/coding-policies.md`. Si `.chiche/coding-policies.md` no existe y `.sdd/coding-policies.md` sí (repo sin migrar o con `Mantener .sdd/`), ese es el default y la opción `(Recomendado)`: se regenera en el lugar preservando `## Ajustes de este proyecto`, `CLAUDE.md` conserva su import y `$chiche-init --update` lo migra después.
 - `--no-link` — saltea el enganche de la Fase 4: genera el archivo y no toca ningún archivo de contexto.
 
 ## Fase 0 — Lanzador (pregunta solo lo que los argumentos no fijan)
@@ -34,7 +34,7 @@ Correr primero la detección de la Fase 1 y mostrar el resultado como texto visi
 
 ```text
 $coding-policies genera en este repo un archivo con tus buenas practicas por stack,
-listo para referenciar desde CLAUDE.md, AGENTS.md o .sdd/project.md. Todo salvo la
+listo para referenciar desde CLAUDE.md, AGENTS.md o .chiche/project.md. Todo salvo la
 seccion "Ajustes de este proyecto" se regenera desde el skill; esa seccion es tuya.
 
 Baseline transversal:
@@ -45,13 +45,13 @@ Stacks detectados:
   • typescript     — tsconfig.json (raiz)       · con referencia (typescript@<version>)
   • node           — package.json (tools/cli)   · con referencia (node@<version>)
 
-Destino default: .sdd/coding-policies.md
+Destino default: .chiche/coding-policies.md
 
 Atajo: $coding-policies [stacks...] [--out <ruta>] fija stacks y destino y saltea este
 menu; --no-link solo saltea el enganche.
 ```
 
-Luego preguntar en texto plano con todas las opciones y terminar el turno — "¿Qué stacks entran?": una opción por stack detectado, los cubiertos primero y marcados `(Recomendado)`, los no cubiertos con la nota "sin prácticas definidas todavía". Y una segunda pregunta — "¿Dónde lo genero?": `.sdd/coding-policies.md (Recomendado)` / `docs/coding-policies.md` / otra ruta vía custom.
+Luego preguntar en texto plano con todas las opciones y terminar el turno — "¿Qué stacks entran?": una opción por stack detectado, los cubiertos primero y marcados `(Recomendado)`, los no cubiertos con la nota "sin prácticas definidas todavía". Y una segunda pregunta — "¿Dónde lo genero?": `.chiche/coding-policies.md (Recomendado)` / `docs/coding-policies.md` / otra ruta vía custom.
 
 ## Fase 1 — Detección de stacks
 
@@ -78,7 +78,7 @@ En un mismo marcador Gradle, `kotlin-multiplatform` prevalece sobre `kotlin-andr
 
 ## Fase 3 — Generación
 
-Escribir el destino con EXACTAMENTE este template (crea `.sdd/` — o el directorio de `--out` — si no existe):
+Escribir el destino con EXACTAMENTE este template (crea `.chiche/` — o el directorio de `--out` — si no existe):
 
 ```markdown
 # Coding policies — <proyecto>
@@ -113,7 +113,7 @@ Escribir el destino con EXACTAMENTE este template (crea `.sdd/` — o el directo
 
 ## Fase 4 — Enganche (saltear con `--no-link`)
 
-Detectar en la raíz `CLAUDE.md`, `AGENTS.md` y `.sdd/project.md`. Solo se ofrecen los que existen: el skill nunca crea archivos de contexto; si no existe ninguno, lo informa y termina. Luego preguntar en texto plano con todas las opciones y terminar el turno — "¿Dónde agrego la referencia?": una opción por archivo existente. Editar únicamente los confirmados, de forma idempotente: en `CLAUDE.md` y `AGENTS.md`, verificando antes que `<ruta>` no esté ya presente (si ya está, se reporta `ya estaba` y no se toca); en `.sdd/project.md`, comparando la fila entera (igual → `ya estaba`; distinta, por ejemplo por otros stacks → `actualizado`):
+Detectar en la raíz `CLAUDE.md`, `AGENTS.md` y el contrato (`.chiche/project.md` o su fallback). Un repo inicializado antes del renombre lo tiene en `.sdd/project.md`: se lee y se escribe ahí, y `$chiche-init --update` ofrece migrarlo. Solo se ofrecen los que existen: el skill nunca crea archivos de contexto; si no existe ninguno, lo informa y termina. Luego preguntar en texto plano con todas las opciones y terminar el turno — "¿Dónde agrego la referencia?": una opción por archivo existente. Editar únicamente los confirmados, de forma idempotente: en `CLAUDE.md` y `AGENTS.md`, verificando antes que `<ruta>` no esté ya presente (si ya está, se reporta `ya estaba` y no se toca); en el contrato (`.chiche/project.md` o su fallback), comparando la fila entera (igual → `ya estaba`; distinta, por ejemplo por otros stacks → `actualizado`):
 
 1. **CLAUDE.md** — agregar al final una línea `@<ruta>` (Claude Code expande imports `@`).
 <!-- coding-policies-agents-link:start -->
@@ -124,7 +124,7 @@ Detectar en la raíz `CLAUDE.md`, `AGENTS.md` y `.sdd/project.md`. Solo se ofrec
    Antes de escribir o modificar código en este proyecto, leer `<ruta>` y respetar sus reglas y la sección "Ajustes de este proyecto".
    ```
 <!-- coding-policies-agents-link:end -->
-3. **.sdd/project.md** — en la tabla de `## Politicas de generacion`, la fila `| coding-policies | <ruta> (<stacks>) | guia — sin gate: $chiche-run la sigue al generar, la juzga el reviewer |`, reemplazando el sentinel "Sin politicas activas" por la tabla (`| Politica | Valor | Gate |`) si está, actualizando la fila en su lugar si ya existe, y sin tocar nada si la sección no existe: lo informa y sugiere `$chiche-init --update`.
+3. **El contrato (`.chiche/project.md` o su fallback)** — en la tabla de `## Politicas de generacion`, la fila `| coding-policies | <ruta> (<stacks>) | guia — sin gate: $chiche-run la sigue al generar, la juzga el reviewer |`, reemplazando el sentinel "Sin politicas activas" por la tabla (`| Politica | Valor | Gate |`) si está, actualizando la fila en su lugar si ya existe, y sin tocar nada si la sección no existe: lo informa y sugiere `$chiche-init --update`.
 
 ## Fase 5 — Reporte
 
@@ -133,7 +133,7 @@ Coding policies listas: <ruta> (<generado|regenerado>)
 - baseline: clean-code@<version> (incluida)
 - stacks: <id>@<version> (cubierto) · <id> (sin practicas definidas todavia)
 - ajustes de este proyecto: <preservados, N lineas|vacios, primera generacion>
-- enganche: <no intentado> | CLAUDE.md <agregado|ya estaba|omitido|no existe> · AGENTS.md <agregado|ya estaba|omitido|no existe> · .sdd/project.md <agregado|actualizado|ya estaba|omitido|sin seccion|no existe>
+- enganche: <no intentado> | CLAUDE.md <agregado|ya estaba|omitido|no existe> · AGENTS.md <agregado|ya estaba|omitido|no existe> · contrato (.chiche/project.md o su fallback) <agregado|actualizado|ya estaba|omitido|sin seccion|no existe>
 - desactualizados antes de regenerar: <id: <vieja|ausente> → <nueva>, ... | ninguno>
 ```
 
@@ -146,7 +146,7 @@ Después del reporte, preguntar `Commit + PR (Recomendado)` / `Dejar sin commite
 
 `Commit + PR`:
 
-1. Comprobar la aptitud igual que `$chiche-run`: hay remote y `gh` autenticado, y `## Limites` de `.sdd/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
+1. Comprobar la aptitud igual que `$chiche-run`: hay remote y `gh` autenticado, y `## Limites` de `.chiche/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
 2. Revisar cada path que esta corrida escribió. Uno nuevo, ausente en `origin/<default>`, se copia. Uno que ya existía se copia solo si `HEAD:<path>` del checkout es igual a `origin/<default>:<path>` y el path no tenía cambios antes de la corrida; si no, el cierre queda en `Dejar sin commitear` con el motivo, para no meter cambios ajenos en el PR ni revertir lo que `origin/<default>` ya cambió.
 3. `git fetch origin` y crear el worktree con lock, con el branch `chore/coding-policies-<YYYY-MM-DD>` nacido de `origin/<default>`: `git worktree add --lock --reason "coding-policies <YYYY-MM-DD>" ../<repo>-coding-policies-<YYYY-MM-DD> -b chore/coding-policies-<YYYY-MM-DD> origin/<default>`. Si el branch o el path ya existen, usar en los dos el primer sufijo libre (`-2`, `-3`…).
 4. Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR con `gh pr create --base <default> --title "chore(coding-policies): <YYYY-MM-DD>" --body-file <archivo>`.
@@ -166,7 +166,7 @@ Si el push o `gh pr create` fallan después del commit, el cierre queda como com
 ## MUST NOT DO
 
 - No tocar configuración global de ningún harness (`~/.claude`, `~/.codex`, `~/.config/opencode`, `~/.pi`): el skill escribe solo dentro del proyecto.
-- No crear archivos de contexto (`CLAUDE.md`, `AGENTS.md`, `.sdd/project.md`); solo editar los existentes que el usuario confirmó.
+- No crear archivos de contexto (`CLAUDE.md`, `AGENTS.md`, `.chiche/project.md`); solo editar los existentes que el usuario confirmó.
 - No editar sin confirmación: ni el destino existente ni los archivos de contexto.
 - No inventar reglas para stacks sin referencia, ni resumir o reescribir las de una referencia.
 - No omitir, repetir ni ofrecer como stack seleccionable la baseline `clean-code`.

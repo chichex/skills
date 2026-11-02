@@ -1535,7 +1535,7 @@ test("Spanish and English READMEs document the safe native package lifecycle", a
 test("autonomy contract and CI expose the verified Pi 0.85.1 package harness", async () => {
 	// Issue #44 CA-14: el pin sube a 0.85.1 (Pi local); el contrato y el workflow
 	// tienen que nombrar la misma version que corre en CI.
-	const contract = await readFile(repoFile(".sdd/project.md"), "utf8");
+	const contract = await readFile(repoFile(".chiche/project.md"), "utf8");
 	const workflow = await readFile(repoFile(".github/workflows/ci.yml"), "utf8");
 
 	assert.doesNotMatch(contract, /no hay `package\.json`/);

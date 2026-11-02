@@ -1,6 +1,6 @@
 # Grill — Corregir `/grills` cuando no muestra sesiones en Pi
 <!-- Estado: finalized. Proyecto: /home/chiche/workspace/skills. Fuente: pedido en chat. -->
-<!-- SDD-Tracking: version=1; type=grill; state=finalized; issue=none; grill=corregir-grills-cuando-no-muestra-sesiones-en-pi-20260929-cf16d049; project=%2Fhome%2Fchiche%2Fworkspace%2Fskills -->
+<!-- Chiche-Tracking: version=2; type=grill; state=finalized; issue=none; grill=corregir-grills-cuando-no-muestra-sesiones-en-pi-20260929-cf16d049; project=%2Fhome%2Fchiche%2Fworkspace%2Fskills -->
 
 ## Modo
 standard
@@ -9,7 +9,7 @@ standard
 - `/grills` hoy solo lee `~/.pi/agent/grill-sessions/*.json`.
 - Filtra primero por el proyecto actual.
 - Ignora JSON corruptos sin avisar.
-- No inventaría `.sdd/grills/*.md`.
+- No inventaría `.chiche/grills/*.md`.
 - Este repo tiene cuatro handoffs finalizados y ningún snapshot global.
 - Los tres snapshots globales existentes pertenecen a otros proyectos.
 - Los cuatro handoffs locales conservan rutas absolutas de otra máquina.

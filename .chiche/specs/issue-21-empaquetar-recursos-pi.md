@@ -1,6 +1,6 @@
 # Spec — Empaquetar los recursos de Pi como paquete Git nativo
 <!-- Generada por /skill:sdd-spec el 2026-08-15. Fuente: issue #21. Estado: implementada -->
-<!-- SDD-Tracking: version=1; type=spec; state=implemented; issue=#21; grill=none; superseded-by=none -->
+<!-- Chiche-Tracking: version=2; type=spec; state=implemented; issue=#21; grill=none; superseded-by=none -->
 
 ## Contexto
 Pi 0.84.2 soporta Pi Packages desde Git mediante un manifest `pi` en `package.json`, pero este repo todavía no tiene `package.json` y `pi -e ./` falla intentando cargar la raíz como una extensión. Los recursos destinados a Pi viven en tres seams existentes: 12 skills bajo `pi/`, 10 factories de extensión bajo `pi-extensions/` y el theme `pi-themes/claude-code.json`; `install.sh` hoy los copia a ubicaciones globales. Claude Code ya ofrece una instalación administrada mediante `.claude-plugin/`, por lo que #21 agrega la vía nativa equivalente para Pi sin cambiar el comportamiento de esos recursos.
@@ -44,13 +44,13 @@ Con configuración temporal, `pi install <ruta-local-del-repo>` agrega una únic
 ### CA-8 — Vía recomendada, actualización y rollback documentados [ALTA]
 `README.md` y `README.en.md` presentan Pi Package como vía recomendada y documentan, en ambos idiomas: revisión de seguridad previa; migración de copias manuales; `pi install git:github.com/chichex/skills`; variante `-l`; `pi update --extensions`; pins opcionales por tag/commit y su semántica; `pi remove git:github.com/chichex/skills`; selección manual del theme; y la prohibición de mantener simultáneamente el paquete y las copias de `install.sh pi`. `install.sh pi` permanece como alternativa legacy/manual y la instalación de Claude, Codex y OpenCode no cambia.
 
-La desinstalación nativa no borra `.sdd/specs`, `.sdd/grills`, sesiones, snapshots ni otros datos generados: sólo remueve la fuente del paquete y sus recursos cargados.
+La desinstalación nativa no borra `.chiche/specs`, `.chiche/grills`, sesiones, snapshots ni otros datos generados: sólo remueve la fuente del paquete y sus recursos cargados.
 
 ### CA-9 — Smoke de la fuente Git publicada [MEDIA]
 Después de publicar la branch del PR, `pi -e git:github.com/chichex/skills@<branch>` clona el paquete temporalmente, instala lo necesario y reproduce el inventario observable de CA-5 sin mutar settings persistentes. Un fallo de red o GitHub se reporta como inconcluso, no como verde; máximo tres intentos honestos y sin debilitar assertions.
 
 ### CA-10 — Contrato y regresión del repo actualizados [ALTA]
-`.sdd/project.md` se refresca después de implementar el manifest: deja de afirmar que no existe `package.json`, documenta los nuevos comandos focalizados y distingue carga temporal/aislada de instalación global. La suite de extensiones, gate anti-drift, lint de frontmatter, sintaxis shell, smoke de entrypoints, shellcheck remoto y `git diff --check` siguen verdes. No cambia el comportamiento funcional de skills, extensiones o themes.
+`.chiche/project.md` se refresca después de implementar el manifest: deja de afirmar que no existe `package.json`, documenta los nuevos comandos focalizados y distingue carga temporal/aislada de instalación global. La suite de extensiones, gate anti-drift, lint de frontmatter, sintaxis shell, smoke de entrypoints, shellcheck remoto y `git diff --check` siguen verdes. No cambia el comportamiento funcional de skills, extensiones o themes.
 
 ### CA-11 — Validación exacta post-merge antes de cerrar #8 [NULA antes del merge]
 Una vez mergeado el PR, se ejecuta el comando exacto sin ref contra `main` en un `PI_CODING_AGENT_DIR` descartable: instalar, listar, iniciar Pi, comprobar inventario/theme, ejecutar `pi update --extensions` y remover. La evidencia se registra en #21 o #8 antes de cerrar el epic. Instalar en la configuración global real o migrar sus copias requiere una autorización humana separada y no forma parte automática de `sdd-run`.
@@ -89,7 +89,7 @@ Mecanismo confirmado: **gate determinista + Pi aislado + smoke Git + protocolo p
 2. **CA-5:** desde el test o un probe finito, crear `HOME`/`PI_CODING_AGENT_DIR` temporales y enviar `{"type":"get_commands"}` a `pi -e ./ --mode rpc --no-session --offline`; afirmar respuesta exitosa, 20 comandos esperados y cero `extension_error`. Ejecutar además `pi -e ./ --use-theme claude-code --list-models --offline` y exigir status 0.
 3. **CA-6:** con los mismos directorios temporales, ejecutar `pi install <ruta-absoluta>`, `pi list`, un probe RPC sin `-e` y `pi remove <ruta-absoluta>`; afirmar una sola entrada antes del remove y ninguna después. Comparar hash/listado de los paths reales de configuración antes y después para demostrar cero mutación.
 4. **CA-7:** tests shell o Node con destinos `PI_*_DIR` temporales: sembrar recursos administrados y ajenos, correr el modo sin confirmación y confirmado, repetirlo, y afirmar no-op/borrado/idempotencia/preservación. `bash -n install.sh` y shellcheck remoto cubren la sintaxis/calidad del cambio.
-5. **CA-8 y CA-10:** assertions ES/EN sobre README y `.sdd/project.md`, más `bash scripts/lint-frontmatter.sh`, `node --test pi-extensions/*/*.test.ts`, `node --test pi-extensions/harness-gate/harness-gate.test.ts`, el smoke contractual de extensiones, `bash -n install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh` y `git diff --check`. `shellcheck` queda como señal de CI según el contrato.
+5. **CA-8 y CA-10:** assertions ES/EN sobre README y `.chiche/project.md`, más `bash scripts/lint-frontmatter.sh`, `node --test pi-extensions/*/*.test.ts`, `node --test pi-extensions/harness-gate/harness-gate.test.ts`, el smoke contractual de extensiones, `bash -n install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh` y `git diff --check`. `shellcheck` queda como señal de CI según el contrato.
 6. **CA-9:** después de pushear la branch, ejecutar con configuración temporal `pi -e git:github.com/chichex/skills@<branch> --use-theme claude-code --list-models` y el probe RPC equivalente; fijar `PI_SKIP_VERSION_CHECK=1` y `PI_TELEMETRY=0`, sin provider ni sesión, permitiendo únicamente la red necesaria para clonar la fuente Git e instalar sus peers. Registrar comando, ref y salida exacta. Un error de red queda inconcluso y no se reintenta más de tres veces.
 7. **CA-11 — protocolo post-merge:** en un directorio descartable, fijar `HOME` y `PI_CODING_AGENT_DIR`; ejecutar `pi install git:github.com/chichex/skills`; comprobar `pi list`; iniciar RPC y validar los 20 comandos; comprobar `--use-theme claude-code`; ejecutar `pi update --extensions`; remover con `pi remove git:github.com/chichex/skills`; comprobar lista vacía. Registrar la evidencia antes de cerrar #8. Para hacer rollout en el home real, pedir autorización separada, migrar primero las copias manuales y luego repetir instalación + `/reload`.
 
@@ -137,7 +137,7 @@ pi update --extensions
 - Agregar un gate determinista que detecte recursos Pi faltantes, extra o apuntados incorrectamente en el manifest.
 - Verificar el paquete localmente de forma temporal, sin mutar settings globales, mediante `pi -e ./ ...` o el mecanismo equivalente soportado.
 - Documentar instalación, actualización, desinstalación/rollback, seguridad y convivencia con `./install.sh pi` en README ES/EN.
-- Actualizar `.sdd/project.md` porque el repo dejará de ser un proyecto sin `package.json`.
+- Actualizar `.chiche/project.md` porque el repo dejará de ser un proyecto sin `package.json`.
 
 ## Fuera de alcance
 

@@ -592,7 +592,7 @@ test("CA-11: events-gate es solo-tests y el package sigue con 11 extensiones", a
 });
 
 test("CA-12: el contrato suma la fila del gate de eventos con el conteo real de este archivo", async () => {
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	const commands = section(contract, /^Comandos$/);
 	const own = await readFile(new URL(import.meta.url), "utf8");
 	const count = own.match(/^test\(/gm)?.length ?? 0;

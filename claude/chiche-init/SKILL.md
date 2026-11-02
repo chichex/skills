@@ -1,15 +1,15 @@
 ---
 name: chiche-init
-description: Explora el proyecto a fondo y genera .sdd/project.md — el "contrato de autonomía" que le dice a un agente autónomo cómo correr, testear y buildear la app, qué ambientes hay, cuál usar para probar, y qué puede verificar sin un humano. Usar SIEMPRE que el usuario quiera inicializar SDD, preparar un repo para trabajo autónomo, documentar el harness del proyecto (cómo se corre/testea/buildea), o cuando otro skill sdd-* necesite un .sdd/project.md que no existe o está desactualizado. También cuando el usuario diga "quiero que Claude pueda trabajar solo acá", "documenta cómo se testea esto" o similar.
+description: Explora el proyecto a fondo y genera .chiche/project.md — el "contrato de autonomía" que le dice a un agente autónomo cómo correr, testear y buildear la app, qué ambientes hay, cuál usar para probar, y qué puede verificar sin un humano. Usar SIEMPRE que el usuario quiera inicializar SDD, preparar un repo para trabajo autónomo, documentar el harness del proyecto (cómo se corre/testea/buildea), o cuando otro skill sdd-* necesite un .chiche/project.md que no existe o está desactualizado. También cuando el usuario diga "quiero que Claude pueda trabajar solo acá", "documenta cómo se testea esto" o similar.
 ---
 
-Explora el proyecto y genera `.sdd/project.md`: el **contrato de autonomía** que los demás skills `sdd-*` (spec, run) consumen para trabajar sin humano. No es documentación aspiracional: cada comando documentado se EJECUTA antes de escribirse, y lo que no se pudo verificar queda marcado como tal. Los argumentos pueden traer pistas libres ("es un monorepo, ignora apps/legacy", "el ambiente de prueba es staging") o ir vacío.
+Explora el proyecto y genera `.chiche/project.md`: el **contrato de autonomía** que los demás skills `sdd-*` (spec, run) consumen para trabajar sin humano. No es documentación aspiracional: cada comando documentado se EJECUTA antes de escribirse, y lo que no se pudo verificar queda marcado como tal. Los argumentos pueden traer pistas libres ("es un monorepo, ignora apps/legacy", "el ambiente de prueba es staging") o ir vacío.
 
 Skill operativo con una fase interactiva acotada: explora solo, verifica solo, y pregunta ÚNICAMENTE lo que el código no puede responder.
 
 ## Qué es el contrato de autonomía
 
-`.sdd/project.md` responde, con evidencia, las preguntas que un agente autónomo necesita antes de tocar código:
+`.chiche/project.md` responde, con evidencia, las preguntas que un agente autónomo necesita antes de tocar código:
 
 1. **Cómo se corre / testea / buildea** — comandos exactos, cwd, duración, y si fueron verificados ejecutándolos.
 2. **Qué ambientes existen y cuál puedo usar para probar** — local, staging, prod; env vars y de dónde salen.
@@ -17,7 +17,9 @@ Skill operativo con una fase interactiva acotada: explora solo, verifica solo, y
 4. **Qué NO debo hacer sin humano** — deploy, migraciones, push, tocar servicios pagos.
 5. **Bajo qué políticas genero código** — preferencias que el usuario ELIGE (tamaño máximo de PR, coverage mínimo, dependencias nuevas, convención de commits, políticas propias de la tecnología) y que `/chiche-run` aplica como gates duros — o sigue como `guia` explícita cuando no hay gate medible. Solo son activables como gate las políticas cuyo mecanismo de medición esté verificado en este repo.
 
-Se referencia desde el `CLAUDE.md` del proyecto (línea `@.sdd/project.md`) para que TODA sesión de Claude Code lo cargue, no solo las sdd.
+Se referencia desde el `CLAUDE.md` del proyecto (línea `@.chiche/project.md`) para que TODA sesión de Claude Code lo cargue, no solo las sdd.
+
+Un repo inicializado antes del renombre guarda el contrato en `.sdd/project.md` y las coding policies en `.sdd/coding-policies.md`: este skill los lee de ahí (abajo, `.chiche/` es la ruta en uso) y `--update` ofrece la migración (`## Migración a .chiche/`).
 
 ## Argumentos
 
@@ -27,17 +29,17 @@ Se referencia desde el `CLAUDE.md` del proyecto (línea `@.sdd/project.md`) para
 
 - `--assume` — cero preguntas: los gaps se resuelven con la assumption más conservadora y quedan marcados `[NEEDS-INPUT]` en el doc. Para correr desatendido.
 - `--no-verify` — no ejecutar comandos: documenta lo detectado como `no probado`. Útil en repos con builds carísimos.
-- `--update` — refresco de un `.sdd/project.md` existente: re-explora, re-verifica, pero PRESERVA la sección `## Decisiones humanas` y las respuestas previas. Además ofrece las capacidades que el skill ganó desde que el contrato se generó (ver "## Upgrade de contrato").
+- `--update` — refresco de un `.chiche/project.md` existente: re-explora, re-verifica, pero PRESERVA la sección `## Decisiones humanas` y las respuestas previas. Además ofrece las capacidades que el skill ganó desde que el contrato se generó (ver "## Upgrade de contrato").
 - `--no-import` — no tocar `CLAUDE.md`.
 
 ## Fase 0 — Lanzador (solo con `/chiche-init` pelado)
 
 Dispara SOLO cuando los argumentos vienen vacíos. Si trajo pistas o flags, saltear: el usuario ya dijo por dónde va.
 
-Si `.sdd/project.md` ya existe, decirlo primero (`Ya hay un contrato del <fecha>. Esto lo actualiza.`) y tratar toda elección como `--update` — incluida la oferta de mejoras de "## Upgrade de contrato" si el contrato es de una versión anterior del skill.
+Si `.chiche/project.md` ya existe, decirlo primero (`Ya hay un contrato del <fecha>. Esto lo actualiza.`) y tratar toda elección como `--update` — incluida la oferta de mejoras de "## Upgrade de contrato" si el contrato es de una versión anterior del skill.
 
 ```text
-/chiche-init explora el repo y genera .sdd/project.md: el contrato de autonomia que guia a
+/chiche-init explora el repo y genera .chiche/project.md: el contrato de autonomia que guia a
 un agente cuando trabaja solo. Hay dos perillas: si EJECUTO los comandos que encuentre
 (test/build/dev server) para probar que de verdad funcionan, y si te PREGUNTO las dudas
 que el codigo no responde o las asumo solo. En modo interactivo tambien te ofrezco
@@ -152,7 +154,7 @@ Reglas:
 - Política no medible = no ofrecida. Coverage sin comando de coverage verificado no aparece en el menú: se anota en `## Gaps` ("coverage no activable: no hay tooling de coverage verificado") y se ofrece activarla cuando el tooling exista.
 - **Baseline primero (coverage)**: el umbral se elige mirando el % actual medido en Fase 2, nunca en el aire. Ofrecer: `No bajar del baseline (X%) (Recomendado)` — ratchet, cumplible desde el día uno — / un % fijo que el repo YA cumple / custom. Un umbral por encima del baseline nace en FALLA (pedir 90% con un repo en 10% = todos los PRs en draft para siempre): decirlo con los dos números sobre la mesa y aceptarlo SOLO si el usuario lo confirma viendo el baseline; queda anotado `aspiracional` junto al baseline.
 - **Políticas de la tecnología (custom)**: el usuario describe la preferencia en texto libre ("seguir la guía de estilo de Uber en Go", "max 300 líneas por archivo", "prohibir panic() fuera de main"). Por cada una, proponer el gate MÁS BARATO que la observe — regla de un linter ya configurado > config nueva de un linter que el repo ya tiene > script corto del contrato (ej. `wc -l` sobre los archivos del diff) > grep — y VERIFICARLO ejecutándolo antes de escribirlo, como cualquier comando. Sin gate medible, ofrecer escribirla como **`guia`**: `/chiche-run` la sigue al GENERAR el código y el reviewer la juzga en el PR — una `guia` nunca se reporta verificada ni gatea. Si un linter la haría medible pero falta configurarlo, anotarlo en `## Gaps` ("sería gate si golangci-lint tuviera config").
-- **Coding policies del proyecto**: si existe `.sdd/coding-policies.md` (generado por `/coding-policies`) — o si la fila `coding-policies` ya presente en `## Politicas de generacion` apunta a un archivo existente, porque el skill acepta `--out` —, escribir sin preguntar la fila `guia` `| coding-policies | <ruta> (<stacks del marker>) | guia — sin gate: /chiche-run la sigue al generar, la juzga el reviewer |` — también con `--assume`, y en `--update` aunque se elija `Mantener` (si la fila ya existe se actualiza en su lugar): el archivo ya es una decisión humana en el repo y la fila solo la refleja. Si no existe, sumar al menú la opción `Generar coding policies` que, al terminar el contrato, invoca `/coding-policies`; nunca con `--assume`: generar el archivo es una elección humana.
+- **Coding policies del proyecto**: si existe `.chiche/coding-policies.md` (generado por `/coding-policies`) — o si la fila `coding-policies` ya presente en `## Politicas de generacion` apunta a un archivo existente, porque el skill acepta `--out` —, escribir sin preguntar la fila `guia` `| coding-policies | <ruta> (<stacks del marker>) | guia — sin gate: /chiche-run la sigue al generar, la juzga el reviewer |` — también con `--assume`, y en `--update` aunque se elija `Mantener` (si la fila ya existe se actualiza en su lugar): el archivo ya es una decisión humana en el repo y la fila solo la refleja. Si no existe, sumar al menú la opción `Generar coding policies` que, al terminar el contrato, invoca `/coding-policies`; nunca con `--assume`: generar el archivo es una elección humana.
 <!-- chiche-init-design-policies:start -->
 - **Gates de diseño**: solo para superficies `con sistema` con tokens detectados, sumar al menú gates ratchet de diseño medibles con grep y baseline. `git grep` mira solo archivos trackeados (sin `node_modules` ni builds), y `:!` excluye tanto archivos como directorios. `<raíces>` son los globs de código de la superficie (ej. `'apps/web/src/**/*.tsx'`), `<tokens>` el archivo o directorio de tokens y `<ui kit>` el de los componentes base:
   - hex fuera del directorio de tokens: `git grep -IhoE '#([0-9a-fA-F]{3}){1,2}' -- <raíces> ':!<tokens>' | wc -l`;
@@ -168,7 +170,7 @@ Reglas:
 
 ## Upgrade de contrato (corridas sobre contrato existente)
 
-El skill evoluciona; los contratos generados por versiones anteriores no. En TODA corrida sobre un `.sdd/project.md` existente (`--update` explícito o lanzador que lo detectó), antes de escribir: cruzar el contrato viejo contra esta **checklist de capacidades** y detectar cuáles le faltan. La detección es estructural — se mira el doc, no hace falta versionado:
+El skill evoluciona; los contratos generados por versiones anteriores no. En TODA corrida sobre un `.chiche/project.md` existente (`--update` explícito o lanzador que lo detectó), antes de escribir: cruzar el contrato viejo contra esta **checklist de capacidades** y detectar cuáles le faltan. La detección es estructural — se mira el doc, no hace falta versionado:
 
 | Capacidad | Cómo detectar que falta en el contrato viejo |
 |---|---|
@@ -177,21 +179,89 @@ El skill evoluciona; los contratos generados por versiones anteriores no. En TOD
 | Políticas de la tecnología | `## Politicas de generacion` existe pero sin filas custom ni `guia` (el menú que la generó no las ofrecía) |
 | Capacidad de Git/PR | `## Ambientes` no declara branch default, remote o estado de `gh` |
 | Señal de vida de procesos largos | comandos `run` sin el "cómo se reconoce que está arriba" |
-| Coding policies | existe `.sdd/coding-policies.md` pero `## Politicas de generacion` no tiene la fila `coding-policies` — no entra al menú: la Fase 3.5 la escribe sin preguntar y el reporte la lista como `referenciado` |
+| Coding policies | existe `.chiche/coding-policies.md` pero `## Politicas de generacion` no tiene la fila `coding-policies` — no entra al menú: la Fase 3.5 la escribe sin preguntar y el reporte la lista como `referenciado` |
 | Diseño | no existe la sección `## Diseño` — no entra al menú: el censo de la Fase 1 corre siempre y la Fase 4 la escribe sin preguntar, también con `--assume`; el reporte la lista como mejora aplicada |
+| Directorio .chiche/ | existe .sdd/project.md, trackeado o no — no entra al menú: lo ofrece la pregunta propia de "## Migración a .chiche/", antes que todo lo demás |
 
 Con faltantes: listarlos como texto visible (una línea por capacidad, con qué aporta) y usar `AskUserQuestion` con multiSelect — "El contrato es de una versión anterior del skill; ¿qué mejoras le agrego?". SOLO lo elegido se releva, pregunta y escribe, cada capacidad con el mecanismo de su fase (ej. elegir `Politicas de generacion` se resuelve con el menú de la Fase 3.5); lo no elegido no se anota como gap — es una elección, no una deuda. Con `--assume`: no se agrega ninguna (varias exigen elección humana); quedan en el reporte como `mejoras disponibles`.
 
 **Regla de mantenimiento del skill**: al agregarle una capacidad nueva a este skill, sumar SIEMPRE su fila a esta checklist. Es lo que hace que los contratos viejos se pongan al día preguntando, en vez de quedar silenciosamente desactualizados.
 
+## Migración a .chiche/ (corridas sobre un repo con .sdd/)
+
+En Claude Code, la pregunta de esta sección usa `AskUserQuestion`.
+
+<!-- chiche-init-migrate:start -->
+**Cuándo.** En toda corrida sobre un repo con `.sdd/project.md` (trackeado o no): `--update` explícito, o el lanzador que detectó un contrato existente. Es lo PRIMERO que hace la corrida, antes de re-explorar, de la checklist de "## Upgrade de contrato" y de escribir nada. Sin `.sdd/project.md`, esta sección no aplica.
+
+**La pregunta.** Una sola, "¿Migro el contrato y los artefactos a .chiche/?", con la recomendada primera:
+
+1. `Migrar a .chiche/ (Recomendado)` — ejecuta la secuencia canónica de abajo.
+2. `Mantener .sdd/` — no cambia nada.
+
+**Qué hace `Migrar a .chiche/`.**
+
+- `git mv .sdd .chiche`: el contrato, las specs y los grills trackeados pasan a `.chiche/` como renames.
+- Reescribe a `.chiche/` toda referencia `.sdd/` dentro de lo que ESTA corrida movió a `.chiche/` (también lo que `git mv` arrastró sin trackear y no está ignorado) y la de `CLAUDE.md`, `AGENTS.md` (`@.sdd/project.md`, el bloque `sdd-contract`) y `.gitignore` (`.sdd/evidence/` pasa a `.chiche/evidence/`: lo ignorado sigue ignorado).
+- Reescribe el marker de cada artefacto a `Chiche-Tracking: version=2`, con los demás campos intactos (contrato `docs/chiche-tracking-v2.md`). Solo cambia el primero de cada archivo, el del preámbulo: un ejemplo de marker dentro de un fence del cuerpo queda como estaba.
+- Mueve `<git-common-dir>/sdd/` a `<git-common-dir>/chiche/`, incluido `events.jsonl`: el log viejo va primero, el nuevo después.
+- Anota la migración, con fecha, en `## Decisiones humanas` de `.chiche/project.md`, una sola vez: si la nota ya está, una nueva corrida de la secuencia no la repite. Dice que `<git-common-dir>/sdd/` pasó a `<git-common-dir>/chiche/` solo si esa corrida lo movió. Sin la sección `## Decisiones humanas`, la secuencia avisa `chiche-init: .chiche/project.md sin seccion '## Decisiones humanas'; anota la migracion a mano` y sigue.
+
+**Secuencia canónica.** Se ejecuta tal cual con `bash`, desde el repo o desde uno de sus worktrees. No se reordena ni se reescribe a mano:
+
+```bash
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+common=$(git rev-parse --path-format=absolute --git-common-dir)
+if [ -z "$(git ls-files -- .sdd)" ]; then echo "chiche-init: .sdd/ sin trackear; commitealo o movelo a mano, no se migra"; exit 0; fi
+moved=$(mktemp)
+trap 'rm -f "$moved"' EXIT
+if [ ! -e .chiche ]; then git mv .sdd .chiche; { git ls-files -z -- .chiche; git ls-files -z --others --exclude-standard -- .chiche; } > "$moved"; else
+  git ls-files -z -- .sdd | while IFS= read -r -d '' f; do t=".chiche/${f#.sdd/}"
+    if [ -e "$t" ]; then echo "chiche-init: conservado $t; queda $f"; else mkdir -p "${t%/*}" && git mv "$f" "$t"; printf '%s\0' "$t" >> "$moved"; fi; done
+  find .sdd -type d -empty -delete 2>/dev/null || true; fi
+{ cat "$moved"; for f in CLAUDE.md AGENTS.md .gitignore; do if [ -f "$f" ]; then printf '%s\0' "$f"; fi; done; } | while IFS= read -r -d '' f; do
+  [ -L "$f" ] && continue
+  grep -Iq -e '\.sdd/' -e 'SDD-Tracking: version=1;' "$f" || continue
+  awk 'BEGIN{done=0} { if (!done && index($0,"<!-- SDD-Tracking: version=1;")==1) { sub(/<!-- SDD-Tracking: version=1;/,"<!-- Chiche-Tracking: version=2;"); done=1 } gsub(/\.sdd\//,".chiche/"); print }' "$f" > "$f.chiche-migrate" && cat "$f.chiche-migrate" > "$f" && rm "$f.chiche-migrate"; done
+common_note=
+if [ -d "$common/sdd" ] && mkdir -p "$common/chiche" 2>/dev/null && [ -w "$common/chiche" ]; then
+  common_note=" y <git-common-dir>/sdd/ paso a <git-common-dir>/chiche/"
+  if [ -f "$common/sdd/events.jsonl" ]; then { awk 1 "$common/sdd/events.jsonl"; if [ -f "$common/chiche/events.jsonl" ]; then awk 1 "$common/chiche/events.jsonl"; fi; } > "$common/chiche/events.jsonl.chiche-migrate"
+    mv "$common/chiche/events.jsonl.chiche-migrate" "$common/chiche/events.jsonl" && rm "$common/sdd/events.jsonl"; fi
+  (cd "$common/sdd" && find . -type f -print0) | while IFS= read -r -d '' f; do f=${f#./}; t="$common/chiche/$f"
+    if [ -e "$t" ]; then echo "chiche-init: conservado $t; queda $common/sdd/$f"; else mkdir -p "${t%/*}" && mv "$common/sdd/$f" "$t"; fi; done
+  find "$common/sdd" -type d -empty -delete 2>/dev/null || true
+elif [ -d "$common/sdd" ]; then echo "chiche-init: no se pudo escribir en $common/chiche; $common/sdd queda como está"; fi
+if [ -f .chiche/project.md ] && ! grep -q 'migracion a .chiche/ con chiche-init --update' .chiche/project.md; then
+  if grep -q '^## Decisiones humanas' .chiche/project.md; then
+    today=$(date -u +%Y-%m-%d)
+    awk -v line="- $today: migracion a .chiche/ con chiche-init --update (antes .sdd); los artefactos llevan Chiche-Tracking: version=2$common_note." '{ print } /^## Decisiones humanas/ { print line }' .chiche/project.md > .chiche/project.md.chiche-migrate && cat .chiche/project.md.chiche-migrate > .chiche/project.md && rm .chiche/project.md.chiche-migrate
+  else echo "chiche-init: .chiche/project.md sin seccion '## Decisiones humanas'; anota la migracion a mano"; fi
+fi
+```
+
+**Reglas.**
+
+- Con `.chiche/` ya presente, la secuencia mueve lo que falta y conserva lo que ya está en `.chiche/`: por cada archivo repetido imprime `chiche-init: conservado <ruta>; queda <ruta vieja>` y deja el de `.sdd/` donde estaba, para que lo resuelva el humano. Lo mismo vale para `<git-common-dir>/chiche/`. La reescritura de una re-corrida alcanza solo a lo que esa corrida movió (más `CLAUDE.md`, `AGENTS.md` y `.gitignore`): una mención histórica de `.sdd/` restaurada a mano en `.chiche/` no se vuelve a reescribir.
+- Si `.sdd/` no tiene ningún archivo trackeado (`git ls-files -- .sdd` vacío), no se migra: la secuencia imprime `chiche-init: .sdd/ sin trackear; commitealo o movelo a mano, no se migra`, sale con 0 sin tocar nada y el reporte dice `mantenida .sdd/` con ese motivo. Con al menos un archivo trackeado, `git mv` mueve el directorio entero y la reescritura alcanza también al contrato sin trackear que viaja con él.
+- La reescritura saltea los symlinks: `CLAUDE.md -> AGENTS.md` queda como link y `AGENTS.md` se reescribe por su propio nombre; un link trackeado bajo `.chiche/` que apunta fuera nunca toca su destino.
+- Si el harness no puede escribir en `<git-common-dir>/chiche/`, el paso del common-dir se saltea con el aviso `chiche-init: no se pudo escribir en <git-common-dir>/chiche` y el resto de la migración sigue: es la misma política que el append del log de eventos.
+- `Mantener .sdd/` no cambia nada: el contrato sigue en `.sdd/project.md`, la corrida lo lee de ahí y la oferta se repite en el próximo `--update`.
+- Con `--assume` no se migra ni se pregunta: el reporte lo lista como `mejora disponible`.
+- Tras migrar, el resto de la corrida lee y escribe `.chiche/project.md`.
+- Si la corrida migró, el cierre `Commit + PR` queda en `Dejar sin commitear` con el motivo `migración: los renames viven en el checkout principal`: ese cierre copia solo los paths que la corrida escribió y no reproduce los renames de `git mv`. El reporte nombra el commit sugerido para el humano: `git add -u -- .chiche $(ls CLAUDE.md AGENTS.md .gitignore 2>/dev/null) && git commit -m "chore(chiche-init): migracion a .chiche/"` (los `git mv` ya están en el índice; `git add -u` toma las reescrituras de `.chiche/**`, `CLAUDE.md`, `AGENTS.md` y `.gitignore`, también lo que el grupo (a) ya tenía cambiado en esos paths, y nunca agrega archivos sin trackear).
+- El reporte de la migración separa tres grupos con el `git status --porcelain=v1 -z` que `commit-pr-close` ya tomó antes de la primera escritura: (a) los paths que ya tenían cambios antes de migrar, que el humano saca del commit con `git restore --staged -- <ruta>` o commitea aparte; (b) lo que escribió esta corrida: los artefactos reescritos, los imports, `.gitignore` y lo que crearon `coding-policies` o `design-system` encadenados (`.chiche/coding-policies.md`, `DESIGN_SYSTEM.md`), que el commit sugerido no toma y el reporte nombra con `git add -- <ruta>`; (c) lo que `git mv` arrastró a `.chiche/` sin trackear (`git ls-files --others --exclude-standard .chiche`) o ignorado (`git ls-files --others -i --exclude-standard .chiche`), que el commit sugerido tampoco toma y decide el humano.
+<!-- chiche-init-migrate:end -->
+
 ## Fase 4 — Escribir el contrato
 
-Escribir `.sdd/project.md` con EXACTAMENTE esta estructura:
+Escribir `.chiche/project.md` con EXACTAMENTE esta estructura:
 
 ```markdown
 # Contrato de autonomia — <proyecto>
 <!-- Generado por /chiche-init el <fecha>. Refrescar con /chiche-init --update. -->
-<!-- SDD-Tracking: version=1; type=project; generated-at=<YYYY-MM-DD> -->
+<!-- Chiche-Tracking: version=2; type=project; generated-at=<YYYY-MM-DD> -->
 
 ## Stack
 <lenguajes, frameworks, package manager, estructura; 3-6 lineas>
@@ -241,18 +311,20 @@ con /chiche-init --update." Formato tabla, cada fila con su gate concreto:
 <[NEEDS-INPUT] pendientes + comandos FALLA/no probados que un humano deberia mirar.>
 ```
 
-La línea `SDD-Tracking` es el marker canónico de tracking (contrato SDD-Tracking v1): `version` y `type` son fijos, y `generated-at` lleva la fecha de ESTA corrida en `YYYY-MM-DD`. Mantenerlo como upsert idempotente: exactamente un marker por contrato — en `--update` se actualiza la fecha en la línea existente (o se inserta si el contrato viejo no la tenía), nunca se duplica ni se mueve. El H1 y los headers de sección quedan intactos.
+La línea `Chiche-Tracking` es el marker canónico de tracking (contrato `docs/chiche-tracking-v2.md`): `version` y `type` son fijos, y `generated-at` lleva la fecha de ESTA corrida en `YYYY-MM-DD`. Mantenerlo como upsert idempotente: exactamente un marker por contrato — en `--update` se actualiza la fecha en la línea existente (o se inserta si el contrato viejo no la tenía), nunca se duplica ni se mueve. El marker de un artefacto existente es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: al reescribirlo se reemplaza en su lugar por `Chiche-Tracking: version=2` conservando los demás campos, y nunca se agrega otro al lado. El H1 y los headers de sección quedan intactos.
 
 En `--update`: regenerar todo salvo `## Decisiones humanas` y `## Politicas de generacion` (preservar verbatim — las políticas solo cambian si el usuario eligió `Revisar` en Fase 3.5) y los `[NEEDS-INPUT]` aún sin respuesta (mantenerlos, no duplicarlos).
 
 ## Fase 5 — Import en CLAUDE.md (saltear con `--no-import`)
 
-Cablear el contrato en `CLAUDE.md` para que TODA sesión de Claude Code lo cargue, no solo las sdd: si `CLAUDE.md` existe y no contiene `@.sdd/project.md`, agregar al final una línea `@.sdd/project.md`; si no existe, crearlo con solo esa línea; si ya está, no tocar nada.
+Cablear el contrato en `CLAUDE.md` para que TODA sesión de Claude Code lo cargue, no solo las sdd: si `CLAUDE.md` existe y no contiene `@.chiche/project.md`, agregar al final una línea `@.chiche/project.md`; si no existe, crearlo con solo esa línea; si ya está, no tocar nada.
+
+En un repo que mantuvo `.sdd/` (`Mantener .sdd/`), la línea o el bloque nombra la ruta del contrato en uso (`@.sdd/project.md` / "leer `.sdd/project.md`"), y una referencia que ya apunta a la ruta en uso nunca se duplica.
 
 ## Reporte
 
 ```text
-Contrato de autonomia listo: .sdd/project.md
+Contrato de autonomia listo: .chiche/project.md
 - comandos: <N> documentados (<K> verificados, <F> fallan, <P> no probados)
 - escalera de verificacion: llega hasta <escalon mas alto>
 - politicas de generacion: <lista con valores | ninguna activa>
@@ -260,6 +332,7 @@ Contrato de autonomia listo: .sdd/project.md
 - coding-policies: <referenciado|generado|no existe (ofrecido)|--assume: no ofrecido>
 - design-system: <referenciado|generado|no existe (ofrecido)|con sistema (no ofrecido)|--assume: no ofrecido|sin superficies UI>
 - import en CLAUDE.md: <agregado|ya estaba|--no-import>
+- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>; con cambios previos: <lista|ninguno>; escritos fuera del commit sugerido: <lista|ninguno>; sin trackear o ignorado en .chiche/: <lista|ninguno>) | mantenida .sdd/ | mejora disponible (--assume) | no aplica>
 <en corridas sobre contrato existente: mejoras de version agregadas, u ofrecidas y no
 tomadas ("mejoras disponibles" con --assume), una linea>
 <si hay FALLAs o gaps criticos, una linea por cada uno>
@@ -272,7 +345,7 @@ Después del reporte, preguntar `Commit + PR (Recomendado)` / `Dejar sin commite
 
 `Commit + PR`:
 
-1. Comprobar la aptitud igual que `/chiche-run`: hay remote y `gh` autenticado, y `## Limites` de `.sdd/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
+1. Comprobar la aptitud igual que `/chiche-run`: hay remote y `gh` autenticado, y `## Limites` de `.chiche/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
 2. Revisar cada path que esta corrida escribió. Uno nuevo, ausente en `origin/<default>`, se copia. Uno que ya existía se copia solo si `HEAD:<path>` del checkout es igual a `origin/<default>:<path>` y el path no tenía cambios antes de la corrida; si no, el cierre queda en `Dejar sin commitear` con el motivo, para no meter cambios ajenos en el PR ni revertir lo que `origin/<default>` ya cambió.
 3. `git fetch origin` y crear el worktree con lock, con el branch `chore/chiche-init-<YYYY-MM-DD>` nacido de `origin/<default>`: `git worktree add --lock --reason "chiche-init <YYYY-MM-DD>" ../<repo>-chiche-init-<YYYY-MM-DD> -b chore/chiche-init-<YYYY-MM-DD> origin/<default>`. Si el branch o el path ya existen, usar en los dos el primer sufijo libre (`-2`, `-3`…).
 4. Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR con `gh pr create --base <default> --title "chore(chiche-init): <YYYY-MM-DD>" --body-file <archivo>`.
@@ -300,5 +373,5 @@ La pregunta del cierre `Commit + PR` usa `AskUserQuestion`, con la recomendada p
 - No preguntar lo que la exploración ya respondió.
 - No escribir secrets ni valores de env vars en el contrato — solo el NOMBRE de la var y de dónde sale.
 - No inferir ni asumir políticas de generación: si el usuario no las eligió (o corrió `--assume`), la sección queda vacía. Y no activar una cuyo gate no se pueda medir hoy (coverage sin comando verificado va a Gaps, no al contrato). Una preferencia sin gate medible jamás se disfraza de gate: o es `guia` explícita o no entra.
-- No pisar un `.sdd/project.md` editado a mano sin preservar `## Decisiones humanas`.
+- No pisar un `.chiche/project.md` editado a mano sin preservar `## Decisiones humanas`.
 - No commitear en el checkout principal: el único commit es el de `Commit + PR`, en su worktree, cuando el usuario lo elige.

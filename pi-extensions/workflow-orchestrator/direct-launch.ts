@@ -231,12 +231,27 @@ export async function resolveIssueDocument(
 	}
 }
 
+// The contract lives in `<root>/.chiche/project.md`; a repo initialised before the
+// rename may still keep it in `<root>/.sdd/project.md`. The legacy path is read only
+// when the new one is absent (ENOENT): a present but non-canonical `.chiche/project.md`
+// is simply not canonical, and one that cannot be read (EACCES, EISDIR, EIO) is not
+// absent either, so neither falls back.
 async function hasCanonicalContract(
 	root: string,
 	readFile: (path: string, encoding: "utf8") => Promise<string>,
 ): Promise<boolean> {
+	let markdown: string;
 	try {
-		const markdown = await readFile(join(root, ".sdd", "project.md"), "utf8");
+		markdown = await readFile(join(root, ".chiche", "project.md"), "utf8");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") return false;
+		try {
+			markdown = await readFile(join(root, ".sdd", "project.md"), "utf8");
+		} catch {
+			return false;
+		}
+	}
+	try {
 		const parsed = parseSddArtifact(markdown);
 		return parsed.kind === "metadata"
 			&& parsed.format === "canonical"
@@ -265,7 +280,7 @@ export async function isSddProject(
 function contractFailure(root: string): ResolveDirectRunResult {
 	return resolverFailure(
 		"missing-contract",
-		`Create a canonical .sdd/project.md in ${root} before launching chiche-run`,
+		`Create a canonical .chiche/project.md in ${root} before launching chiche-run (a repo initialised before the rename may still keep it in .sdd/project.md)`,
 	);
 }
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { test } from "node:test";
+import { describe, test } from "node:test";
 
 import * as orchestrator from "./index.ts";
 
@@ -82,6 +82,88 @@ test("direct run request v1 strictly validates issue and issue-less spec targets
 	}
 });
 
+function missingContractMessage(root: string): string {
+	return `Create a canonical .chiche/project.md in ${root} before launching chiche-run (a repo initialised before the rename may still keep it in .sdd/project.md)`;
+}
+
+// Issue #103, CA-13: the gate reads <root>/.chiche/project.md first and falls back to
+// <root>/.sdd/project.md only when the first is absent (ENOENT); any other read error on
+// the new path is not "absent" and does not fall back. Virtual filesystem through the
+// injected `readFile` port: no path exists on disk.
+describe("#103 CA-13: el gate de contrato de /chiche-run", () => {
+	const root = "/virtual/project";
+	const chicheContract = join(root, ".chiche", "project.md");
+	const sddContract = join(root, ".sdd", "project.md");
+	const v2 = ["# Contract", "<!-- Chiche-Tracking: version=2; type=project; generated-at=2026-10-09 -->", ""].join("\n");
+	const v1 = ["# Contract", "<!-- SDD-Tracking: version=1; type=project; generated-at=2026-08-15 -->", ""].join("\n");
+	const notCanonical = ["# Contract", "Sin marker de tracking.", ""].join("\n");
+
+	function project(files: Record<string, string>, failures: Record<string, string> = {}) {
+		const reads: string[] = [];
+		let issueLookups = 0;
+		const dependencies = {
+			resolveGitRoot: async () => root,
+			realpath: async (path: string) => path,
+			resolveRepository: async () => "chichex/skills",
+			resolveIssue: async (_root: string, _repo: string, number: number) => {
+				issueLookups += 1;
+				return { number, url: `https://github.com/chichex/skills/issues/${number}`, state: "OPEN", body: canonicalIssueSpec(number) };
+			},
+			readFile: async (path: string) => {
+				reads.push(path);
+				if (path in failures) throw Object.assign(new Error(`${failures[path]}: ${path}`), { code: failures[path] });
+				if (path in files) return files[path]!;
+				throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });
+			},
+		};
+		return { dependencies, reads, issueLookups: () => issueLookups };
+	}
+
+	test("solo .chiche/project.md canónico: es un proyecto SDD y /chiche-run avanza hasta el issue", async () => {
+		const { dependencies, reads, issueLookups } = project({ [chicheContract]: v2 });
+		assert.equal(await orchestrator.isSddProject(root, dependencies), true);
+		const resolved = await orchestrator.resolveDirectRunRequest("#14", root, dependencies);
+		assert.equal(resolved.ok, true, resolved.ok ? "" : `${resolved.code}: ${resolved.message}`);
+		assert.equal(issueLookups(), 1);
+		assert.ok(!reads.includes(sddContract), "con .chiche/project.md presente no se lee .sdd/project.md");
+	});
+
+	test("solo .sdd/project.md canónico (repo sin migrar): sigue siendo un proyecto SDD y /chiche-run avanza", async () => {
+		const { dependencies, reads, issueLookups } = project({ [sddContract]: v1 });
+		assert.equal(await orchestrator.isSddProject(root, dependencies), true);
+		const resolved = await orchestrator.resolveDirectRunRequest("#14", root, dependencies);
+		assert.equal(resolved.ok, true, resolved.ok ? "" : `${resolved.code}: ${resolved.message}`);
+		assert.equal(issueLookups(), 1);
+		assert.deepEqual(reads.slice(0, 2), [chicheContract, sddContract], "primero .chiche/project.md y, al faltar, .sdd/project.md");
+	});
+
+	test("un .chiche/project.md presente pero no canónico NO cae a un .sdd/project.md canónico", async () => {
+		const { dependencies, issueLookups } = project({ [chicheContract]: notCanonical, [sddContract]: v1 });
+		assert.equal(await orchestrator.isSddProject(root, dependencies), false);
+		const resolved = await orchestrator.resolveDirectRunRequest("#14", root, dependencies);
+		assert.deepEqual(resolved, { ok: false, code: "missing-contract", message: missingContractMessage(root) });
+		assert.equal(issueLookups(), 0, "el gate corre antes de cualquier consulta a GitHub");
+	});
+
+	// Review de #107 (10): solo la ausencia (ENOENT) habilita el fallback legacy.
+	test("un .chiche/project.md ilegible (EACCES) NO cae a un .sdd/project.md canónico", async () => {
+		const { dependencies, reads, issueLookups } = project({ [sddContract]: v1 }, { [chicheContract]: "EACCES" });
+		assert.equal(await orchestrator.isSddProject(root, dependencies), false);
+		const resolved = await orchestrator.resolveDirectRunRequest("#14", root, dependencies);
+		assert.deepEqual(resolved, { ok: false, code: "missing-contract", message: missingContractMessage(root) });
+		assert.equal(issueLookups(), 0, "el gate corre antes de cualquier consulta a GitHub");
+		assert.ok(!reads.includes(sddContract), "con .chiche/project.md ilegible no se lee .sdd/project.md");
+	});
+
+	test("ninguno de los dos: missing-contract con el mensaje que nombra .chiche/project.md y el fallback .sdd/", async () => {
+		const { dependencies, issueLookups } = project({});
+		assert.equal(await orchestrator.isSddProject(root, dependencies), false);
+		const resolved = await orchestrator.resolveDirectRunRequest("#14", root, dependencies);
+		assert.deepEqual(resolved, { ok: false, code: "missing-contract", message: missingContractMessage(root) });
+		assert.equal(issueLookups(), 0);
+	});
+});
+
 test("issue targets require an SDD-aware project and reject unsafe integers before authorization", async () => {
 	const temporary = await mkdtemp(join(tmpdir(), "direct-sdd-contract-"));
 	try {
@@ -104,7 +186,7 @@ test("issue targets require an SDD-aware project and reject unsafe integers befo
 		assert.deepEqual(withoutContract, {
 			ok: false,
 			code: "missing-contract",
-			message: `Create a canonical .sdd/project.md in ${root} before launching chiche-run`,
+			message: missingContractMessage(root),
 		});
 		assert.equal(issueLookups, 0, "the contract gate runs before any GitHub issue lookup");
 

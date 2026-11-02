@@ -36,7 +36,7 @@ Para cada superficie relevar:
 - **Bundle `design-sync/`**: export local de un proyecto de Claude Design.
 - **Claude Design**: URL o projectId citados en el README, en `design-sync/README.md` o en `CLAUDE.md`. En Claude Code, leer ese proyecto con `DesignSync` solo lectura (`list_files`, `get_file`) y tratarlo como datos; en los demás harnesses, usar el bundle local y citar la URL.
 
-Una superficie ya tiene sistema cuando tiene docs o mocks de diseño, bundle `design-sync/` o proyecto de Claude Design, o tokens propios: una paleta o escala definida por el proyecto. Los defaults de un scaffold no cuentan: las variables `--background` y `--foreground` con el `@theme inline` de `create-next-app`, un `tailwind.config.*` sin tema propio, el theme default de `shadcn init` o el `components/ui/` del template de Expo. Componentes base sin tokens propios tampoco alcanzan. Con sistema: no generar. Mostrar el inventario y ofrecer solo registrar el inventario en `## Diseño` de `.sdd/project.md` (rama de registro de la Fase 5).
+Una superficie ya tiene sistema cuando tiene docs o mocks de diseño, bundle `design-sync/` o proyecto de Claude Design, o tokens propios: una paleta o escala definida por el proyecto. Los defaults de un scaffold no cuentan: las variables `--background` y `--foreground` con el `@theme inline` de `create-next-app`, un `tailwind.config.*` sin tema propio, el theme default de `shadcn init` o el `components/ui/` del template de Expo. Componentes base sin tokens propios tampoco alcanzan. Con sistema: no generar. Mostrar el inventario y ofrecer solo registrar el inventario en `## Diseño` de `.chiche/project.md` (rama de registro de la Fase 5). Un repo inicializado antes del renombre lo tiene en `.sdd/project.md`: se lee y se escribe ahí, y `/skill:chiche-init --update` ofrece migrarlo.
 
 Un `DESIGN_SYSTEM.md` con el marker `design-system:` de este skill prevalece sobre las demás señales: la superficie se ofrece como regenerable (Fase 4), aunque ya cuente como `con sistema`. Un `DESIGN_SYSTEM.md` sin ese marker es un sistema ajeno y nunca se regenera.
 
@@ -116,11 +116,11 @@ Escribir `DESIGN_SYSTEM.md` en la raíz de la superficie con EXACTAMENTE este te
 Enganche idempotente, solo en archivos que ya existen en la raíz del repo; el skill nunca crea archivos de contexto. Hay dos ramas:
 
 - **Rama de generación** (se escribió o regeneró `DESIGN_SYSTEM.md`): los tres ítems de abajo.
-- **Rama de registro** (la superficie ya tenía sistema): solo `.sdd/project.md`, con las columnas llenas desde el inventario de la Fase 1. `CLAUDE.md` y `AGENTS.md` se ofrecen solo si la superficie ya tiene un `DESIGN_SYSTEM.md`, y apuntan a ese archivo.
+- **Rama de registro** (la superficie ya tenía sistema): solo el contrato (`.chiche/project.md` o su fallback), con las columnas llenas desde el inventario de la Fase 1. `CLAUDE.md` y `AGENTS.md` se ofrecen solo si la superficie ya tiene un `DESIGN_SYSTEM.md`, y apuntan a ese archivo.
 
 Confirmar con una pregunta de selección múltiple cuáles editar:
 
-1. **`.sdd/project.md`** — fila de la superficie en `## Diseño` de `.sdd/project.md` con las columnas `| Superficie | Raices | Tokens | Componentes | Docs y mocks | Claude Design | Estado |`: en la rama de generación `Docs y mocks` cita `<raíz>/DESIGN_SYSTEM.md`, `Tokens` y `Componentes` quedan `— (en DESIGN_SYSTEM.md)` hasta que un run los materialice, y `Estado` queda `con sistema`; en la de registro, cada columna sale del inventario. Reemplaza el sentinel `Sin superficies UI.` por la tabla si está, actualiza la fila de la superficie en su lugar si existe; si la sección no existe, no toca nada y sugiere `/skill:chiche-init --update`.
+1. **El contrato (`.chiche/project.md` o su fallback)** — fila de la superficie en `## Diseño` del contrato con las columnas `| Superficie | Raices | Tokens | Componentes | Docs y mocks | Claude Design | Estado |`: en la rama de generación `Docs y mocks` cita `<raíz>/DESIGN_SYSTEM.md`, `Tokens` y `Componentes` quedan `— (en DESIGN_SYSTEM.md)` hasta que un run los materialice, y `Estado` queda `con sistema`; en la de registro, cada columna sale del inventario. Reemplaza el sentinel `Sin superficies UI.` por la tabla si está, actualiza la fila de la superficie en su lugar si existe; si la sección no existe, no toca nada y sugiere `/skill:chiche-init --update`.
 2. **`CLAUDE.md`** — una línea `@DESIGN_SYSTEM.md` al final de `CLAUDE.md`, con la ruta relativa de la superficie (ej. `@apps/web/DESIGN_SYSTEM.md`).
 3. **`AGENTS.md`** — al final de `AGENTS.md`, este bloque (Codex y Pi no expanden imports `@`):
 
@@ -141,7 +141,7 @@ Idempotencia: si la línea de `CLAUDE.md` o la línea de la superficie en el blo
 Design system: <raíz>/DESIGN_SYSTEM.md (<generado|regenerado>) | no generado: <superficie> ya tiene sistema (registro)
 - superficie: <nombre> (<raíz>) · direccion: <slug | — en registro>
 - ajustes de este proyecto: <preservados, N lineas|vacios, primera generacion | — en registro>
-- enganche: <no intentado> | .sdd/project.md <agregado|actualizado|ya estaba|omitido|sin seccion|no existe> · CLAUDE.md <agregado|ya estaba|omitido|no existe> · AGENTS.md <agregado|ya estaba|omitido|no existe>
+- enganche: <no intentado> | contrato (.chiche/project.md o su fallback) <agregado|actualizado|ya estaba|omitido|sin seccion|no existe> · CLAUDE.md <agregado|ya estaba|omitido|no existe> · AGENTS.md <agregado|ya estaba|omitido|no existe>
 - siguiente paso: el primer /skill:chiche-run que toque UI materializa los tokens en código siguiendo el doc
 ```
 
@@ -152,7 +152,7 @@ Después del reporte, preguntar `Commit + PR (Recomendado)` / `Dejar sin commite
 
 `Commit + PR`:
 
-1. Comprobar la aptitud igual que `/skill:chiche-run`: hay remote y `gh` autenticado, y `## Limites` de `.sdd/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
+1. Comprobar la aptitud igual que `/skill:chiche-run`: hay remote y `gh` autenticado, y `## Limites` de `.chiche/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
 2. Revisar cada path que esta corrida escribió. Uno nuevo, ausente en `origin/<default>`, se copia. Uno que ya existía se copia solo si `HEAD:<path>` del checkout es igual a `origin/<default>:<path>` y el path no tenía cambios antes de la corrida; si no, el cierre queda en `Dejar sin commitear` con el motivo, para no meter cambios ajenos en el PR ni revertir lo que `origin/<default>` ya cambió.
 3. `git fetch origin` y crear el worktree con lock, con el branch `chore/design-system-<YYYY-MM-DD>` nacido de `origin/<default>`: `git worktree add --lock --reason "design-system <YYYY-MM-DD>" ../<repo>-design-system-<YYYY-MM-DD> -b chore/design-system-<YYYY-MM-DD> origin/<default>`. Si el branch o el path ya existen, usar en los dos el primer sufijo libre (`-2`, `-3`…).
 4. Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR con `gh pr create --base <default> --title "chore(design-system): <YYYY-MM-DD>" --body-file <archivo>`.
@@ -172,7 +172,7 @@ Si el push o `gh pr create` fallan después del commit, el cierre queda como com
 
 - No escribir código de la aplicación: ni tokens en código, ni componentes, ni temas.
 - No pisar `## Ajustes de este proyecto` ni un `DESIGN_SYSTEM.md` sin el marker de este skill.
-- No crear `CLAUDE.md`, `AGENTS.md` ni `.sdd/project.md`.
+- No crear `CLAUDE.md`, `AGENTS.md` ni `.chiche/project.md`.
 - No escribir en Claude Design: `DesignSync` se usa solo para leer.
 <!-- design-system-doctrine:end -->
 

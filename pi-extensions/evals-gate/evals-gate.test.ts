@@ -97,3 +97,18 @@ test("#103 CA-12: ningun archivo de evals/ nombra los skills viejos sdd-*", asyn
 	}
 	assert.deepEqual(offenders, []);
 });
+
+test("#103 CA-12, CA-13: el fixture mini-cli lleva el contrato en .chiche/project.md con Chiche-Tracking v2 y ningun archivo de evals/ nombra .sdd/", async () => {
+	const fixture = "evals/adherence-chiche-spec/fixtures/mini-cli";
+	const contract = await readFile(repoFile(`${fixture}/.chiche/project.md`), "utf8");
+	assert.match(contract, /^<!-- Chiche-Tracking: version=2; type=project; generated-at=\d{4}-\d{2}-\d{2} -->$/m);
+	assert.doesNotMatch(contract, /SDD-Tracking/);
+	await assert.rejects(readFile(repoFile(`${fixture}/.sdd/project.md`), "utf8"), { code: "ENOENT" }, "el fixture ya no trae .sdd/project.md");
+
+	const offenders: string[] = [];
+	for (const file of await filesUnder("evals")) {
+		const relative = file.slice(file.indexOf("evals/"));
+		if (/\.sdd\b/.test(relative) || /\.sdd\b/.test(await readFile(file, "utf8"))) offenders.push(relative);
+	}
+	assert.deepEqual(offenders, []);
+});

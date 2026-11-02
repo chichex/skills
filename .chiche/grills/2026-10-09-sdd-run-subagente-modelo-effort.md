@@ -1,6 +1,6 @@
 # Grill — sdd-run con subagente: modelo y effort elegibles con recomendado
 <!-- Estado: finalized. Proyecto: /Users/ayrtonmarini/workspace/skills. Fuente: pedido libre en chat (2026-10-09): "quiero que el skill de sdd-run en claude me deje elegir el modelo y el effort si es con subagente. Dandome un recomendado". -->
-<!-- SDD-Tracking: version=1; type=grill; state=finalized; issue=none; grill=2026-10-09-sdd-run-subagente-modelo-effort; project=%2FUsers%2Fayrtonmarini%2Fworkspace%2Fskills -->
+<!-- Chiche-Tracking: version=2; type=grill; state=finalized; issue=none; grill=2026-10-09-sdd-run-subagente-modelo-effort; project=%2FUsers%2Fayrtonmarini%2Fworkspace%2Fskills -->
 
 ## Hechos comprobados
 
@@ -8,11 +8,11 @@
 - `sdd-run` no tiene modo subagente propio; flags actuales `--assume`, `--no-pr`, `--base`. Su doctrina de ownership ya nombra "el `implementer` lanzado por `sdd-run con subagente`" (`claude/sdd-run/SKILL.md:22,111`). `subagent_type` aparece solo para el `reviewer` de la Fase 6 (`:189`).
 - La tool `Agent` de Claude Code acepta `model` (`sonnet`, `opus`, `haiku`, `fable`) y `effort` (`low`, `medium`, `high`, `xhigh`, `max`). Su schema pide pasar `effort` solo cuando el usuario, CLAUDE.md o un skill lo piden explícitamente (schema de la tool en la sesión del grill).
 - Antecedente de flags `--model`, wizard con `(Recomendado)` y opción "modelo de la sesión" en `sdd-review-loop` (`claude/sdd-review-loop/SKILL.md:17,24,44,66`).
-- Precedencia de modelo en subagentes: invocación > frontmatter > `CLAUDE_CODE_SUBAGENT_MODEL` > sesión. Los agentes no fijan `model` (CA-6 de `.sdd/specs/subagentes-claude.md:37,59`; `pi-extensions/agents-gate/agents-gate.test.ts:101` prohíbe `model`, no `effort`). Esa spec dejó fuera de alcance cambiar modelo y effort (`:88`).
+- Precedencia de modelo en subagentes: invocación > frontmatter > `CLAUDE_CODE_SUBAGENT_MODEL` > sesión. Los agentes no fijan `model` (CA-6 de `.chiche/specs/subagentes-claude.md:37,59`; `pi-extensions/agents-gate/agents-gate.test.ts:101` prohíbe `model`, no `effort`). Esa spec dejó fuera de alcance cambiar modelo y effort (`:88`).
 - Gates que acotan dónde escribir: `harness-gate` exige en `claude/sdd-spec` el `subagent_type: "implementer"`, `run_in_background`, fallback `general-purpose` anunciado y `--assume`; exige los bloques `sdd-spec-flow`, `sdd-run-flow`, `sdd-run-stack` y `sdd-run-dirty-checkout` idénticos en los 4 harnesses; y prohíbe `subagent_type` en codex/opencode (`pi-extensions/harness-gate/harness-gate.test.ts:589-612,646`). `agents-gate` CA-12 prohíbe nombrar `implementer`/`reviewer` en la Fase 2 de `sdd-run` (`agents-gate.test.ts:517-525`). Ningún gate menciona `effort`.
 - Toda spec trae `## Comportamiento esperado` con CAs (`### CA-N — … (GRADO)` en el template), `## Plan de entrega` con tabla `| Capa | Etapa | CAs | Justificacion |` y `## Verificabilidad` en prosa libre (`claude/sdd-spec/SKILL.md:124-152`).
-- Specs reales (43 con CAs en `waica`, `brik` y `dale-que-sale/.sdd/specs/*.md`, contadas el 2026-10-09): CAs mínimo 1, cuartil inferior 10, mediana 12, cuartil superior 14, máximo 26. Con el corte elegido (hasta 10 / 11 a 16 / 17 o más): sonnet 15, opus 21, fable 7. 40 de 44 mencionan CAs MEDIA o BAJA en `## Verificabilidad`; solo 2 tienen `## Plan de entrega`.
-- Grill previo #45 (`.sdd/grills/2026-09-22-sdd-menos-friccion.md:28,36`): el subagente corre `sdd-run --assume` completo; la opción no aparece fuera de Claude.
+- Specs reales (43 con CAs en `waica`, `brik` y `dale-que-sale/.chiche/specs/*.md`, contadas el 2026-10-09): CAs mínimo 1, cuartil inferior 10, mediana 12, cuartil superior 14, máximo 26. Con el corte elegido (hasta 10 / 11 a 16 / 17 o más): sonnet 15, opus 21, fable 7. 40 de 44 mencionan CAs MEDIA o BAJA en `## Verificabilidad`; solo 2 tienen `## Plan de entrega`.
+- Grill previo #45 (`.chiche/grills/2026-09-22-sdd-menos-friccion.md:28,36`): el subagente corre `sdd-run --assume` completo; la opción no aparece fuera de Claude.
 - Pi: la tool `subagent` acepta `model` (provider/id) pero no thinking ni effort (`pi-extensions/subagent/index.ts:68-70`). `pi/sdd-spec/SKILL.md:236` lanza `agent: "implementer"` en background.
 - No hay `CONTEXT.md`, `CONTEXT-MAP.md` ni `docs/adr/` en este repo.
 
@@ -84,6 +84,6 @@ Ver la sección homónima de arriba (1 a 13).
 - `claude/sdd-spec/SKILL.md:193-204` (menú final y párrafo Claude) y `pi/sdd-spec/SKILL.md:231-239` como contraste de la capa Pi.
 - `claude/sdd-review-loop/SKILL.md:17-45,66` como modelo de flags, wizard con `(Recomendado)` y "modelo de la sesión".
 - `pi-extensions/harness-gate/harness-gate.test.ts:95-130,589-650` y `pi-extensions/agents-gate/agents-gate.test.ts:449-470,517-525` (gates que hay que mantener verdes y extender).
-- `.sdd/specs/subagentes-claude.md` (CA-6, no-objetivo `:88`) y `.sdd/grills/2026-09-22-sdd-menos-friccion.md` (decisiones 9 y 17).
+- `.chiche/specs/subagentes-claude.md` (CA-6, no-objetivo `:88`) y `.chiche/grills/2026-09-22-sdd-menos-friccion.md` (decisiones 9 y 17).
 - README fila de `sdd-run` y `sdd-spec`; `docs/harness-interaction-differences.md`; `evals/` si se agrega un caso de triggering para `--subagent`.
-- `.sdd/project.md`: fila `gate anti-drift SDD`, `gate anti-drift de agentes de plugin` y `lint de frontmatter` como comandos de verificación.
+- `.chiche/project.md`: fila `gate anti-drift SDD`, `gate anti-drift de agentes de plugin` y `lint de frontmatter` como comandos de verificación.

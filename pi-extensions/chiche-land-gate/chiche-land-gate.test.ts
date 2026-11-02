@@ -96,7 +96,7 @@ const DOCTRINE: Record<string, RegExp[]> = {
 	"CA-14": [
 		/`gh auth status`/,
 		/branch default leído del remote[\s\S]*nunca asumir `main`/,
-		/Leer `\.sdd\/project\.md` si existe[\s\S]*`## Comandos` verifican un branch actualizado[\s\S]*`## Limites` rigen como siempre, salvo las prohibiciones de merge[\s\S]*invocarlo y confirmar el plan es la autorización humana[\s\S]*el plan de la Fase 2 cita la línea textual y avisa que confirmar la pisa/,
+		/Leer `\.chiche\/project\.md` si existe[\s\S]*`## Comandos` verifican un branch actualizado[\s\S]*`## Limites` rigen como siempre, salvo las prohibiciones de merge[\s\S]*invocarlo y confirmar el plan es la autorización humana[\s\S]*el plan de la Fase 2 cita la línea textual y avisa que confirmar la pisa/,
 		/Respetar los `## Limites` del contrato, salvo las prohibiciones de merge[\s\S]*solo cae la parte de merge/,
 		/`gh stack` exigido solo si algún target es un stack/,
 		/un PR pertenece a un stack si su `baseRefName` no es el default o si existe algún PR abierto cuyo `baseRefName` es su `headRefName`[\s\S]*se confirma con `gh stack view --json`/,
@@ -210,6 +210,8 @@ const DOCTRINE_84: Record<string, RegExp[]> = {
 		/antes de preguntar, clasifica cada path/,
 		/\*\*ya aterrizado\*\*: un path sin trackear o modificado cuyo `git hash-object <path>` es igual a `git rev-parse origin\/<default>:<path>`[\s\S]*se resuelve sin preguntar justo antes del fast-forward y solo si el fast-forward va a correr[\s\S]*`ya aterrizados`/,
 		/Si no hay fast-forward[^\n]*no se toca y va al reporte como `ya aterrizados \(sin resolver\)`/,
+		// Review de #107 (5): chiche-run copia los borradores de `.sdd/` bajo `.chiche/` del worktree, así que el original de `.sdd/` también cuenta si su blob está en origin bajo `.chiche/`.
+		/\*\*ya aterrizado\*\*:[^\n]*También cuenta un `\.sdd\/<kind>\/<nombre>` \(con `<kind>` = `specs` o `grills`\) sin trackear o modificado cuyo `git hash-object` es igual a `git rev-parse origin\/<default>:\.chiche\/<kind>\/<nombre>`: `chiche-run` copia los borradores de `\.sdd\/` bajo `\.chiche\/` del worktree\./,
 		/`git rev-parse <branch>:<path>` por cada branch local salvo el actual y con `git hash-object` del path en cada worktree de `git worktree list --porcelain` salvo el checkout principal/,
 		/\*\*en otro branch\*\*: el mismo blob, en el mismo path, existe en otro branch local o worktree[\s\S]*se conserva, se reporta y nunca entra en `Descartar`/,
 		/\*\*sin dueño\*\*: el resto[\s\S]*sigue la pregunta/,
@@ -408,7 +410,7 @@ test("CA-24: plugin.json y marketplace.json nombran chiche-land con descripcione
 });
 
 test("CA-24: el contrato autoriza el merge de /chiche-land, declara el gate nuevo y pinea la versión de gh-stack", async () => {
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	const limites = section(contract, /^## Limites$/);
 	assert.match(limites, /No hacer `git push` a `main`, force-push ni mergear PRs, salvo `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear\./);
 	assert.match(section(contract, /^## Comandos$/), /node --test pi-extensions\/chiche-land-gate\/chiche-land-gate\.test\.ts/);
@@ -519,7 +521,7 @@ test("autotest: la guarda de CA-5 detecta un barrido por ancestría con otra red
 });
 
 test("#84 CA-8: el contrato dice que gh stack ya se ejecutó en vivo en pramaestudio/platform#59/#60", async () => {
-	const gaps = section(await readRepoFile(".sdd/project.md"), /^## Gaps$/);
+	const gaps = section(await readRepoFile(".chiche/project.md"), /^## Gaps$/);
 	assert.match(gaps, /`gh stack`[^\n]*ya se ejecut[oó] en vivo[^\n]*merge atómico[^\n]*`unstack --local`[^\n]*`branch -d`[^\n]*`pramaestudio\/platform#59\/#60`/);
 	assert.match(gaps, /`gh stack view --json` tenia un head viejo|`gh stack view --json` tenía un head viejo/);
 	assert.doesNotMatch(gaps, /no se instalo ni se ejecuto en ninguna corrida/);
@@ -532,7 +534,7 @@ test("autotest: un harness sin la doctrina de un CA se reporta con el patrón qu
 });
 
 test("#84 review: el contrato declara la dependencia de jq del gate y la limitación push/pull_request del filtro", async () => {
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	const row = section(contract, /^## Comandos$/).split("\n").find((line) => line.startsWith("| gate de doctrina de chiche-land |")) ?? "";
 	assert.match(row, /ejecuta el filtro jq canónico sobre `pi-extensions\/chiche-land-gate\/fixtures\/`/);
 	assert.match(row, /requiere `jq`[^|]*se saltea y lo dice si falta/);

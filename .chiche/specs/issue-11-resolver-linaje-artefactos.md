@@ -1,6 +1,6 @@
 # Spec — Resolver linaje y próximo stage de artefactos SDD
 <!-- Generada por /skill:sdd-spec el 2026-08-08. Fuente: issue #11. Estado: implementada -->
-<!-- SDD-Tracking: version=1; type=spec; state=implemented; issue=#11; grill=none; superseded-by=none -->
+<!-- Chiche-Tracking: version=2; type=spec; state=implemented; issue=#11; grill=none; superseded-by=none -->
 
 ## Contexto
 El contrato y normalizador canónicos ya existen en `docs/sdd-tracking-v1.md` y `pi-extensions/sdd-artifacts/index.ts:726`, pero `pi-extensions/github-issues.ts:102-113` y `pi-extensions/grill-tools/index.ts:396-414` todavía leen estado e identidad con regex parciales. Los tres `issue-triage` existentes detectan artefactos (`pi/issue-triage/SKILL.md:61`) pero sólo definen rutas para trabajo nuevo (`:27-40`), por lo que no resuelven linaje, vigencia ni próximo stage. Las dependencias #9 y #10 están cerradas y mergeadas en `main`.
@@ -128,7 +128,7 @@ El diff no crea/cambia sesiones Pi, no agrega dispatch ni tool terminal de orque
 | 10 | Límite de integración | Core/adapters/doctrina ahora; dispatch, tool terminal y sesiones en #13/#14; sin OpenCode nuevo | Integrar tool Pi u OpenCode ahora | media | confirmada |
 
 ## Verificabilidad
-La verificabilidad es **mixta, mayormente ALTA**, anclada en `.sdd/project.md`:
+La verificabilidad es **mixta, mayormente ALTA**, anclada en `.chiche/project.md`:
 
 - **ALTA — CA-1..CA-11 y CA-13:** son transformaciones puras, adapters aislables, propiedades de archivos o límites de diff. El contrato declara `node --test pi-extensions/*/*.test.ts` verificado y captura automáticamente tests bajo `pi-extensions/<módulo>/*.test.ts`; durante el triage `node --test pi-extensions/sdd-artifacts/*.test.ts` pasó 34/34.
 - **ALTA doctrina / NULA conducta emergente — CA-12:** `node:test` puede comparar los tres SKILL.md y validar sus bloques; el contrato dice que la conducta real de agentes siguiendo un skill y los flujos TUI requieren sesión humana.

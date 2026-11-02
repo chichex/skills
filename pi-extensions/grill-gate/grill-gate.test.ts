@@ -257,7 +257,7 @@ test("CA-5: los cuatro harnesses cierran, reanudan y pausan por bloques sin camb
 		for (const problem of missing(skill, BLOCKS_LIFECYCLE)) problems.push(`${harness}/grill: ${problem}`);
 		const templates = fencedBlocks(skill).filter((fence) => fence.content.includes("type=grill"));
 		if (templates.length !== 1) problems.push(`${harness}/grill: ${templates.length} templates con marker type=grill`);
-		for (const problem of missing(templates[0]?.content ?? "", [/SDD-Tracking: version=1; type=grill; state=<paused\|finalized>; issue=<#NN\|owner\/repo#NN\|none>; grill=<ref>; project=<ref>/, /## Hechos comprobados[\s\S]*## Decisiones resueltas[\s\S]*## Ramas pendientes[\s\S]*## Diseño[\s\S]*## Handoff/])) problems.push(`${harness}/grill: template del handoff ${problem}`);
+		for (const problem of missing(templates[0]?.content ?? "", [/Chiche-Tracking: version=2; type=grill; state=<paused\|finalized>; issue=<#NN\|owner\/repo#NN\|none>; grill=<ref>; project=<ref>/, /## Hechos comprobados[\s\S]*## Decisiones resueltas[\s\S]*## Ramas pendientes[\s\S]*## Diseño[\s\S]*## Handoff/])) problems.push(`${harness}/grill: template del handoff ${problem}`);
 	}
 	assert.deepEqual(problems, []);
 });
@@ -343,7 +343,7 @@ test("CA-11: la fila grill de README.md describe la entrevista por bloques y no 
 });
 
 test("CA-12: el contrato suma la fila del gate de grill y CI lo corre con el glob de extensiones", async () => {
-	const contract = await readRepoFile(".sdd/project.md");
+	const contract = await readRepoFile(".chiche/project.md");
 	const commands = section(contract, /^## Comandos$/);
 	assert.match(commands, /^\| gate de doctrina de grill \| `node --test pi-extensions\/grill-gate\/grill-gate\.test\.ts` \| raiz \| verificado \d{4}-\d{2}-\d{2} \|/m);
 	assert.match(await readRepoFile(".github/workflows/ci.yml"), /node --test pi-extensions\/\*\/\*\.test\.ts/);

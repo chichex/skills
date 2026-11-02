@@ -1,1 +1,1 @@
-@.sdd/project.md
+@.chiche/project.md
