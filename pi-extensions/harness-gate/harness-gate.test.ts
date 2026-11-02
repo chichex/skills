@@ -882,12 +882,16 @@ test("#103 CA-7: cada sdd-<x> es un alias mínimo de chiche-<x>, con el cuerpo i
 			}
 			problems.push(...aliasProblems(path, text, suffix, prefixes[harness]));
 			problems.push(...aliasInvocationProblems(path, text, harness));
-			normalized.set(harness, normalizeInvocations(splitAlias(text).body, prefixes[harness]));
+			// Frontmatter y cuerpo identicos entre harnesses, salvo el campo que solo
+			// lleva Claude Code y el token de invocacion (review de #106).
+			const { frontmatter, body } = splitAlias(text);
+			const comparable = `${frontmatter.replace(/^disable-model-invocation: true$/m, "").replace(/\n+$/, "")}\n---\n${body}`;
+			normalized.set(harness, normalizeInvocations(comparable, prefixes[harness]));
 		}
 		const reference = normalized.get("claude");
-		for (const [harness, body] of normalized) {
-			if (reference !== undefined && body !== reference) {
-				problems.push(`${harness}/sdd-${suffix}/SKILL.md difiere de claude en el cuerpo: ${firstDifference(reference, body)}`);
+		for (const [harness, candidate] of normalized) {
+			if (reference !== undefined && candidate !== reference) {
+				problems.push(`${harness}/sdd-${suffix}/SKILL.md difiere de claude: ${firstDifference(reference, candidate)}`);
 			}
 		}
 	}

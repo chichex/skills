@@ -156,7 +156,9 @@ test("CA-1: resolveArtifactName consulta el stat inyectado en orden de precedenc
 	probed.length = 0;
 	assert.equal(await resolveArtifactName(dirs, "nueva.md", statWith([])), join(dirs.local, "nueva.md"), "sin ninguno, el local de chiche");
 	assert.deepEqual(probed, [join(dirs.tracked, "nueva.md"), join(dirs.legacyTracked, "nueva.md")], "fuera de un repo git local coincide con tracked: no se consulta dos veces");
+	probed.length = 0;
 	assert.equal(await resolveArtifactName(dirs, "dir.md", statWith([join(dirs.tracked, "dir.md")])), join(dirs.local, "dir.md"), "un directorio no cuenta como artefacto");
+	assert.deepEqual(probed, [join(dirs.tracked, "dir.md"), join(dirs.legacyTracked, "dir.md")], "el directorio existente se salta y la busqueda sigue en el lugar siguiente");
 });
 
 test("CA-1: fuera de un repo git, local es igual a tracked en cada marca y el listado no duplica", async (t) => {
