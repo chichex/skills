@@ -1,6 +1,6 @@
 # Contrato de autonomia — mini-cli
 <!-- Generado por /chiche-init el 2026-09-22. Refrescar con /chiche-init --update. -->
-<!-- SDD-Tracking: version=1; type=project; generated-at=2026-09-22 -->
+<!-- Chiche-Tracking: version=2; type=project; generated-at=2026-09-22 -->
 
 ## Stack
 CLI mínimo en Node.js (ESM, sin dependencias). `src/cli.mjs` suma los números que recibe por argv e imprime `Total: N`. Tests con `node:test`. Sin build ni package manager requerido. Verificado con Node 22+.

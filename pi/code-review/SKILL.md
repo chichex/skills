@@ -62,7 +62,7 @@ Si el worktree no se puede crear, los checks quedan sin correr y la review lo de
 Buscar y leer las fuentes aplicables al archivo cambiado, incluyendo cuando existan:
 
 - `AGENTS.md` y `CLAUDE.md` (también los anidados; gana el más cercano al archivo);
-- `.sdd/project.md`;
+- `.chiche/project.md` (un repo inicializado antes del renombre lo tiene en `.sdd/project.md`: se lee de ahí y `/skill:chiche-init --update` ofrece migrarlo);
 - `CONTRIBUTING.md`, `CODING_STANDARDS.md`, `STYLEGUIDE.md`;
 - README y documentación de arquitectura relevante;
 - configuración de formatter, linter, typechecker, tests y CI.
@@ -76,7 +76,7 @@ Buscar la fuente funcional en este orden:
 1. body, título, discussion y metadata del PR;
 2. issues cerrados/referenciados por el PR;
 3. issue/spec mencionado en commits;
-4. `.sdd/specs/`, `specs/`, `docs/`, `prd/` u otra ruta explícita del repo que coincida con el PR;
+4. `.chiche/specs/`, `specs/`, `docs/`, `prd/` u otra ruta explícita del repo que coincida con el PR;
 5. ruta que haya dado el usuario.
 
 El PR body por sí solo puede ser spec si declara comportamiento esperado. Si hay fuentes en conflicto, reportar el conflicto: no elegir silenciosamente. Si no hay spec, la sección Spec dice `No hay spec verificable disponible`; no inventar requisitos.
@@ -92,7 +92,7 @@ No revisar hunks aislados. Por cada zona relevante leer, desde el estado del hea
 - implementaciones análogas;
 - migraciones y compatibilidad cuando aplique.
 
-Ejecutar checks seguros que el repo documente y que puedan correr sobre el head exacto del PR: primero focalizados, después una escalera razonable de tests, typecheck, lint y build. Usar `.sdd/project.md` como fuente principal si existe. No instalar dependencias, levantar servicios pagos, desplegar, migrar datos compartidos ni escribir fuera de un worktree temporal solo para completar una review.
+Ejecutar checks seguros que el repo documente y que puedan correr sobre el head exacto del PR: primero focalizados, después una escalera razonable de tests, typecheck, lint y build. Usar `.chiche/project.md` como fuente principal si existe. No instalar dependencias, levantar servicios pagos, desplegar, migrar datos compartidos ni escribir fuera de un worktree temporal solo para completar una review.
 
 Cada comando queda como `PASS`, `FAIL` o `NO EJECUTADO`, con motivo. Un timeout o proceso interrumpido es no concluyente, nunca PASS. Una falla preexistente solo se atribuye al PR si hay evidencia causal.
 
