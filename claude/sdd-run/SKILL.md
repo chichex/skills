@@ -1,6 +1,7 @@
 ---
 name: sdd-run
 description: alias deprecado de chiche-run. Solo para quien todavía escribe sdd-run; no lo elijas por tu cuenta, usá chiche-run.
+disable-model-invocation: true
 ---
 
 # sdd-run (alias deprecado)

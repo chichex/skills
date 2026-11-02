@@ -848,7 +848,27 @@ function aliasProblems(path: string, text: string, suffix: string, prefix: strin
 	return problems;
 }
 
-test("#103 CA-7: cada sdd-<x> es un alias mínimo de chiche-<x>, idéntico entre los cinco harnesses", async () => {
+// El frontmatter de un alias (sin los `---`) y su cuerpo (todo lo que sigue).
+function splitAlias(text: string): { frontmatter: string; body: string } {
+	const match = text.match(/^---\n([\s\S]*?)\n---\n/);
+	return { frontmatter: match?.[1] ?? "", body: match ? text.slice(match[0].length) : text };
+}
+
+// Solo Claude Code corta la autoinvocación del alias en el frontmatter
+// (`disable-model-invocation: true`; el usuario igual puede escribir `/sdd-<x>`).
+// En Codex lo hace el sidecar, y los demás harnesses no reconocen el campo: uno
+// desconocido puede romper su loader, así que ahí no va.
+function aliasInvocationProblems(path: string, text: string, harness: Harness): string[] {
+	const { frontmatter } = splitAlias(text);
+	const declared = /^disable-model-invocation: true$/m.test(frontmatter);
+	if (harness === "claude" && !declared) return [`${path}: falta disable-model-invocation: true en el frontmatter`];
+	if (harness !== "claude" && /^disable-model-invocation:/m.test(frontmatter)) {
+		return [`${path}: disable-model-invocation es solo de Claude Code`];
+	}
+	return [];
+}
+
+test("#103 CA-7: cada sdd-<x> es un alias mínimo de chiche-<x>, con el cuerpo idéntico entre los cinco harnesses", async () => {
 	const { prefixes } = parseInteractionTable(await readRepoFile("docs/harness-interaction-differences.md"));
 	const problems: string[] = [];
 	for (const suffix of ALIAS_SUFFIXES) {
@@ -861,12 +881,13 @@ test("#103 CA-7: cada sdd-<x> es un alias mínimo de chiche-<x>, idéntico entre
 				continue;
 			}
 			problems.push(...aliasProblems(path, text, suffix, prefixes[harness]));
-			normalized.set(harness, normalizeInvocations(text, prefixes[harness]));
+			problems.push(...aliasInvocationProblems(path, text, harness));
+			normalized.set(harness, normalizeInvocations(splitAlias(text).body, prefixes[harness]));
 		}
 		const reference = normalized.get("claude");
 		for (const [harness, body] of normalized) {
 			if (reference !== undefined && body !== reference) {
-				problems.push(`${harness}/sdd-${suffix}/SKILL.md difiere de claude: ${firstDifference(reference, body)}`);
+				problems.push(`${harness}/sdd-${suffix}/SKILL.md difiere de claude en el cuerpo: ${firstDifference(reference, body)}`);
 			}
 		}
 	}
@@ -899,6 +920,20 @@ test("autotest: un alias de 26 líneas o sin aviso literal falla con diagnóstic
 	assert.deepEqual(aliasProblems("x", silent.join("\n"), "run", "/"), [
 		'x: falta una sola linea "sdd-run es un alias deprecado: usá chiche-run"',
 	]);
+});
+
+test("autotest: la invocación del alias es de Claude Code y la comparación entre harnesses mira solo el cuerpo", () => {
+	const alias = (extra: string[]) => ["---", "name: sdd-run", "description: alias deprecado de chiche-run.", ...extra, "---", "", "sdd-run es un alias deprecado: usá chiche-run", "", "Cargá `/chiche-run`.", ""].join("\n");
+	const gated = alias(["disable-model-invocation: true"]);
+	assert.deepEqual(aliasInvocationProblems("c", gated, "claude"), []);
+	assert.deepEqual(aliasInvocationProblems("c", alias([]), "claude"), ["c: falta disable-model-invocation: true en el frontmatter"]);
+	assert.deepEqual(aliasInvocationProblems("c", alias(["disable-model-invocation: false"]), "claude"), ["c: falta disable-model-invocation: true en el frontmatter"]);
+	for (const harness of ["codex", "opencode", "pi", "antigravity"] as const) {
+		assert.deepEqual(aliasInvocationProblems("x", alias([]), harness), [], harness);
+		assert.deepEqual(aliasInvocationProblems("x", gated, harness), ["x: disable-model-invocation es solo de Claude Code"], harness);
+	}
+	assert.equal(splitAlias(gated).body, splitAlias(alias([])).body, "el campo del frontmatter no cuenta como diferencia de cuerpo");
+	assert.deepEqual(aliasProblems("c", gated, "run", "/"), [], "el campo no afecta el nombre ni la description");
 });
 
 // --- Autotests del gate: puede fallar y con que diagnostico ------------------

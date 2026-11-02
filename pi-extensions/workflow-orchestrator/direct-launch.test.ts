@@ -553,6 +553,74 @@ test("#103 CA-1: /chiche-run resuelve una ruta lógica por nombre con la precede
 	}
 });
 
+// Review #106, F5: el nombre de la spec se resuelve con el `stat` inyectado, no
+// con el del disco. Filesystem virtual: ningún path existe de verdad, así que
+// una resolución que ignore el puerto cae en el lugar local de chiche.
+test("#103 CA-1: /chiche-run resuelve el nombre de la spec por el stat inyectado con la precedencia .chiche/specs > .sdd/specs > <git-common-dir>/chiche/specs > <git-common-dir>/sdd/specs", async () => {
+	const root = "/virtual/repo";
+	const commonDir = join(root, ".git");
+	const places = {
+		tracked: join(root, ".chiche", "specs", "borrador.md"),
+		legacyTracked: join(root, ".sdd", "specs", "borrador.md"),
+		local: join(commonDir, "chiche", "specs", "borrador.md"),
+		legacyLocal: join(commonDir, "sdd", "specs", "borrador.md"),
+	};
+	const contractPath = join(root, ".sdd", "project.md");
+	const contract = ["# Contract", "<!-- SDD-Tracking: version=1; type=project; generated-at=2026-10-09 -->", ""].join("\n");
+	const spec = [
+		"# Spec — Borrador virtual",
+		"<!-- Generada. Estado: aprobada -->",
+		"<!-- SDD-Tracking: version=1; type=spec; state=approved; issue=none; grill=none; superseded-by=none -->",
+		"",
+	].join("\n");
+	const existing = new Set<string>();
+	const statCalls: string[] = [];
+	const dependencies = {
+		resolveGitRoot: async () => root,
+		resolveGitCommonDir: async () => commonDir,
+		resolveRepository: async () => "chichex/skills",
+		realpath: async (path: string) => path,
+		stat: async (path: string) => {
+			statCalls.push(path);
+			if (!existing.has(path)) throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });
+			return { isFile: () => true };
+		},
+		readFile: async (path: string) => {
+			if (path === contractPath) return contract;
+			if (existing.has(path)) return spec;
+			throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });
+		},
+	};
+	const resolveFrom = async (target: string) => {
+		statCalls.length = 0;
+		return orchestrator.resolveDirectRunRequest(target, root, dependencies);
+	};
+	const { tracked, legacyTracked, local, legacyLocal } = places;
+	// Cada escenario quita al ganador anterior; `stat` ve los lugares en orden de precedencia
+	// hasta el primero que existe, y después la verificación final del archivo ya resuelto.
+	const scenarios: Array<{ present: string[]; winner: string; probed: string[] }> = [
+		{ present: [tracked, legacyTracked, local, legacyLocal], winner: tracked, probed: [tracked] },
+		{ present: [legacyTracked, local, legacyLocal], winner: legacyTracked, probed: [tracked, legacyTracked] },
+		{ present: [local, legacyLocal], winner: local, probed: [tracked, legacyTracked, local] },
+		{ present: [legacyLocal], winner: legacyLocal, probed: [tracked, legacyTracked, local, legacyLocal] },
+	];
+	for (const { present, winner, probed } of scenarios) {
+		existing.clear();
+		for (const path of present) existing.add(path);
+		for (const target of [".sdd/specs/borrador.md", ".chiche/specs/borrador.md"]) {
+			const result = await resolveFrom(target);
+			assert.equal(result.ok, true, `${target} con ${present.length} lugares: ${result.ok ? "" : `${result.code}: ${result.message}`}`);
+			assert.equal(result.ok && result.request.target.type === "spec" ? result.request.target.path : null, winner, `${target}: gana ${winner}`);
+			assert.deepEqual(statCalls, [...probed, winner], `${target}: el stat inyectado recorre los lugares en orden y verifica al ganador`);
+		}
+	}
+	existing.clear();
+	const missing = await resolveFrom(".sdd/specs/borrador.md");
+	assert.equal(missing.ok, false);
+	if (!missing.ok) assert.equal(missing.code, "unreadable-spec");
+	assert.deepEqual(statCalls, [tracked, legacyTracked, local, legacyLocal, local], "sin ninguno, el stat ve los cuatro lugares y el destino local de chiche");
+});
+
 test("#84 CA-12: el protocolo directo acepta un borrador del common-dir y sigue rechazando rutas ajenas", () => {
 	const request = (path: string, canonicalReference: string) => ({
 		version: 1,

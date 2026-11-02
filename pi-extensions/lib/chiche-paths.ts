@@ -12,6 +12,7 @@
 // common-dir y el lugar local de cada marca es el trackeado.
 
 import { execFile } from "node:child_process";
+import type { Stats } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
@@ -42,6 +43,7 @@ export interface ArtifactEntry extends Omit<ArtifactReadDir, "path"> {
 }
 
 export type GitRunner = (args: readonly string[], cwd: string) => Promise<{ code: number; stdout: string }>;
+export type StatPort = (path: string) => Promise<Pick<Stats, "isFile">>;
 
 const COMMON_DIR_ARGS = ["rev-parse", "--path-format=absolute", "--git-common-dir"] as const;
 const TRACKED_DIR: Record<ArtifactBrand, string> = { chiche: ".chiche", sdd: ".sdd" };
@@ -140,11 +142,12 @@ export async function listArtifacts(dirs: ArtifactDirs): Promise<ArtifactEntry[]
  * precedencia que `listArtifacts`, o `<git-common-dir>/chiche/<kind>/<name>`
  * si todavía no existe. Ejemplo: `x.md` solo en `.sdd/specs/` resuelve ahí y
  * se actualiza en su lugar; `nueva.md` resuelve al lugar local de chiche.
+ * `statPort` es el seam para tests y para quien ya inyecta su propio `stat`.
  */
-export async function resolveArtifactName(dirs: ArtifactDirs, name: string): Promise<string> {
+export async function resolveArtifactName(dirs: ArtifactDirs, name: string, statPort: StatPort = stat): Promise<string> {
 	for (const directory of artifactReadDirs(dirs)) {
 		const path = join(directory.path, name);
-		if (await stat(path).then((entry) => entry.isFile(), () => false)) return path;
+		if (await statPort(path).then((entry) => entry.isFile(), () => false)) return path;
 	}
 	return join(dirs.local, name);
 }

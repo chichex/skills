@@ -1,6 +1,7 @@
 ---
 name: sdd-land
 description: alias deprecado de chiche-land. Solo para quien todavía escribe sdd-land; no lo elijas por tu cuenta, usá chiche-land.
+disable-model-invocation: true
 ---
 
 # sdd-land (alias deprecado)

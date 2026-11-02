@@ -1,6 +1,7 @@
 ---
 name: sdd-init
 description: alias deprecado de chiche-init. Solo para quien todavía escribe sdd-init; no lo elijas por tu cuenta, usá chiche-init.
+disable-model-invocation: true
 ---
 
 # sdd-init (alias deprecado)

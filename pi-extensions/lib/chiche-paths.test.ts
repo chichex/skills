@@ -143,6 +143,22 @@ test("CA-1: resolveArtifactName devuelve el existente con la misma precedencia y
 	assert.equal(await resolveArtifactName(dirs, "x.md"), join(dirs.tracked, "x.md"));
 });
 
+test("CA-1: resolveArtifactName consulta el stat inyectado en orden de precedencia y no el del disco", async () => {
+	const dirs = trackedArtifactDirs("/virtual/repo", "specs");
+	const probed: string[] = [];
+	const statWith = (existing: string[]) => async (path: string) => {
+		probed.push(path);
+		if (!existing.includes(path)) throw new Error(`ENOENT: ${path}`);
+		return { isFile: () => !path.endsWith("/dir.md") };
+	};
+	assert.equal(await resolveArtifactName(dirs, "x.md", statWith([join(dirs.legacyTracked, "x.md")])), join(dirs.legacyTracked, "x.md"));
+	assert.deepEqual(probed, [join(dirs.tracked, "x.md"), join(dirs.legacyTracked, "x.md")], "se detiene en el primero que existe");
+	probed.length = 0;
+	assert.equal(await resolveArtifactName(dirs, "nueva.md", statWith([])), join(dirs.local, "nueva.md"), "sin ninguno, el local de chiche");
+	assert.deepEqual(probed, [join(dirs.tracked, "nueva.md"), join(dirs.legacyTracked, "nueva.md")], "fuera de un repo git local coincide con tracked: no se consulta dos veces");
+	assert.equal(await resolveArtifactName(dirs, "dir.md", statWith([join(dirs.tracked, "dir.md")])), join(dirs.local, "dir.md"), "un directorio no cuenta como artefacto");
+});
+
 test("CA-1: fuera de un repo git, local es igual a tracked en cada marca y el listado no duplica", async (t) => {
 	const base = realpathSync(mkdtempSync(join(tmpdir(), "chiche-paths-nogit-")));
 	t.after(() => rmSync(base, { recursive: true, force: true }));

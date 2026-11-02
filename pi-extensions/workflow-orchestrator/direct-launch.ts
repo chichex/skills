@@ -372,7 +372,7 @@ export async function resolveDirectRunRequest(
 	}
 	let candidate = isAbsolute(target) ? resolve(target) : resolve(originRoot, target);
 	if (!isAbsolute(target) && (dirname(candidate) === specDirs.tracked || dirname(candidate) === specDirs.legacyTracked)) {
-		candidate = await resolveArtifactName(specDirs, basename(candidate));
+		candidate = await resolveArtifactName(specDirs, basename(candidate), statPort);
 	}
 	let path: string;
 	let root: string;

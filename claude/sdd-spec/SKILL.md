@@ -1,6 +1,7 @@
 ---
 name: sdd-spec
 description: alias deprecado de chiche-spec. Solo para quien todavía escribe sdd-spec; no lo elijas por tu cuenta, usá chiche-spec.
+disable-model-invocation: true
 ---
 
 # sdd-spec (alias deprecado)

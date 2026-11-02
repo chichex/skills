@@ -310,6 +310,24 @@ test("both READMEs advertise issue-triage and its confirmed chaining in OpenCode
 	}
 });
 
+// Review #106, F1: quien copió la allowlist anterior (`sdd-spec`/`sdd-run`) con
+// `"*": "deny"` pierde `chiche-*` al actualizar. La nota va junto al ejemplo.
+const ALLOWLIST_MIGRATION_NOTE: Record<string, RegExp> = {
+	"README.md": /Si venís de la versión anterior[^\n]*agregá `chiche-spec` y `chiche-run`[^\n]*`sdd-\*`[^\n]*alias/,
+	"README.en.md": /Coming from the previous version[^\n]*add `chiche-spec` and `chiche-run`[^\n]*`sdd-\*`[^\n]*aliases/,
+};
+
+test("both READMEs tell who copied the previous OpenCode allowlist to add chiche-spec and chiche-run", async () => {
+	for (const [path, note] of Object.entries(ALLOWLIST_MIGRATION_NOTE)) {
+		const markdown = await readRepoFile(path);
+		const example = markdown.indexOf('"permission": {');
+		const noteAt = markdown.search(note);
+		const chainingAt = markdown.search(/(?:Para encadenar|Chaining)[^\n]*`grill`/);
+		assert.ok(noteAt >= 0, `${path}: nota de migración de la allowlist`);
+		assert.ok(example < noteAt && noteAt < chainingAt, `${path}: la nota va entre el ejemplo de permisos y el párrafo de encadenado`);
+	}
+});
+
 test("pi issue-triage keeps chaining in the orchestrator, not in the skill", async () => {
 	const markdown = await readRepoFile("pi/issue-triage/SKILL.md");
 	assert.doesNotMatch(markdown, /<!-- stage-chain:start -->/);

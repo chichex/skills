@@ -247,7 +247,7 @@ cd skills
 ./install.sh pi         # solo los de Pi
 ```
 
-Destinos por defecto: `${ANTIGRAVITY_SKILLS_DIR:-~/.gemini/config/skills/}`, `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~/.claude/agents/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/` y `~/.pi/agent/themes/` (overridables con `ANTIGRAVITY_SKILLS_DIR`, `CODEX_SKILLS_DIR`, `CLAUDE_SKILLS_DIR`, `CLAUDE_AGENTS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR` y `PI_THEMES_DIR`). `CLAUDE_PLUGIN_REGISTRY_FILE` no es un destino: apunta al registro de plugins que `install.sh claude` lee para avisar si el plugin `chichex-skills` ya está instalado (y en ese caso saltear la instalación de `agents/`, que quedaría tapada por el plugin).
+Destinos por defecto: `${ANTIGRAVITY_SKILLS_DIR:-~/.gemini/config/skills/}`, `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~/.claude/agents/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/` y `~/.pi/agent/themes/` (overridables con `ANTIGRAVITY_SKILLS_DIR`, `CODEX_SKILLS_DIR`, `CLAUDE_SKILLS_DIR`, `CLAUDE_AGENTS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR` y `PI_THEMES_DIR`). `CLAUDE_PLUGIN_REGISTRY_FILE` no es un destino: apunta al registro de plugins que `install.sh claude` lee para avisar si el plugin `chiche` (o el viejo `chichex-skills`) ya está instalado (y en ese caso saltear la instalación de `agents/`, que quedaría tapada por el plugin; con el viejo, el aviso incluye cómo migrarlo).
 
 Como Codex también descubre los skills de Pi en `~/.agents/skills` y no fusiona nombres repetidos, la instalación de Codex agrega un bloque administrado a `${CODEX_HOME:-~/.codex}/config.toml`: desactiva para Codex únicamente las copias Pi que tienen una versión equivalente en `codex/`. Pi sigue usando sus archivos normalmente. El resto de `config.toml` se preserva y las corridas posteriores actualizan el mismo bloque sin duplicarlo. Usá `CODEX_DEDUPLICATE_PI_SKILLS=0` para omitir este cambio o `CODEX_CONFIG_FILE` para apuntar a otro config.
 
@@ -283,6 +283,8 @@ En OpenCode, si `permission.skill` usa una allowlist, habilitá también el nomb
   }
 }
 ```
+
+**Si venís de la versión anterior:** agregá `chiche-spec` y `chiche-run` a tu allowlist. Con `"*": "deny"` quedan denegados aunque `sdd-spec` y `sdd-run` sigan en `allow`. Los `sdd-*` solo hacen falta si seguís usando los alias.
 
 Para encadenar desde `issue-triage`, también deben estar instalados y habilitados `grill`, `chiche-spec` y `chiche-run`. Si la carga del skill elegido falla o queda denegada, el triage muestra el comando exacto y termina sin ejecutar el stage. Copiar los skills no cambia esos permisos; si no aparecen en la sesión abierta, abrí una nueva.
 
