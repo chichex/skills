@@ -691,7 +691,7 @@ test("CA-17: el contrato fecha los conteos nuevos y cita la corrida con Pi 0.85.
 	for (const [row, date] of Object.entries(verifiedOn)) {
 		assert.match(commands, new RegExp(`^\\| ${escapeRegExp(row)} \\|[^|]*\\|[^|]*\\| verificado ${date} \\|`, "m"), `${row}: conteo nuevo con fecha nueva`);
 	}
-	assert.match(commands, /19\/19 con Pi 0\.85\.1/);
+	assert.match(commands, /20\/20 con Pi 0\.85\.1/);
 	assert.match(contract, /\(issue #66\), los tests de loop rojo/);
 	assert.match(contract, /entonces fallaban los 38 archivos/);
 	assert.match(commands, /\| <1s \| \d+ tests; gate solo-tests, sin extension \(como `chiche-land-gate`\)/);

@@ -4,7 +4,8 @@
 # junto con las extensiones de Pi.
 # Hace git pull y copia cada skill a su carpeta, SIN borrar los otros skills
 # que ya tengas: agrega/actualiza los que vienen del repo y solo poda los que
-# este mismo repo instaló antes (figuran en el manifest del destino) y retiró.
+# este mismo repo instaló antes (figuran en el manifest del destino) y retiró,
+# sean skills, extensiones o themes de Pi.
 #
 # Uso:
 #   ./install.sh              # instala los cinco sets
@@ -164,19 +165,24 @@ pi_forget_manifest() {
   rm -f "$(pi_manifest_path "$1")" "$(pi_legacy_manifest_path "$1")"
 }
 
-# Poda en $dest los skills que este repo instaló alguna vez (figuran en el
-# manifest del destino) y que el checkout ACTUAL ya no tiene. Solo toca
-# nombres administrados: un skill ajeno, que nunca pasó por el manifest,
-# sobrevive. Los nombres inválidos (vacíos, con '/' o '..') se descartan sin
-# resolverse, para que un manifest corrupto no pueda borrar fuera del destino.
+# Poda en $dest los recursos de un tipo (skills `dirs`, extensiones `entries`,
+# themes `json`: el mismo glob_kind de pi_managed_names) que este repo instaló
+# alguna vez (figuran en el manifest del destino) y que el checkout ACTUAL ya
+# no tiene. Solo toca nombres administrados: un recurso ajeno, que nunca pasó
+# por el manifest, sobrevive. Los nombres inválidos (vacíos, con '/', '.' o
+# '..') se descartan sin resolverse, para que un manifest corrupto no pueda
+# borrar fuera del destino. Un theme es un archivo (`rm -f`); skills y
+# extensiones pueden ser carpetas enteras (`rm -rf`), así no queda ningún
+# archivo viejo anidado que el discovery de Pi vuelva a levantar.
 # Reescribe el manifest sin lo podado. Espera el manifest ya migrado (ver
-# pi_migrate_manifest): así una copia vieja `sdd-*` que el checkout ya no trae
-# como alias se poda aunque solo figure en `.chichex-skills-managed`.
-prune_retired_skills() {
-  local src="$1" dest="$2" manifest current kept name
+# pi_migrate_manifest): así una copia vieja (un `sdd-*` que el checkout ya no
+# trae como alias, o la carpeta `sdd-artifacts` de una extensión renombrada) se
+# poda aunque solo figure en `.chichex-skills-managed`.
+prune_retired() {
+  local src="$1" dest="$2" glob_kind="$3" manifest current kept name
   manifest="$(pi_manifest_path "$dest")"
   [ -f "$manifest" ] || return 0
-  current="$(pi_managed_names "$src" dirs)"
+  current="$(pi_managed_names "$src" "$glob_kind")"
   kept="$(mktemp "$dest/.chiche-managed.XXXXXX")"
   while IFS= read -r name; do
     [ -n "$name" ] || continue
@@ -187,7 +193,11 @@ prune_retired_skills() {
       printf '%s\n' "$name" >> "$kept"
     else
       if [ -e "$dest/$name" ] || [ -L "$dest/$name" ]; then
-        rm -rf "${dest:?}/$name"
+        if [ "$glob_kind" = "json" ]; then
+          rm -f "${dest:?}/$name"
+        else
+          rm -rf "${dest:?}/$name"
+        fi
         echo "   ✗ $name (retirado del repo, podado)"
       fi
     fi
@@ -204,7 +214,7 @@ install_set() {
   mkdir -p "$dest"
   echo "→ $name → $dest"
   pi_migrate_manifest "$dest"
-  prune_retired_skills "$src" "$dest"
+  prune_retired "$src" "$dest" dirs
   while IFS= read -r base; do
     [ -n "$base" ] || continue
     # reemplaza solo ESTE skill (limpio, sin dejar archivos viejos);
@@ -226,6 +236,9 @@ install_extensions() {
   mkdir -p "$dest"
   echo "→ Pi extensions → $dest"
   pi_migrate_manifest "$dest"
+  # Una extensión renombrada o retirada (p. ej. sdd-artifacts → chiche-artifacts)
+  # no puede quedar al lado de la nueva: Pi descubre su index.ts en cada arranque.
+  prune_retired "$src" "$dest" entries
   while IFS= read -r base; do
     [ -n "$base" ] || continue
     # Pi descubre tanto archivos .ts como carpetas con index.ts.
@@ -245,6 +258,7 @@ install_themes() {
   mkdir -p "$dest"
   echo "→ Pi themes → $dest"
   pi_migrate_manifest "$dest"
+  prune_retired "$src" "$dest" json
   while IFS= read -r base; do
     [ -n "$base" ] || continue
     rm -f "$dest/$base"

@@ -253,7 +253,7 @@ Default destinations: `${ANTIGRAVITY_SKILLS_DIR:-~/.gemini/config/skills/}`, `${
 
 Because Codex also discovers Pi skills under `~/.agents/skills` and does not merge duplicate names, installing the Codex set adds a managed block to `${CODEX_HOME:-~/.codex}/config.toml`. It disables only the Pi copies that have an equivalent under `codex/`; Pi keeps using its files normally. The rest of `config.toml` is preserved and later runs update the same block without duplicating it. Set `CODEX_DEDUPLICATE_PI_SKILLS=0` to skip this change or `CODEX_CONFIG_FILE` to target another config.
 
-To **update** later, just run `./install.sh` again — it does the `pull` for you. It also **prunes**, in each destination, the skills this repo installed earlier (listed in the destination's hidden `.chiche-managed` manifest; if the destination still has the `.chichex-skills-managed` of an earlier install, it reads it, migrates it to the new name, and deletes it) and has since retired, such as `domain-modeling` and `grill-with-domain-modeling`; skills this repo did not install are left alone.
+To **update** later, just run `./install.sh` again — it does the `pull` for you. It also **prunes**, in each destination, the skills, Pi extensions and themes this repo installed earlier (listed in the destination's hidden `.chiche-managed` manifest; if the destination still has the `.chichex-skills-managed` of an earlier install, it reads it, migrates it to the new name, and deletes it) and has since retired, such as `domain-modeling` and `grill-with-domain-modeling`; skills this repo did not install are left alone.
 
 If you'd rather do it by hand, it's a plain copy:
 
