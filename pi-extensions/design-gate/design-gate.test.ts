@@ -434,10 +434,10 @@ test("CA-5: el contrato de este repo gana ## Diseño sin superficies, la fila de
 	assert.match(section(contract, /^## Diseño$/), /^## Diseño\nSin superficies UI\.\n/);
 	const commands = section(contract, /^## Comandos$/);
 	assert.match(commands, /^\| gate de doctrina de diseño \| `node --test pi-extensions\/design-gate\/design-gate\.test\.ts` \|/m);
-	assert.match(commands, /^\| lint de frontmatter \|[^\n]*\| 49 skills OK;/m);
-	assert.match(contract, /10 skills de Pi/);
+	assert.match(commands, /^\| lint de frontmatter \|[^\n]*\| 69 skills OK;/m);
+	assert.match(contract, /14 skills de Pi/);
 	assert.doesNotMatch(contract, /\b12 skills\b/);
-	assert.match(contract, /RPC con 20 comandos[^\n]*`skill:design-system`/);
+	assert.match(contract, /RPC con 25 comandos[^\n]*`skill:design-system`/);
 	assert.match(contract, /## Politicas de generacion\nSin politicas activas\./);
 	assert.match(contract, /## Decisiones humanas\n/);
 });
@@ -679,19 +679,19 @@ test("CA-16: next.md no repite las reglas de web en celular que ya trae react.md
 test("CA-17: el contrato fecha los conteos nuevos y cita la corrida con Pi 0.85.1", async () => {
 	const contract = await readRepoFile(".sdd/project.md");
 	const commands = section(contract, /^## Comandos$/);
-	// Pi Package conserva su verificación del 14; frontmatter y drift se
-	// re-ejecutaron el 15 con el port de issue-triage a OpenCode, y la suite el
-	// 30 con la capa 1 del renombre a chiche.
+	// Pi Package, frontmatter y la suite se re-verificaron el 2026-11-01 con la
+	// capa 2 del renombre a chiche (alias sdd-*); drift conserva la corrida del
+	// 15 con el port de issue-triage a OpenCode.
 	const verifiedOn: Record<string, string> = {
-		"gate focalizado de Pi Package": "2026-10-14",
-		"tests de extensiones": "2026-10-30",
-		"lint de frontmatter": "2026-10-15",
+		"gate focalizado de Pi Package": "2026-11-01",
+		"tests de extensiones": "2026-11-01",
+		"lint de frontmatter": "2026-11-01",
 		"reporte de drift": "2026-10-15",
 	};
 	for (const [row, date] of Object.entries(verifiedOn)) {
 		assert.match(commands, new RegExp(`^\\| ${escapeRegExp(row)} \\|[^|]*\\|[^|]*\\| verificado ${date} \\|`, "m"), `${row}: conteo nuevo con fecha nueva`);
 	}
-	assert.match(commands, /18\/18 con Pi 0\.85\.1/);
+	assert.match(commands, /19\/19 con Pi 0\.85\.1/);
 	assert.match(contract, /\(issue #66\), los tests de loop rojo/);
 	assert.match(contract, /entonces fallaban los 38 archivos/);
 	assert.match(commands, /\| <1s \| \d+ tests; gate solo-tests, sin extension \(como `chiche-land-gate`\)/);
