@@ -13,6 +13,7 @@ import {
 	readdir,
 	readlink,
 	rm,
+	symlink,
 	writeFile,
 } from "node:fs/promises";
 import { builtinModules } from "node:module";
@@ -1353,6 +1354,64 @@ test("issue #103 CA-10: install.sh pi migrates an old .chichex-skills-managed, r
 		assert.equal(await readFile(join(themesDest, "user-theme.json"), "utf8"), "ajeno\n");
 		assert.equal(await readFile(join(skillsDest, "user-skill", "SKILL.md"), "utf8"), "ajeno\n");
 		assert.equal(await readFile(sentinel, "utf8"), "no tocar");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("review #106 (verify A1/A2): install.sh pi prunes managed names with spaces, a leading dash, a glob or a symlink only inside the destination, skips a directory named like a theme, and keeps stderr clean", async () => {
+	const root = await mkdtemp(join(tmpdir(), "chichex-pi-prune-shapes-"));
+	const repo = join(root, "repo");
+	const ext = join(root, "dest", "extensions");
+	const themes = join(root, "dest", "themes");
+	const outside = join(root, "outside");
+	try {
+		await mkdir(join(repo, "pi-extensions", "live"), { recursive: true });
+		await writeFile(join(repo, "pi-extensions", "live", "index.ts"), "export default () => {};\n");
+		await mkdir(join(repo, "pi-themes"), { recursive: true });
+		await writeFile(join(repo, "pi-themes", "live-theme.json"), "{}\n");
+		await copyFile(repoPath("install.sh"), join(repo, "install.sh"));
+		await cp(repoPath("pi"), join(repo, "pi"), { recursive: true });
+		await mkdir(join(ext, "old dir", "nested"), { recursive: true });
+		await writeFile(join(ext, "old dir", "nested", "f.ts"), "viejo\n");
+		await writeFile(join(ext, "-rf"), "viejo\n");
+		await writeFile(join(ext, "*"), "viejo\n");
+		await writeFile(join(ext, "star-sibling.ts"), "ajeno\n");
+		await writeFile(join(ext, "user ext.ts"), "ajeno\n");
+		await mkdir(outside, { recursive: true });
+		await writeFile(join(outside, "keep.txt"), "keep\n");
+		await symlink(outside, join(ext, "link-ext"));
+		// `-echiche-x` leido como opcion de grep quedaba sin podar (verify A2).
+		await writeFile(join(ext, "-elive"), "viejo\n");
+		await writeFile(join(ext, ".chiche-managed"), "old dir\n-rf\n*\nlink-ext\n-elive\n");
+		// Una carpeta con nombre de theme no es un theme: se saltea sin abortar
+		// la instalacion (verify A1: `rm -f` sobre un directorio + set -e).
+		await mkdir(join(themes, "old.json", "x"), { recursive: true });
+		await writeFile(join(themes, "old.json", "x", "f"), "carpeta\n");
+		await writeFile(join(themes, "gone.json"), "{}\n");
+		await writeFile(join(themes, ".chiche-managed"), "old.json\ngone.json\n");
+		const env = {
+			HOME: join(root, "home"),
+			PI_SKILLS_DIR: join(root, "dest", "skills"),
+			PI_EXTENSIONS_DIR: ext,
+			PI_THEMES_DIR: themes,
+			PATH: "/usr/bin:/bin",
+		};
+		const installed = runInstaller(join(repo, "install.sh"), ["pi"], env);
+		assert.equal(installed.status, 0, `${installed.stdout}\n${installed.stderr}`);
+		assert.equal(installed.stderr, "", "a manifest name that looks like a grep option never leaks an error");
+		for (const name of ["old dir", "-rf", "*", "link-ext", "-elive"]) {
+			assert.equal(await absolutePathExists(join(ext, name)), false, `${name} pruned`);
+		}
+		assert.equal(await readFile(join(ext, "star-sibling.ts"), "utf8"), "ajeno\n", "a literal * never globs");
+		assert.equal(await readFile(join(ext, "user ext.ts"), "utf8"), "ajeno\n");
+		assert.equal(await readFile(join(outside, "keep.txt"), "utf8"), "keep\n", "a symlink is unlinked, never followed");
+		assert.deepEqual((await readFile(join(ext, ".chiche-managed"), "utf8")).split("\n").filter(Boolean), ["live"]);
+		assert.equal(await readFile(join(themes, "old.json", "x", "f"), "utf8"), "carpeta\n", "a directory named like a theme is left alone");
+		assert.equal(await absolutePathExists(join(themes, "gone.json")), false, "the retired theme file is pruned");
+		assert.deepEqual((await readFile(join(themes, ".chiche-managed"), "utf8")).split("\n").filter(Boolean), ["live-theme.json"]);
+		const leftovers = (await readdir(themes)).filter((entry) => entry.startsWith(".chiche-managed."));
+		assert.deepEqual(leftovers, [], "no temporary manifest survives");
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

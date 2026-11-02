@@ -144,7 +144,7 @@ pi_record_managed() {
   local dest="$1" name="$2" manifest
   manifest="$(pi_manifest_path "$dest")"
   mkdir -p "$dest"
-  if [ ! -f "$manifest" ] || ! grep -Fxq "$name" "$manifest" 2>/dev/null; then
+  if [ ! -f "$manifest" ] || ! grep -Fxq -e "$name" "$manifest" 2>/dev/null; then
     printf '%s\n' "$name" >> "$manifest"
   fi
 }
@@ -189,17 +189,19 @@ prune_retired() {
     case "$name" in
       */*|.|..) continue ;;
     esac
-    if printf '%s\n' "$current" | grep -Fxq "$name"; then
+    # `-e`: un nombre que empieza con '-' no es una opcion de grep.
+    if printf '%s\n' "$current" | grep -Fxq -e "$name"; then
       printf '%s\n' "$name" >> "$kept"
-    else
-      if [ -e "$dest/$name" ] || [ -L "$dest/$name" ]; then
-        if [ "$glob_kind" = "json" ]; then
-          rm -f "${dest:?}/$name"
-        else
-          rm -rf "${dest:?}/$name"
-        fi
+    elif [ "$glob_kind" = "json" ]; then
+      # Un theme es un archivo: una carpeta con ese nombre no es nuestra y
+      # `rm -f` sobre ella abortaria la instalacion por set -e.
+      if [ -f "$dest/$name" ] || [ -L "$dest/$name" ]; then
+        rm -f "${dest:?}/$name"
         echo "   ✗ $name (retirado del repo, podado)"
       fi
+    elif [ -e "$dest/$name" ] || [ -L "$dest/$name" ]; then
+      rm -rf "${dest:?}/$name"
+      echo "   ✗ $name (retirado del repo, podado)"
     fi
   done < "$manifest"
   mv "$kept" "$manifest"
