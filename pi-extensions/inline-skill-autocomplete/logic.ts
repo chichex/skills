@@ -114,7 +114,7 @@ export function promoteInlineSkillInvocation(
 	return undefined;
 }
 
-/** El valor que se completa y la etiqueta son el nombre del comando, en el orden recibido (los alias `sdd-*` se retiraron en 4.0.0). */
+/** Lo que el editor muestra y completa: el nombre del comando, en el orden recibido. */
 export function skillSuggestions(commands: readonly SkillCommandLike[]): SkillSuggestion[] {
 	return commands.map((command) => ({
 		value: command.name,

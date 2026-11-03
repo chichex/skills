@@ -856,15 +856,19 @@ const RETIRED_ALIASES = ["sdd-init", "sdd-spec", "sdd-run", "sdd-land"] as const
 
 // Lineas que el grep de CA-21 puede devolver: solo las de los README que dicen que los
 // nombres "se retiraron en 4.0.0" / "were retired in 4.0.0" (una linea que solo menciona
-// "retirar" otra cosa no cuenta).
-const RETIREMENT_NOTE = /^README(?:\.en)?\.md:\d+:.*(?:\bse retiraron en 4\.0\.0|\bwere retired in 4\.0\.0)/;
+// "retirar" otra cosa no cuenta) y la frase de la instalacion manual que manda borrar a
+// mano las cuatro carpetas (quien copio con `cp -R` no tiene manifest que las pode).
+const RETIREMENT_NOTE =
+	/^README(?:\.en)?\.md:\d+:(?:.*(?:\bse retiraron en 4\.0\.0|\bwere retired in 4\.0\.0)|Si copiaste a mano, no hay manifest: borrá vos las carpetas |If you copied by hand there is no manifest: delete the )/;
 
 // Los nombres retirados en los archivos TRACKEADOS (git grep): un archivo suelto sin
 // trackear no cuenta. Estado 0 si hay coincidencias, 1 si no hay, mayor que 1 si git falla.
+// El borde es "fin de linea o un caracter que no continua el identificador": `\b` no sirve
+// porque `-` es borde de palabra y `sdd-spec-publication` (identificador persistido) pasaria.
 function grepRetiredNames(cwd: string) {
 	return spawnSync(
 		"git",
-		["grep", "-n", "-E", "sdd-(init|spec|run|land)\\b", "--", "claude", "codex", "opencode", "pi", "antigravity", "agents", "evals", "README.md", "README.en.md"],
+		["grep", "-n", "-E", "sdd-(init|spec|run|land)([^A-Za-z0-9_-]|$)", "--", "claude", "codex", "opencode", "pi", "antigravity", "agents", "evals", "README.md", "README.en.md"],
 		{ cwd, encoding: "utf8" },
 	);
 }
@@ -914,10 +918,45 @@ test("#103 CA-21: el grep mira archivos trackeados: un archivo suelto sin tracke
 	}
 });
 
-test("autotest: RETIREMENT_NOTE acepta las dos frases de retiro de los README y rechaza cualquier otra linea", () => {
+test("#103 CA-21: el borde del grep no confunde sdd-spec-publication ni sdd-spec-inspection con sdd-spec, pero sí cuenta el nombre al final de línea o antes de puntuación", async () => {
+	const repo = await mkdtemp(join(tmpdir(), "chiche-ca21-boundary-"));
+	try {
+		const git = (...args: string[]) => {
+			const result = spawnSync("git", args, { cwd: repo, encoding: "utf8" });
+			assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
+		};
+		git("init", "-q");
+		for (const dir of ["claude", "codex", "opencode", "pi", "antigravity", "agents", "evals"]) await mkdir(join(repo, dir), { recursive: true });
+		await writeFile(join(repo, "README.md"), "# readme\n");
+		await writeFile(join(repo, "README.en.md"), "# readme\n");
+		// Identificadores persistidos de la capa 2: `-` es borde de palabra, pero no son el nombre retirado.
+		await writeFile(join(repo, "pi", "persisted.ts"), 'const a = "sdd-spec-publication";\nconst b = "sdd-spec-inspection";\n');
+		git("add", ".");
+
+		const persisted = grepRetiredNames(repo);
+		assert.equal(persisted.status, 1, `los identificadores persistidos no cuentan (estado ${persisted.status}): ${persisted.stdout}${persisted.stderr}`);
+		assert.equal(persisted.stdout, "");
+
+		// Controles: el nombre retirado sí cuenta al final de línea y antes de cualquier puntuación.
+		await writeFile(join(repo, "agents", "names.md"), "usá sdd-land\n`sdd-init`, sdd-run. (sdd-spec) sdd-land:\n");
+		git("add", ".");
+		const names = grepRetiredNames(repo);
+		assert.equal(names.status, 0, names.stderr);
+		const lines = names.stdout.split("\n").filter((line) => line.length > 0);
+		assert.deepEqual(lines.map((line) => line.split(":")[0]), ["agents/names.md", "agents/names.md"], `solo las dos líneas de names.md: ${lines.join(" | ")}`);
+	} finally {
+		await rm(repo, { recursive: true, force: true });
+	}
+});
+
+test("autotest: RETIREMENT_NOTE acepta las frases de retiro y de instalación manual de los README y rechaza cualquier otra linea", () => {
 	assert.match("README.md:22:Los nombres anteriores `sdd-init` y `sdd-run` se retiraron en 4.0.0: migrá.", RETIREMENT_NOTE);
 	assert.match("README.en.md:24:The previous names `sdd-init` were retired in 4.0.0: migrate.", RETIREMENT_NOTE);
+	assert.match("README.md:271:Si copiaste a mano, no hay manifest: borrá vos las carpetas `sdd-init`, `sdd-spec`, `sdd-run` y `sdd-land` de cada destino.", RETIREMENT_NOTE);
+	assert.match("README.en.md:273:If you copied by hand there is no manifest: delete the `sdd-init`, `sdd-spec`, `sdd-run` and `sdd-land` folders from each destination yourself.", RETIREMENT_NOTE);
 	assert.doesNotMatch("README.md:30:Para retirar el tag de `sdd-run` usá git tag -d.", RETIREMENT_NOTE);
+	assert.doesNotMatch("README.md:32:Antes: Si copiaste a mano, no hay manifest: borrá vos las carpetas `sdd-run`.", RETIREMENT_NOTE);
+	assert.doesNotMatch("claude/grill/SKILL.md:9:Si copiaste a mano, no hay manifest: borrá vos las carpetas `sdd-run`.", RETIREMENT_NOTE);
 	assert.doesNotMatch("README.md:31:`sdd-spec` se retiraron en 3.0.0.", RETIREMENT_NOTE);
 	assert.doesNotMatch("claude/grill/SKILL.md:9:`sdd-run` se retiraron en 4.0.0.", RETIREMENT_NOTE);
 });
