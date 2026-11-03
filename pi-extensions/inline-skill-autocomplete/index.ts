@@ -5,7 +5,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import {
 	fuzzyFilter,
-	type AutocompleteItem,
 	type AutocompleteProvider,
 	type AutocompleteSuggestions,
 	type EditorComponent,
@@ -44,10 +43,6 @@ function matchingSkills(commands: SlashCommandInfo[], query: string): SlashComma
 	return matches.slice(0, MAX_SUGGESTIONS);
 }
 
-function autocompleteItems(commands: SlashCommandInfo[]): AutocompleteItem[] {
-	return skillSuggestions(commands);
-}
-
 function createInlineSkillProvider(pi: ExtensionAPI, current: AutocompleteProvider): AutocompleteProvider {
 	return {
 		// Current Pi versions reserve `/` for commands at the beginning of the
@@ -67,7 +62,7 @@ function createInlineSkillProvider(pi: ExtensionAPI, current: AutocompleteProvid
 
 			return {
 				prefix: token.prefix,
-				items: autocompleteItems(matches),
+				items: skillSuggestions(matches),
 			};
 		},
 

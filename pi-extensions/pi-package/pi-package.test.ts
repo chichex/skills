@@ -666,8 +666,8 @@ test("package manifest is deterministic, Git-only, and non-publishable", async (
 	// en 22.18.0, 22.23.2, 24.19.0 y 26.4.0 — 22.17.1 y 20.x fallan al cargar los .ts.
 	assert.deepEqual(manifest.engines, { node: ">=22.19.0" });
 	assert.equal(manifest.license, "MIT");
-	assert.equal(manifest.repository, "https://github.com/chichex/skills.git");
-	assert.equal(manifest.homepage, "https://github.com/chichex/skills");
+	assert.equal(manifest.repository, "https://github.com/chichex/chiche.git");
+	assert.equal(manifest.homepage, "https://github.com/chichex/chiche");
 	assert.deepEqual(manifest.keywords, ["pi-package"]);
 	assert.equal(Object.hasOwn(manifest, "scripts"), false, "Git-only package must not expose npm scripts");
 	assert.equal(await pathExists("package-lock.json"), false, "repository must not gain a package lockfile");
@@ -1086,6 +1086,11 @@ test("install.sh refuses to lay down legacy Pi copies when the native Pi Package
 			const result = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], env);
 			assert.notEqual(result.status, 0, `${source}: ${result.stdout}\n${result.stderr}`);
 			assert.match(`${result.stdout}${result.stderr}`, /Pi Package nativo.*ya está instalado/is);
+			// Issue #103 CA-17: el mensaje nombra el repo actual aunque la fuente registrada sea la vieja.
+			assert.match(result.stderr, /El Pi Package nativo \(chichex\/chiche\) ya está instalado/, source);
+			// Review #109 (2): la fuente registrada puede ser la vieja, así que el hint remite a lo que muestra `pi list`.
+			assert.match(result.stderr, /'pi remove <fuente>' con la fuente que muestra 'pi list'/, source);
+			assert.match(result.stderr, /git:github\.com\/chichex\/chiche, o la vieja si instalaste con el nombre anterior del repo/, source);
 			assert.equal(
 				await absolutePathExists(skillsDest),
 				false,
@@ -1512,10 +1517,10 @@ test("issue #103 CA-10: install.sh pi prunes retired extensions and themes from 
 
 function assertNativePackageDocumentation(document: string): void {
 	for (const literal of [
-		"pi install git:github.com/chichex/skills",
-		"pi install git:github.com/chichex/skills -l",
+		"pi install git:github.com/chichex/chiche",
+		"pi install git:github.com/chichex/chiche -l",
 		"pi update --extensions",
-		"pi remove git:github.com/chichex/skills",
+		"pi remove git:github.com/chichex/chiche",
 		"./install.sh pi-clean --confirm",
 		"pi --use-theme claude-code",
 		".chiche/grills",
@@ -1525,7 +1530,7 @@ function assertNativePackageDocumentation(document: string): void {
 	]) {
 		assert.ok(document.includes(literal), `missing package documentation: ${literal}`);
 	}
-	assert.match(document, /git:github\.com\/chichex\/skills@<[^>]+>/);
+	assert.match(document, /git:github\.com\/chichex\/chiche@<[^>]+>/);
 }
 
 test("Spanish and English READMEs document the safe native package lifecycle", async () => {

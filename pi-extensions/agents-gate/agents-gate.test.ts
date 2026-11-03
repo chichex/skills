@@ -1289,7 +1289,7 @@ test("issue #103 CA-23: install.sh claude|codex|all migra un .chichex-skills-man
 				for (const alias of RETIRED_ALIASES) {
 					assert.ok(await absolutePathExists(join(dests.pi, alias, "SKILL.md")), `install.sh codex no poda ${alias} de $PI_DEST`);
 					assert.ok(
-						result.stdout.includes(`   ↳ ${alias}: copia Pi retirada; corré ./install.sh pi o ./install.sh pi-clean --confirm para podarla`),
+						result.stdout.includes(`   ↳ ${alias}: copia Pi retirada; corré ./install.sh pi para podarla (con el Pi Package nativo, borrá ${join(dests.pi, alias)} a mano)`),
 						`install.sh codex: avisa cómo podar ${alias}\n${result.stdout}`,
 					);
 				}
@@ -1321,7 +1321,7 @@ test("issue #103 CA-23: install.sh all con el Pi Package nativo instalado instal
 			await mkdir(join(fixtureRepo, harness, "grill"), { recursive: true });
 			await writeFile(join(fixtureRepo, harness, "grill", "SKILL.md"), "---\nname: grill\n---\n");
 		}
-		await writeFile(join(fakeBin, "pi"), "#!/bin/sh\nif [ \"$1\" = \"list\" ]; then\n  printf 'User packages:\\n  git:github.com/chichex/chiche\\n'\nfi\nexit 0\n");
+		await writeFile(join(fakeBin, "pi"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$PI_STUB_LOG\"\nif [ \"$1\" = \"list\" ]; then\n  printf 'User packages:\\n  git:github.com/chichex/chiche\\n'\nfi\nexit 0\n");
 		await chmod(join(fakeBin, "pi"), 0o755);
 		const dests: Record<SkillHarness, string> = {
 			claude: join(root, "dest", "claude-skills"),
@@ -1331,6 +1331,7 @@ test("issue #103 CA-23: install.sh all con el Pi Package nativo instalado instal
 			pi: join(root, "dest", "pi-skills"),
 		};
 		const configFile = join(root, "dest", "codex-config.toml");
+		const piLog = join(root, "pi-calls.log");
 		await seedInstalled3xDestination(dests.pi);
 
 		const result = runInstaller(join(fixtureRepo, "install.sh"), ["all"], {
@@ -1346,9 +1347,11 @@ test("issue #103 CA-23: install.sh all con el Pi Package nativo instalado instal
 			PI_EXTENSIONS_DIR: join(root, "dest", "pi-extensions"),
 			PI_THEMES_DIR: join(root, "dest", "pi-themes"),
 			PATH: `${fakeBin}${delimiter}/usr/bin${delimiter}/bin`,
+			PI_STUB_LOG: piLog,
 		});
 		assert.notEqual(result.status, 0, `${result.stdout}\n${result.stderr}`);
 		assert.match(result.stderr, /Pi Package nativo.*ya está instalado/is);
+		assert.deepEqual((await readFile(piLog, "utf8")).split("\n").filter(Boolean), ["list"], "pi list se consulta una sola vez por corrida");
 		assert.doesNotMatch(result.stdout, /^Listo\.$/m, "una instalación que falla no dice Listo");
 		for (const harness of ["claude", "codex", "opencode", "antigravity"] as const) {
 			assert.ok(await absolutePathExists(join(dests[harness], "grill", "SKILL.md")), `${harness}: el set se instala aunque Pi falle`);
@@ -1359,6 +1362,211 @@ test("issue #103 CA-23: install.sh all con el Pi Package nativo instalado instal
 		}
 		const config = await readFile(configFile, "utf8");
 		assert.ok(config.includes(`path = "${join(dests.pi, "sdd-run", "SKILL.md")}"\nenabled = false`), `Codex sigue deshabilitando la copia Pi sdd-run que no se podó\n${config}`);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+// Un checkout descartable con install.sh y, por cada harness pedido, los skills dados (SKILL.md mínimo).
+async function createMiniFixtureRepo(root: string, harnesses: readonly string[], skills: readonly string[]): Promise<string> {
+	const fixtureRepo = join(root, "repo");
+	await mkdir(fixtureRepo, { recursive: true });
+	await cp(repoPath("install.sh"), join(fixtureRepo, "install.sh"));
+	for (const harness of harnesses) {
+		for (const skill of skills) {
+			await mkdir(join(fixtureRepo, harness, skill), { recursive: true });
+			await writeFile(join(fixtureRepo, harness, skill, "SKILL.md"), `---\nname: ${skill}\n---\n`);
+		}
+	}
+	return fixtureRepo;
+}
+
+test("issue #103 CA-23: install.sh codex solo lee $PI_DEST: con un manifest 2.x no lo migra, no crea .chiche-managed ni toca las copias, y el bloque las sigue deshabilitando", async () => {
+	const root = await mkdtemp(join(tmpdir(), "chiche-codex-readonly-"));
+	try {
+		const fixtureRepo = await createMiniFixtureRepo(root, ["codex", "pi"], ["grill"]);
+		const piDest = join(root, "dest", "pi-skills");
+		const configFile = join(root, "dest", "codex-config.toml");
+		await seedInstalled2xDestination(piDest);
+		const before = await fileTreeOf(piDest);
+		assert.ok(before.some((entry) => entry.startsWith(`${LEGACY_MANIFEST}\0`)), "la siembra 2.x trae el manifest viejo");
+
+		const result = runInstaller(join(fixtureRepo, "install.sh"), ["codex"], {
+			HOME: join(root, "home"),
+			CODEX_SKILLS_DIR: join(root, "dest", "codex-skills"),
+			CODEX_CONFIG_FILE: configFile,
+			PI_SKILLS_DIR: piDest,
+			PATH: "/usr/bin:/bin",
+		});
+		assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+
+		assert.equal(await absolutePathExists(join(piDest, LEGACY_MANIFEST)), true, "install.sh codex no borra el manifest viejo de $PI_DEST");
+		assert.equal(await absolutePathExists(join(piDest, CHICHE_MANIFEST)), false, "install.sh codex no crea .chiche-managed en $PI_DEST");
+		assert.deepEqual(await fileTreeOf(piDest), before, "$PI_DEST queda byte a byte igual: manifests, sdd-run y el skill ajeno");
+		const config = await readFile(configFile, "utf8");
+		for (const name of ["sdd-run", "retired-skill"]) {
+			assert.ok(config.includes(`path = "${join(piDest, name, "SKILL.md")}"\nenabled = false`), `el bloque Codex sigue deshabilitando la copia Pi ${name}\n${config}`);
+		}
+		assert.doesNotMatch(config, /sentinel|user-skill/, "ni el nombre hostil del manifest ni el skill ajeno entran al bloque");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("issue #103 CA-23: install.sh codex avisa cómo podar las copias Pi retiradas y install.sh pi las poda y las saca del bloque de Codex", async () => {
+	const root = await mkdtemp(join(tmpdir(), "chiche-pi-prunes-codex-block-"));
+	try {
+		const chicheSkills = RETIRED_ALIASES.map((alias) => alias.replace("sdd-", "chiche-"));
+		const fixtureRepo = await createMiniFixtureRepo(root, ["codex", "pi"], ["grill", ...chicheSkills]);
+		const piDest = join(root, "dest", "pi-skills");
+		const configFile = join(root, "dest", "codex-config.toml");
+		await seedInstalled3xDestination(piDest);
+		const env = {
+			HOME: join(root, "home"),
+			CODEX_SKILLS_DIR: join(root, "dest", "codex-skills"),
+			CODEX_CONFIG_FILE: configFile,
+			PI_SKILLS_DIR: piDest,
+			PI_EXTENSIONS_DIR: join(root, "dest", "pi-extensions"),
+			PI_THEMES_DIR: join(root, "dest", "pi-themes"),
+			PATH: "/usr/bin:/bin",
+		};
+
+		const codex = runInstaller(join(fixtureRepo, "install.sh"), ["codex"], env);
+		assert.equal(codex.status, 0, `${codex.stdout}\n${codex.stderr}`);
+		for (const alias of RETIRED_ALIASES) {
+			assert.ok(
+				codex.stdout.includes(`   ↳ ${alias}: copia Pi retirada; corré ./install.sh pi para podarla (con el Pi Package nativo, borrá ${join(piDest, alias)} a mano)`),
+				`install.sh codex: el aviso de ${alias} apunta a install.sh pi y a la ruta de la copia\n${codex.stdout}`,
+			);
+		}
+		assert.doesNotMatch(codex.stdout, /pi-clean/, "pi-clean borra todo el set legacy: no es la forma de podar solo las retiradas");
+		const configBefore = await readFile(configFile, "utf8");
+		for (const name of ["sdd-run", "retired-skill", "chiche-run", "grill"]) {
+			assert.ok(configBefore.includes(`path = "${join(piDest, name, "SKILL.md")}"\nenabled = false`), `antes de podar, el bloque lista ${name}\n${configBefore}`);
+		}
+
+		const pi = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], env);
+		assert.equal(pi.status, 0, `${pi.stdout}\n${pi.stderr}`);
+		for (const name of ["retired-skill", ...RETIRED_ALIASES]) {
+			assert.equal(await absolutePathExists(join(piDest, name)), false, `install.sh pi poda la copia ${name}`);
+		}
+		assert.equal(await readFile(join(piDest, "user-skill", "SKILL.md"), "utf8"), "ajeno\n", "el skill ajeno queda intacto");
+		const configAfter = await readFile(configFile, "utf8");
+		assert.doesNotMatch(configAfter, /sdd-(?:init|spec|run|land)|retired-skill/, `el bloque ya no lista las copias podadas\n${configAfter}`);
+		for (const name of ["chiche-run", "grill"]) {
+			assert.ok(configAfter.includes(`path = "${join(piDest, name, "SKILL.md")}"\nenabled = false`), `el bloque conserva ${name}\n${configAfter}`);
+		}
+		const lines = configAfter.split("\n");
+		assert.equal(lines.filter((line) => line === CODEX_BEGIN).length, 1, "un solo inicio de bloque");
+		assert.equal(lines.filter((line) => line === CODEX_END).length, 1, "un solo fin de bloque");
+		assert.match(pi.stdout, /Codex: desactivadas las copias Pi duplicadas/, "install.sh pi avisa que reconcilió el bloque");
+
+		// `all` poda Pi primero y install_codex regenera el bloque: el aviso de Codex sale una sola vez.
+		await seedInstalled3xDestination(piDest);
+		const staleBlock = runInstaller(join(fixtureRepo, "install.sh"), ["codex"], env);
+		assert.equal(staleBlock.status, 0, `${staleBlock.stdout}\n${staleBlock.stderr}`);
+		const all = runInstaller(join(fixtureRepo, "install.sh"), ["all"], env);
+		assert.equal(all.status, 0, `${all.stdout}\n${all.stderr}`);
+		assert.equal((all.stdout.match(/^→ Codex: (?:desactivadas|precedencia)/gm) ?? []).length, 1, `install.sh all: un solo aviso del bloque de Codex\n${all.stdout}`);
+		assert.doesNotMatch(await readFile(configFile, "utf8"), /sdd-(?:init|spec|run|land)/, "install.sh all deja el bloque sin copias podadas");
+
+		// Sin bloque administrado previo, install.sh pi no crea ni toca la config de Codex.
+		await rm(configFile, { force: true });
+		const again = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], env);
+		assert.equal(again.status, 0, `${again.stdout}\n${again.stderr}`);
+		assert.equal(await absolutePathExists(configFile), false, "install.sh pi no crea config.toml si Codex nunca tuvo el bloque");
+
+		// Con CODEX_DEDUPLICATE_PI_SKILLS=0 tampoco lo reescribe.
+		await writeFile(configFile, `${CODEX_BEGIN}\n[[skills.config]]\npath = "/viejo/sdd-run/SKILL.md"\nenabled = false\n${CODEX_END}\n`);
+		const optOut = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], { ...env, CODEX_DEDUPLICATE_PI_SKILLS: "0" });
+		assert.equal(optOut.status, 0, `${optOut.stdout}\n${optOut.stderr}`);
+		assert.match(await readFile(configFile, "utf8"), /\/viejo\/sdd-run/, "con la deduplicación desactivada, install.sh pi no toca config.toml");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("review #109 (1): install.sh pi con un bloque de Codex inválido instala skills, extensiones y themes, avisa y sale con 0", async () => {
+	const root = await mkdtemp(join(tmpdir(), "chiche-pi-invalid-codex-block-"));
+	try {
+		const fixtureRepo = await createMiniFixtureRepo(root, ["codex", "pi"], ["grill", "chiche-run"]);
+		const piDest = join(root, "dest", "pi-skills");
+		const configFile = join(root, "dest", "codex-config.toml");
+		await seedInstalled3xDestination(piDest);
+		// BEGIN sin END: configure_codex_skill_precedence lo rechaza y no modifica la config.
+		const malformed = `${CODEX_BEGIN}\n[[skills.config]]\npath = "${join(piDest, "sdd-run", "SKILL.md")}"\nenabled = false\n`;
+		await writeFile(configFile, malformed);
+
+		const pi = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], {
+			HOME: join(root, "home"),
+			CODEX_SKILLS_DIR: join(root, "dest", "codex-skills"),
+			CODEX_CONFIG_FILE: configFile,
+			PI_SKILLS_DIR: piDest,
+			PI_EXTENSIONS_DIR: join(root, "dest", "pi-extensions"),
+			PI_THEMES_DIR: join(root, "dest", "pi-themes"),
+			PATH: "/usr/bin:/bin",
+		});
+		assert.equal(pi.status, 0, `install.sh pi no aborta por un bloque de Codex inválido\n${pi.stdout}\n${pi.stderr}`);
+		assert.equal(await readFile(join(piDest, "chiche-run", "SKILL.md"), "utf8"), "---\nname: chiche-run\n---\n", "los skills se instalan");
+		assert.equal(await absolutePathExists(join(piDest, "sdd-run")), false, "la copia retirada se poda igual");
+		assert.match(`${pi.stdout}${pi.stderr}`, /Pi extensions/, "install_extensions corre antes del refresco del bloque");
+		assert.match(`${pi.stdout}${pi.stderr}`, /Pi themes/, "install_themes corre antes del refresco del bloque");
+		assert.match(pi.stderr, /bloque administrado inválido/, "configure_codex_skill_precedence explica el rechazo");
+		assert.match(pi.stderr, /No pude refrescar el bloque de Codex en .*codex-config\.toml: revisá a mano sus rótulos de inicio y fin y después corré \.\/install\.sh codex/, "install.sh pi avisa y sigue");
+		assert.equal(await readFile(configFile, "utf8"), malformed, "la config inválida queda byte a byte igual");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("issue #103 CA-23: install.sh all difiere un fallo de Pi que no es el Pi Package nativo: instala los otros cuatro sets, sale con 1 y consulta pi list una sola vez", async () => {
+	const root = await mkdtemp(join(tmpdir(), "chiche-all-pi-failure-"));
+	try {
+		const fixtureRepo = await createMiniFixtureRepo(root, SKILL_HARNESSES, ["grill"]);
+		await mkdir(join(fixtureRepo, "pi-extensions"), { recursive: true });
+		await writeFile(join(fixtureRepo, "pi-extensions", "ext.ts"), "export default function ext() {}\n");
+		const fakeBin = join(root, "bin");
+		await mkdir(fakeBin, { recursive: true });
+		const piLog = join(root, "pi-calls.log");
+		// `pi list` no muestra el package nativo: no hay conflicto, la instalación de Pi arranca.
+		await writeFile(join(fakeBin, "pi"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$PI_STUB_LOG\"\nexit 0\n");
+		await chmod(join(fakeBin, "pi"), 0o755);
+		const dests: Record<SkillHarness, string> = {
+			claude: join(root, "dest", "claude-skills"),
+			codex: join(root, "dest", "codex-skills"),
+			opencode: join(root, "dest", "opencode-skills"),
+			antigravity: join(root, "dest", "antigravity-skills"),
+			pi: join(root, "dest", "pi-skills"),
+		};
+		// El destino de las extensiones de Pi cuelga de un archivo: `mkdir -p` falla y, con `set -e`, install_pi aborta.
+		await mkdir(join(root, "dest"), { recursive: true });
+		await writeFile(join(root, "dest", "not-a-dir"), "soy un archivo\n");
+
+		const result = runInstaller(join(fixtureRepo, "install.sh"), ["all"], {
+			HOME: join(root, "home"),
+			CLAUDE_SKILLS_DIR: dests.claude,
+			CLAUDE_AGENTS_DIR: join(root, "dest", "agents"),
+			CLAUDE_PLUGIN_REGISTRY_FILE: join(root, "no-registry.json"),
+			CODEX_SKILLS_DIR: dests.codex,
+			CODEX_CONFIG_FILE: join(root, "dest", "codex-config.toml"),
+			OPENCODE_SKILLS_DIR: dests.opencode,
+			ANTIGRAVITY_SKILLS_DIR: dests.antigravity,
+			PI_SKILLS_DIR: dests.pi,
+			PI_EXTENSIONS_DIR: join(root, "dest", "not-a-dir", "extensions"),
+			PI_THEMES_DIR: join(root, "dest", "pi-themes"),
+			PATH: `${fakeBin}${delimiter}/usr/bin${delimiter}/bin`,
+			PI_STUB_LOG: piLog,
+		});
+
+		assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+		assert.match(result.stderr, /not-a-dir/, "stderr lleva el error de Pi (mkdir sobre un archivo)");
+		assert.match(result.stderr, /Pi no se instaló por completo/, "stderr cierra con el aviso de la instalación de Pi diferida");
+		assert.doesNotMatch(result.stdout, /^Listo\.$/m, "una instalación que falla no dice Listo");
+		for (const harness of ["claude", "codex", "opencode", "antigravity"] as const) {
+			assert.ok(await absolutePathExists(join(dests[harness], "grill", "SKILL.md")), `${harness}: el set se instala aunque Pi falle`);
+		}
+		assert.ok(await absolutePathExists(join(root, "dest", "codex-config.toml")), "Codex escribió su bloque después del fallo de Pi");
+		assert.deepEqual((await readFile(piLog, "utf8")).split("\n").filter(Boolean), ["list"], "pi list se consulta una sola vez por corrida");
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

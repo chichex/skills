@@ -1,16 +1,16 @@
-# skills
+# chiche
 
 > 🇦🇷 [Leer en español](./README.md)
 
-This repo is built around my own **Spec-Driven Development (SDD)** workflow — plus the foundational skills it builds on. Everything I use day to day in **[Codex](https://developers.openai.com/codex/)**, **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[opencode](https://opencode.ai)**, **[Pi](https://github.com/badlogic/pi-mono)**, and **[Google Antigravity](https://antigravity.google)**.
+**You choose how much the agent decides.** chiche is a graduated-autonomy harness for coding agents: the same skill set runs in **[Codex](https://developers.openai.com/codex/)**, **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, **[opencode](https://opencode.ai)**, **[Pi](https://github.com/badlogic/pi-mono)** and **[Google Antigravity](https://antigravity.google)**, and each project's contract sets how far the agent goes on its own. Under the hood it is **Spec-Driven Development (SDD)**: contract → verifiable spec → execution → close, so "done" is defined by something verifiable rather than by a feeling.
 
 Skills are reusable pieces of knowledge an agent loads on demand: each folder is a skill with its `SKILL.md` (frontmatter `name` + `description` that decides when it applies) and, optionally, reference files the skill reads when it needs them.
 
 > Note: the skill files themselves are in Spanish (Rioplatense). This README is the translated entry point.
 
-## The SDD workflow
+## The chiche workflow
 
-The heart of the repo, and its original part. A development pipeline with an explicit contract — **contract → spec → execution → closing** — designed so "done" is defined by something verifiable, not by a feeling. Each stage is a skill that chains into the next:
+The heart of chiche, and its original part. A pipeline with an explicit contract — **contract → spec → execution → closing** — that runs as `chiche-init → chiche-spec → chiche-run → chiche-land`. Each stage is a skill that chains into the next:
 
 | Skill | Stage | What it does |
 |---|---|---|
@@ -29,7 +29,7 @@ In repos with a front end or mobile app, design comes first: `design-system` wri
 
 ## Foundational skills
 
-The disciplines SDD builds on — which I also use standalone, outside the pipeline. Some are **based on** [Matt Pocock](https://github.com/mattpocock)'s skills (see [Credits](#credits)); others are original.
+The disciplines chiche builds on — which I also use standalone, outside the pipeline. Some are **based on** [Matt Pocock](https://github.com/mattpocock)'s skills (see [Credits](#credits)); others are original.
 
 | Skill | What it does |
 |---|---|
@@ -40,7 +40,7 @@ The disciplines SDD builds on — which I also use standalone, outside the pipel
 | **`code-review`** *(Codex/Pi/opencode/Antigravity)* | Reviews a PR across three separate axes—correctness and risk, standards, and spec—runs available checks, and reports evidence-backed findings with an exact preview. By default it posts the comments to GitHub as a single COMMENT review; `--no-publish` keeps them in the conversation only. It never approves or requests changes. |
 | **`issue-triage`** | Analyzes one or more issues against code, tests, and dependencies; classifies the next stage and emits a structured handoff; after confirmation, Claude and OpenCode chain the stage skill (`grill`, `chiche-spec` or `chiche-run`); in Codex it chains `grill` and `chiche-spec`, and for `chiche-run` (which requires explicit invocation) leaves the command ready to send; in Antigravity it shows the command to continue or chains directly; in Pi, the `/issues` orchestrator opens the stage. Joint selections become one canonical issue while originals are closed as superseded. Available in all five harnesses. |
 
-SDD doesn't replace these skills — it orchestrates them. The design that precedes a spec is sharpened with `grill`, and `chiche-run` implements following the `tdd` discipline.
+The chiche workflow doesn't replace these skills — it orchestrates them. The design that precedes a spec is sharpened with `grill`, and `chiche-run` implements following the `tdd` discipline.
 
 Separately, the repo has an **internal skill** at `.claude/skills/harness-port/`: it guides porting and maintaining skills across the five harnesses (identical doctrine, only the interaction layer changes — question tool, invocation syntax, extras like the `agents/openai.yaml` sidecar in Codex or the `compatibility` field in Pi), with the codex/pi `code-review` pair as the canonical example. It's a Claude Code project skill: it only loads while working inside this repo, and it isn't distributed by `install.sh` or the plugin.
 
@@ -119,12 +119,14 @@ The repo runs CI on GitHub Actions (`.github/workflows/ci.yml`): it validates sh
 
 ## Installation
 
+**The repo was named `chichex/skills`.** GitHub redirects the old URL, so existing installs keep updating; to move to the new name: in a clone, `git remote set-url origin https://github.com/chichex/chiche.git` (or the SSH form); in Pi, `pi remove` the old source and `pi install git:github.com/chichex/chiche`; in Claude Code, `/plugin marketplace remove chichex` (this uninstalls the plugin), `/plugin marketplace add chichex/chiche` and `/plugin install chiche@chichex`; in Codex, `codex plugin marketplace add chichex/chiche`.
+
 ### Codex: as a plugin (recommended)
 
 Every skill under `codex/` can be installed together as a native plugin. You do not need to clone the repository or run `install.sh`:
 
 ```bash
-codex plugin marketplace add chichex/skills
+codex plugin marketplace add chichex/chiche
 codex plugin add chiche@chichex
 ```
 
@@ -151,13 +153,13 @@ codex plugin add chiche@chichex
 The `claude/` skills can be installed as a Claude Code plugin, without cloning the repo or running `install.sh`:
 
 ```
-/plugin marketplace add chichex/skills
+/plugin marketplace add chichex/chiche
 /plugin install chiche@chichex
 ```
 
 Since 3.0.0 the plugin is named `chiche` (formerly `chichex-skills`). If you have `chichex-skills@chichex` installed, run `/plugin uninstall chichex-skills@chichex` before installing `chiche@chichex`. The old names `sdd-init`, `sdd-spec`, `sdd-run`, and `sdd-land` were retired in 4.0.0.
 
-The plugin exposes every skill in `claude/` and the agents of `agents/` — the custom `implementer` and `reviewer` subagents that the SDD doctrine invokes by their `description`, not by a fixed name.
+The plugin exposes every skill in `claude/` and the agents of `agents/` — the custom `implementer` and `reviewer` subagents that the chiche doctrine invokes by their `description`, not by a fixed name.
 
 **Updates:** Claude Code does not refresh third-party marketplaces on its own: they ship with auto-update disabled, so the plugin stays on the commit you installed until you update it by hand. To make it follow every push to `main`, enable auto-update for the `chichex` marketplace in one of two ways:
 
@@ -167,7 +169,7 @@ The plugin exposes every skill in `claude/` and the agents of `agents/` — the 
   ```json
   "extraKnownMarketplaces": {
     "chichex": {
-      "source": { "source": "github", "repo": "chichex/skills" },
+      "source": { "source": "github", "repo": "chichex/chiche" },
       "autoUpdate": true
     }
   }
@@ -186,7 +188,7 @@ claude plugin update chiche@chichex
 claude plugin eval . --ablation none --runs 1 --max-cost-usd 5 --no-publish --allow-tools Write --scaffold
 ```
 
-A failing case is re-run with `--case <name> --runs 3 --ablation with-without`. In CI it runs on demand only: `gh workflow run plugin-eval.yml --repo chichex/skills` (`.github/workflows/plugin-eval.yml`, same `CLAUDE_CODE_OAUTH_TOKEN` secret as the review); the report is uploaded as the `plugin-eval-results` artifact.
+A failing case is re-run with `--case <name> --runs 3 --ablation with-without`. In CI it runs on demand only: `gh workflow run plugin-eval.yml --repo chichex/chiche` (`.github/workflows/plugin-eval.yml`, same `CLAUDE_CODE_OAUTH_TOKEN` secret as the review); the report is uploaded as the `plugin-eval-results` artifact.
 
 ### Pi: as a native Pi Package (recommended)
 
@@ -195,21 +197,21 @@ A failing case is re-run with `--case <name> --runs 3 --ablation with-without`. 
 Installation is global by default, with updates and rollback managed by Pi:
 
 ```bash
-pi install git:github.com/chichex/skills
+pi install git:github.com/chichex/chiche
 pi update --extensions
-pi remove git:github.com/chichex/skills
+pi remove git:github.com/chichex/chiche
 ```
 
 For an optional project-local installation, add `-l`; Pi records it in `.pi/settings.json`, and the project must be trusted:
 
 ```bash
-pi install git:github.com/chichex/skills -l
+pi install git:github.com/chichex/chiche -l
 ```
 
 You can pin a reproducible version to a tag or commit:
 
 ```bash
-pi install git:github.com/chichex/skills@<tag-or-commit>
+pi install git:github.com/chichex/chiche@<tag-or-commit>
 ```
 
 Pins do not advance with `pi update --extensions`: the update reconciles the checkout to the pinned ref. Install a different ref explicitly to move it; without a pin, the source follows the repository's default branch.
@@ -225,7 +227,7 @@ If you previously installed Pi by copying this repository's resources, migrate f
 ```bash
 ./install.sh pi-clean            # refuses and deletes nothing
 ./install.sh pi-clean --confirm  # removes only names managed by this repository
-pi install git:github.com/chichex/skills
+pi install git:github.com/chichex/chiche
 ```
 
 Cleanup honors `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR`, and `PI_THEMES_DIR`, is idempotent, never runs `git pull`, and preserves resources with other names. Do not keep the Pi Package and copies created by `./install.sh pi` at the same time: they would duplicate skills, tools, or commands.
@@ -237,8 +239,8 @@ Cleanup honors `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR`, and `PI_THEMES_DIR`, is ide
 Clone the repo and run `install.sh`. It runs `git pull` and copies each skill—plus Pi extensions, both standalone `.ts` files and directories with `index.ts`—into its tool's folder **without wiping anything else you already have** (it only adds/updates items from this repo):
 
 ```bash
-git clone https://github.com/chichex/skills.git
-cd skills
+git clone https://github.com/chichex/chiche.git
+cd chiche
 ./install.sh            # installs all sets
 ./install.sh all        # same as above
 ./install.sh both       # Claude Code + opencode
@@ -251,7 +253,7 @@ cd skills
 
 Default destinations: `${ANTIGRAVITY_SKILLS_DIR:-~/.gemini/config/skills/}`, `${CODEX_HOME:-~/.codex}/skills/`, `~/.claude/skills/`, `~/.claude/agents/`, `~/.config/opencode/skills/`, `~/.agents/skills/`, `~/.pi/agent/extensions/`, and `~/.pi/agent/themes/` (overridable with `ANTIGRAVITY_SKILLS_DIR`, `CODEX_SKILLS_DIR`, `CLAUDE_SKILLS_DIR`, `CLAUDE_AGENTS_DIR`, `OPENCODE_SKILLS_DIR`, `PI_SKILLS_DIR`, `PI_EXTENSIONS_DIR`, and `PI_THEMES_DIR`). `CLAUDE_PLUGIN_REGISTRY_FILE` is not a destination: it points at the plugin registry that `install.sh claude` reads to warn when the `chiche` plugin (or the old `chichex-skills`) is already installed (and in that case skip installing `agents/`, which the plugin would otherwise shadow; for the old one, the warning also says how to migrate it).
 
-Because Codex also discovers Pi skills under `~/.agents/skills` and does not merge duplicate names, installing the Codex set adds a managed block to `${CODEX_HOME:-~/.codex}/config.toml`. It disables only the Pi copies that have an equivalent under `codex/`; Pi keeps using its files normally. The rest of `config.toml` is preserved and later runs update the same block without duplicating it. Set `CODEX_DEDUPLICATE_PI_SKILLS=0` to skip this change or `CODEX_CONFIG_FILE` to target another config. After 4.0.0, `./install.sh codex` also keeps the retired Pi copies that remain in `~/.agents/skills` (the `sdd-*` copies of a 2.x or 3.x install) disabled in Codex, and `./install.sh pi` or `./install.sh pi-clean --confirm` removes them.
+Because Codex also discovers Pi skills under `~/.agents/skills` and does not merge duplicate names, installing the Codex set adds a managed block to `${CODEX_HOME:-~/.codex}/config.toml`. It disables only the Pi copies that have an equivalent under `codex/`; Pi keeps using its files normally. The rest of `config.toml` is preserved and later runs update the same block without duplicating it. Set `CODEX_DEDUPLICATE_PI_SKILLS=0` to skip this change or `CODEX_CONFIG_FILE` to target another config. After 4.0.0, `./install.sh codex` also keeps the retired Pi copies that remain in `~/.agents/skills` (the `sdd-*` copies of a 2.x or 3.x install) disabled in Codex and prints the path of each one; `./install.sh pi` prunes them and drops their entries from the Codex block. With the native Pi Package installed, `./install.sh pi` refuses: delete those folders by hand.
 
 To **update** later, just run `./install.sh` again — it does the `pull` for you. It also **prunes**, in each destination, the skills, Pi extensions and themes this repo installed earlier (listed in the destination's hidden `.chiche-managed` manifest; if the destination still has the `.chichex-skills-managed` of an earlier install, it reads it, migrates it to the new name, and deletes it) and has since retired, such as `domain-modeling` and `grill-with-domain-modeling`; skills this repo did not install are left alone.
 
@@ -267,6 +269,8 @@ cp -R pi/*          ~/.agents/skills/
 cp -R pi-extensions/*  ~/.pi/agent/extensions/
 cp pi-themes/*.json    ~/.pi/agent/themes/
 ```
+
+If you copied by hand there is no manifest: delete the `sdd-init`, `sdd-spec`, `sdd-run` and `sdd-land` folders from each destination yourself (the installer only prunes what it wrote).
 
 Once installed, Codex invokes them as `$grill`, `$code-review`, `$chiche-spec`, and so on, or loads them from their `description` — except for `chiche-run`: its `agents/openai.yaml` sidecar declares `policy.allow_implicit_invocation: false`, so it only runs when explicitly invoked with `$chiche-run`. Antigravity, Claude Code, and opencode use their usual commands (`/name`). Pi uses `/skill:grill`, `/skill:code-review`, `/skill:chiche-spec`, and equivalents.
 
@@ -318,7 +322,7 @@ In addition, `grill`'s **questionnaire export** is inspired by his `to-questionn
 
 `harness-port`'s writing reference (`.claude/skills/harness-port/references/escritura.md`, internal to this repo) adapts Matt Pocock's `writing-for-agents` (MIT).
 
-The **SDD** family (`chiche-init`, `chiche-spec`, `chiche-run`) is my own: inspired by the same way of working (tracer bullets, tests-first, spec → implementation) as his `to-spec` / `to-tickets` / `implement` / `wayfinder` skills, but with different artifacts — the `.chiche/project.md` autonomy contract and the verifiability verdict.
+The **chiche** family (`chiche-init`, `chiche-spec`, `chiche-run`) is my own: inspired by the same way of working (tracer bullets, tests-first, spec → implementation) as his `to-spec` / `to-tickets` / `implement` / `wayfinder` skills, but with different artifacts — the `.chiche/project.md` autonomy contract and the verifiability verdict.
 
 Also, the **red loop before touching code** in `chiche-run` adapts Matt Pocock's `diagnosing-bugs`, and the **Merge risk** section of the PR body adapts "Merge Danger" from his `pr` skill, which in turn comes from Dex Horthy's (Humanlayer) `show-me` skill. MIT.
 

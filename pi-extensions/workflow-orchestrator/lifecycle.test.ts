@@ -26,7 +26,7 @@ function fakeStripFrontmatter(content: string): string {
 }
 
 function issue(number: number) {
-	return { repository: "chichex/skills", number };
+	return { repository: "chichex/chiche", number };
 }
 
 function resolution(overrides: Record<string, unknown> = {}) {
@@ -40,7 +40,7 @@ function resolution(overrides: Record<string, unknown> = {}) {
 		selectedRoute: "spec",
 		stage: "spec",
 		mode: "new",
-		repo: "chichex/skills",
+		repo: "chichex/chiche",
 		cwd: "/workspace/skills",
 		sources: [issue(13)],
 		canonicalIssue: issue(13),
@@ -272,8 +272,8 @@ test("starts a fresh linked same-project session and sends only materialized ski
 			sessionId: "child-id",
 			sessionFile: childFile,
 			cwd: project,
-			name: "SDD spec · chichex/skills#13",
-			repository: "chichex/skills",
+			name: "SDD spec · chichex/chiche#13",
+			repository: "chichex/chiche",
 			issueNumber: 13,
 		});
 		const mutationIndex = calls.indexOf("MUTATE:newSession");
@@ -282,7 +282,7 @@ test("starts a fresh linked same-project session and sends only materialized ski
 		assert.ok(calls.slice(0, mutationIndex).some((call) => call.startsWith("git-root:")));
 		assert.deepEqual(calls.slice(mutationIndex), [
 			"MUTATE:newSession",
-			"session-info:SDD spec · chichex/skills#13",
+			"session-info:SDD spec · chichex/chiche#13",
 			"target-resources",
 			"read-skill",
 			"kickoff",
@@ -479,7 +479,7 @@ test("stages and switches to a fresh cross-project child using only the replacem
 					parentSession: originFile,
 				});
 				assert.equal(staged[1].type, "session_info");
-				assert.equal(staged[1].name, "SDD spec · chichex/skills#13");
+				assert.equal(staged[1].name, "SDD spec · chichex/chiche#13");
 				assert.equal(staged.some((entry) => entry.type === "message"), false);
 				originStale = true;
 				await options.withSession({
@@ -583,8 +583,8 @@ test("stages and switches to a fresh cross-project child using only the replacem
 			sessionId: "child-id",
 			sessionFile: targetSessionFile,
 			cwd: targetCwd,
-			name: "SDD spec · chichex/skills#13",
-			repository: "chichex/skills",
+			name: "SDD spec · chichex/chiche#13",
+			repository: "chichex/chiche",
 			issueNumber: 13,
 		});
 		assert.doesNotMatch(kickoff, new RegExp(`${originTranscriptMarker}|/skill:|Source spec stage`));

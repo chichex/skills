@@ -338,32 +338,49 @@ install_claude() {
   install_agents "$REPO_DIR/agents" "$CLAUDE_AGENTS_DEST"
 }
 
-# Detecta si el Pi Package nativo de este repo (`pi install git:github.com/chichex/skills`,
+# Detecta si el Pi Package nativo de este repo (`pi install git:github.com/chichex/chiche`,
 # o su variante -l local) ya está registrado en la config de Pi. `pi list` no muta nada.
 # Si no hay `pi` en PATH, o la detección falla por cualquier motivo, asumimos que NO hay
 # conflicto: instalar via copias legacy debe seguir funcionando para quien no usa Pi Package.
+# `pi list` se consulta una sola vez por corrida: solo install_pi llama a esta función.
 pi_native_package_conflict() {
-  command -v pi >/dev/null 2>&1 || return 1
   local listing
+  command -v pi >/dev/null 2>&1 || return 1
   listing="$(cd "$REPO_DIR" && PI_OFFLINE=1 pi list 2>/dev/null)" || return 1
-  # Cubre tanto `pi install git:github.com/chichex/skills` (la fuente cruda
-  # incluye ese literal; `chichex/chiche` es el nombre del repo tras el
-  # renombre del issue #103) como `pi install <ruta-local>` / `-l` de ESTE
-  # mismo checkout (pi list resuelve y muestra el path absoluto == $REPO_DIR).
+  # Cubre `pi install git:github.com/chichex/chiche` (el nombre actual del repo)
+  # y también la fuente vieja `git:github.com/chichex/skills`: `pi list` muestra
+  # la fuente tal como el usuario la tipeó, así que quien instaló antes del
+  # renombre del issue #103 sigue viendo el literal viejo. Cubre además
+  # `pi install <ruta-local>` / `-l` de ESTE mismo checkout (pi list resuelve y
+  # muestra el path absoluto == $REPO_DIR).
   printf '%s\n' "$listing" | grep -F -q -e 'chichex/skills' -e 'chichex/chiche' -e "$REPO_DIR"
 }
 
 install_pi() {
   if pi_native_package_conflict; then
-    echo "✗ El Pi Package nativo (chichex/skills) ya está instalado — 'pi list' lo muestra." >&2
+    echo "✗ El Pi Package nativo (chichex/chiche) ya está instalado — 'pi list' lo muestra." >&2
     echo "  No instales también las copias legacy encima: duplicarías skills, extensiones y comandos de Pi." >&2
-    echo "  Usá 'pi update --extensions' para actualizar el package, o 'pi remove git:github.com/chichex/skills'" >&2
-    echo "  (agregá -l si lo instalaste local) si preferís volver a las copias legacy." >&2
+    echo "  Usá 'pi update --extensions' para actualizar el package, o 'pi remove <fuente>' con la fuente que muestra 'pi list'" >&2
+    echo "  (git:github.com/chichex/chiche, o la vieja si instalaste con el nombre anterior del repo; -l si fue local)" >&2
+    echo "  si preferís volver a las copias legacy." >&2
     return 1
   fi
   install_set "Pi skills" "$REPO_DIR/pi" "$PI_DEST"
   install_extensions "$REPO_DIR/pi-extensions" "$PI_EXTENSIONS_DEST"
   install_themes "$REPO_DIR/pi-themes" "$PI_THEMES_DEST"
+}
+
+# `./install.sh pi` solo: install_set ya podó de $PI_DEST las copias retiradas y,
+# si Codex tiene el bloque administrado, se regenera para que no quede ninguna
+# entrada `enabled = false` apuntando a una copia que ya no existe. Best-effort
+# (review #109): corre en un subshell con errexit propio, así un paso que falla
+# a mitad de camino no sigue hasta el `mv` sobre config.toml, y un bloque
+# inválido avisa sin dejar a Pi a medio instalar. En `all`, install_codex lo
+# regenera justo después (y aunque Pi falle), así que no se llama.
+refresh_codex_block_after_pi() {
+  if ! ( set -e; refresh_codex_precedence_block "$REPO_DIR/pi" ); then
+    echo "⚠  No pude refrescar el bloque de Codex en $CODEX_CONFIG: revisá a mano sus rótulos de inicio y fin y después corré ./install.sh codex" >&2
+  fi
 }
 
 # Borra en $dest los nombres administrados de un tipo de recurso (ver pi_dest_names)
@@ -405,26 +422,32 @@ clean_pi() {
   clean_managed "extensión" "$REPO_DIR/pi-extensions"  "$PI_EXTENSIONS_DEST" entries
   clean_managed "theme"     "$REPO_DIR/pi-themes"      "$PI_THEMES_DEST"     json
 
-  # Si install.sh ya había escrito el bloque administrado de Codex (config.toml
-  # apuntando a $PI_DEST/<skill>/SKILL.md con enabled=false), reconciliarlo ahora
-  # evita que sobrevivan entradas apuntando a paths que acabamos de borrar
-  # (hallazgo F8 del review de PR #22). Si nunca se escribió ese bloque (con el
-  # rótulo nuevo o el viejo), no tocamos la config de Codex — evita crearla de
-  # la nada para quien no usa Codex.
+  # Reconcilia el bloque de Codex contra lo que quedó realmente en $PI_DEST.
+  refresh_codex_precedence_block "$PI_DEST"
+}
+
+# Si install.sh ya había escrito el bloque administrado de Codex (config.toml
+# apuntando a $PI_DEST/<skill>/SKILL.md con enabled=false), reconciliarlo después
+# de borrar o podar copias de $PI_DEST evita que sobrevivan entradas apuntando a
+# paths que ya no existen (hallazgo F8 del review de PR #22). Si nunca se escribió
+# ese bloque (con el rótulo nuevo o el viejo), no tocamos la config de Codex —
+# evita crearla de la nada para quien no usa Codex. $1: check_root de
+# configure_codex_skill_precedence. Lo usan clean_pi e install_pi.
+refresh_codex_precedence_block() {
   if [ "$CODEX_DEDUPLICATE" = "1" ] && [ -f "$CODEX_CONFIG" ] && \
      grep -Fq -e "$CODEX_MANAGED_BEGIN" -e "$CODEX_LEGACY_BEGIN" "$CODEX_CONFIG" 2>/dev/null; then
-    configure_codex_skill_precedence "$PI_DEST"
+    configure_codex_skill_precedence "$1"
   fi
 }
 
 # Copias Pi que este repo instaló alguna vez (figuran en el manifest de $PI_DEST),
 # que el checkout ya no trae y que siguen en disco: los `sdd-*` de una 2.x o 3.x.
 # `install.sh codex` no poda $PI_DEST, así que Codex las vería habilitadas y
-# repetidas contra `chiche-*`. Un nombre por línea, ordenados. Migra el manifest
-# viejo de $PI_DEST si hace falta, pero nunca crea uno que no existe.
+# repetidas contra `chiche-*`. Un nombre por línea, ordenados. Solo lee: el merge
+# de los dos manifests lo hace pi_manifest_names, así que `install.sh codex` (y
+# `all` con el Pi Package nativo) nunca escribe en $PI_DEST.
 codex_stale_pi_skills() {
   local name
-  pi_migrate_manifest "$PI_DEST"
   while IFS= read -r name; do
     [ -n "$name" ] || continue
     [ ! -f "$REPO_DIR/pi/$name/SKILL.md" ] || continue
@@ -437,7 +460,7 @@ codex_report_stale_pi_skills() {
   local name
   while IFS= read -r name; do
     [ -n "$name" ] || continue
-    echo "   ↳ $name: copia Pi retirada; corré ./install.sh pi o ./install.sh pi-clean --confirm para podarla"
+    echo "   ↳ $name: copia Pi retirada; corré ./install.sh pi para podarla (con el Pi Package nativo, borrá $PI_DEST/$name a mano)"
   done <<EOF
 $1
 EOF
@@ -563,23 +586,46 @@ install_antigravity() {
   install_set "Antigravity" "$REPO_DIR/antigravity" "$ANTIGRAVITY_DEST"
 }
 
+# Repite el stderr que `all` guardó de install_pi y borra el archivo. Idempotente:
+# se llama al final de `all` y de nuevo desde el trap EXIT, por si otro set abortó
+# antes y el error de Pi todavía no se había mostrado.
+replay_pi_stderr() {
+  if [ -n "${pi_err:-}" ] && [ -f "$pi_err" ]; then
+    cat "$pi_err" >&2
+    rm -f "$pi_err"
+  fi
+  return 0
+}
+
 case "$WHICH" in
-  all)      # install_pi poda $PI_DEST antes de que Codex lo mire: el bloque de
-            # precedencia no lista copias Pi que esta misma corrida retira. Con el
-            # Pi Package nativo instalado install_pi falla; se difiere al final
-            # (como siempre) para que no corte los demás sets.
-            pi_blocked=0
-            if pi_native_package_conflict; then pi_blocked=1; else install_pi; fi
+  all)      # install_pi corre primero: poda $PI_DEST antes de que Codex lo mire, así
+            # el bloque de precedencia no lista copias Pi que esta misma corrida
+            # retira. Si falla (el Pi Package nativo instalado u otro error), no
+            # corta los demás sets: su stderr se guarda y se repite al final, y la
+            # corrida sale con 1.
+            # El `set -e` va DENTRO del subshell y el status se lee con `set +e`
+            # alrededor: en `if ( fn )`, `( fn ) || ...` o `fn || ...` bash ignora
+            # errexit dentro de fn y el primer comando que falle no abortaría.
+            pi_err="$(mktemp "${TMPDIR:-/tmp}/chiche-install-pi.XXXXXX")"
+            trap replay_pi_stderr EXIT
+            set +e
+            ( set -e; install_pi ) 2>"$pi_err"
+            pi_status=$?
+            set -e
             install_codex
             install_claude
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST"
             install_antigravity
-            if [ "$pi_blocked" = 1 ]; then install_pi; fi ;;
+            replay_pi_stderr
+            if [ "$pi_status" -ne 0 ]; then
+              echo "✗ Pi no se instaló por completo (error arriba); los demás sets sí se instalaron." >&2
+              exit 1
+            fi ;;
   both)     install_claude
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
   claude)   install_claude ;;
   opencode) install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
-  pi)       install_pi ;;
+  pi)       install_pi; refresh_codex_block_after_pi ;;
   pi-clean) clean_pi ;;
   codex)    install_codex ;;
   antigravity) install_antigravity ;;

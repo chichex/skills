@@ -39,7 +39,7 @@ test("known-project resolution maps a remembered linked worktree to the reposito
 				: root,
 			resolveRepository: async (root: string) => root === "/workspace/brik"
 				? "pramaestudio/brik"
-				: "chichex/skills",
+				: "chichex/chiche",
 			realpath: async (path: string) => path,
 		},
 	);
@@ -57,7 +57,7 @@ test("known-project resolution fails closed when independent clones are ambiguou
 			resolveGitRoot: async (cwd: string) => cwd,
 			resolvePrimaryWorktree: async (root: string) => root,
 			resolveRepository: async (root: string) => root === "/workspace/skills"
-				? "chichex/skills"
+				? "chichex/chiche"
 				: "pramaestudio/brik",
 			realpath: async (path: string) => path,
 		},

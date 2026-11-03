@@ -14,7 +14,7 @@ import {
 
 const ROOT = "/workspace/current repo";
 const OTHER_ROOT = "/workspace/other";
-const REPOSITORY = "chichex/skills";
+const REPOSITORY = "chichex/chiche";
 // El nombre de la clave retirada se arma a pedazos: el gate de grill exige que no aparezca
 // escrito en ningun archivo trackeado de pi-extensions, ni siquiera en los tests.
 const RETIRED_LIMIT_KEY = ["question", "Limit"].join("");

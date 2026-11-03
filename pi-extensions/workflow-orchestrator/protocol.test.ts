@@ -8,7 +8,7 @@ import {
 } from "./protocol.ts";
 
 function issue(number: number) {
-	return { repository: "chichex/skills", number };
+	return { repository: "chichex/chiche", number };
 }
 
 function startResolution() {
@@ -22,7 +22,7 @@ function startResolution() {
 		selectedRoute: "spec",
 		stage: "spec",
 		mode: "new",
-		repo: "chichex/skills",
+		repo: "chichex/chiche",
 		cwd: "/workspace/skills",
 		sources: [issue(13)],
 		canonicalIssue: issue(13),
@@ -35,7 +35,7 @@ function startResolution() {
 		artifacts: [{
 			id: "spec-13",
 			location: "issue",
-			path: "https://github.com/chichex/skills/issues/13",
+			path: "https://github.com/chichex/chiche/issues/13",
 			type: "spec",
 			state: "approved",
 			format: "canonical",

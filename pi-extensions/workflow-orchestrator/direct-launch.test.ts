@@ -19,12 +19,12 @@ function issueRequest() {
 	return {
 		version: 1,
 		kind: "sdd-run",
-		repo: "chichex/skills",
+		repo: "chichex/chiche",
 		cwd: "/workspace/skills",
 		target: {
 			type: "issue",
-			canonicalReference: "chichex/skills#14",
-			issue: { repository: "chichex/skills", number: 14 },
+			canonicalReference: "chichex/chiche#14",
+			issue: { repository: "chichex/chiche", number: 14 },
 		},
 		summary: "Run the SDD spec stored in issue #14.",
 		evidence: evidence(),
@@ -44,11 +44,11 @@ function specRequest() {
 	return {
 		version: 1,
 		kind: "sdd-run",
-		repo: "chichex/skills",
+		repo: "chichex/chiche",
 		cwd: "/workspace/skills",
 		target: {
 			type: "spec",
-			canonicalReference: "chichex/skills:.sdd/specs/local.md",
+			canonicalReference: "chichex/chiche:.sdd/specs/local.md",
 			path: "/workspace/skills/.sdd/specs/local.md",
 			issue: null,
 		},
@@ -104,10 +104,10 @@ describe("#103 CA-13: el gate de contrato de /chiche-run", () => {
 		const dependencies = {
 			resolveGitRoot: async () => root,
 			realpath: async (path: string) => path,
-			resolveRepository: async () => "chichex/skills",
+			resolveRepository: async () => "chichex/chiche",
 			resolveIssue: async (_root: string, _repo: string, number: number) => {
 				issueLookups += 1;
-				return { number, url: `https://github.com/chichex/skills/issues/${number}`, state: "OPEN", body: canonicalIssueSpec(number) };
+				return { number, url: `https://github.com/chichex/chiche/issues/${number}`, state: "OPEN", body: canonicalIssueSpec(number) };
 			},
 			readFile: async (path: string) => {
 				reads.push(path);
@@ -171,12 +171,12 @@ test("issue targets require an SDD-aware project and reject unsafe integers befo
 		let issueLookups = 0;
 		const dependencies = {
 			resolveGitRoot: async () => root,
-			resolveRepository: async () => "chichex/skills",
+			resolveRepository: async () => "chichex/chiche",
 			resolveIssue: async (_root: string, _repo: string, number: number) => {
 				issueLookups += 1;
 				return {
 					number,
-					url: `https://github.com/chichex/skills/issues/${number}`,
+					url: `https://github.com/chichex/chiche/issues/${number}`,
 					state: "OPEN",
 					body: canonicalIssueSpec(number),
 				};
@@ -227,7 +227,7 @@ test("the generic lifecycle cannot bypass strict DirectRunRequestV1 validation",
 		direct: {
 			request,
 			cwd: request.cwd,
-			name: "SDD run-existing-spec · chichex/skills#14",
+			name: "SDD run-existing-spec · chichex/chiche#14",
 			repository: request.repo,
 			canonicalReference: request.target.canonicalReference,
 			issueNumber: request.target.issue.number,
@@ -276,7 +276,7 @@ test("direct target resolution normalizes #NN and local/cross-project canonical 
 				return path.startsWith(projectB) ? projectB : projectA;
 			},
 			async resolveRepository(root: string) {
-				return root === projectB ? "owner/project-b" : "chichex/skills";
+				return root === projectB ? "owner/project-b" : "chichex/chiche";
 			},
 			async resolveRepositoryRoot(_originRoot: string, repository: string) {
 				return repository === "owner/project-b"
@@ -297,8 +297,8 @@ test("direct target resolution normalizes #NN and local/cross-project canonical 
 		if (issue.ok) {
 			assert.deepEqual(issue.request.target, {
 				type: "issue",
-				canonicalReference: "chichex/skills#14",
-				issue: { repository: "chichex/skills", number: 14 },
+				canonicalReference: "chichex/chiche#14",
+				issue: { repository: "chichex/chiche", number: 14 },
 			});
 		}
 
@@ -333,7 +333,7 @@ test("direct target resolution normalizes #NN and local/cross-project canonical 
 			assert.ok(local.request.summary.length <= 240, "the transport summary stays bounded");
 			assert.deepEqual(local.request.target, {
 				type: "spec",
-				canonicalReference: "chichex/skills:.sdd/specs/local.md",
+				canonicalReference: "chichex/chiche:.sdd/specs/local.md",
 				path: localSpec,
 				issue: null,
 			});
@@ -397,7 +397,7 @@ test("startDirectRun creates a fresh linked child whose first message is materia
 		const request = specRequest();
 		request.cwd = project;
 		request.target.path = specPath;
-		request.target.canonicalReference = "chichex/skills:.sdd/specs/local.md";
+		request.target.canonicalReference = "chichex/chiche:.sdd/specs/local.md";
 		request.evidence[0]!.reference = ".sdd/specs/local.md";
 		let kickoff = "";
 		let sessionName = "";
@@ -450,7 +450,7 @@ test("startDirectRun creates a fresh linked child whose first message is materia
 		if (!result.ok) return;
 		assert.equal(result.target.sessionId, "child-id");
 		assert.equal(result.target.artifactPath, specPath);
-		assert.equal(sessionName, "SDD run-existing-spec · chichex/skills/local.md");
+		assert.equal(sessionName, "SDD run-existing-spec · chichex/chiche/local.md");
 		assert.doesNotMatch(kickoff, /\/skill:chiche-run|origin transcript/i);
 		assert.match(kickoff, new RegExp(`<skill name="chiche-run" location="${skillPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}">`));
 		const envelope = kickoff.match(/<workflow-launch version="1">\n([\s\S]+)\n<\/workflow-launch>$/)?.[1];
@@ -575,7 +575,7 @@ for (const brand of ["chiche", "sdd"] as const) {
 	test(`#84 CA-12: /chiche-run acepta una spec en <git-common-dir>/${brand}/specs desde el checkout principal y desde un worktree linkeado`, async () => {
 		const { base, main, linked, draft } = await draftRepo(brand);
 		try {
-			const dependencies = { async resolveRepository() { return "chichex/skills"; } };
+			const dependencies = { async resolveRepository() { return "chichex/chiche"; } };
 			for (const cwd of [main, linked]) {
 				for (const target of [".chiche/specs/borrador.md", ".sdd/specs/borrador.md", draft]) {
 					const result = await orchestrator.resolveDirectRunRequest(target, cwd, dependencies);
@@ -584,7 +584,7 @@ for (const brand of ["chiche", "sdd"] as const) {
 					assert.equal(result.request.cwd, cwd);
 					assert.deepEqual(result.request.target, {
 						type: "spec",
-						canonicalReference: `chichex/skills:.${brand}/specs/borrador.md`,
+						canonicalReference: `chichex/chiche:.${brand}/specs/borrador.md`,
 						path: draft,
 						issue: null,
 					});
@@ -606,7 +606,7 @@ for (const brand of ["chiche", "sdd"] as const) {
 test("#103 CA-1: /chiche-run resuelve una ruta lógica por nombre con la precedencia .chiche/specs > .sdd/specs > <git-common-dir>/chiche/specs > <git-common-dir>/sdd/specs", async () => {
 	const { base, main, linked, draft } = await draftRepo("sdd");
 	try {
-		const dependencies = { async resolveRepository() { return "chichex/skills"; } };
+		const dependencies = { async resolveRepository() { return "chichex/chiche"; } };
 		const resolveFrom = async (cwd: string, target: string) => {
 			const result = await orchestrator.resolveDirectRunRequest(target, cwd, dependencies);
 			assert.equal(result.ok, true, `${cwd} · ${target}: ${result.ok ? "" : `${result.code}: ${result.message}`}`);
@@ -618,7 +618,7 @@ test("#103 CA-1: /chiche-run resuelve una ruta lógica por nombre con la precede
 		for (const cwd of [main, linked]) {
 			const target = await resolveFrom(cwd, ".sdd/specs/borrador.md");
 			assert.equal(target?.path, chicheDraft, `${cwd}: en el empate local gana <git-common-dir>/chiche/specs`);
-			assert.equal(target?.canonicalReference, "chichex/skills:.chiche/specs/borrador.md");
+			assert.equal(target?.canonicalReference, "chichex/chiche:.chiche/specs/borrador.md");
 		}
 		const legacyTracked = join(linked, ".sdd", "specs", "borrador.md");
 		await mkdir(dirname(legacyTracked), { recursive: true });
@@ -629,7 +629,7 @@ test("#103 CA-1: /chiche-run resuelve una ruta lógica por nombre con la precede
 		await writeFile(tracked, await readFile(draft, "utf8"), "utf8");
 		const winner = await resolveFrom(linked, ".sdd/specs/borrador.md");
 		assert.equal(winner?.path, tracked, ".chiche/specs del árbol gana a todo");
-		assert.equal(winner?.canonicalReference, "chichex/skills:.chiche/specs/borrador.md");
+		assert.equal(winner?.canonicalReference, "chichex/chiche:.chiche/specs/borrador.md");
 	} finally {
 		await rm(base, { recursive: true, force: true });
 	}
@@ -660,7 +660,7 @@ test("#103 CA-1: /chiche-run resuelve el nombre de la spec por el stat inyectado
 	const dependencies = {
 		resolveGitRoot: async () => root,
 		resolveGitCommonDir: async () => commonDir,
-		resolveRepository: async () => "chichex/skills",
+		resolveRepository: async () => "chichex/chiche",
 		realpath: async (path: string) => path,
 		stat: async (path: string) => {
 			statCalls.push(path);
@@ -707,34 +707,34 @@ test("#84 CA-12: el protocolo directo acepta un borrador del common-dir y sigue 
 	const request = (path: string, canonicalReference: string) => ({
 		version: 1,
 		kind: "sdd-run",
-		repo: "chichex/skills",
+		repo: "chichex/chiche",
 		cwd: "/workspace/skills-wt",
 		target: { type: "spec", canonicalReference, path, issue: null },
 		summary: "Run SDD spec Borrador.",
 		evidence: evidence(),
 	});
-	assert.equal(orchestrator.validateDirectRunRequest(request("/workspace/skills/.git/chiche/specs/borrador.md", "chichex/skills:.chiche/specs/borrador.md")).ok, true);
-	assert.equal(orchestrator.validateDirectRunRequest(request("/workspace/skills/.git/sdd/specs/borrador.md", "chichex/skills:.sdd/specs/borrador.md")).ok, true);
-	assert.equal(orchestrator.validateDirectRunRequest(request("/workspace/skills-wt/.chiche/specs/x.md", "chichex/skills:.chiche/specs/x.md")).ok, true);
-	assert.equal(orchestrator.validateDirectRunRequest(request("/workspace/skills-wt/.sdd/specs/x.md", "chichex/skills:.sdd/specs/x.md")).ok, true);
+	assert.equal(orchestrator.validateDirectRunRequest(request("/workspace/skills/.git/chiche/specs/borrador.md", "chichex/chiche:.chiche/specs/borrador.md")).ok, true);
+	assert.equal(orchestrator.validateDirectRunRequest(request("/workspace/skills/.git/sdd/specs/borrador.md", "chichex/chiche:.sdd/specs/borrador.md")).ok, true);
+	assert.equal(orchestrator.validateDirectRunRequest(request("/workspace/skills-wt/.chiche/specs/x.md", "chichex/chiche:.chiche/specs/x.md")).ok, true);
+	assert.equal(orchestrator.validateDirectRunRequest(request("/workspace/skills-wt/.sdd/specs/x.md", "chichex/chiche:.sdd/specs/x.md")).ok, true);
 	for (const [path, reference] of [
-		["/workspace/skills/.git/sdd/specs/borrador.md", "chichex/skills:.git/sdd/specs/borrador.md"],
-		["/workspace/skills/.git/chiche/specs/borrador.md", "chichex/skills:.sdd/specs/borrador.md"],
-		["/workspace/skills/.git/sdd/specs/borrador.md", "chichex/skills:.chiche/specs/borrador.md"],
-		["/workspace/otro/specs/x.md", "chichex/skills:.sdd/specs/x.md"],
-		["/workspace/skills/.git/sdd/grills/x.md", "chichex/skills:.sdd/specs/x.md"],
-		["/workspace/skills/.git/chiche/grills/x.md", "chichex/skills:.chiche/specs/x.md"],
-		["/workspace/skills/.git/otra/specs/x.md", "chichex/skills:.otra/specs/x.md"],
+		["/workspace/skills/.git/sdd/specs/borrador.md", "chichex/chiche:.git/sdd/specs/borrador.md"],
+		["/workspace/skills/.git/chiche/specs/borrador.md", "chichex/chiche:.sdd/specs/borrador.md"],
+		["/workspace/skills/.git/sdd/specs/borrador.md", "chichex/chiche:.chiche/specs/borrador.md"],
+		["/workspace/otro/specs/x.md", "chichex/chiche:.sdd/specs/x.md"],
+		["/workspace/skills/.git/sdd/grills/x.md", "chichex/chiche:.sdd/specs/x.md"],
+		["/workspace/skills/.git/chiche/grills/x.md", "chichex/chiche:.chiche/specs/x.md"],
+		["/workspace/skills/.git/otra/specs/x.md", "chichex/chiche:.otra/specs/x.md"],
 	]) {
 		assert.equal(orchestrator.validateDirectRunRequest(request(path!, reference!)).ok, false, path);
 	}
 });
 
-function draftRequest(cwd: string, path: string, canonicalReference = "chichex/skills:.sdd/specs/borrador.md") {
+function draftRequest(cwd: string, path: string, canonicalReference = "chichex/chiche:.sdd/specs/borrador.md") {
 	return {
 		version: 1,
 		kind: "sdd-run",
-		repo: "chichex/skills",
+		repo: "chichex/chiche",
 		cwd,
 		target: { type: "spec", canonicalReference, path, issue: null },
 		summary: "Run SDD spec Borrador.",
@@ -745,10 +745,10 @@ function draftRequest(cwd: string, path: string, canonicalReference = "chichex/s
 test("review #86: el protocolo directo solo acepta borradores bajo un directorio .git", () => {
 	assert.equal(orchestrator.validateDirectRunRequest(draftRequest("/workspace/skills-wt", "/workspace/skills/.git/sdd/specs/borrador.md")).ok, true);
 	assert.equal(orchestrator.validateDirectRunRequest(draftRequest("/workspace/skills-wt", "/srv/repos/skills.git/sdd/specs/borrador.md")).ok, true, "repo bare");
-	assert.equal(orchestrator.validateDirectRunRequest(draftRequest("/workspace/skills-wt", "/srv/repos/skills.git/chiche/specs/borrador.md", "chichex/skills:.chiche/specs/borrador.md")).ok, true, "repo bare, chiche");
+	assert.equal(orchestrator.validateDirectRunRequest(draftRequest("/workspace/skills-wt", "/srv/repos/skills.git/chiche/specs/borrador.md", "chichex/chiche:.chiche/specs/borrador.md")).ok, true, "repo bare, chiche");
 	for (const [cwd, path, reference] of [
 		["/workspace/skills-wt", "/tmp/sdd/specs/borrador.md", undefined],
-		["/workspace/skills-wt", "/tmp/chiche/specs/borrador.md", "chichex/skills:.chiche/specs/borrador.md"],
+		["/workspace/skills-wt", "/tmp/chiche/specs/borrador.md", "chichex/chiche:.chiche/specs/borrador.md"],
 		["/workspace/skills-wt", "/workspace/otro/vendor/sdd/specs/borrador.md", undefined],
 		["/workspace/skills-wt", "/workspace/skills-wt/vendor/sdd/specs/borrador.md", undefined],
 	] as const) {
@@ -771,7 +771,7 @@ test("review #86: startFreshStage rechaza un borrador que no está en el common-
 	const own = await launch("/workspace/skills/.git/sdd/specs/borrador.md");
 	assert.ok(own.ok || own.code !== "invalid-direct-request", JSON.stringify(own));
 	const launchChiche = (path: string) => {
-		const request = draftRequest("/workspace/skills-wt", path, "chichex/skills:.chiche/specs/borrador.md");
+		const request = draftRequest("/workspace/skills-wt", path, "chichex/chiche:.chiche/specs/borrador.md");
 		const descriptor = orchestrator.describeDirectRun(request as never);
 		return orchestrator.startFreshStage({ direct: { request, ...descriptor.direct }, skill: descriptor.skill }, {} as never, {
 			commands: [],

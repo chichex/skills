@@ -50,7 +50,7 @@ test("direct Grill resolves a cross-repository GitHub issue URL to its known loc
 			origin,
 			{
 				resolveGitRoot: async (path: string) => path.startsWith(target) ? target : origin,
-				resolveRepository: async (root: string) => root === target ? "pramaestudio/brik" : "chichex/skills",
+				resolveRepository: async (root: string) => root === target ? "pramaestudio/brik" : "chichex/chiche",
 				resolveRepositoryRoot: async () => ({ ok: true, root: target }),
 				resolveIssue: async (_root: string, repository: string, number: number) => ({
 					number,
@@ -95,7 +95,7 @@ test("direct Grill preserves local #NN semantics and accepts owner/repo#NN", asy
 		let repositoryLookups = 0;
 		const dependencies = {
 			resolveGitRoot: async (path: string) => path.startsWith(target) ? target : origin,
-			resolveRepository: async (root: string) => root === target ? "pramaestudio/brik" : "chichex/skills",
+			resolveRepository: async (root: string) => root === target ? "pramaestudio/brik" : "chichex/chiche",
 			resolveRepositoryRoot: async () => {
 				repositoryLookups += 1;
 				return { ok: true as const, root: target };
@@ -110,9 +110,9 @@ test("direct Grill preserves local #NN semantics and accepts owner/repo#NN", asy
 		const local = await orchestrator.resolveDirectGrillRequest("#114", origin, dependencies);
 		assert.equal(local.ok, true);
 		if (local.ok) {
-			assert.equal(local.request.repo, "chichex/skills");
+			assert.equal(local.request.repo, "chichex/chiche");
 			assert.equal(local.request.cwd, origin);
-			assert.equal(local.request.target.canonicalReference, "chichex/skills#114");
+			assert.equal(local.request.target.canonicalReference, "chichex/chiche#114");
 		}
 		assert.equal(repositoryLookups, 0);
 
@@ -133,7 +133,7 @@ test("direct Grill reports missing and ambiguous destination checkouts before is
 	let issueLookups = 0;
 	const base = {
 		resolveGitRoot: async () => "/workspace/skills",
-		resolveRepository: async () => "chichex/skills",
+		resolveRepository: async () => "chichex/chiche",
 		realpath: async (path: string) => path,
 		resolveIssue: async () => {
 			issueLookups += 1;

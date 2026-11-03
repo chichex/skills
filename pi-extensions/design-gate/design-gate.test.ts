@@ -287,8 +287,8 @@ test("CA-8: design-system queda cableado en pi-package, harness-gate, README y m
 	if (!SKILL_NAMES.includes("design-system")) problems.push("SKILL_NAMES sin design-system");
 
 	const sections: Record<string, { skills: RegExp; sdd: RegExp }> = {
-		"README.md": { skills: /^## Skills fundacionales$/, sdd: /^## El workflow SDD$/ },
-		"README.en.md": { skills: /^## Foundational skills$/, sdd: /^## The SDD workflow$/ },
+		"README.md": { skills: /^## Skills fundacionales$/, sdd: /^## El flujo chiche$/ },
+		"README.en.md": { skills: /^## Foundational skills$/, sdd: /^## The chiche workflow$/ },
 	};
 	for (const [path, readmeHeadings] of Object.entries(sections)) {
 		const markdown = await readRepoFile(path);
@@ -297,7 +297,7 @@ test("CA-8: design-system queda cableado en pi-package, harness-gate, README y m
 		// Issue #103, T7c: el contrato vive en `.chiche/project.md`.
 		const designRow = skills.match(/^\| \*\*`design-system`\*\*[^\n]*$/m)?.[0] ?? "";
 		if (!designRow.includes(".chiche/project.md") || designRow.includes(".sdd/")) problems.push(`${path}: la fila design-system no nombra solo .chiche/project.md`);
-		if (!/design-system/.test(section(markdown, readmeHeadings.sdd))) problems.push(`${path}: el workflow SDD no nombra design-system`);
+		if (!/design-system/.test(section(markdown, readmeHeadings.sdd))) problems.push(`${path}: el flujo chiche no nombra design-system`);
 	}
 
 	const plugin = JSON.parse(await readRepoFile(".claude-plugin/plugin.json")) as { description: string };

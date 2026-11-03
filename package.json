@@ -1,14 +1,15 @@
 {
   "name": "chiche",
-  "version": "4.0.0",
+  "description": "chiche: anda un chiche. Harness de autonomía graduada para Pi: skills, extensiones y gates de chichex.",
+  "version": "4.1.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=22.19.0"
   },
   "license": "MIT",
-  "repository": "https://github.com/chichex/skills.git",
-  "homepage": "https://github.com/chichex/skills",
+  "repository": "https://github.com/chichex/chiche.git",
+  "homepage": "https://github.com/chichex/chiche",
   "keywords": [
     "pi-package"
   ],

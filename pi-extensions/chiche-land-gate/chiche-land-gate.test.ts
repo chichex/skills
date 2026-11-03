@@ -375,19 +375,19 @@ test("CA-24: repo-clean se retira del árbol y del inventario; chiche-land lo re
 
 test("CA-24: README.md y README.en.md sin repo-clean, con chiche-land en la tabla SDD y stacks en chiche-spec y chiche-run", async () => {
 	const headings: Record<string, RegExp> = {
-		"README.md": /^## El workflow SDD$/m,
-		"README.en.md": /^## The SDD workflow$/m,
+		"README.md": /^## El flujo chiche$/m,
+		"README.en.md": /^## The chiche workflow$/m,
 	};
 	for (const [path, heading] of Object.entries(headings)) {
 		const markdown = await readRepoFile(path);
 		assert.doesNotMatch(markdown, /repo-clean/, `${path} todavía menciona repo-clean`);
 		const start = markdown.search(heading);
-		assert.notEqual(start, -1, `${path}: sección del workflow SDD`);
+		assert.notEqual(start, -1, `${path}: sección del flujo chiche`);
 		const next = markdown.indexOf("\n## ", start + 1);
 		const sdd = markdown.slice(start, next === -1 ? undefined : next);
 		const row = (name: string) => sdd.match(new RegExp(`^\\| \\*\\*\`${escapeRegExp(name)}\`\\*\\*[^|]*\\|.*$`, "m"))?.[0] ?? "";
 		const land = row("chiche-land");
-		assert.ok(land, `${path}: fila de chiche-land en la tabla del workflow SDD`);
+		assert.ok(land, `${path}: fila de chiche-land en la tabla del flujo chiche`);
 		assert.match(land, /stack/i, `${path}: chiche-land menciona stacks`);
 		assert.match(land, /(cierre|closing|close)/i, `${path}: chiche-land es la etapa de cierre`);
 		for (const name of ["chiche-spec", "chiche-run"]) {
