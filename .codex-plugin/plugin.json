@@ -1,6 +1,6 @@
 {
   "name": "chiche",
-  "version": "4.1.0",
+  "version": "4.1.1",
   "description": "chiche: anda un chiche. Harness de autonomía graduada para Codex: chiche-init, chiche-spec, chiche-run y chiche-land, más grill, issue-triage, design-system, code-review, TDD y coding-policies.",
   "author": {
     "name": "chichex",

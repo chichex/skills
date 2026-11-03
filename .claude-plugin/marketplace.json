@@ -19,6 +19,16 @@
         "grill",
         "coding-policies"
       ]
+    },
+    {
+      "name": "chichex-skills",
+      "source": "./",
+      "description": "chiche: anda un chiche. Alias del plugin chiche para las instalaciones anteriores a 3.0.0, que quedaron registradas como chichex-skills@chichex: sigue actualizando, pero instalá `chiche@chichex` y desinstalá este.",
+      "category": "engineering",
+      "keywords": [
+        "skills",
+        "alias"
+      ]
     }
   ]
 }

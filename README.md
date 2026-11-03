@@ -155,7 +155,7 @@ Los skills de `claude/` se pueden instalar como plugin de Claude Code, sin clona
 /plugin install chiche@chichex
 ```
 
-**Si venís de `chichex-skills` (anterior a 3.0.0):** el plugin se llama `chiche` desde la 3.0.0, y cuando el marketplace se actualiza Claude Code deja de encontrar el viejo: `/plugin` muestra «Plugin chichex-skills not found in marketplace chichex», `/plugin update` falla y los skills dejan de cargar. Se arregla reinstalando con el nombre nuevo:
+**Si venís de `chichex-skills` (anterior a 3.0.0):** el plugin se llama `chiche` desde la 3.0.0. Entre la 3.0.0 y la 4.1.0 el marketplace no tenía una entrada con el nombre viejo, así que al actualizarlo Claude Code dejaba de encontrarlo: `/plugin` mostraba «Plugin chichex-skills not found in marketplace chichex», `/plugin update` fallaba y los skills dejaban de cargar. Desde la 4.1.1 el marketplace publica `chichex-skills` como alias del mismo plugin, así que la instalación vieja vuelve a actualizar sola con `claude plugin marketplace update chichex`. Igual conviene pasar al nombre nuevo (los dos a la vez duplican los skills):
 
 ```
 claude plugin marketplace update chichex
