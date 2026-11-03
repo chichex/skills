@@ -685,11 +685,12 @@ test("CA-16: next.md no repite las reglas de web en celular que ya trae react.md
 test("CA-17: el contrato fecha los conteos nuevos y cita la corrida con Pi 0.85.1", async () => {
 	const contract = await readRepoFile(".chiche/project.md");
 	const commands = section(contract, /^## Comandos$/);
-	// Pi Package, frontmatter, drift y la suite se re-verificaron el 2026-11-02
-	// con la capa 3 del renombre a chiche (migración a .chiche/).
+	// Pi Package, frontmatter y drift se re-verificaron el 2026-11-02 con la capa 3
+	// del renombre a chiche (migración a .chiche/); la suite, el 2026-11-03 con el
+	// alias chichex-skills del marketplace (PR #110).
 	const verifiedOn: Record<string, string> = {
 		"gate focalizado de Pi Package": "2026-11-02",
-		"tests de extensiones": "2026-11-02",
+		"tests de extensiones": "2026-11-03",
 		"lint de frontmatter": "2026-11-02",
 		"reporte de drift": "2026-11-02",
 	};

@@ -19,6 +19,21 @@
         "grill",
         "coding-policies"
       ]
+    },
+    {
+      "name": "chichex-skills",
+      "source": "./",
+      "description": "chiche: anda un chiche. Alias de `chiche@chichex` para las instalaciones anteriores a 3.0.0, registradas como chichex-skills@chichex: sigue actualizando, pero instalá `chiche@chichex` y desinstalá este. Es el mismo plugin: Harness de autonomía graduada para Claude Code: vos elegís cuánto decide el agente. chiche-init escribe el contrato del proyecto, chiche-spec convierte un pedido en una spec verificable, chiche-run la implementa y chiche-land cierra el stack o el PR; más grill para desambiguar planes, issue-triage para enrutar issues con evidencia, design-system para escribir el DESIGN_SYSTEM.md de una UI sin sistema, TDD y coding-policies para una baseline de Clean Code y SOLID con tus buenas prácticas para Go, TypeScript, Node.js, React, Next.js, React Native y Kotlin Multiplatform.",
+      "category": "engineering",
+      "keywords": [
+        "skills",
+        "sdd",
+        "spec-driven-development",
+        "tdd",
+        "grill",
+        "coding-policies",
+        "alias"
+      ]
     }
   ]
 }
