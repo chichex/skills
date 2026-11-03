@@ -157,7 +157,15 @@ The `claude/` skills can be installed as a Claude Code plugin, without cloning t
 /plugin install chiche@chichex
 ```
 
-Since 3.0.0 the plugin is named `chiche` (formerly `chichex-skills`). If you have `chichex-skills@chichex` installed, run `/plugin uninstall chichex-skills@chichex` before installing `chiche@chichex`. The old names `sdd-init`, `sdd-spec`, `sdd-run`, and `sdd-land` were retired in 4.0.0.
+**Coming from `chichex-skills` (before 3.0.0):** the plugin has been named `chiche` since 3.0.0, and once the marketplace refreshes Claude Code no longer finds the old one: `/plugin` shows “Plugin chichex-skills not found in marketplace chichex”, `/plugin update` fails and the skills stop loading. Reinstall under the new name:
+
+```
+claude plugin marketplace update chichex
+claude plugin uninstall chichex-skills@chichex
+claude plugin install chiche@chichex
+```
+
+Then `/reload-plugins` or restart the session. If you declared the marketplace in `~/.claude/settings.json`, change its `repo` to `chichex/chiche` (the old source still resolves through GitHub's redirect). The old names `sdd-init`, `sdd-spec`, `sdd-run`, and `sdd-land` were retired in 4.0.0.
 
 The plugin exposes every skill in `claude/` and the agents of `agents/` — the custom `implementer` and `reviewer` subagents that the chiche doctrine invokes by their `description`, not by a fixed name.
 
