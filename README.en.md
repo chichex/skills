@@ -119,7 +119,7 @@ The repo runs CI on GitHub Actions (`.github/workflows/ci.yml`): it validates sh
 
 ## Installation
 
-**The repo was named `chichex/skills`.** GitHub redirects the old URL, so existing installs keep updating; to move to the new name: in a clone, `git remote set-url origin https://github.com/chichex/chiche.git` (or the SSH form); in Pi, `pi remove` the old source and `pi install git:github.com/chichex/chiche`; in Claude Code, `/plugin marketplace remove chichex` then `/plugin marketplace add chichex/chiche`.
+**The repo was named `chichex/skills`.** GitHub redirects the old URL, so existing installs keep updating; to move to the new name: in a clone, `git remote set-url origin https://github.com/chichex/chiche.git` (or the SSH form); in Pi, `pi remove` the old source and `pi install git:github.com/chichex/chiche`; in Claude Code, `/plugin marketplace remove chichex` (this uninstalls the plugin), `/plugin marketplace add chichex/chiche` and `/plugin install chiche@chichex`; in Codex, `codex plugin marketplace add chichex/chiche`.
 
 ### Codex: as a plugin (recommended)
 

@@ -1512,7 +1512,7 @@ test("review #109 (1): install.sh pi con un bloque de Codex inválido instala sk
 		assert.match(`${pi.stdout}${pi.stderr}`, /Pi extensions/, "install_extensions corre antes del refresco del bloque");
 		assert.match(`${pi.stdout}${pi.stderr}`, /Pi themes/, "install_themes corre antes del refresco del bloque");
 		assert.match(pi.stderr, /bloque administrado inválido/, "configure_codex_skill_precedence explica el rechazo");
-		assert.match(pi.stderr, /No pude refrescar el bloque de Codex en .*codex-config\.toml; corré \.\/install\.sh codex/, "install.sh pi avisa y sigue");
+		assert.match(pi.stderr, /No pude refrescar el bloque de Codex en .*codex-config\.toml: revisá a mano sus rótulos de inicio y fin y después corré \.\/install\.sh codex/, "install.sh pi avisa y sigue");
 		assert.equal(await readFile(configFile, "utf8"), malformed, "la config inválida queda byte a byte igual");
 	} finally {
 		await rm(root, { recursive: true, force: true });

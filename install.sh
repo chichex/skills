@@ -368,16 +368,18 @@ install_pi() {
   install_set "Pi skills" "$REPO_DIR/pi" "$PI_DEST"
   install_extensions "$REPO_DIR/pi-extensions" "$PI_EXTENSIONS_DEST"
   install_themes "$REPO_DIR/pi-themes" "$PI_THEMES_DEST"
-  # install_set ya podó de $PI_DEST las copias retiradas: si Codex tiene el bloque
-  # administrado, se regenera para que no quede ninguna entrada `enabled = false`
-  # apuntando a una copia que ya no existe. Va al final y es best-effort: un
-  # bloque inválido en config.toml no deja a Pi a medio instalar (review #109).
-  # En `all`, install_codex lo regenera justo después (y aunque Pi falle), así
-  # que acá no se repite.
-  if [ "$WHICH" != "all" ]; then
-    if ! refresh_codex_precedence_block "$REPO_DIR/pi"; then
-      echo "⚠  No pude refrescar el bloque de Codex en $CODEX_CONFIG; corré ./install.sh codex" >&2
-    fi
+}
+
+# `./install.sh pi` solo: install_set ya podó de $PI_DEST las copias retiradas y,
+# si Codex tiene el bloque administrado, se regenera para que no quede ninguna
+# entrada `enabled = false` apuntando a una copia que ya no existe. Best-effort
+# (review #109): corre en un subshell con errexit propio, así un paso que falla
+# a mitad de camino no sigue hasta el `mv` sobre config.toml, y un bloque
+# inválido avisa sin dejar a Pi a medio instalar. En `all`, install_codex lo
+# regenera justo después (y aunque Pi falle), así que no se llama.
+refresh_codex_block_after_pi() {
+  if ! ( set -e; refresh_codex_precedence_block "$REPO_DIR/pi" ); then
+    echo "⚠  No pude refrescar el bloque de Codex en $CODEX_CONFIG: revisá a mano sus rótulos de inicio y fin y después corré ./install.sh codex" >&2
   fi
 }
 
@@ -623,7 +625,7 @@ case "$WHICH" in
             install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
   claude)   install_claude ;;
   opencode) install_set "opencode"    "$REPO_DIR/opencode" "$OPENCODE_DEST" ;;
-  pi)       install_pi ;;
+  pi)       install_pi; refresh_codex_block_after_pi ;;
   pi-clean) clean_pi ;;
   codex)    install_codex ;;
   antigravity) install_antigravity ;;
