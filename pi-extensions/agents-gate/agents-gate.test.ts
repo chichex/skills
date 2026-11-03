@@ -1486,6 +1486,39 @@ test("issue #103 CA-23: install.sh codex avisa cómo podar las copias Pi retirad
 	}
 });
 
+test("review #109 (1): install.sh pi con un bloque de Codex inválido instala skills, extensiones y themes, avisa y sale con 0", async () => {
+	const root = await mkdtemp(join(tmpdir(), "chiche-pi-invalid-codex-block-"));
+	try {
+		const fixtureRepo = await createMiniFixtureRepo(root, ["codex", "pi"], ["grill", "chiche-run"]);
+		const piDest = join(root, "dest", "pi-skills");
+		const configFile = join(root, "dest", "codex-config.toml");
+		await seedInstalled3xDestination(piDest);
+		// BEGIN sin END: configure_codex_skill_precedence lo rechaza y no modifica la config.
+		const malformed = `${CODEX_BEGIN}\n[[skills.config]]\npath = "${join(piDest, "sdd-run", "SKILL.md")}"\nenabled = false\n`;
+		await writeFile(configFile, malformed);
+
+		const pi = runInstaller(join(fixtureRepo, "install.sh"), ["pi"], {
+			HOME: join(root, "home"),
+			CODEX_SKILLS_DIR: join(root, "dest", "codex-skills"),
+			CODEX_CONFIG_FILE: configFile,
+			PI_SKILLS_DIR: piDest,
+			PI_EXTENSIONS_DIR: join(root, "dest", "pi-extensions"),
+			PI_THEMES_DIR: join(root, "dest", "pi-themes"),
+			PATH: "/usr/bin:/bin",
+		});
+		assert.equal(pi.status, 0, `install.sh pi no aborta por un bloque de Codex inválido\n${pi.stdout}\n${pi.stderr}`);
+		assert.equal(await readFile(join(piDest, "chiche-run", "SKILL.md"), "utf8"), "---\nname: chiche-run\n---\n", "los skills se instalan");
+		assert.equal(await absolutePathExists(join(piDest, "sdd-run")), false, "la copia retirada se poda igual");
+		assert.match(`${pi.stdout}${pi.stderr}`, /Pi extensions/, "install_extensions corre antes del refresco del bloque");
+		assert.match(`${pi.stdout}${pi.stderr}`, /Pi themes/, "install_themes corre antes del refresco del bloque");
+		assert.match(pi.stderr, /bloque administrado inválido/, "configure_codex_skill_precedence explica el rechazo");
+		assert.match(pi.stderr, /No pude refrescar el bloque de Codex en .*codex-config\.toml; corré \.\/install\.sh codex/, "install.sh pi avisa y sigue");
+		assert.equal(await readFile(configFile, "utf8"), malformed, "la config inválida queda byte a byte igual");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test("issue #103 CA-23: install.sh all difiere un fallo de Pi que no es el Pi Package nativo: instala los otros cuatro sets, sale con 1 y consulta pi list una sola vez", async () => {
 	const root = await mkdtemp(join(tmpdir(), "chiche-all-pi-failure-"));
 	try {

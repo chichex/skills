@@ -338,56 +338,47 @@ install_claude() {
   install_agents "$REPO_DIR/agents" "$CLAUDE_AGENTS_DEST"
 }
 
-# `pi list` se consulta una sola vez por corrida: la salida (o su fallo) queda en
-# PI_LIST_CACHE / PI_LIST_STATE ("" = sin consultar, "ok" o "failed"). No llamar
-# esta funcion dentro de `$(...)` ni de una tuberia: el cache viviria en un subshell.
-PI_LIST_CACHE=""
-PI_LIST_STATE=""
-pi_list_cached() {
-  if [ -z "$PI_LIST_STATE" ]; then
-    if PI_LIST_CACHE="$(cd "$REPO_DIR" && PI_OFFLINE=1 pi list 2>/dev/null)"; then
-      PI_LIST_STATE=ok
-    else
-      PI_LIST_STATE=failed
-    fi
-  fi
-  [ "$PI_LIST_STATE" = ok ]
-}
-
 # Detecta si el Pi Package nativo de este repo (`pi install git:github.com/chichex/chiche`,
 # o su variante -l local) ya está registrado en la config de Pi. `pi list` no muta nada.
 # Si no hay `pi` en PATH, o la detección falla por cualquier motivo, asumimos que NO hay
 # conflicto: instalar via copias legacy debe seguir funcionando para quien no usa Pi Package.
+# `pi list` se consulta una sola vez por corrida: solo install_pi llama a esta función.
 pi_native_package_conflict() {
+  local listing
   command -v pi >/dev/null 2>&1 || return 1
-  if ! pi_list_cached; then return 1; fi
+  listing="$(cd "$REPO_DIR" && PI_OFFLINE=1 pi list 2>/dev/null)" || return 1
   # Cubre `pi install git:github.com/chichex/chiche` (el nombre actual del repo)
   # y también la fuente vieja `git:github.com/chichex/skills`: `pi list` muestra
   # la fuente tal como el usuario la tipeó, así que quien instaló antes del
   # renombre del issue #103 sigue viendo el literal viejo. Cubre además
   # `pi install <ruta-local>` / `-l` de ESTE mismo checkout (pi list resuelve y
   # muestra el path absoluto == $REPO_DIR).
-  printf '%s\n' "$PI_LIST_CACHE" | grep -F -q -e 'chichex/skills' -e 'chichex/chiche' -e "$REPO_DIR"
+  printf '%s\n' "$listing" | grep -F -q -e 'chichex/skills' -e 'chichex/chiche' -e "$REPO_DIR"
 }
 
 install_pi() {
   if pi_native_package_conflict; then
     echo "✗ El Pi Package nativo (chichex/chiche) ya está instalado — 'pi list' lo muestra." >&2
     echo "  No instales también las copias legacy encima: duplicarías skills, extensiones y comandos de Pi." >&2
-    echo "  Usá 'pi update --extensions' para actualizar el package, o 'pi remove git:github.com/chichex/chiche'" >&2
-    echo "  (agregá -l si lo instalaste local) si preferís volver a las copias legacy." >&2
+    echo "  Usá 'pi update --extensions' para actualizar el package, o 'pi remove <fuente>' con la fuente que muestra 'pi list'" >&2
+    echo "  (git:github.com/chichex/chiche, o la vieja si instalaste con el nombre anterior del repo; -l si fue local)" >&2
+    echo "  si preferís volver a las copias legacy." >&2
     return 1
   fi
   install_set "Pi skills" "$REPO_DIR/pi" "$PI_DEST"
-  # install_set ya podo de $PI_DEST las copias retiradas: si Codex tiene el bloque
-  # administrado, se regenera para que no quede ninguna entrada `enabled = false`
-  # apuntando a una copia que ya no existe. En `all`, install_codex lo regenera
-  # justo después (y aunque Pi falle), así que acá no se repite.
-  if [ "$WHICH" != "all" ]; then
-    refresh_codex_precedence_block "$REPO_DIR/pi"
-  fi
   install_extensions "$REPO_DIR/pi-extensions" "$PI_EXTENSIONS_DEST"
   install_themes "$REPO_DIR/pi-themes" "$PI_THEMES_DEST"
+  # install_set ya podó de $PI_DEST las copias retiradas: si Codex tiene el bloque
+  # administrado, se regenera para que no quede ninguna entrada `enabled = false`
+  # apuntando a una copia que ya no existe. Va al final y es best-effort: un
+  # bloque inválido en config.toml no deja a Pi a medio instalar (review #109).
+  # En `all`, install_codex lo regenera justo después (y aunque Pi falle), así
+  # que acá no se repite.
+  if [ "$WHICH" != "all" ]; then
+    if ! refresh_codex_precedence_block "$REPO_DIR/pi"; then
+      echo "⚠  No pude refrescar el bloque de Codex en $CODEX_CONFIG; corré ./install.sh codex" >&2
+    fi
+  fi
 }
 
 # Borra en $dest los nombres administrados de un tipo de recurso (ver pi_dest_names)

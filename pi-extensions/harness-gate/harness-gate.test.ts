@@ -977,13 +977,14 @@ interface OldNameAllowance {
 // Los artefactos historicos congelados de .chiche/grills y .chiche/specs quedan fuera del grep.
 const OLD_NAME_ALLOWANCES: OldNameAllowance[] = [
 	// La nota de instalacion de cada README: una sola linea por README.
-	{ file: "README.md", test: /\bantes `chichex\/skills`/, exactly: 1 },
-	{ file: "README.en.md", test: /\bformerly `chichex\/skills`/, exactly: 1 },
+	{ file: "README.md", test: /\bse llamaba `chichex\/skills`/, exactly: 1 },
+	{ file: "README.en.md", test: /\bwas named `chichex\/skills`/, exactly: 1 },
 	// install.sh: el rotulo viejo del bloque de Codex (para reemplazarlo) y la deteccion en `pi list`,
-	// que sigue reconociendo la fuente que el usuario tipeo antes del renombre.
+	// que sigue reconociendo la fuente que el usuario tipeo antes del renombre. El comentario de esa
+	// deteccion se admite con su texto exacto: un comentario nuevo que nombre el repo viejo falla.
 	{ file: "install.sh", test: /^CODEX_LEGACY_(?:BEGIN|END)=/ },
 	{ file: "install.sh", test: /grep -F -q -e 'chichex\/skills'/ },
-	{ file: "install.sh", test: /^\s*#.*chichex\/skills/ },
+	{ file: "install.sh", test: /^ {2}# y también la fuente vieja `git:github\.com\/chichex\/skills`: `pi list` muestra$/ },
 	// Los tests que ejercitan ese bloque viejo y esa deteccion.
 	{ file: "pi-extensions/agents-gate/agents-gate.test.ts", test: /"# (?:>>>|<<<) chichex\/skills: prefer Codex over Pi (?:>>>|<<<)"/ },
 	{ file: "pi-extensions/agents-gate/agents-gate.test.ts", test: /^test\("issue #103 CA-10: install\.sh codex reemplaza el bloque viejo chichex\/skills de config\.toml/ },
@@ -998,11 +999,16 @@ const OLD_NAME_ALLOWANCES: OldNameAllowance[] = [
 	{ file: ".chiche/project.md", test: /^- La deteccion de "el Pi Package nativo ya esta instalado"/ },
 ];
 
-// Lineas `archivo:numero:texto` de git grep que ninguna entrada cubre, mas las entradas con `exactly`
-// que no cubren exactamente esa cantidad de lineas.
-function oldNameProblems(grepLines: string[], allowances: OldNameAllowance[]): string[] {
+// Tope de lineas por archivo, ademas de la allowlist: install.sh nombra el repo viejo en cuatro lineas
+// (los dos rotulos del bloque de Codex, el comentario de la deteccion y su grep sobre `pi list`).
+const OLD_NAME_FILE_LIMITS: Record<string, number> = { "install.sh": 4 };
+
+// Lineas `archivo:numero:texto` de git grep que ninguna entrada cubre, las entradas con `exactly`
+// que no cubren exactamente esa cantidad de lineas y los archivos que pasan su tope de lineas.
+function oldNameProblems(grepLines: string[], allowances: OldNameAllowance[], limits: Record<string, number> = {}): string[] {
 	const problems: string[] = [];
 	const covered = new Map<OldNameAllowance, number>();
+	const perFile = new Map<string, number>();
 	for (const line of grepLines) {
 		const match = /^([^:]+):(\d+):(.*)$/.exec(line);
 		if (match === null) {
@@ -1010,6 +1016,7 @@ function oldNameProblems(grepLines: string[], allowances: OldNameAllowance[]): s
 			continue;
 		}
 		const [, file, , text] = match;
+		perFile.set(file ?? "", (perFile.get(file ?? "") ?? 0) + 1);
 		const entry = allowances.find((allowance) => allowance.file === file && allowance.test.test(text ?? ""));
 		if (entry === undefined) problems.push(`${file}:${match[2]}: nombra el repo viejo y no esta en la allowlist`);
 		else covered.set(entry, (covered.get(entry) ?? 0) + 1);
@@ -1018,6 +1025,10 @@ function oldNameProblems(grepLines: string[], allowances: OldNameAllowance[]): s
 		if (allowance.exactly !== undefined && (covered.get(allowance) ?? 0) !== allowance.exactly) {
 			problems.push(`${allowance.file}: la nota ${allowance.test} debe aparecer ${allowance.exactly} vez y aparece ${covered.get(allowance) ?? 0}`);
 		}
+	}
+	for (const [file, limit] of Object.entries(limits)) {
+		const count = perFile.get(file) ?? 0;
+		if (count > limit) problems.push(`${file}: nombra el repo viejo en ${count} lineas y el tope es ${limit}`);
 	}
 	return problems;
 }
@@ -1032,16 +1043,16 @@ test("issue #103 CA-17: el árbol usa chichex/chiche; chichex/skills solo sobrev
 	const grep = grepOldRepoName(fileURLToPath(repoFile("")));
 	assert.ok(grep.status === 0 || grep.status === 1, `git grep fallo (estado ${grep.status}): ${grep.stderr}`);
 	const lines = grep.stdout.split("\n").filter((line) => line.length > 0);
-	assert.deepEqual(oldNameProblems(lines, OLD_NAME_ALLOWANCES), []);
+	assert.deepEqual(oldNameProblems(lines, OLD_NAME_ALLOWANCES, OLD_NAME_FILE_LIMITS), []);
 });
 
 test("autotest: oldNameProblems rechaza una linea fuera de la allowlist y una nota de README repetida o ausente", () => {
 	const allowances: OldNameAllowance[] = [
-		{ file: "README.md", test: /\bantes `chichex\/skills`/, exactly: 1 },
+		{ file: "README.md", test: /\bse llamaba `chichex\/skills`/, exactly: 1 },
 		{ file: "install.sh", test: /^CODEX_LEGACY_(?:BEGIN|END)=/ },
 	];
 	const noteTest = allowances[0]?.test;
-	const note = `README.md:10:El repo se llamaba antes \`${OLD_REPO_NAME}\`; actualizá el remote.`;
+	const note = `README.md:10:**El repo se llamaba \`${OLD_REPO_NAME}\`.** Actualizá el remote.`;
 	const legacy = `install.sh:52:CODEX_LEGACY_BEGIN="# >>> ${OLD_REPO_NAME}: prefer Codex over Pi >>>"`;
 	const uncovered = (file: string, line: number) => `${file}:${line}: nombra el repo viejo y no esta en la allowlist`;
 	const noteCount = (count: number) => `README.md: la nota ${noteTest} debe aparecer 1 vez y aparece ${count}`;
@@ -1052,7 +1063,7 @@ test("autotest: oldNameProblems rechaza una linea fuera de la allowlist y una no
 		uncovered("package.json", 10),
 		noteCount(0),
 	]);
-	assert.deepEqual(oldNameProblems([note, `README.md:11:Tambien antes \`${OLD_REPO_NAME}\`.`], allowances), [noteCount(2)]);
+	assert.deepEqual(oldNameProblems([note, `README.md:11:Tambien se llamaba \`${OLD_REPO_NAME}\`.`], allowances), [noteCount(2)]);
 	assert.deepEqual(oldNameProblems([note, `install.sh:60:echo ${OLD_REPO_NAME}`], allowances), [uncovered("install.sh", 60)]);
 });
 
@@ -1090,7 +1101,25 @@ const CHICHE_FLOW_CHAIN = "chiche-init → chiche-spec → chiche-run → chiche
 // La unica mencion de SDD como nombre de la suite: la nota tecnica del pitch.
 const SDD_TECHNICAL_NOTE = "Spec-Driven Development (SDD)";
 // SDD como palabra suelta; `SDD-Tracking`, `sdd-events-v1` o `SDD` entre backticks son identificadores.
-const SDD_STANDALONE = /(^|[^\w`-])SDD([^\w`-]|$)/;
+const SDD_STANDALONE = /(^|[^\w`-])SDD(?=[^\w`-]|$)/g;
+
+// Cuantas veces una linea nombra SDD como palabra suelta.
+function standaloneSddCount(line: string): number {
+	return (line.match(SDD_STANDALONE) ?? []).length;
+}
+
+// Review #109 (6): la nota tecnica nombra SDD exactamente una vez (la de «Spec-Driven Development (SDD)»);
+// cualquier otra linea, ninguna. Antes la linea de la nota quedaba exenta entera.
+function sddMentionProblems(path: string, lines: string[]): string[] {
+	const problems: string[] = [];
+	lines.forEach((line, index) => {
+		const count = standaloneSddCount(line);
+		if (line.includes(SDD_TECHNICAL_NOTE)) {
+			if (count !== 1) problems.push(`${path}:${index + 1}: la nota técnica nombra SDD ${count} veces y debe nombrarlo 1`);
+		} else if (count > 0) problems.push(`${path}:${index + 1}: nombra SDD como suite fuera de la nota técnica`);
+	});
+	return problems;
+}
 
 test("issue #103 CA-18: los README se titulan # chiche, abren con el tagline y nombran el flujo chiche", async () => {
 	const problems: string[] = [];
@@ -1110,9 +1139,7 @@ test("issue #103 CA-18: los README se titulan # chiche, abren con el tagline y n
 
 		const noteCount = markdown.split(SDD_TECHNICAL_NOTE).length - 1;
 		if (noteCount !== 1) problems.push(`${readme.path}: «${SDD_TECHNICAL_NOTE}» aparece ${noteCount} veces y debe aparecer 1`);
-		lines.forEach((line, index) => {
-			if (!line.includes(SDD_TECHNICAL_NOTE) && SDD_STANDALONE.test(line)) problems.push(`${readme.path}:${index + 1}: nombra SDD como suite fuera de la nota técnica`);
-		});
+		problems.push(...sddMentionProblems(readme.path, lines));
 
 		if (!markdown.includes(readme.retirement)) problems.push(`${readme.path}: perdió la nota de retiro «${readme.retirement}»`);
 	}
@@ -1120,6 +1147,13 @@ test("issue #103 CA-18: los README se titulan # chiche, abren con el tagline y n
 });
 
 // --- Autotests del gate: puede fallar y con que diagnostico ------------------
+
+test("autotest: la nota técnica admite un solo SDD suelto y el resto de las líneas ninguno", () => {
+	const note = `Por detrás es **${SDD_TECHNICAL_NOTE}**: contrato → spec → ejecución → cierre.`;
+	assert.deepEqual(sddMentionProblems("README.md", ["# chiche", note, "`SDD-Tracking` y `sdd-events-v1` son identificadores."]), []);
+	assert.deepEqual(sddMentionProblems("README.md", [`${note} SDD manda.`]), ["README.md:1: la nota técnica nombra SDD 2 veces y debe nombrarlo 1"]);
+	assert.deepEqual(sddMentionProblems("README.md", [note, "## El workflow SDD"]), ["README.md:2: nombra SDD como suite fuera de la nota técnica"]);
+});
 
 test("autotest: una divergencia entre harnesses se reporta con la linea que difiere", () => {
 	const byHarness = new Map<Harness, string[]>([

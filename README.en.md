@@ -119,6 +119,8 @@ The repo runs CI on GitHub Actions (`.github/workflows/ci.yml`): it validates sh
 
 ## Installation
 
+**The repo was named `chichex/skills`.** GitHub redirects the old URL, so existing installs keep updating; to move to the new name: in a clone, `git remote set-url origin https://github.com/chichex/chiche.git` (or the SSH form); in Pi, `pi remove` the old source and `pi install git:github.com/chichex/chiche`; in Claude Code, `/plugin marketplace remove chichex` then `/plugin marketplace add chichex/chiche`.
+
 ### Codex: as a plugin (recommended)
 
 Every skill under `codex/` can be installed together as a native plugin. You do not need to clone the repository or run `install.sh`:
@@ -154,8 +156,6 @@ The `claude/` skills can be installed as a Claude Code plugin, without cloning t
 /plugin marketplace add chichex/chiche
 /plugin install chiche@chichex
 ```
-
-The repo was formerly `chichex/skills`; GitHub redirects the old URL, but update your remote (`git remote set-url origin ssh://git@github.com/chichex/chiche.git`) and the `git:github.com/chichex/chiche` sources.
 
 Since 3.0.0 the plugin is named `chiche` (formerly `chichex-skills`). If you have `chichex-skills@chichex` installed, run `/plugin uninstall chichex-skills@chichex` before installing `chiche@chichex`. The old names `sdd-init`, `sdd-spec`, `sdd-run`, and `sdd-land` were retired in 4.0.0.
 

@@ -1088,7 +1088,9 @@ test("install.sh refuses to lay down legacy Pi copies when the native Pi Package
 			assert.match(`${result.stdout}${result.stderr}`, /Pi Package nativo.*ya está instalado/is);
 			// Issue #103 CA-17: el mensaje nombra el repo actual aunque la fuente registrada sea la vieja.
 			assert.match(result.stderr, /El Pi Package nativo \(chichex\/chiche\) ya está instalado/, source);
-			assert.match(result.stderr, /'pi remove git:github\.com\/chichex\/chiche'/, source);
+			// Review #109 (2): la fuente registrada puede ser la vieja, así que el hint remite a lo que muestra `pi list`.
+			assert.match(result.stderr, /'pi remove <fuente>' con la fuente que muestra 'pi list'/, source);
+			assert.match(result.stderr, /git:github\.com\/chichex\/chiche, o la vieja si instalaste con el nombre anterior del repo/, source);
 			assert.equal(
 				await absolutePathExists(skillsDest),
 				false,
