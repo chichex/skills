@@ -3,3 +3,4 @@ node_modules/
 package-lock.json
 evals/results/
 evals/*/fixtures/*/.chiche/specs/
+!evals/autonomy-stop-list-a3/fixtures/mini-cli-publish/.chiche/specs/

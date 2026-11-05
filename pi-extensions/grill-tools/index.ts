@@ -12,6 +12,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Markdown, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { type AutonomyCode, parseAutonomyLevel, withAutonomy } from "../workflow-orchestrator/autonomy.ts";
 import { menuItems, selectMenu, type MenuItem } from "../lib/menu.ts";
 import {
 	artifactReadDirs,
@@ -168,6 +169,7 @@ const GrillSessionParams = Type.Object({
 	summary: Type.Optional(Type.String()),
 	handoffMarkdown: Type.Optional(Type.String({ description: "Required for finalize" })),
 	continueWithSpec: Type.Optional(Type.Boolean({ description: "After finalize, materialize chiche-spec --from-grill in this session" })),
+	autonomy: Type.Optional(Type.String({ description: "Autonomy level received by this grill (A1-A3 or its name); with continueWithSpec it is propagated as --autonomy <code>" })),
 });
 
 const SpecPublicationDestinationParams = Type.Object({
@@ -1476,6 +1478,15 @@ export default function grillTools(pi: ExtensionAPI) {
 			if (params.continueWithSpec && params.action !== "finalize") {
 				throw new Error("continueWithSpec is valid only for finalize");
 			}
+			// Issue #102, CA-9: grill propaga --autonomy a chiche-spec al encadenar.
+			let continuationAutonomy: AutonomyCode | undefined;
+			if (params.autonomy !== undefined) {
+				if (params.action !== "finalize") throw new Error("autonomy is valid only for finalize");
+				if (!params.continueWithSpec) throw new Error("autonomy requires continueWithSpec");
+				const parsedAutonomy = parseAutonomyLevel(params.autonomy);
+				if (!parsedAutonomy.ok) throw new Error(parsedAutonomy.message);
+				continuationAutonomy = parsedAutonomy.code;
+			}
 			if (params.action === "create") {
 				if (!params.topic?.trim()) throw new Error("topic is required for create");
 				if (!params.estimate) throw new Error("estimate is required for create");
@@ -1608,7 +1619,7 @@ export default function grillTools(pi: ExtensionAPI) {
 					? await continueWithMaterializedSkill(
 						pi,
 						"chiche-spec",
-						`--from-grill ${JSON.stringify(snapshot.id)}`,
+						withAutonomy(`--from-grill ${JSON.stringify(snapshot.id)}`, continuationAutonomy),
 						{ deliverAs: "followUp" },
 					)
 					: undefined;

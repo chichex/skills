@@ -495,12 +495,12 @@ export function detectFixtureStacks(files: DetectionFile[]): StackId[] {
 
 // Integracion con chiche-init (CA-9), sobre el SKILL.md con invocaciones normalizadas.
 const SDD_INIT_DOCTRINE: RegExp[] = [
-	/^- \*\*Coding policies del proyecto\*\*: si existe `\.chiche\/coding-policies\.md`[^\n]*escribir sin preguntar la fila `guia`[^\n]*también con `--assume`/m,
+	/^- \*\*Coding policies del proyecto\*\*: si existe `\.chiche\/coding-policies\.md`[^\n]*escribir sin preguntar la fila `guia`[^\n]*también con `--autonomy` ≥ A2/m,
 	/o si la fila `coding-policies` ya presente en `## Politicas de generacion` apunta a un archivo existente, porque el skill acepta `--out`/,
 	/\| coding-policies \| <ruta> \(<stacks del marker>\) \| guia — sin gate: «skill:chiche-run» la sigue al generar, la juzga el reviewer \|/,
-	/[Ss]i no existe, sumar al menú la opción `Generar coding policies`[^\n]*invoca `«skill:coding-policies»`; nunca con `--assume`/,
+	/[Ss]i no existe, sumar al menú la opción `Generar coding policies`[^\n]*invoca `«skill:coding-policies»`; nunca con `--autonomy` ≥ A2/,
 	/^\| Coding policies \| existe `\.chiche\/coding-policies\.md` pero `## Politicas de generacion` no tiene la fila `coding-policies` — no entra al menú: la Fase 3\.5 la escribe sin preguntar y el reporte la lista como `referenciado` \|$/m,
-	/^- coding-policies: <referenciado\|generado\|no existe \(ofrecido\)\|--assume: no ofrecido>$/m,
+	/^- coding-policies: <referenciado\|generado\|no existe \(ofrecido\)\|--autonomy ≥ A2: no ofrecido>$/m,
 ];
 
 function repoFile(path: string): URL {

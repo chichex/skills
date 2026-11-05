@@ -350,8 +350,14 @@ test("ci.yml chequea la version en cada PR contra el branch base", () => {
 	assert.match(job, /name: Versión semver\n/);
 	assert.match(job, /fetch-depth: 0/);
 	assert.match(job, /if: github\.event_name == 'pull_request'/);
-	assert.match(job, /BASE_REF: \$\{\{ github\.base_ref \}\}/);
-	assert.match(job, /bash scripts\/version\.sh base "origin\/\$BASE_REF"/);
+	// En un stack vinculado, GitHub puede pasar el trunk como base del evento:
+	// la base real del PR sale de la API y no del contexto del workflow.
+	assert.doesNotMatch(job, /\$\{\{ github\.base_ref \}\}/);
+	assert.match(job, /permissions:\n {6}contents: read\n {6}pull-requests: read\n/);
+	assert.match(job, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+	assert.match(job, /PR_NUMBER: \$\{\{ github\.event\.pull_request\.number \}\}/);
+	assert.match(job, /base_ref=\$\(gh api "repos\/\$GITHUB_REPOSITORY\/pulls\/\$PR_NUMBER" --jq \.base\.ref\)/);
+	assert.match(job, /bash scripts\/version\.sh base "origin\/\$base_ref"/);
 	assert.match(job, /bash scripts\/version\.sh check --next-of "\$base"/);
 	assert.match(job, /bash scripts\/version\.sh check\n/);
 });

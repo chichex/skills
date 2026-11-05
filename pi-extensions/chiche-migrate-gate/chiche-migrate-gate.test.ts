@@ -4,7 +4,7 @@
 // con una secuencia de comandos canónica, escrita una sola vez en el bloque
 // compartido `chiche-init-migrate` de los cinco harnesses. Este gate lee los
 // cinco SKILL.md reales: exige el bloque idéntico byte a byte con un único
-// fence `bash`, la doctrina alrededor (opciones, regla de `--assume`, fusión,
+// fence `bash`, la doctrina alrededor (opciones, regla de `--autonomy` ≥ A2, fusión,
 // contrato en `.chiche/project.md`, marker v2 en la Fase 4) y el literal de la
 // tool de preguntas fuera del bloque. Además EJECUTA la secuencia con `bash` en
 // repos git temporales: un repo completo, la fusión con un `.chiche/` previo,
@@ -50,7 +50,7 @@ const PROJECT_TEMPLATE = "<!-- Chiche-Tracking: version=2; type=project; generat
 const MARKER_UPDATE_RULE =
 	"El marker de un artefacto existente es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: al reescribirlo se reemplaza en su lugar por `Chiche-Tracking: version=2` conservando los demás campos, y nunca se agrega otro al lado.";
 const REPORT_LINE =
-	"- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>; con cambios previos: <lista|ninguno>; escritos fuera del commit sugerido: <lista|ninguno>; sin trackear o ignorado en .chiche/: <lista|ninguno>) | mantenida .sdd/ | mejora disponible (--assume) | no aplica>";
+	"- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>; con cambios previos: <lista|ninguno>; escritos fuera del commit sugerido: <lista|ninguno>; sin trackear o ignorado en .chiche/: <lista|ninguno>) | mantenida .sdd/ | mejora disponible (--autonomy ≥ A2) | no aplica>";
 const CHECKLIST_ROW =
 	'| Directorio .chiche/ | existe .sdd/project.md, trackeado o no — no entra al menú: lo ofrece la pregunta propia de "## Migración a .chiche/", antes que todo lo demás |';
 const MIGRATION_HEADING = "Migración a .chiche/ (corridas sobre un repo con .sdd/)";
@@ -165,7 +165,7 @@ test("CA-13: el bloque trae un único fence y es bash", async () => {
 	assert.deepEqual(problems, []);
 });
 
-test("CA-13: el bloque nombra la pregunta, las dos opciones, la regla de --assume, Decisiones humanas, la nota sin .sdd/ y conservado", async () => {
+test("CA-13: el bloque nombra la pregunta, las dos opciones, la regla de --autonomy ≥ A2, Decisiones humanas, la nota sin .sdd/ y conservado", async () => {
 	const block = await referenceBlock();
 	assert.deepEqual(missing(block, [
 		new RegExp(escapeRegExp(`"${QUESTION}"`)),
@@ -188,7 +188,7 @@ test("CA-13: el bloque nombra la pregunta, las dos opciones, la regla de --assum
 		/chiche-init: conservado <ruta>; queda <ruta vieja>/,
 		/Si el harness no puede escribir en `<git-common-dir>\/chiche\/`, el paso del common-dir se saltea con el aviso/,
 		/`Mantener \.sdd\/` no cambia nada: el contrato sigue en `\.sdd\/project\.md`, la corrida lo lee de ahí y la oferta se repite en el próximo `--update`/,
-		/Con `--assume` no se migra ni se pregunta: el reporte lo lista como `mejora disponible`/,
+		/Con `--autonomy` ≥ A2 no se migra ni se pregunta: el reporte lo lista como `mejora disponible`/,
 		/Tras migrar, el resto de la corrida lee y escribe `\.chiche\/project\.md`/,
 		// El cierre `Commit + PR` copia solo paths escritos y no reproduce los renames de `git mv`: tras migrar queda sin commitear.
 		/^- Si la corrida migró, el cierre `Commit \+ PR` queda en `Dejar sin commitear` con el motivo `migración: los renames viven en el checkout principal`: ese cierre copia solo los paths que la corrida escribió y no reproduce los renames de `git mv`\. /m,
@@ -198,7 +198,8 @@ test("CA-13: el bloque nombra la pregunta, las dos opciones, la regla de --assum
 		/^- La reescritura saltea los symlinks: `CLAUDE\.md -> AGENTS\.md` queda como link y `AGENTS\.md` se reescribe por su propio nombre; un link trackeado bajo `\.chiche\/` que apunta fuera nunca toca su destino\.$/m,
 	]), []);
 	const script = await canonicalSequence();
-	assert.equal(block.includes("--autonomy"), false, "el bloque no nombra un flag que no existe");
+	assert.equal(block.includes("--assume"), false, "el bloque no nombra un flag retirado (issue #102, CA-7)");
+	assert.equal(block.includes("--autonomy"), true, "el bloque nombra el nivel que reemplaza al flag retirado");
 	assert.equal(/git add -A|checkout limpio/.test(block), false, "el commit sugerido no suma todo ni supone un checkout limpio");
 	assert.match(script, /for f in CLAUDE\.md AGENTS\.md \.gitignore; do/, "la secuencia reescribe también el .gitignore de la raíz");
 	const bullet = block.split("\n").find((line) => line.startsWith("- Anota la migración")) ?? "";
@@ -307,7 +308,8 @@ test("CA-13: los cinco chiche-init nombran .chiche/project.md como contrato y .s
 			["MUST DO", /^MUST DO$/],
 			["MUST NOT DO", /^MUST NOT DO$/],
 		] as const) {
-			const body = section(markdown, pattern);
+			// Issue #102 CA-4: el bloque `autonomy-resolve` de ## Argumentos lee el contrato con fallback a .sdd/project.md (lo gatea autonomy-gate).
+			const body = withoutBlock(section(markdown, pattern), "autonomy-resolve");
 			if (body === "") problems.push(`${path}: falta la sección ${name}`);
 			else if (body.includes(".sdd/project.md") || body.includes(".sdd/coding-policies.md")) problems.push(`${path}: ${name} todavía nombra .sdd/`);
 		}
@@ -1083,7 +1085,7 @@ test("CA-15: el contrato suma la fila de este gate con el conteo real de este ar
 	assert.ok(cells, "fila `gate de migracion a .chiche/` con comando, cwd, fecha y conteo");
 	assert.equal(Number(cells[1]), count, "pasan todos los tests del gate");
 	assert.equal(Number(cells[2]), count, "el conteo de la fila es el de este archivo");
-	for (const promise of [/sin index\.ts/, /identico byte a byte/, /Migrar a \.chiche\/ \(Recomendado\)/, /Mantener \.sdd\//, /--assume/, /sin commit/, /CA-20/]) {
+	for (const promise of [/sin index\.ts/, /identico byte a byte/, /Migrar a \.chiche\/ \(Recomendado\)/, /Mantener \.sdd\//, /--autonomy/, /sin commit/, /CA-20/]) {
 		assert.match(row, promise, `la fila promete lo que el gate prueba: ${promise}`);
 	}
 });

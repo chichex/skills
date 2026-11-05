@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import type { AutonomyCode } from "./autonomy.ts";
 import type { Stats } from "node:fs";
 import {
 	readFile as readFileDefault,
@@ -284,10 +285,16 @@ function contractFailure(root: string): ResolveDirectRunResult {
 	);
 }
 
+export interface ResolveDirectRunOptions {
+	// Issue #102 (review #114-7): nivel que launch_sdd_run recibió; viaja como --autonomy <código>.
+	autonomy?: AutonomyCode;
+}
+
 export async function resolveDirectRunRequest(
 	rawTarget: string,
 	originCwd: string,
 	dependencies: ResolveDirectRunDependencies = {},
+	options: ResolveDirectRunOptions = {},
 ): Promise<ResolveDirectRunResult> {
 	const target = rawTarget.trim();
 	if (target === "") return resolverFailure("missing-target", "Use /chiche-run <ruta|#NN|owner/repo#NN|GitHub issue URL>");
@@ -349,6 +356,7 @@ export async function resolveDirectRunRequest(
 				reference: `${repo}#${number}`,
 				detail: `Canonical issue-hosted SDD spec (${inspected.state})`,
 			}],
+			...(options.autonomy === undefined ? {} : { autonomy: options.autonomy }),
 		};
 		const validation = validateDirectRunRequest(request);
 		return validation.ok
@@ -465,6 +473,7 @@ export async function resolveDirectRunRequest(
 			reference: artifactPath,
 			detail: `Canonical local SDD spec (${inspected.state})`,
 		}],
+		...(options.autonomy === undefined ? {} : { autonomy: options.autonomy }),
 	};
 	const validation = validateDirectRunRequest(request);
 	return validation.ok

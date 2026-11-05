@@ -1150,6 +1150,48 @@ test("#84 CA-10: grill_session pause y finalize escriben el handoff en <git-comm
 	assert.equal(gitStatus(linked), "", "worktree linkeado limpio después de finalize");
 });
 
+test("issue #102 CA-9: grill_session finalize con continueWithSpec y autonomy propaga --autonomy <código> a chiche-spec, y rechaza un nivel inválido", { skip: !PI_PACKAGE_ROOT }, async (t) => {
+	const tool = tools.get("grill_session");
+	assert.ok(tool);
+	const { base, main } = repoWithLinkedWorktree("continue-spec-autonomy");
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const created = await tool.execute(
+		"create-continue-autonomy",
+		{ action: "create", topic: "Continuar a spec en A2", projectPath: main, estimate: { min: 1, likely: 2, max: 3 } },
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	const id = created.details.snapshot.id;
+	t.after(() => removeStoredSnapshot(id));
+	await tool.execute("configure-continue-autonomy", { action: "configure", sessionId: id, interviewMode: "adaptive" }, undefined, undefined, { cwd: main });
+	await assert.rejects(
+		tool.execute("configure-autonomy-invalid", { action: "configure", sessionId: id, autonomy: "A2" }, undefined, undefined, { cwd: main }),
+		/autonomy is valid only for finalize/,
+	);
+	// Review #114-10: sin continueWithSpec no hay a quién propagar el nivel; se rechaza en vez de ignorarse en silencio.
+	await assert.rejects(
+		tool.execute("finalize-autonomy-sin-continue", { action: "finalize", sessionId: id, autonomy: "A2", handoffMarkdown: "# Grill\n\n## Handoff\nx\n" }, undefined, undefined, { cwd: main }),
+		/autonomy requires continueWithSpec/,
+	);
+	await assert.rejects(
+		tool.execute("finalize-autonomy-a4", { action: "finalize", sessionId: id, continueWithSpec: true, autonomy: "A4", handoffMarkdown: "# Grill\n\n## Handoff\nx\n" }, undefined, undefined, { cwd: main }),
+		/--autonomy A4: no soportado todavía \(v1 honra A1–A3\)/,
+	);
+
+	sentMessages = [];
+	await tool.execute(
+		"finalize-continue-autonomy",
+		{ action: "finalize", sessionId: id, continueWithSpec: true, autonomy: "plan-approved", handoffMarkdown: "# Grill — Continuar a spec en A2\n\n## Handoff\nListo.\n" },
+		undefined,
+		undefined,
+		{ cwd: main },
+	);
+	assert.equal(sentMessages.length, 1);
+	assert.ok(sentMessages[0]!.content.endsWith(`--from-grill ${JSON.stringify(id)} --autonomy A2`), sentMessages[0]!.content.slice(-120));
+	assertQueuedChicheSpec(sentMessages[0]!.content);
+});
+
 test("issue #103 S11: grill_session finalize con continueWithSpec encola chiche-spec --from-grill en la misma sesión", { skip: !PI_PACKAGE_ROOT }, async (t) => {
 	const tool = tools.get("grill_session");
 	assert.ok(tool);

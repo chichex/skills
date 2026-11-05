@@ -12,6 +12,7 @@ import type {
 	WorkflowResolutionV1,
 } from "../workflow-resolution/index.ts";
 import type { StartFreshStageRequest } from "./lifecycle.ts";
+import { type AutonomyCode, parseAutonomyLevel, withAutonomy } from "./autonomy.ts";
 import { validateWorkflowResolution } from "./protocol.ts";
 import { isConfirmedCoherentStart } from "./route-contract.ts";
 
@@ -19,6 +20,12 @@ import { isConfirmedCoherentStart } from "./route-contract.ts";
 export interface WorkflowDispatchDirs {
 	grills: ArtifactDirs;
 	specs: ArtifactDirs;
+}
+
+// Issue #102, CA-9: el nivel que `/issues --autonomy <level>` recibió; el
+// despacho lo agrega como `--autonomy <código>` a los args de toda ruta.
+export interface WorkflowDispatchOptions {
+	autonomy?: string;
 }
 
 export type WorkflowDispatchResult =
@@ -145,11 +152,18 @@ function request(
 	resolution: WorkflowResolutionV1,
 	name: string,
 	args: string,
+	autonomy?: AutonomyCode,
 ): WorkflowDispatchResult {
-	return { ok: true, request: { resolution, skill: { name, args } } };
+	return { ok: true, request: { resolution, skill: { name, args: withAutonomy(args, autonomy) } } };
 }
 
-export function resolveWorkflowDispatch(input: unknown, sddDirs?: WorkflowDispatchDirs): WorkflowDispatchResult {
+export function resolveWorkflowDispatch(input: unknown, sddDirs?: WorkflowDispatchDirs, options: WorkflowDispatchOptions = {}): WorkflowDispatchResult {
+	let autonomy: AutonomyCode | undefined;
+	if (options.autonomy !== undefined) {
+		const parsed = parseAutonomyLevel(options.autonomy);
+		if (!parsed.ok) return failure("invalid-autonomy", parsed.message);
+		autonomy = parsed.code;
+	}
 	const validation = validateWorkflowResolution(input);
 	if (!validation.ok) {
 		return failure(
@@ -178,14 +192,14 @@ export function resolveWorkflowDispatch(input: unknown, sddDirs?: WorkflowDispat
 	switch (route) {
 		case "grill":
 		case "join-grill":
-			return request(resolution, "grill", `#${issue.number}`);
+			return request(resolution, "grill", `#${issue.number}`, autonomy);
 		case "spec":
 		case "join-spec":
-			return request(resolution, "chiche-spec", `#${issue.number}`);
+			return request(resolution, "chiche-spec", `#${issue.number}`, autonomy);
 		case "resume-grill": {
 			const grill = validatedGrill(resolution, issue, true);
 			return grill
-				? request(resolution, "grill", `--resume ${JSON.stringify(grill.grill)}`)
+				? request(resolution, "grill", `--resume ${JSON.stringify(grill.grill)}`, autonomy)
 				: failure("invalid-grill-reference", "resume-grill requires one canonical in-project grill leaf");
 		}
 		case "spec-from-grill": {
@@ -195,6 +209,7 @@ export function resolveWorkflowDispatch(input: unknown, sddDirs?: WorkflowDispat
 					resolution,
 					"chiche-spec",
 					`--from-grill ${JSON.stringify(source.value)}`,
+					autonomy,
 				)
 				: failure("invalid-grill-reference", "spec-from-grill requires one canonical finalized grill source");
 		}
@@ -207,6 +222,7 @@ export function resolveWorkflowDispatch(input: unknown, sddDirs?: WorkflowDispat
 				resolution,
 				route === "run-existing-spec" ? "chiche-run" : "chiche-spec",
 				specArgument(spec),
+				autonomy,
 			);
 		}
 	}
@@ -220,14 +236,14 @@ export function resolveWorkflowDispatch(input: unknown, sddDirs?: WorkflowDispat
  * spec o un handoff en <git-common-dir>/chiche/ o <git-common-dir>/sdd/ se
  * aceptan desde el checkout principal y desde un worktree linkeado.
  */
-export async function resolveWorkflowDispatchForCwd(input: unknown): Promise<WorkflowDispatchResult> {
+export async function resolveWorkflowDispatchForCwd(input: unknown, options: WorkflowDispatchOptions = {}): Promise<WorkflowDispatchResult> {
 	const cwd = typeof input === "object" && input !== null && typeof (input as { cwd?: unknown }).cwd === "string"
 		? (input as { cwd: string }).cwd
 		: null;
-	if (cwd === null || !isAbsolute(cwd)) return resolveWorkflowDispatch(input);
+	if (cwd === null || !isAbsolute(cwd)) return resolveWorkflowDispatch(input, undefined, options);
 	const [grills, specs] = await Promise.all([
 		resolveArtifactDirs(cwd, "grills"),
 		resolveArtifactDirs(cwd, "specs"),
 	]);
-	return resolveWorkflowDispatch(input, { grills, specs });
+	return resolveWorkflowDispatch(input, { grills, specs }, options);
 }

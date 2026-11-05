@@ -15,12 +15,13 @@ export function exactObject(
 	path: string,
 	fields: readonly string[],
 	report: (diagnostic: ObjectShapeDiagnostic) => void,
+	optional: readonly string[] = [],
 ): RecordValue | null {
 	if (!isRecord(value)) {
 		report({ path, code: "invalid-type", message: "Expected an object" });
 		return null;
 	}
-	const allowed = new Set(fields);
+	const allowed = new Set([...fields, ...optional]);
 	for (const field of fields) {
 		if (!Object.hasOwn(value, field)) {
 			report({ path: `${path}.${field}`, code: "missing-field", message: `Missing required field ${field}` });

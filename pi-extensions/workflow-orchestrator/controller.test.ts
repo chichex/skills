@@ -745,14 +745,16 @@ test("launch_sdd_run asks explicit authorization and bridges its direct request 
 		},
 	} as never);
 	let confirmations = 0;
+	const messages: string[] = [];
 	const toolContext = {
 		hasUI: true,
 		cwd: "/workspace/skills",
 		sessionManager: { getSessionId: () => "origin-session" },
 		ui: {
-			async confirm(title: string) {
+			async confirm(title: string, message: string) {
 				confirmations += 1;
 				assert.equal(title, "Ejecutar ahora");
+				messages.push(message);
 				return true;
 			},
 		},
@@ -766,6 +768,8 @@ test("launch_sdd_run asks explicit authorization and bridges its direct request 
 		toolContext,
 	) as { terminate?: boolean; details?: { authorized?: boolean } };
 	assert.equal(confirmations, 1);
+	// Review #116-5: el confirm es la única autorización; sin flag no muestra nivel.
+	assert.deepEqual(messages, ["Run issue #14.\n\nSe abrirá una sesión hija ligada a la actual."]);
 	assert.equal(result.terminate, true);
 	assert.equal(result.details?.authorized, true);
 	assert.deepEqual(sent, [{
@@ -782,6 +786,10 @@ test("launch_sdd_run asks explicit authorization and bridges its direct request 
 	};
 	await commands.get("__sdd-dispatch")!.handler("direct-receipt", commandContext);
 	assert.deepEqual(starts, [directRunRequest()]);
+	// Review #116-5: con --autonomy el confirm muestra el nivel que se va a autorizar.
+	const leveled = await tools.get("launch_sdd_run")!.execute("launch-2", { target: "#14", autonomy: "plan-approved" }, undefined, undefined, toolContext) as { details?: { authorized?: boolean } };
+	assert.equal(leveled.details?.authorized, true);
+	assert.equal(messages[1], "Run issue #14.\nNivel: A2\n\nSe abrirá una sesión hija ligada a la actual.");
 });
 
 test("launch_grill authorizes a qualified issue target and dispatches it through a one-shot receipt", async () => {
@@ -842,4 +850,82 @@ test("launch_grill authorizes a qualified issue target and dispatches it through
 		ui: { notify() {} },
 	});
 	assert.deepEqual(starts, [directGrillRequest()]);
+});
+
+// Review #114-9 (issue #102, CA-9): el cableado de --autonomy entre /issues, la materialización y el despacho.
+test("review #114-9: beginIssueTriage materializa issue-triage con --autonomy, rechaza un nivel fuera de la escala y lleva attempt.autonomy hasta el despacho", async () => {
+	const tools = new Map<string, { execute: (...args: unknown[]) => Promise<unknown> }>();
+	const commands = new Map<string, { handler: (args: string, context: unknown) => Promise<void> }>();
+	let activeTools = ["read"];
+	const sent: string[] = [];
+	const started: Array<{ name: string; args: string }> = [];
+	const pi = {
+		events: createEventBus(),
+		registerTool(tool: { name: string; execute: (...args: unknown[]) => Promise<unknown> }) { tools.set(tool.name, tool); },
+		registerCommand(name: string, command: { handler: (args: string, context: unknown) => Promise<void> }) { commands.set(name, command); },
+		on() {},
+		getCommands: () => [{ name: "skill:issue-triage", source: "skill", sourceInfo: { path: "/skills/triage/SKILL.md" } }],
+		getActiveTools: () => [...activeTools],
+		setActiveTools(names: string[]) { activeTools = [...names]; },
+		sendUserMessage(content: string) { sent.push(content); },
+	};
+	const controller = orchestrator.createWorkflowController(pi as never, {
+		readSkillFile: async () => "---\nname: issue-triage\ndescription: Triage\n---\n# Triage\n",
+		stripSkillFrontmatter: fakeStripFrontmatter,
+		createReceipt: () => "autonomy-receipt",
+		startFreshStage: async (request: { skill: { name: string; args: string } }) => {
+			started.push(request.skill);
+			return { ok: true, code: "started" } as never;
+		},
+	} as never);
+	const context = { cwd: "/workspace/skills", sessionManager: { getSessionId: () => "origin" } };
+
+	const invalid = await controller.beginIssueTriage({ issueNumbers: [12], autonomy: "A4" }, context as never);
+	assert.deepEqual(invalid, { ok: false, code: "invalid-autonomy", message: "--autonomy A4: no soportado todavía (v1 honra A1–A3)" });
+	assert.equal(sent.length, 0, "un nivel inválido no materializa nada");
+
+	const queued = await controller.beginIssueTriage({ issueNumbers: [12, 13], autonomy: "plan-approved" }, context as never);
+	assert.deepEqual(queued, { ok: true, code: "queued" });
+	assert.match(sent[0]!, /#12 #13 --autonomy A2$/, "issue-triage se materializa con el flag");
+
+	const handoff = workflowResolution({ sources: [{ repository: "chichex/chiche", number: 12 }, { repository: "chichex/chiche", number: 13 }], canonicalIssue: { repository: "chichex/chiche", number: 12 } });
+	const result = await tools.get("submit_workflow_resolution")!.execute("terminal", handoff, undefined, undefined, context) as { terminate?: boolean };
+	assert.equal(result.terminate, true);
+	assert.deepEqual(sent.slice(1), ["/__sdd-dispatch autonomy-receipt"]);
+	await commands.get("__sdd-dispatch")!.handler("autonomy-receipt", { ...context, async waitForIdle() {}, ui: { notify() {} } });
+	assert.deepEqual(started, [{ name: "chiche-spec", args: "#12 --autonomy A2" }], "attempt.autonomy llega al despacho del stage elegido");
+});
+
+test("review #114-7: launch_sdd_run acepta autonomy opcional, lo valida con la escala y lo pasa al resolver del run directo", async () => {
+	const tools = new Map<string, { execute: (...args: unknown[]) => Promise<unknown> }>();
+	const resolverCalls: unknown[] = [];
+	const pi = {
+		events: createEventBus(),
+		registerTool(tool: { name: string; execute: (...args: unknown[]) => Promise<unknown> }) { tools.set(tool.name, tool); },
+		registerCommand() {},
+		on() {},
+		getCommands: () => [],
+		getActiveTools: () => ["read", "launch_sdd_run"],
+		setActiveTools() {},
+		sendUserMessage() {},
+	};
+	let receipts = 0;
+	orchestrator.createWorkflowController(pi as never, {
+		createReceipt: () => `direct-receipt-${(receipts += 1)}`,
+		resolveDirectRunRequest: async (_target: string, _cwd: string, _dependencies: unknown, options: unknown) => {
+			resolverCalls.push(options);
+			return { ok: true, request: directRunRequest() };
+		},
+		startDirectRun: async () => ({ ok: true, code: "started" } as never),
+	} as never);
+	const toolContext = { hasUI: true, cwd: "/workspace/skills", sessionManager: { getSessionId: () => "origin-session" }, ui: { async confirm() { return true; } } };
+	await tools.get("launch_sdd_run")!.execute("launch-a3", { target: "#14", autonomy: "unattended" }, undefined, undefined, toolContext);
+	assert.deepEqual(resolverCalls, [{ autonomy: "A3" }]);
+	await tools.get("launch_sdd_run")!.execute("launch-plain", { target: "#14" }, undefined, undefined, toolContext);
+	assert.deepEqual(resolverCalls[1], { autonomy: undefined });
+	await assert.rejects(
+		tools.get("launch_sdd_run")!.execute("launch-a4", { target: "#14", autonomy: "A4" }, undefined, undefined, toolContext),
+		/--autonomy A4: no soportado todavía \(v1 honra A1–A3\)/,
+	);
+	assert.equal(resolverCalls.length, 2, "un nivel inválido no llega al resolver");
 });

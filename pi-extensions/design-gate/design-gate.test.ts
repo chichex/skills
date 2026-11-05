@@ -375,7 +375,7 @@ const SDD_INIT_POLICIES: RegExp[] = [
 	/baseline/,
 	/`Generar design system`[^\n]*solo si hay al menos una superficie `sin sistema`/,
 	/invoca `\/design-system` sin flags/,
-	/nunca con `--assume`/,
+	/nunca con `--autonomy` ≥ A2/,
 ];
 
 test("CA-2: la Fase 1 de chiche-init releva DISEÑO por superficie con el censo común", async () => {
@@ -415,7 +415,7 @@ test("CA-3: la Fase 3.5 ofrece ratchets de diseño y Generar design system; el r
 		const path = `${harness}/chiche-init/SKILL.md`;
 		const markdown = await readRepoFile(path);
 		if (!section(markdown, /^## Fase 3\.5 — Políticas de generación$/).includes("<!-- chiche-init-design-policies:start -->")) problems.push(`${path}: los gates de diseño no están en la Fase 3.5`);
-		if (!section(markdown, /^## Reporte$/).includes("- design-system: <referenciado|generado|no existe (ofrecido)|con sistema (no ofrecido)|--assume: no ofrecido|sin superficies UI>")) problems.push(`${path}: el reporte no tiene la línea design-system`);
+		if (!section(markdown, /^## Reporte$/).includes("- design-system: <referenciado|generado|no existe (ofrecido)|con sistema (no ofrecido)|--autonomy ≥ A2: no ofrecido|sin superficies UI>")) problems.push(`${path}: el reporte no tiene la línea design-system`);
 	}
 	assert.deepEqual(problems, []);
 });
@@ -685,14 +685,14 @@ test("CA-16: next.md no repite las reglas de web en celular que ya trae react.md
 test("CA-17: el contrato fecha los conteos nuevos y cita la corrida con Pi 0.85.1", async () => {
 	const contract = await readRepoFile(".chiche/project.md");
 	const commands = section(contract, /^## Comandos$/);
-	// Pi Package, frontmatter y drift se re-verificaron el 2026-11-02 con la capa 3
-	// del renombre a chiche (migración a .chiche/); la suite, el 2026-11-03 con el
-	// alias chichex-skills del marketplace (PR #110).
+	// Pi Package se re-verificó el 2026-11-02 con la capa 3 del renombre a chiche
+	// (migración a .chiche/); la suite, el lint de frontmatter y el drift, el
+	// 2026-11-05 con el dial de autonomía (issue #102).
 	const verifiedOn: Record<string, string> = {
 		"gate focalizado de Pi Package": "2026-11-02",
-		"tests de extensiones": "2026-11-03",
-		"lint de frontmatter": "2026-11-02",
-		"reporte de drift": "2026-11-02",
+		"tests de extensiones": "2026-11-05",
+		"lint de frontmatter": "2026-11-05",
+		"reporte de drift": "2026-11-05",
 	};
 	for (const [row, date] of Object.entries(verifiedOn)) {
 		assert.match(commands, new RegExp(`^\\| ${escapeRegExp(row)} \\|[^|]*\\|[^|]*\\| verificado ${date} \\|`, "m"), `${row}: conteo nuevo con fecha nueva`);

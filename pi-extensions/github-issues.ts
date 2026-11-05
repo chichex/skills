@@ -9,6 +9,7 @@ import type { IssueListItem } from "./github-issue-selector";
 import { issueTriageFailureMessage } from "./github-consumer-logic.ts";
 import { selectManyMenu, selectMenu, type MenuItem } from "./lib/menu";
 import { listArtifacts, resolveArtifactDirs } from "./lib/chiche-paths.ts";
+import { type AutonomyCode, parseIssuesCommandArgs } from "./workflow-orchestrator/autonomy.ts";
 import { requestIssueTriage } from "./workflow-orchestrator/controller.ts";
 import { inspectMarkdownArtifact, type ArtifactRef } from "./workflow-resolution/index.ts";
 
@@ -364,10 +365,10 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 		});
 	}
 
-	async function queueIssueTriage(issues: IssueListItem[], ctx: ExtensionContext): Promise<boolean> {
+	async function queueIssueTriage(issues: IssueListItem[], ctx: ExtensionContext, autonomy?: AutonomyCode): Promise<boolean> {
 		const result = await requestIssueTriage(
 			pi,
-			{ issueNumbers: issues.map((issue) => issue.number) },
+			{ issueNumbers: issues.map((issue) => issue.number), autonomy },
 			ctx,
 		);
 		if (!result.ok) {
@@ -447,7 +448,7 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 		return true;
 	}
 
-	async function viewIssues(ctx: ExtensionContext): Promise<void> {
+	async function viewIssues(ctx: ExtensionContext, autonomy?: AutonomyCode): Promise<void> {
 		let selectedNumbers: number[] = [];
 
 		while (true) {
@@ -469,7 +470,7 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 			const action = await showSelectionActions(ctx, selectedIssues);
 			if (action === "back") continue;
 			if (action === "analyze") {
-				if (await queueIssueTriage(selectedIssues, ctx)) return;
+				if (await queueIssueTriage(selectedIssues, ctx, autonomy)) return;
 				continue;
 			}
 			if (await mutateIssues(action, selectedIssues, ctx)) selectedNumbers = [];
@@ -477,16 +478,23 @@ export default function githubIssuesExtension(pi: ExtensionAPI): void {
 	}
 
 	pi.registerCommand("issues", {
-		description: "Seleccionar y administrar GitHub Issues; Analizar enruta a grill, spec o rechazo",
-		handler: async (_args, ctx) => {
+		description: "Seleccionar y administrar GitHub Issues; Analizar enruta a grill, spec o rechazo; acepta --autonomy <level>",
+		handler: async (args, ctx) => {
 			if (ctx.mode !== "tui") {
 				ctx.ui.notify("El administrador de issues requiere modo TUI", "error");
+				return;
+			}
+			// Issue #102, CA-9: el único flag de /issues es --autonomy <level>; se
+			// propaga a issue-triage y, al despachar, al skill del stage elegido.
+			const parsedArgs = parseIssuesCommandArgs(args ?? "");
+			if (!parsedArgs.ok) {
+				ctx.ui.notify(parsedArgs.message, "error");
 				return;
 			}
 
 			await ctx.waitForIdle();
 			try {
-				await viewIssues(ctx);
+				await viewIssues(ctx, parsedArgs.autonomy);
 			} catch (error) {
 				ctx.ui.notify(`GitHub Issues: ${errorMessage(error)}`, "error");
 			}

@@ -24,13 +24,92 @@ Un repo inicializado antes del renombre guarda el contrato en `.sdd/project.md` 
 ## Argumentos
 
 ```text
-/chiche-init [pistas libres] [--assume] [--no-verify] [--update] [--no-import]
+/chiche-init [pistas libres] [--no-verify] [--update] [--no-import] [--autonomy <level>]
 ```
 
-- `--assume` — cero preguntas: los gaps se resuelven con la assumption más conservadora y quedan marcados `[NEEDS-INPUT]` en el doc. Para correr desatendido.
 - `--no-verify` — no ejecutar comandos: documenta lo detectado como `no probado`. Útil en repos con builds carísimos.
 - `--update` — refresco de un `.chiche/project.md` existente: re-explora, re-verifica, pero PRESERVA la sección `## Decisiones humanas` y las respuestas previas. Además ofrece las capacidades que el skill ganó desde que el contrato se generó (ver "## Upgrade de contrato").
 - `--no-import` — no tocar `CLAUDE.md`.
+- `--autonomy <level>` — nivel de autonomía de esta corrida (este skill no tiene fila en `## Autonomy`: flag o `supervised`). Con `plan-approved` o `unattended` corre sin preguntar: cada duda se asume conservadora y queda `[NEEDS-INPUT]`, los niveles del contrato quedan `supervised` y la stop list en prosa no se migra. Ver «Niveles de autonomía» y «Nivel efectivo».
+
+<!-- autonomy-levels:start -->
+**Niveles de autonomía.** La escala es `manual (A0)`, `supervised (A1)`, `plan-approved (A2)`, `unattended (A3)`, `auto-land (A4)` y `auto-deploy (A5)`. `--autonomy <level>` acepta el código o la palabra, sin distinguir mayúsculas (`A2`, `a2` y `plan-approved` son el mismo nivel). Esta versión honra A1 a A3: con A0, A4 o A5 el skill aborta antes de cualquier mutación con el diagnóstico literal `--autonomy <nivel>: no soportado todavía (v1 honra A1–A3)`, y cualquier otro token aborta listando los valores válidos. `--autonomy` sin valor (no hay token siguiente, o el siguiente empieza con `--`) aborta listando los valores válidos: un token que empieza con `--` nunca se lee como valor. Sin flag rige lo que resuelve «Nivel efectivo»; el default es `supervised (A1)`.
+<!-- autonomy-levels:end -->
+
+<!-- autonomy-resolve:start -->
+**Nivel efectivo.** El nivel efectivo es el del flag `--autonomy` si vino; si no, la fila del `Stage` en `## Autonomy` del contrato leído del branch default, nunca del branch de trabajo: un PR no puede subirse la autonomía a sí mismo. `grill` lee la fila `grill`, `chiche-spec` la fila `spec`, `chiche-run` la fila `run` y `chiche-land` la fila `land` (que solo acepta `supervised`: otro nivel en esa fila cae a `supervised (A1)` con el aviso `fila land solo acepta supervised`); `chiche-init`, `issue-triage` y `design-system` no tienen fila: flag o `supervised (A1)`. La lectura valida el flag primero y, si existe el remote `origin`, hace `git fetch` best-effort, resuelve el branch default (`git symbolic-ref refs/remotes/origin/HEAD`, descartado si apunta a una ref que ya no existe, y si falla o quedó colgado, `git ls-remote --symref origin HEAD`) y lee `git show origin/<default>:.chiche/project.md`, con fallback a `.sdd/project.md` para un repo que mantuvo `.sdd/`; con `origin` y un default que no se resuelve rige `supervised (A1)`, también con `--autonomy`, con el aviso `origin sin branch default resoluble`, sin leer el working tree; solo sin `origin` lee el working tree en ese mismo orden y avisa `nivel leído del working tree: sin remote`. Si el contrato no tiene `## Autonomy`, o la fila está `unrehearsed` o `FAILED`, rige `supervised (A1)` con aviso. Si el contrato no tiene `## Autonomy` pero sí `## Limites`, esa prosa sigue rigiendo como restricción, el nivel es `supervised (A1)` y el aviso es literal: `contrato sin ## Autonomy: rigen sus ## Limites; corré chiche-init --update`. La stop list (segunda tabla de `## Autonomy`, con el header `| Action | Pattern | Reason |` y hasta la primera línea que no empieza con `|`) se lee de la misma fuente y frena en todo nivel (las únicas excepciones son la de merge de `chiche-land`, que la invocación y el plan confirmado autorizan, y el comando exacto del ensayo de `chiche-init`, que la pregunta de costo autoriza): antes de correr un comando o tocar una ruta que matchee un `Pattern`, el skill frena y lo reporta citando la fila. Un `## Autonomy` sin stop list legible (sin ese header o con 0 filas) avisa `## Autonomy sin stop list legible` y el nivel que sale del contrato cae a `supervised (A1)`; con `--autonomy` el flag sigue mandando y solo se avisa. La traza imprime `nivel efectivo: <nombre> (<código>), leído de <fuente>`. Lo imprime este comando, con `<stage>` y `<flag>` reemplazados (`<flag>` vacío sin el flag; `<stage>` es `none` en los skills sin fila), sin parámetros posicionales ni variables de argumentos del harness, que se sustituyen al cargar el skill con argumentos (`<flag>` se sustituye solo si cumple `^[A-Za-z0-9-]+$`; si no, el skill aborta como valor inválido sin correr el comando):
+
+```bash
+(
+  stage='<stage>' flag='<flag>'
+  export LC_ALL=C
+  pick=$(printf %s "$flag" | tr A-Z a-z); aviso=''; stop=''; contract=''; legible=1
+  case $pick in
+    ''|a1|supervised|a2|plan-approved|a3|unattended) ;;
+    a0|manual|a4|auto-land|a5|auto-deploy) echo "--autonomy $flag: no soportado todavía (v1 honra A1–A3)" >&2; exit 2 ;;
+    *) echo "--autonomy $flag: valor inválido; válidos: supervised (A1), plan-approved (A2), unattended (A3)" >&2; exit 2 ;;
+  esac
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || root=.
+  if git remote get-url origin >/dev/null 2>&1; then
+    git fetch -q origin >/dev/null 2>&1 || aviso="$aviso aviso: fetch de origin falló, se usa la ref local;"
+    ref=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)
+    if [ -n "$ref" ] && ! git rev-parse -q --verify "refs/remotes/$ref" >/dev/null 2>&1; then ref=''; fi
+    if [ -z "$ref" ]; then
+      def=$(git ls-remote --symref origin HEAD 2>/dev/null | sed -n 's|^ref: refs/heads/\(.*\)[[:space:]]HEAD$|\1|p' | head -n 1)
+      if [ -n "$def" ] && git rev-parse -q --verify "refs/remotes/origin/$def" >/dev/null 2>&1; then ref="origin/$def"; fi
+    fi
+    if [ -n "$ref" ]; then
+      contract=$(git show "$ref:.chiche/project.md" 2>/dev/null) || contract=$(git show "$ref:.sdd/project.md" 2>/dev/null) || contract=''
+      fuente=$ref
+    else
+      fuente='origin (default sin resolver)'; aviso="$aviso aviso: origin sin branch default resoluble: rige supervised (A1) y no se lee el working tree;"
+    fi
+  else
+    contract=$(cat "$root/.chiche/project.md" 2>/dev/null) || contract=$(cat "$root/.sdd/project.md" 2>/dev/null) || contract=''
+    fuente='working tree'; aviso="$aviso aviso: nivel leído del working tree: sin remote;"
+  fi
+  contract=$(printf '%s\n' "$contract" | tr -d '\r')
+  section=$(printf '%s\n' "$contract" | sed -n '/^## Autonomy$/,$p' | sed -n '2,${/^## /q;p;}')
+  if [ -z "$section" ]; then
+    if printf '%s\n' "$contract" | grep -q '^## Limites$'; then aviso="$aviso aviso: contrato sin ## Autonomy: rigen sus ## Limites; corré chiche-init --update;"
+    elif [ -z "$contract" ] && [ -n "$flag" ] && [ "$fuente" != 'origin (default sin resolver)' ]; then aviso="$aviso aviso: sin contrato: rige --autonomy, sin stop list;"
+    elif [ -z "$contract" ]; then aviso="$aviso aviso: sin contrato: rige supervised (A1);"
+    else aviso="$aviso aviso: contrato sin ## Autonomy: rige supervised (A1); corré chiche-init --update;"; fi
+    [ -n "$pick" ] || pick=a1
+  else
+    stop=$(printf '%s\n' "$section" | sed -n '/^| *Action *| *Pattern *| *Reason *|/,$p' | sed -n '3,$p' | sed -n '/^|/!q;p')
+    if [ -z "$stop" ]; then legible=0; aviso="$aviso aviso: ## Autonomy sin stop list legible (sin el header | Action | Pattern | Reason | o sin filas);"; fi
+    if [ -z "$pick" ] && [ "$stage" = none ]; then pick=a1
+    elif [ -z "$pick" ]; then
+      row=$(printf '%s\n' "$section" | grep -E "^\|[[:space:]]*$stage[[:space:]]*\|" | head -n 1)
+      if [ -z "$row" ]; then pick=a1; aviso="$aviso aviso: ## Autonomy sin fila $stage: rige supervised (A1);"
+      else
+        pick=$(printf '%s\n' "$row" | cut -d'|' -f3 | sed 's/^[[:space:]]*//; s/[[:space:]].*$//' | tr A-Z a-z)
+        reh=$(printf '%s\n' "$row" | cut -d'|' -f5 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        case $pick in a1|supervised) pick=a1 ;; a2|plan-approved|a3|unattended) case $reh in rehearsed\ *) ;; *) aviso="$aviso aviso: fila $stage sin ensayo ($reh): rige supervised (A1);"; pick=a1 ;; esac ;; *) aviso="$aviso aviso: fila $stage con nivel desconocido ($pick): rige supervised (A1);"; pick=a1 ;; esac
+      fi
+      if [ "$stage" = land ] && [ "$pick" != a1 ]; then aviso="$aviso aviso: fila land solo acepta supervised: rige supervised (A1);"; pick=a1; fi
+      if [ "$legible" -eq 0 ] && [ "$pick" != a1 ]; then aviso="$aviso aviso: sin stop list legible el nivel del contrato cae a supervised (A1);"; pick=a1; fi
+    fi
+  fi
+  if [ "$fuente" = 'origin (default sin resolver)' ]; then pick=a1; src=$fuente; elif [ -n "$flag" ]; then src='--autonomy'; else src=$fuente; fi
+  case $pick in
+    a1|supervised) nivel='supervised (A1)' ;;
+    a2|plan-approved) nivel='plan-approved (A2)' ;;
+    a3|unattended) nivel='unattended (A3)' ;;
+  esac
+  [ -n "$aviso" ] && printf '%s\n' "${aviso# }" | sed 's/;$//' >&2
+  echo "nivel efectivo: $nivel, leído de $src"
+  [ -z "$stop" ] || printf '%s\n' "$stop" | while IFS= read -r fila; do
+    pat=$(printf '%s\n' "$fila" | cut -d'|' -f3 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    if [ -z "$pat" ]; then printf 'aviso: fila de la stop list sin Pattern, ignorada: %s\n' "$fila" >&2; else printf 'parada: %s\n' "$fila"; fi
+  done
+)
+```
+
+El comando termina con exit 2 ante un nivel no soportado o inválido, antes de tocar la red, y el skill aborta ahí; con exit 0 imprime la traza y una línea `parada:` por cada fila de la stop list, e ignora con aviso una fila sin `Pattern`.
+<!-- autonomy-resolve:end -->
+
 
 ## Fase 0 — Lanzador (solo con `/chiche-init` pelado)
 
@@ -53,16 +132,16 @@ commits, politicas de tu tecnologia) que /chiche-run aplica como gates duros.
                             caros o lentos.                          (--no-verify)
   • Sin preguntar nada    — ejecuta y verifica, pero no te interrumpe: cada duda
                             se asume conservadora y queda [NEEDS-INPUT] en el doc
-                            para revisar despues.                    (--assume)
+                            para revisar despues.                    (--autonomy A2)
 
-Atajo: /chiche-init <pistas> [--assume] [--no-verify] saltea este menu.
+Atajo: /chiche-init <pistas> [--no-verify] [--autonomy <level>] saltea este menu.
 ```
 
 Luego usar `AskUserQuestion` — una pregunta, "¿Ejecuto los comandos para verificarlos, y te pregunto las dudas?":
 
 1. `Verificar y preguntar (Recomendado)` — ejecuta test/build para probar que funcionan; pregunta solo los gaps que el código no responde.
 2. `Sin ejecutar nada` — solo explora y documenta; los comandos quedan `no probado` (`--no-verify`).
-3. `Sin preguntar nada` — corre desatendido; las dudas se asumen conservadoras y quedan `[NEEDS-INPUT]` (`--assume`).
+3. `Sin preguntar nada` — corre desatendido; las dudas se asumen conservadoras y quedan `[NEEDS-INPUT]` (`--autonomy A2`).
 
 ## Fase 1 — Exploración
 
@@ -125,6 +204,7 @@ La razón de ser del skill: un contrato con comandos no probados vale poco, porq
 2. **Comandos finitos** (test, build, lint, typecheck, coverage si el repo tiene tooling): correrlos con timeout de 120s c/u. Registrar: `verificado <fecha>` + duración + resumen (ej. "84 tests pasan"), o `FALLA` + el error resumido (una falla NO aborta el skill: se documenta y sigue — saber que el build está roto es exactamente el tipo de cosa que el contrato debe decir). Para coverage, registrar además el **% actual en las Notas: es el baseline** que la Fase 3.5 usa para anclar el gate.
 3. **Procesos largos** (dev server, app): arrancar en background, esperar la señal de vida (puerto abierto, línea de log), registrar cómo se reconoce el "está arriba" (ej. `curl -sf localhost:5173` responde), y MATARLO. Si no levanta en 60s, anotar `no levanta: <motivo>`.
 4. Lo que exceda timeout o requiera credenciales ausentes: `no probado (<motivo>)`. Nunca inventar el estado.
+5. **Recetas de deploy**: cada receta de deploy encontrada es una fila `deploy <ambiente>` de `## Comandos`, con el mismo `verificado | FALLA | no probado` que cualquier comando. Como muta un ambiente y suele estar en la stop list, se ejecuta solo si el humano lo confirma en esta fase; si no, queda `no probado (deploy: sin confirmación humana)`. Una fila de ambiente en `## Autonomy` cuyo `deploy <ambiente>` no está `verificado` queda `unrehearsed`.
 
 ## Fase 3 — Gaps: preguntar solo lo no inferible
 
@@ -132,7 +212,11 @@ Listar las preguntas que el código NO respondió. Típicas: ¿cuál ambiente us
 
 - Preguntar con `AskUserQuestion`, de a UNA, opciones concretas derivadas de la exploración, la recomendada primera y marcada `(Recomendado)`. Máximo 5 preguntas; si hay más gaps, priorizar por impacto en autonomía y el resto va a `## Gaps`.
 - Lo ya claro NO se pregunta: preguntar lo inferible erosiona la confianza en el skill.
-- Con `--assume` (o si el usuario no responde): assumption más conservadora (ej. "solo local, nunca staging"), documentada en el doc con `[NEEDS-INPUT]`.
+- Con `--autonomy` ≥ A2 (o si el usuario no responde): assumption más conservadora (ej. "solo local, nunca staging"), documentada en el doc con `[NEEDS-INPUT]`.
+
+**Nivel de autonomía por etapa.** Después de los gaps, preguntar el nivel con `AskUserQuestion`, una pregunta por fila — "¿Hasta dónde llega el agente solo en <stage>?", con `supervised (Recomendado)` primera y después `plan-approved` y `unattended` —: filas fijas `grill`, `spec`, `run`, `review` y `land`, más una por ambiente de `## Ambientes`. `land`, `review` y los ambientes solo aceptan `supervised` en esta versión: no se preguntan, se escriben. Cada respuesta va a la tabla de niveles de `## Autonomy` con `Since` de hoy; `Rehearsed` queda `—` en una fila `supervised`; toda fila ≥ A2 de `grill`, `spec` y `run` se ensaya («Ensayo de niveles») y queda lo que imprime el host (`rehearsed <fecha>`, `FAILED (<n> preguntas)`, `FAILED (stop list: <Pattern>)` o `unrehearsed`), porque sin ensayo rige `supervised`; con `--no-verify` queda `unrehearsed` en todas. Con `--autonomy` ≥ A2 no se pregunta: asume `supervised` en todas las filas y marca `[NEEDS-INPUT]`.
+
+**Stop list.** La pregunta de qué requiere confirmación humana además de los defaults se responde como filas de la stop list de `## Autonomy`: por cada respuesta, proponer la fila con `Action`, el `Pattern` inferido (regex POSIX extendida sobre el comando o la ruta, sin `|`) y `Reason`, y confirmarla con `AskUserQuestion`; una respuesta sin patrón honesto se ofrece como regla fechada para `## Decisiones humanas`, nunca como fila con `Pattern` vacío. Los defaults (deploy, migraciones sobre datos compartidos, push a `main`, force-push, merge de PRs y servicios pagos) se escriben sin preguntar, con el patrón que el repo sugiere. En `--update` sobre un contrato con límites en prosa, la fila `Stop list` de «Upgrade de contrato» propone una fila por bullet con este mismo mecanismo. Corre después de «Migración a .chiche/» y funciona igual sobre un repo que eligió `Mantener .sdd/`: lee y escribe el contrato donde esté.
 
 ## Fase 3.5 — Políticas de generación
 
@@ -154,7 +238,7 @@ Reglas:
 - Política no medible = no ofrecida. Coverage sin comando de coverage verificado no aparece en el menú: se anota en `## Gaps` ("coverage no activable: no hay tooling de coverage verificado") y se ofrece activarla cuando el tooling exista.
 - **Baseline primero (coverage)**: el umbral se elige mirando el % actual medido en Fase 2, nunca en el aire. Ofrecer: `No bajar del baseline (X%) (Recomendado)` — ratchet, cumplible desde el día uno — / un % fijo que el repo YA cumple / custom. Un umbral por encima del baseline nace en FALLA (pedir 90% con un repo en 10% = todos los PRs en draft para siempre): decirlo con los dos números sobre la mesa y aceptarlo SOLO si el usuario lo confirma viendo el baseline; queda anotado `aspiracional` junto al baseline.
 - **Políticas de la tecnología (custom)**: el usuario describe la preferencia en texto libre ("seguir la guía de estilo de Uber en Go", "max 300 líneas por archivo", "prohibir panic() fuera de main"). Por cada una, proponer el gate MÁS BARATO que la observe — regla de un linter ya configurado > config nueva de un linter que el repo ya tiene > script corto del contrato (ej. `wc -l` sobre los archivos del diff) > grep — y VERIFICARLO ejecutándolo antes de escribirlo, como cualquier comando. Sin gate medible, ofrecer escribirla como **`guia`**: `/chiche-run` la sigue al GENERAR el código y el reviewer la juzga en el PR — una `guia` nunca se reporta verificada ni gatea. Si un linter la haría medible pero falta configurarlo, anotarlo en `## Gaps` ("sería gate si golangci-lint tuviera config").
-- **Coding policies del proyecto**: si existe `.chiche/coding-policies.md` (generado por `/coding-policies`) — o si la fila `coding-policies` ya presente en `## Politicas de generacion` apunta a un archivo existente, porque el skill acepta `--out` —, escribir sin preguntar la fila `guia` `| coding-policies | <ruta> (<stacks del marker>) | guia — sin gate: /chiche-run la sigue al generar, la juzga el reviewer |` — también con `--assume`, y en `--update` aunque se elija `Mantener` (si la fila ya existe se actualiza en su lugar): el archivo ya es una decisión humana en el repo y la fila solo la refleja. Si no existe, sumar al menú la opción `Generar coding policies` que, al terminar el contrato, invoca `/coding-policies`; nunca con `--assume`: generar el archivo es una elección humana.
+- **Coding policies del proyecto**: si existe `.chiche/coding-policies.md` (generado por `/coding-policies`) — o si la fila `coding-policies` ya presente en `## Politicas de generacion` apunta a un archivo existente, porque el skill acepta `--out` —, escribir sin preguntar la fila `guia` `| coding-policies | <ruta> (<stacks del marker>) | guia — sin gate: /chiche-run la sigue al generar, la juzga el reviewer |` — también con `--autonomy` ≥ A2, y en `--update` aunque se elija `Mantener` (si la fila ya existe se actualiza en su lugar): el archivo ya es una decisión humana en el repo y la fila solo la refleja. Si no existe, sumar al menú la opción `Generar coding policies` que, al terminar el contrato, invoca `/coding-policies`; nunca con `--autonomy` ≥ A2: generar el archivo es una elección humana.
 <!-- chiche-init-design-policies:start -->
 - **Gates de diseño**: solo para superficies `con sistema` con tokens detectados, sumar al menú gates ratchet de diseño medibles con grep y baseline. `git grep` mira solo archivos trackeados (sin `node_modules` ni builds), y `:!` excluye tanto archivos como directorios. `<raíces>` son los globs de código de la superficie (ej. `'apps/web/src/**/*.tsx'`), `<tokens>` el archivo o directorio de tokens y `<ui kit>` el de los componentes base:
   - hex fuera del directorio de tokens: `git grep -IhoE '#([0-9a-fA-F]{3}){1,2}' -- <raíces> ':!<tokens>' | wc -l`;
@@ -162,11 +246,30 @@ Reglas:
   - componentes duplicados por nombre: `git grep -hoE '(function|const|class) [A-Z][A-Za-z0-9]+' -- <raíces> ':!<ui kit>' | sort | uniq -d | wc -l`.
 
   Cada gate se verifica ejecutándolo como cualquier comando, y su conteo actual es el baseline: la política queda `no superar el baseline (<N>, <fecha>)`. Sin tokens detectados no se ofrecen: no hay contra qué medir.
-- **Design system**: sumar al menú la opción `Generar design system` solo si hay al menos una superficie `sin sistema`, también en `--update` aunque se elija `Mantener`; al terminar el contrato invoca `/design-system` sin flags, nunca con `--assume`: la dirección visual es una elección humana. Con todas las superficies `con sistema` y ningún `DESIGN_SYSTEM.md` que referenciar, el reporte dice `con sistema (no ofrecido)`.
+- **Design system**: sumar al menú la opción `Generar design system` solo si hay al menos una superficie `sin sistema`, también en `--update` aunque se elija `Mantener`; al terminar el contrato invoca `/design-system` sin flags, nunca con `--autonomy` ≥ A2: la dirección visual es una elección humana. Con todas las superficies `con sistema` y ningún `DESIGN_SYSTEM.md` que referenciar, el reporte dice `con sistema (no ofrecido)`.
 <!-- chiche-init-design-policies:end -->
 - Pistas de los argumentos que fijen políticas ("coverage 80", "PRs de max 300 líneas") cuentan como elección del usuario: se activan sin preguntar (verificando igual que el gate sea medible). Única excepción: un umbral de coverage por encima del baseline se confirma igual — regla del baseline.
-- Con `--assume`: ninguna política se activa — son elecciones humanas, no se asumen.
+- Con `--autonomy` ≥ A2: ninguna política se activa — son elecciones humanas, no se asumen.
 - Con `--update` y políticas ya activas: preguntar `Mantener (Recomendado)` / `Revisar` — mantener preserva la sección verbatim; revisar re-abre el menú con los valores actuales como default. Si el menú ganó políticas que el contrato no conocía (ej. las de tecnología), decirlo en esa misma pregunta.
+
+## Ensayo de niveles (solo en Claude Code; saltear con `--no-verify`)
+
+Un nivel `plan-approved` o `unattended` en las filas `grill`, `spec` y `run` de `## Autonomy` vale solo si pasó la prueba: antes de escribirlo, este skill ensaya que el agente cumple. Se saltea con `--no-verify` (las filas quedan `unrehearsed`). `review`, `land` y los ambientes no se ensayan: solo aceptan `supervised`.
+
+1. **Proyecto de juguete.** `rehearsal-host.mjs` (vive en el directorio base de este skill, el que Claude Code anuncia al cargarlo) genera un CLI mínimo con `node --test`, un contrato con `## Autonomy` y una spec chica en un directorio temporal fuera del repo, y lo borra al terminar.
+2. **Hijo headless.** Lanza `claude -p --input-format stream-json --output-format stream-json --permission-prompt-tool stdio --max-budget-usd <tope>` sobre ese proyecto, corriendo `/grill`, `/chiche-spec` o `/chiche-run --no-pr` con `--autonomy <nivel>` (más `--inline` en A3) para el pedido fijo `agregar un flag --json que imprima el resultado como JSON`.
+3. **Conteo.** El host recibe cada pregunta como `control_request` `can_use_tool` de `AskUserQuestion`, la cuenta y responde la opción recomendada. `unattended` (A3) exige 0 y `plan-approved` (A2) exige hasta 3; al pasar el tope corta el hijo.
+4. **Resultado.** Escribir en la columna `Rehearsed` lo que el host imprime: `rehearsed <fecha>` si pasó, `FAILED (<n> preguntas)` o `FAILED (stop list: <Pattern>)` si no. Si el `init` del stream no lista `AskUserQuestion` o el hijo no termina, escribe `unrehearsed`, nunca `rehearsed`. Una fila `FAILED` o `unrehearsed` rige como `supervised` para quien la lee («Nivel efectivo»).
+
+**Costo y confirmación.** Cada ensayo es una corrida real y paga. Antes de lanzar el host, mostrar el costo estimado (hasta `--budget` USD por fila, 1 USD por default, y hasta `--timeout` segundos cada una) y preguntar con `AskUserQuestion`: `Ensayar ahora (Recomendado)` / `Dejar unrehearsed`. Confirmar `Ensayar ahora` autoriza ese comando del host y ningún otro. Con `--autonomy` ≥ A2 no se ensaya: las filas quedan `unrehearsed`. La fila `Ensayo de niveles` de «Upgrade de contrato» entra por acá sobre un `## Autonomy` existente y reescribe solo su columna `Rehearsed`.
+
+Por cada fila a ensayar, un comando, corrido con la tool Bash en `run_in_background` (un ensayo de `run` supera los 600 s que la tool admite en primer plano; el host atrapa `SIGTERM` y `SIGINT`, corta al hijo, borra el juguete e imprime `unrehearsed`):
+
+```text
+node <directorio base de este skill>/rehearsal-host.mjs --stage <grill|spec|run> --level <A2|A3> [--budget <usd>]
+```
+
+El host imprime el veredicto por stdout y termina con exit 0 (`rehearsed`), 1 (`FAILED`) o 2 (`unrehearsed`); los detalles (fixture, preguntas, costo) van por stderr. Un `FAILED` no aborta el skill: la fila queda así y el reporte lo dice.
 
 ## Upgrade de contrato (corridas sobre contrato existente)
 
@@ -180,10 +283,13 @@ El skill evoluciona; los contratos generados por versiones anteriores no. En TOD
 | Capacidad de Git/PR | `## Ambientes` no declara branch default, remote o estado de `gh` |
 | Señal de vida de procesos largos | comandos `run` sin el "cómo se reconoce que está arriba" |
 | Coding policies | existe `.chiche/coding-policies.md` pero `## Politicas de generacion` no tiene la fila `coding-policies` — no entra al menú: la Fase 3.5 la escribe sin preguntar y el reporte la lista como `referenciado` |
-| Diseño | no existe la sección `## Diseño` — no entra al menú: el censo de la Fase 1 corre siempre y la Fase 4 la escribe sin preguntar, también con `--assume`; el reporte la lista como mejora aplicada |
+| Diseño | no existe la sección `## Diseño` — no entra al menú: el censo de la Fase 1 corre siempre y la Fase 4 la escribe sin preguntar, también con `--autonomy` ≥ A2; el reporte la lista como mejora aplicada |
 | Directorio .chiche/ | existe .sdd/project.md, trackeado o no — no entra al menú: lo ofrece la pregunta propia de "## Migración a .chiche/", antes que todo lo demás |
+| Autonomy | no existe la sección `## Autonomy` — la Fase 3 pregunta el nivel por fila y la Fase 4 la escribe; con un `## Limites` presente, `## Autonomy` se escribe solo junto con la migración de `Stop list` (elegir `Autonomy` arrastra `Stop list`); con `--autonomy` ≥ A2 no se escribe y queda `mejora disponible` |
+| Stop list | existe `## Limites` en prosa — `--update` propone una fila de la stop list por bullet, con el `Pattern` inferido, y pide confirmación fila por fila; lo que no tiene un patrón honesto se ofrece como regla fechada para `## Decisiones humanas`; `## Limites` se preserva verbatim hasta que se migre, y al escribir `## Autonomy` esa prosa se retira; con `--autonomy` ≥ A2 no migra y queda `mejora disponible` |
+| Ensayo de niveles | hay una fila ≥ A2 de `grill`, `spec` o `run` sin `rehearsed <fecha>` (`unrehearsed` o `FAILED`) — la oferta ensaya esa fila con «Ensayo de niveles» y reescribe solo la columna `Rehearsed`, única excepción al verbatim de `## Autonomy`; con `--autonomy` ≥ A2 queda `mejora disponible` |
 
-Con faltantes: listarlos como texto visible (una línea por capacidad, con qué aporta) y usar `AskUserQuestion` con multiSelect — "El contrato es de una versión anterior del skill; ¿qué mejoras le agrego?". SOLO lo elegido se releva, pregunta y escribe, cada capacidad con el mecanismo de su fase (ej. elegir `Politicas de generacion` se resuelve con el menú de la Fase 3.5); lo no elegido no se anota como gap — es una elección, no una deuda. Con `--assume`: no se agrega ninguna (varias exigen elección humana); quedan en el reporte como `mejoras disponibles`.
+Con faltantes: listarlos como texto visible (una línea por capacidad, con qué aporta) y usar `AskUserQuestion` con multiSelect — "El contrato es de una versión anterior del skill; ¿qué mejoras le agrego?". SOLO lo elegido se releva, pregunta y escribe, cada capacidad con el mecanismo de su fase (ej. elegir `Politicas de generacion` se resuelve con el menú de la Fase 3.5); lo no elegido no se anota como gap — es una elección, no una deuda. Con `--autonomy` ≥ A2: no se agrega ninguna (varias exigen elección humana); quedan en el reporte como `mejoras disponibles`.
 
 **Regla de mantenimiento del skill**: al agregarle una capacidad nueva a este skill, sumar SIEMPRE su fila a esta checklist. Es lo que hace que los contratos viejos se pongan al día preguntando, en vez de quedar silenciosamente desactualizados.
 
@@ -248,7 +354,7 @@ fi
 - La reescritura saltea los symlinks: `CLAUDE.md -> AGENTS.md` queda como link y `AGENTS.md` se reescribe por su propio nombre; un link trackeado bajo `.chiche/` que apunta fuera nunca toca su destino.
 - Si el harness no puede escribir en `<git-common-dir>/chiche/`, el paso del common-dir se saltea con el aviso `chiche-init: no se pudo escribir en <git-common-dir>/chiche` y el resto de la migración sigue: es la misma política que el append del log de eventos.
 - `Mantener .sdd/` no cambia nada: el contrato sigue en `.sdd/project.md`, la corrida lo lee de ahí y la oferta se repite en el próximo `--update`.
-- Con `--assume` no se migra ni se pregunta: el reporte lo lista como `mejora disponible`.
+- Con `--autonomy` ≥ A2 no se migra ni se pregunta: el reporte lo lista como `mejora disponible`.
 - Tras migrar, el resto de la corrida lee y escribe `.chiche/project.md`.
 - Si la corrida migró, el cierre `Commit + PR` queda en `Dejar sin commitear` con el motivo `migración: los renames viven en el checkout principal`: ese cierre copia solo los paths que la corrida escribió y no reproduce los renames de `git mv`. El reporte nombra el commit sugerido para el humano: `git add -u -- .chiche $(ls CLAUDE.md AGENTS.md .gitignore 2>/dev/null) && git commit -m "chore(chiche-init): migracion a .chiche/"` (los `git mv` ya están en el índice; `git add -u` toma las reescrituras de `.chiche/**`, `CLAUDE.md`, `AGENTS.md` y `.gitignore`, también lo que el grupo (a) ya tenía cambiado en esos paths, y nunca agrega archivos sin trackear).
 - El reporte de la migración separa tres grupos con el `git status --porcelain=v1 -z` que `commit-pr-close` ya tomó antes de la primera escritura: (a) los paths que ya tenían cambios antes de migrar, que el humano saca del commit con `git restore --staged -- <ruta>` o commitea aparte; (b) lo que escribió esta corrida: los artefactos reescritos, los imports, `.gitignore` y lo que crearon `coding-policies` o `design-system` encadenados (`.chiche/coding-policies.md`, `DESIGN_SYSTEM.md`), que el commit sugerido no toma y el reporte nombra con `git add -- <ruta>`; (c) lo que `git mv` arrastró a `.chiche/` sin trackear (`git ls-files --others --exclude-standard .chiche`) o ignorado (`git ls-files --others -i --exclude-standard .chiche`), que el commit sugerido tampoco toma y decide el humano.
@@ -279,6 +385,7 @@ Con superficies, una fila por superficie; Estado es `con sistema` o `sin sistema
 | test | pnpm test | . | verificado 2026-07-02 | 12s | 84 tests pasan |
 | build | pnpm build | . | FALLA | 40s | TS2345 en src/x.ts — ver Gaps |
 | run | pnpm dev | . | verificado 2026-07-02 | — | listo cuando responde curl -sf localhost:5173 |
+| deploy staging | ./deploy.sh staging | . | no probado (deploy: sin confirmacion humana) | — | receta; muta staging, se ejecuta solo con confirmacion |
 
 ## Ambientes
 <cuales hay, CUAL usar para probar, env vars: resueltas vs faltantes y de donde salen.
@@ -290,9 +397,35 @@ en commit local". /chiche-run lee estas lineas antes de ramificar o pushear.>
 <la escalera para ESTE repo, en orden de confianza creciente, con el como concreto de
 cada escalon. Y explicitamente que NO se puede verificar sin humano, con el motivo.>
 
-## Limites
-<que NO hacer sin confirmacion humana. Defaults siempre presentes: deploy, migraciones
-sobre datos compartidos, git push a main, tocar servicios pagos. Mas lo que sumo el usuario.>
+## Autonomy
+<nivel por etapa y paradas obligatorias (Fase 3; la forma exacta, abajo en "## Autonomy"). Niveles:
+supervised (A1), plan-approved (A2), unattended (A3); land, review y ambientes solo supervised.
+Rehearsed: rehearsed <fecha> solo si el ensayo paso; sin ensayo, unrehearsed. Una fila supervised lleva —;
+una fila de ambiente cuyo deploy <ambiente> no esta verificado queda unrehearsed.
+| Stage | Level | Since | Rehearsed |
+|---|---|---|---|
+| grill | supervised | 2026-07-02 | — |
+| spec | plan-approved | 2026-07-02 | unrehearsed |
+| run | supervised | 2026-07-02 | — |
+| review | supervised | 2026-07-02 | — |
+| land | supervised | 2026-07-02 | — |
+| staging | supervised | 2026-07-02 | unrehearsed |
+
+Stop list: lo que el agente nunca hace solo, en ningun nivel. Pattern es una regex POSIX extendida
+(grep -E) sobre el comando completo o la ruta tocada, una por fila y sin "|". Defaults siempre
+presentes: deploy, migraciones sobre datos compartidos, push a main, force-push, merge y servicios
+pagos. Mas lo que sumo el usuario.
+| Action | Pattern | Reason |
+|---|---|---|
+| ./deploy.sh staging | deploy\.sh | sin confirmacion humana: frena la receta deploy staging de ## Comandos |
+| prisma migrate deploy | prisma migrate deploy | datos compartidos |
+| git push origin main | git push .*[ :/]main([^-[:alnum:]_/.].*)?$ | push a main solo via PR |
+| git push --force | git push .*--force | nunca |
+| git push -f | git push( .*)? -[a-zA-Z]*f | nunca: la forma corta del force |
+| git push origin +main | git push .* \+[^ ]+ | nunca: refspec con force |
+| gh pr merge | gh pr merge | solo chiche-land, con el plan confirmado |
+| gh stack merge | gh stack merge | solo chiche-land, con el plan confirmado |
+| <comando que consume cuota> | <patron> | sin confirmacion humana |>
 
 ## Politicas de generacion
 <gates duros que /chiche-run verifica antes de abrir el PR. Elegidas por el usuario en
@@ -313,7 +446,43 @@ con /chiche-init --update." Formato tabla, cada fila con su gate concreto:
 
 La línea `Chiche-Tracking` es el marker canónico de tracking (contrato `docs/chiche-tracking-v2.md`): `version` y `type` son fijos, y `generated-at` lleva la fecha de ESTA corrida en `YYYY-MM-DD`. Mantenerlo como upsert idempotente: exactamente un marker por contrato — en `--update` se actualiza la fecha en la línea existente (o se inserta si el contrato viejo no la tenía), nunca se duplica ni se mueve. El marker de un artefacto existente es `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`: al reescribirlo se reemplaza en su lugar por `Chiche-Tracking: version=2` conservando los demás campos, y nunca se agrega otro al lado. El H1 y los headers de sección quedan intactos.
 
-En `--update`: regenerar todo salvo `## Decisiones humanas` y `## Politicas de generacion` (preservar verbatim — las políticas solo cambian si el usuario eligió `Revisar` en Fase 3.5) y los `[NEEDS-INPUT]` aún sin respuesta (mantenerlos, no duplicarlos).
+<!-- autonomy-contract:start -->
+**`## Autonomy`.** Reemplaza a `## Limites`: dice hasta dónde llega el agente solo en cada etapa y qué no hace nunca. Dos tablas:
+
+1. **Niveles**, `| Stage | Level | Since | Rehearsed |`: filas fijas `grill`, `spec`, `run`, `review` y `land`, más una por ambiente de `## Ambientes` (con `Stage` el nombre del ambiente). `Level` es `supervised`, `plan-approved` o `unattended`; `land`, `review` y los ambientes solo aceptan `supervised` en esta versión, y ningún skill lee `review` hasta que exista esa etapa. `Since` es la fecha `YYYY-MM-DD` en que se fijó el nivel. `Rehearsed` es `rehearsed <YYYY-MM-DD>` si la fila pasó el ensayo, `unrehearsed` si nunca se ensayó y `FAILED (<motivo>)` si no pasó; una fila `supervised` lleva `—`, salvo una fila de ambiente cuyo `deploy <ambiente>` no está `verificado`, que lleva `unrehearsed`. Un nivel ≥ A2 solo rige si está `rehearsed`: `unrehearsed` o `FAILED` equivalen a `supervised` para quien lo lee. Una fila de ambiente cuyo `deploy <ambiente>` de `## Comandos` no está `verificado` queda `unrehearsed`.
+2. **Stop list**, `| Action | Pattern | Reason |`: lo que el agente nunca hace solo, en ningún nivel. `Action` es un comando representativo de lo prohibido (`git push origin main`, `pnpm run deploy`): es el rótulo de la fila y el comando de prueba de su ensayo. `Pattern` es una regex POSIX extendida (`grep -E`) sobre el comando completo o la ruta tocada, una por fila y sin `|` (una alternativa por fila, porque `|` es el separador de la tabla). Una fila con `Pattern` vacío es inválida: este skill la rechaza y la ofrece como regla fechada para `## Decisiones humanas`; los skills la ignoran con aviso. Defaults siempre presentes: deploy, migraciones sobre datos compartidos, push a `main`, force-push, merge de PRs (que solo `chiche-land` pisa al confirmar su plan) y servicios pagos; más lo que sume el usuario.
+
+**Ensayo de la stop list.** No necesita agente: cada `Pattern` se corre contra su propio `Action` (tiene que matchear) y contra el comando neutro `echo ok` (no tiene que matchear). Un patrón vacío, escrito entre backticks (grep lo probaría con los acentos y el comando real no los lleva), inválido, que no matchea su acción o que matchea el neutro deja la fila `FAILED`; una stop list ausente (sin el header `| Action | Pattern | Reason |`) o sin filas es `FAILED: stop list (sin filas)`, porque los defaults tienen que estar siempre; las filas se leen hasta la primera línea que no empieza con `|`. Este comando lo hace sobre el contrato que se le indica, sin parámetros posicionales: imprime `ok: <Action>` o `FAILED: <Action> (<motivo>)` por fila y termina con exit 1 si alguna falló.
+
+```bash
+(
+  contract='<contrato>'
+  export LC_ALL=C
+  section=$(sed -n '/^## Autonomy$/,$p' "$contract" | sed -n '2,${/^## /q;p;}')
+  rows=$(printf '%s\n' "$section" | sed -n '/^| *Action *| *Pattern *| *Reason *|/,$p' | sed -n '3,$p' | sed -n '/^|/!q;p')
+  if [ -z "$rows" ]; then echo 'FAILED: stop list (sin filas)'; exit 1; fi
+  out=$(printf '%s\n' "$rows" | while IFS= read -r fila; do
+    [ -n "$fila" ] || continue
+    action=$(printf '%s\n' "$fila" | cut -d'|' -f2 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    pattern=$(printf '%s\n' "$fila" | cut -d'|' -f3 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    if [ -z "$pattern" ]; then echo "FAILED: $action (Pattern vacío)"; continue; fi
+    if printf '%s\n' "$pattern" | grep -Eq '^`|`$'; then echo "FAILED: $action (Pattern entre backticks)"; continue; fi
+    printf '%s\n' "$action" | grep -Eq -- "$pattern" 2>/dev/null; rc=$?
+    if [ "$rc" -eq 2 ]; then echo "FAILED: $action (Pattern inválido para grep -E)"
+    elif [ "$rc" -ne 0 ]; then echo "FAILED: $action (el Pattern no matchea su Action)"
+    elif printf '%s\n' 'echo ok' | grep -Eq -- "$pattern" 2>/dev/null; then echo "FAILED: $action (el Pattern matchea el comando neutro echo ok)"
+    else echo "ok: $action"; fi
+  done)
+  printf '%s\n' "$out"
+  printf '%s\n' "$out" | grep -q '^FAILED: ' && exit 1
+  exit 0
+)
+```
+<!-- autonomy-contract:end -->
+
+**Ensayo de la stop list.** Con el archivo escrito, correr el comando canónico de «`## Autonomy`» (arriba, «Ensayo de la stop list») sobre el archivo ya escrito; una fila `FAILED` conserva su `Pattern`, recibe el prefijo `FAILED (<motivo>): ` al frente de su `Reason` (idempotente: si ya lo tiene, se reemplaza y no se duplica) y se lista en `## Gaps` para que el humano la corrija. Ese prefijo es, junto con la columna `Rehearsed`, la excepción al verbatim de `## Autonomy` en `--update`.
+
+En `--update`: regenerar todo salvo `## Decisiones humanas`, `## Politicas de generacion` (las políticas solo cambian si el usuario eligió `Revisar` en Fase 3.5), `## Autonomy` (preservar verbatim, salvo la columna `Rehearsed` que reescribe la fila `Ensayo de niveles` de «Upgrade de contrato» y el prefijo `FAILED` del ensayo de la stop list) y un `## Limites` sin migrar, que se preserva verbatim hasta que la fila `Stop list` lo migre; y los `[NEEDS-INPUT]` aún sin respuesta (mantenerlos, no duplicarlos).
 
 ## Fase 5 — Import en CLAUDE.md (saltear con `--no-import`)
 
@@ -329,12 +498,12 @@ Contrato de autonomia listo: .chiche/project.md
 - escalera de verificacion: llega hasta <escalon mas alto>
 - politicas de generacion: <lista con valores | ninguna activa>
 - preguntas hechas: <K> · gaps abiertos: <G>
-- coding-policies: <referenciado|generado|no existe (ofrecido)|--assume: no ofrecido>
-- design-system: <referenciado|generado|no existe (ofrecido)|con sistema (no ofrecido)|--assume: no ofrecido|sin superficies UI>
+- coding-policies: <referenciado|generado|no existe (ofrecido)|--autonomy ≥ A2: no ofrecido>
+- design-system: <referenciado|generado|no existe (ofrecido)|con sistema (no ofrecido)|--autonomy ≥ A2: no ofrecido|sin superficies UI>
 - import en CLAUDE.md: <agregado|ya estaba|--no-import>
-- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>; con cambios previos: <lista|ninguno>; escritos fuera del commit sugerido: <lista|ninguno>; sin trackear o ignorado en .chiche/: <lista|ninguno>) | mantenida .sdd/ | mejora disponible (--assume) | no aplica>
+- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>; con cambios previos: <lista|ninguno>; escritos fuera del commit sugerido: <lista|ninguno>; sin trackear o ignorado en .chiche/: <lista|ninguno>) | mantenida .sdd/ | mejora disponible (--autonomy ≥ A2) | no aplica>
 <en corridas sobre contrato existente: mejoras de version agregadas, u ofrecidas y no
-tomadas ("mejoras disponibles" con --assume), una linea>
+tomadas ("mejoras disponibles" con --autonomy ≥ A2), una linea>
 <si hay FALLAs o gaps criticos, una linea por cada uno>
 ```
 
@@ -345,7 +514,7 @@ Después del reporte, preguntar `Commit + PR (Recomendado)` / `Dejar sin commite
 
 `Commit + PR`:
 
-1. Comprobar la aptitud igual que `/chiche-run`: hay remote y `gh` autenticado, y `## Limites` de `.chiche/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
+1. Comprobar la aptitud igual que `/chiche-run`: hay remote y `gh` autenticado, y ninguna fila de la stop list matchea `git push -u origin <branch>`; si el contrato no tiene `## Autonomy`, su `## Limites` tiene que permitir pushear un branch nuevo. La stop list es la unión de la stop list del branch default y la del working tree (la segunda tabla de `## Autonomy` de `.chiche/project.md` en los dos lugares, porque una fila solo restringe y el contrato recién escrito todavía no está en el default); el nivel sigue saliendo del default. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
 2. Revisar cada path que esta corrida escribió. Uno nuevo, ausente en `origin/<default>`, se copia. Uno que ya existía se copia solo si `HEAD:<path>` del checkout es igual a `origin/<default>:<path>` y el path no tenía cambios antes de la corrida; si no, el cierre queda en `Dejar sin commitear` con el motivo, para no meter cambios ajenos en el PR ni revertir lo que `origin/<default>` ya cambió.
 3. `git fetch origin` y crear el worktree con lock, con el branch `chore/chiche-init-<YYYY-MM-DD>` nacido de `origin/<default>`: `git worktree add --lock --reason "chiche-init <YYYY-MM-DD>" ../<repo>-chiche-init-<YYYY-MM-DD> -b chore/chiche-init-<YYYY-MM-DD> origin/<default>`. Si el branch o el path ya existen, usar en los dos el primer sufijo libre (`-2`, `-3`…).
 4. Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR con `gh pr create --base <default> --title "chore(chiche-init): <YYYY-MM-DD>" --body-file <archivo>`.
@@ -363,15 +532,15 @@ La pregunta del cierre `Commit + PR` usa `AskUserQuestion`, con la recomendada p
 - Preguntar solo gaps reales, de a una pregunta, con recomendación.
 - Ofrecer como gate SOLO lo que tiene gate medible en este repo, y escribir cada política activa con su gate concreto; una preferencia sin gate medible entra únicamente como `guia` explícita. El umbral de coverage se elige siempre contra el baseline medido, nunca en el aire.
 - En corridas sobre un contrato existente, cruzarlo contra la checklist de "## Upgrade de contrato" y OFRECER los faltantes — nunca agregarlos sin preguntar, nunca callarlos.
-- Preservar `## Decisiones humanas` y `## Politicas de generacion` en `--update`.
+- Preservar `## Decisiones humanas`, `## Politicas de generacion`, `## Autonomy` (salvo la columna `Rehearsed` y el prefijo `FAILED` del ensayo) y un `## Limites` sin migrar en `--update`.
 - Ser idempotente: re-correr sobre un repo ya inicializado actualiza, no duplica (ni el doc ni el import de CLAUDE.md).
 
 ## MUST NOT DO
 
-- No correr NADA que mute estado externo o compartido: deploy, publish, migraciones contra DBs remotas, git push. La verificación es local y read-only hacia afuera. La única excepción es el `Commit + PR` del cierre, cuando el usuario lo elige: pushea solo `chore/chiche-init-<YYYY-MM-DD>` y abre su PR.
+- No correr NADA que mute estado externo o compartido: deploy, publish, migraciones contra DBs remotas, git push. La verificación es local y read-only hacia afuera. Las dos excepciones son el `Commit + PR` del cierre, cuando el usuario lo elige (pushea solo `chore/chiche-init-<YYYY-MM-DD>` y abre su PR), y la receta `deploy <ambiente>` de la Fase 2 cuando el humano la confirma con `AskUserQuestion`, con `No ejecutar (Recomendado)` primera; con `--autonomy` ≥ A2 nunca se ejecuta.
 - No documentar comandos adivinados por el nombre del script sin leer qué hacen.
 - No preguntar lo que la exploración ya respondió.
 - No escribir secrets ni valores de env vars en el contrato — solo el NOMBRE de la var y de dónde sale.
-- No inferir ni asumir políticas de generación: si el usuario no las eligió (o corrió `--assume`), la sección queda vacía. Y no activar una cuyo gate no se pueda medir hoy (coverage sin comando verificado va a Gaps, no al contrato). Una preferencia sin gate medible jamás se disfraza de gate: o es `guia` explícita o no entra.
+- No inferir ni asumir políticas de generación: si el usuario no las eligió (o corrió con `--autonomy` ≥ A2), la sección queda vacía. Y no activar una cuyo gate no se pueda medir hoy (coverage sin comando verificado va a Gaps, no al contrato). Una preferencia sin gate medible jamás se disfraza de gate: o es `guia` explícita o no entra.
 - No pisar un `.chiche/project.md` editado a mano sin preservar `## Decisiones humanas`.
 - No commitear en el checkout principal: el único commit es el de `Commit + PR`, en su worktree, cuando el usuario lo elige.
