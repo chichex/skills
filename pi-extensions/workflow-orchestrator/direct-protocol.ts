@@ -280,6 +280,10 @@ export function validateDirectGrillRequest(input: unknown):
 			? { ok: false, diagnostics: [{ path: "$", code: "invalid-value", message: "Expected kind=grill" }] }
 			: invalid;
 	}
+	// `autonomy` es opcional solo en el run: un grill lo rechaza en vez de ignorarlo (ronda 2, #116-22).
+	if (Object.hasOwn(input, "autonomy")) {
+		return { ok: false, diagnostics: [{ path: "$.autonomy", code: "extra-field", message: "Unexpected field autonomy on a grill request" }] };
+	}
 	const runValidation = validateDirectRunRequest({ ...input, kind: "sdd-run" });
 	if (!runValidation.ok) return runValidation;
 	if (input.kind !== "grill") {

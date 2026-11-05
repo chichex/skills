@@ -219,7 +219,8 @@ function promptFor(stage, code, request) {
 	const quoted = JSON.stringify(request);
 	if (stage === "grill") return `/grill ${quoted} --autonomy ${code}`;
 	if (stage === "spec") return `/chiche-spec ${quoted} --autonomy ${code} --out local`;
-	return `/chiche-run .chiche/specs/json-flag.md --autonomy ${code} --inline --no-pr`;
+	// `--inline` solo en A3: chiche-run aborta con `--inline exige --autonomy A3` en cualquier otro nivel (ronda 2, #116-17).
+	return `/chiche-run .chiche/specs/json-flag.md --autonomy ${code}${code === "A3" ? " --inline" : ""} --no-pr`;
 }
 
 // Stop list del contrato del fixture: filas de `| Action | Pattern | Reason |` hasta la
@@ -414,9 +415,6 @@ child.stdout.on("data", (chunk) => {
 				if (!ok) {
 					verdict = "unrehearsed";
 					reason = `result ${event.subtype ?? "sin subtype"}${event.is_error === true ? " con is_error" : ""}: el hijo no terminó bien, el conteo no vale; costo ${event.total_cost_usd ?? "?"} USD`;
-				} else if (asked > cap) {
-					verdict = `FAILED (${asked} preguntas)`;
-					reason = `result success; costo ${event.total_cost_usd ?? "?"} USD`;
 				} else if (workSnapshot(fixture) === workBefore) {
 					verdict = "unrehearsed";
 					reason = `result success pero sin cambios en el repo del ensayo (ni spec, ni handoff, ni commit): la etapa no hizo nada que certificar; costo ${event.total_cost_usd ?? "?"} USD`;

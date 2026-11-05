@@ -233,7 +233,7 @@ Antes de lanzar, el lanzador corre los pasos 1 a 3 de la Fase 1 y el preflight d
 - Antes de lanzar, la sesión imprime como texto visible una línea con este formato: `Subagente implementer: modelo <m> (<escalón>: <N> CAs · <k> capas) · effort <e> · verificabilidad: ALTA <a> · MEDIA/BAJA <b> · NULA <c>`.
 - Con el fallback a `general-purpose` (ver «Lanzamiento»), la traza nombra el tipo que realmente se lanza: `Subagente general-purpose: modelo <m> …`, con el mismo resto de la línea.
 - Al llegar la notificación del subagente, la sesión releva el PR y el reporte repitiendo modelo y effort.
-- Junto con la traza, avisar que el reporte llega al terminar la Fase 6, hasta 30 minutos sin feedback después de abrir el PR, y que el PR se ve antes con `gh pr list --head sdd/<slug>`.
+- Junto con la traza, avisar que el reporte llega al terminar la Fase 6, hasta 30 minutos sin feedback después de abrir el PR, y que el PR se ve antes con `gh pr list --search "head:sdd/<slug>"`.
 - Con A1 o A2, o con `--inline`, nada de lo anterior aparece y el run corre en esta sesión.
 
 ## Fase 0 — Lanzador (solo con `/chiche-run` pelado)

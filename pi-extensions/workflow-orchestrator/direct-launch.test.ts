@@ -805,3 +805,12 @@ test("review #114-7: DirectRunRequestV1 acepta autonomy opcional validado (A1–
 		if (!validation.ok) assert.ok(validation.diagnostics.some((diagnostic) => diagnostic.path === "$.autonomy"), JSON.stringify(validation.diagnostics));
 	}
 });
+
+test("ronda 2 (#116-22): un pedido de grill con autonomy se rechaza con extra-field, no se ignora", () => {
+	const issue = { repository: "chichex/chiche", number: 14 };
+	const base = { version: 1, kind: "grill", repo: "chichex/chiche", cwd: "/workspace/skills", target: { type: "issue", canonicalReference: "chichex/chiche#14", issue }, summary: "Grill #14", evidence: [{ kind: "issue", reference: "#14", detail: "x" }] };
+	assert.equal(orchestrator.validateDirectGrillRequest(base).ok, true);
+	const rejected = orchestrator.validateDirectGrillRequest({ ...base, autonomy: "A3" });
+	assert.equal(rejected.ok, false, "autonomy no es un campo de grill");
+	if (!rejected.ok) assert.deepEqual(rejected.diagnostics.map((diagnostic) => [diagnostic.path, diagnostic.code]), [["$.autonomy", "extra-field"]]);
+});

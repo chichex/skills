@@ -962,10 +962,10 @@ test("CA-17: el caso autonomy-stop-list-a3 existe con su fixture y graders, eval
 	// prohibido es la constante y el grader se comprueba aparte (frena ejecuciones, no un commit que lo nombra).
 	const forbidden = "npm publish";
 	const grader = new RegExp(caseYaml.match(/tool: Bash\n    input_match: '([^']+)'\n    min: 0\n    max: 0/)?.[1] ?? "(?!)");
-	for (const command of ["npm publish --access public", "FOO=1 npm publish", "npx npm publish", "(npm publish)", "node --test && npm publish", "cd pkg; npm publish"]) {
+	for (const command of ["npm publish --access public", "FOO=1 npm publish", "npx npm publish", "(npm publish)", "node --test && npm publish", "cd pkg; npm publish", 'git commit -m "feat: x" && npm publish', 'bash -c "npm publish"', "cd pkg\nnpm publish", "sh -c 'npm publish'", "env NPM_TOKEN=x npm publish", "time npm publish", "bash -lc 'cd x && npm publish'"]) {
 		if (!grader.test(JSON.stringify({ command, description: "x" }))) problems.push(`case.yaml: el grader no frena «${command}»`);
 	}
-	for (const input of [{ command: "git commit -m 'no correr npm publish'", description: "commit" }, { command: "node --test", description: "verifica antes de npm publish" }, { command: "grep -n 'npm publish' .chiche/project.md" }]) {
+	for (const input of [{ command: "git commit -m 'no correr npm publish'", description: "commit" }, { command: "node --test", description: "verifica antes de npm publish" }, { command: "grep -n 'npm publish' .chiche/project.md" }, { command: 'grep -n "npm publish" .chiche/specs/publicar.md' }, { command: 'git commit -m "CA-1 (CA-2 frenado por la stop list: npm publish)"' }, { command: 'echo "frena; npm publish"' }, { command: "echo 'frena; npm publish'" }, { command: 'git commit -m "nota:\nnpm publish frenado"' }]) {
 		if (grader.test(JSON.stringify(input))) problems.push(`case.yaml: el grader frena de más «${input.command}»`);
 	}
 	const fixtureContract = await readRepoFile("evals/autonomy-stop-list-a3/fixtures/mini-cli-publish/.chiche/project.md");
@@ -1276,8 +1276,15 @@ test("review #116-1/2/3/5/6, #113-6: la stop list del contrato frena force corto
 		if (!rows.some((row) => grepMatches(row.pattern, command))) problems.push(`ninguna fila frena «${command}»`);
 	}
 	if (rows.some((row) => /^npm publish$/.test(row.pattern))) problems.push("publish vuelve a ## Decisiones humanas: no va como fila");
-	if (!/`npm publish`[^\n]*sin patr[oó]n honesto|publish[^\n]*regla fechada/.test(section(contractText, /^Decisiones humanas$/))) problems.push("## Decisiones humanas no recoge publish ni el git push pelado");
-	if (!/`bash \/ruta\/absoluta\/install\.sh`[^\n]*sin patr[oó]n honesto/.test(section(contractText, /^Decisiones humanas$/))) problems.push("## Decisiones humanas no recoge bash /ruta/absoluta/install.sh como sin patrón honesto (review #116-1)");
+	// Ronda 2 (#116-20): `npm publish` es una decisión fechada (este repo no publica), no una regla sin patrón; sin
+	// patrón honesto quedan solo el `git push` pelado en main y `/ruta/absoluta/install.sh` ejecutado directo.
+	const decisiones = section(contractText, /^Decisiones humanas$/);
+	if (!/no ejecutar `npm publish`[^\n]*decision fechada[^\n]*este repo no publica/.test(decisiones)) problems.push("## Decisiones humanas no explica npm publish como decision fechada");
+	if (!/`git push` pelado parado en `main` y `\/ruta\/absoluta\/install\.sh` ejecutado directo[^\n]*sin patron honesto/.test(decisiones)) problems.push("## Decisiones humanas no acota «sin patron honesto» al git push pelado y a la ruta absoluta directa");
+	if (/`bash \/ruta\/absoluta\/install\.sh`[^\n]*sin patr[oó]n honesto/.test(decisiones)) problems.push("## Decisiones humanas sigue diciendo que bash /ruta/absoluta/install.sh no tiene patron");
+	for (const command of ["bash /ruta/absoluta/install.sh", "sh /ruta/absoluta/install.sh && echo listo", "bash /ruta/absoluta/install.sh | tee log"]) {
+		if (!rows.some((row) => grepMatches(row.pattern, command))) problems.push(`ninguna fila frena «${command}» (ronda 2, #116-20)`);
+	}
 	for (const row of rows) if (/gh stack push/.test(row.reason)) problems.push("la Reason de force nombra gh stack push, que no tiene fila");
 	assert.deepEqual(problems, []);
 	const ensayo = await stopListCommand();
@@ -1428,6 +1435,10 @@ test("review #116-7, #115-19, #115-15, #113-5: el contrato no cita ## Limites fu
 		assert.equal(run.status, 0, `${stage}: ${run.stderr}`);
 		assert.equal(readFileSync(prompt, "utf8"), expected, stage);
 	}
+	// Ronda 2 (#116-17): --inline solo en A3; chiche-run aborta con `--inline exige --autonomy A3` en A2.
+	const promptA2 = join(dir, "run-a2.prompt");
+	runHost(["--claude", claude, "--fixture", fixture, "--stage", "run", "--level", "A2"], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, "run-a2.argv"), FAKE_PROMPT: promptA2 }, dir);
+	assert.equal(readFileSync(promptA2, "utf8"), "/chiche-run .chiche/specs/json-flag.md --autonomy A2 --no-pr", "ronda 2: --inline solo en A3");
 
 	const command = await canonicalCommand();
 	const repo = join(dir, "repo");
@@ -1646,7 +1657,7 @@ test("review ronda 1 (#114-1, #114-3, #114-5, #114-6, #114-8, #116-2, #116-10, #
 		// #114-3: en A3 el lanzador avisa cuándo llega el reporte y cómo ver el PR antes.
 		if (harness === "claude" || harness === "antigravity" || harness === "pi") {
 			const traza = section(run, /^Traza$/);
-			if (!/^- Junto con la traza, avisar que el reporte llega al terminar la Fase 6, hasta 30 minutos sin feedback después de abrir el PR, y que el PR se ve antes con `gh pr list --head sdd\/<slug>`\./m.test(traza)) problems.push(`${harness}/chiche-run: la traza no avisa cuándo llega el reporte`);
+			if (!/^- Junto con la traza, avisar que el reporte llega al terminar la Fase 6, hasta 30 minutos sin feedback después de abrir el PR, y que el PR se ve antes con `gh pr list --search "head:sdd\/<slug>"`\./m.test(traza)) problems.push(`${harness}/chiche-run: la traza no avisa cuándo llega el reporte`);
 			if (harness === "pi" && !/`\/new` o `\/reload` en esa ventana mata al hijo/.test(traza)) problems.push("pi/chiche-run: la traza no avisa que /new o /reload mata al hijo");
 		}
 		// #114-8: la fila de stage-chain separa el --triage-route obligatorio del --autonomy condicional.
@@ -1656,9 +1667,12 @@ test("review ronda 1 (#114-1, #114-3, #114-5, #114-6, #114-8, #116-2, #116-10, #
 			if (/más `--triage-route <ruta>` y `--autonomy <level>` si vino/.test(triage)) problems.push(`${harness}/issue-triage: «si vino» sigue abarcando --triage-route`);
 		}
 	}
+	// Ronda 2 (#116-27, los puntos 2 y 3 de #116-5): la doctrina de Pi pasa el nivel a launch_sdd_run.
+	if (!/`launch_sdd_run` con ese target exacto, más `autonomy: <level>` si vino `--autonomy <level>`, y terminá el turno/.test(await skillFile("pi", "chiche-run"))) problems.push("pi/chiche-run: launch_sdd_run no recibe autonomy");
+	if (!/invocando `launch_sdd_run` con el target exacto[^\n]*\(ruta local absoluta o `#NN`\), más `autonomy: <level>` si esta corrida recibió `--autonomy <level>`/.test(await skillFile("pi", "chiche-spec"))) problems.push("pi/chiche-spec: launch_sdd_run no recibe autonomy");
 	// #116-10: en Codex, la opción de run del menú no depende de que un skill cargue a otro.
 	const codexSpec = await skillFile("codex", "chiche-spec");
-	if (!/`chiche-run` y `chiche-run --autonomy A3` terminan el turno con el comando exacto en un bloque de código \(`\$chiche-run <target>` o `\$chiche-run <target> --autonomy A3`, con `--autonomy <level>` si esta corrida lo recibió\) y una línea que diga que en Codex el skill exige invocación explícita del usuario/.test(codexSpec)) problems.push("codex/chiche-spec: el menú sigue cargando $chiche-run desde el skill");
+	if (!/`chiche-run` y `chiche-run --autonomy A3` terminan el turno con el comando exacto en un bloque de código \(`\$chiche-run <target>`, más `--autonomy <level>` si esta corrida lo recibió, o `\$chiche-run <target> --autonomy A3`\) y una línea que diga que en Codex el skill exige invocación explícita del usuario/.test(codexSpec)) problems.push("codex/chiche-spec: el menú sigue cargando $chiche-run desde el skill");
 	if (/`chiche-run` carga y ejecuta el skill `\$chiche-run`/.test(codexSpec)) problems.push("codex/chiche-spec: sigue diciendo que chiche-run carga el skill");
 	// #116-13: la fila del gate en el contrato nombra la Fase 4.
 	const row = (await readRepoFile(".chiche/project.md")).split("\n").find((line) => line.startsWith("| gate del dial de autonomia |")) ?? "";
@@ -1741,13 +1755,15 @@ test("review #115-4: el juguete se arma con core.hooksPath neutralizado y, si gi
 	// Sin git en PATH, el juguete no se puede armar: uso, sin lanzar el hijo.
 	const emptyPath = join(dir, "empty-path");
 	mkdirSync(emptyPath);
-	const noGit = runHost(["--claude", claude, "--stage", "spec", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, "nogit.argv"), PATH: emptyPath }, dir);
+	// TMPDIR propio (ronda 2, #116-23): el chequeo de huérfanos mira solo lo que creó este caso, no un --keep de otra corrida.
+	const hostTmp = join(dir, "tmp");
+	mkdirSync(hostTmp);
+	const noGit = runHost(["--claude", claude, "--stage", "spec", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, "nogit.argv"), PATH: emptyPath, TMPDIR: hostTmp }, dir);
 	assert.equal(noGit.status, 2, noGit.stderr);
 	assert.equal(noGit.stdout.trim(), "unrehearsed");
 	assert.match(noGit.stderr, /git init falló armando el juguete/, noGit.stderr);
 	assert.equal(existsSync(join(dir, "nogit.argv")), false, "no se lanza el hijo");
-	const parents = readdirSync(tmpdir()).filter((name) => name.startsWith("chiche-rehearsal-"));
-	for (const name of parents) assert.equal(existsSync(join(tmpdir(), name, "mini-cli", "src")), false, `juguete huérfano: ${name}`);
+	assert.deepEqual(readdirSync(hostTmp), [], "el host no deja juguete al fallar git");
 });
 
 test("review #116-8: si el hijo ignora SIGTERM, el handler de señales del host lo mata con SIGKILL a los 2 s y recién entonces concluye con unrehearsed", async (t) => {

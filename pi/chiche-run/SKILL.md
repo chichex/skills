@@ -17,7 +17,7 @@ Tres ideas fuerza:
 /skill:chiche-run [.chiche/specs/<spec>.md | #NN | owner/repo#NN | https://github.com/owner/repo/issues/NN] [--no-pr] [--base <branch>] [--autonomy <level>] [--inline]
 ```
 
-- Una referencia `owner/repo#NN` o URL de GitHub puede apuntar a otro checkout. Si llega sin un envelope `workflow-launch`, invocá inmediatamente `launch_sdd_run` con ese target exacto y terminá el turno. La tool resuelve un único proyecto conocido, valida contrato/spec y pide la autorización de ejecución antes de abrir la sesión hija. No explores, no implementes, no toques Git y nunca interpretes una URL como path en el cwd actual. Si la tool no está disponible, frená con el comando manual `/chiche-run <target>`; no continúes en el proyecto equivocado.
+- Una referencia `owner/repo#NN` o URL de GitHub puede apuntar a otro checkout. Si llega sin un envelope `workflow-launch`, invocá inmediatamente `launch_sdd_run` con ese target exacto, más `autonomy: <level>` si vino `--autonomy <level>`, y terminá el turno. La tool resuelve un único proyecto conocido, valida contrato/spec y pide la autorización de ejecución antes de abrir la sesión hija. No explores, no implementes, no toques Git y nunca interpretes una URL como path en el cwd actual. Si la tool no está disponible, frená con el comando manual `/chiche-run <target>`; no continúes en el proyecto equivocado.
 - `--no-pr` — frena después del commit en el branch: no pushea ni crea PR. Para repos sin remote o cuando el PR lo arma el usuario.
 - `--base <branch>` — branch base para ramificar y para el PR (default: el branch default que declara el contrato — main/master/otro).
 - `--autonomy <level>` — nivel de autonomía de esta corrida; manda sobre la fila `run` de `## Autonomy` del contrato. `supervised` (A1) pregunta ante choques del plan y desviaciones de alcance y ofrece el menú post-PR; `plan-approved` (A2) corre hasta el PR sin preguntar (encadena `/skill:chiche-spec`/`/skill:chiche-init` con `--autonomy <level>` si faltan precondiciones, no frena ante choques del plan con políticas y resuelve desviaciones con sesgo mínimo seguro), lanza el `Code review` y termina; `unattended` (A3) hace lo mismo y además delega el run en un subagente `implementer` (ver «Run con subagente») y resuelve el feedback del PR solo (Fase 6). Ver «Niveles de autonomía» y «Nivel efectivo».
@@ -230,7 +230,7 @@ Antes de lanzar, el lanzador corre los pasos 1 a 3 de la Fase 1 y el preflight d
 
 - Antes de lanzar, la sesión imprime como texto visible: `Subagente implementer: modelo de la sesión · verificabilidad: ALTA <a> · MEDIA/BAJA <b> · NULA <c>` (los conteos salen de `## Verificabilidad` de la spec).
 - Al llegar el mensaje `subagent-result`, la sesión releva el PR y el reporte.
-- Junto con la traza, avisar que el reporte llega al terminar la Fase 6, hasta 30 minutos sin feedback después de abrir el PR, y que el PR se ve antes con `gh pr list --head sdd/<slug>`. `/new` o `/reload` en esa ventana mata al hijo (ver `## Gaps` del contrato).
+- Junto con la traza, avisar que el reporte llega al terminar la Fase 6, hasta 30 minutos sin feedback después de abrir el PR, y que el PR se ve antes con `gh pr list --search "head:sdd/<slug>"`. `/new` o `/reload` en esa ventana mata al hijo (ver `## Gaps` del contrato).
 - Con A1 o A2, o con `--inline`, nada de lo anterior aparece y el run corre en esta sesión.
 
 ## Fase 0 — Lanzador (solo con `/skill:chiche-run` pelado)

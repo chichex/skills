@@ -229,7 +229,7 @@ Antes de lanzar, el lanzador corre los pasos 1 a 3 de la Fase 1 y el preflight d
 
 - Antes de lanzar, la sesión imprime como texto visible una línea con este formato: `Subagente SDD Implementer: modelo <m> (<escalón>: <N> CAs · <k> capas) · verificabilidad: ALTA <a> · MEDIA/BAJA <b> · NULA <c>`.
 - Al llegar la notificación del subagente, la sesión releva el PR y el reporte repitiendo modelo.
-- Junto con la traza, avisar que el reporte llega al terminar la Fase 6, hasta 30 minutos sin feedback después de abrir el PR, y que el PR se ve antes con `gh pr list --head sdd/<slug>`.
+- Junto con la traza, avisar que el reporte llega al terminar la Fase 6, hasta 30 minutos sin feedback después de abrir el PR, y que el PR se ve antes con `gh pr list --search "head:sdd/<slug>"`.
 - Con A1 o A2, o con `--inline`, nada de lo anterior aparece y el run corre en esta sesión.
 
 ## Fase 0 — Lanzador (solo con `/chiche-run` pelado)
