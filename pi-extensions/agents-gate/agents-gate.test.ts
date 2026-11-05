@@ -258,12 +258,14 @@ const IMPLEMENTER_DOCTRINE: RegExp[] = [
 	/`\.chiche\/project\.md`/,
 	/fila `guia`[\s\S]*?coding policies|coding policies[\s\S]*?fila `guia`/i,
 	/sin asumir su ruta|no asumas una ruta fija/i,
-	/`## Limites`/,
-	// Hallazgo #5 del review de PR #43: '## Limites' solo puede restringir
+	// Issue #102 CA-5: la fuente de restricciones es la stop list de ## Autonomy, leída del branch base.
+	/stop list de `## Autonomy`/,
+	// Hallazgo #5 del review de PR #43: la stop list solo puede restringir
 	// mas, nunca autorizar menos (no puede pisar las secciones 7 y 8), y
 	// tiene que alinear con la doctrina de datos no confiables de
 	// agents/reviewer.md ante un contrato que el propio PR puede modificar.
 	/solo puede sumar restricciones/i,
+	/branch base/,
 	/mismo criterio que usa `agents\/reviewer\.md`|dato no confiable/i,
 	/`## Comandos`/,
 	/tests? primero[\s\S]{0,120}rojo/i,
@@ -1637,7 +1639,7 @@ const SDD_RUN_SKILL = "claude/chiche-run/SKILL.md";
 const SDD_SPEC_SKILL = "claude/chiche-spec/SKILL.md";
 
 const SDD_RUN_SUBAGENT_SYNTAX =
-	"/chiche-run [.chiche/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>] [--subagent] [--model M] [--effort E]";
+	"/chiche-run [.chiche/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>] [--subagent] [--model M] [--effort E] [--autonomy <level>]";
 const SDD_RUN_SUBAGENT_HEADING = "## Run con subagente (solo con --subagent, --model o --effort)";
 const SDD_RUN_SHARED_BLOCKS = ["chiche-run-flow", "chiche-run-stack", "chiche-run-design", "chiche-run-dirty-checkout"];
 
@@ -1658,7 +1660,7 @@ const SUBAGENT_ARGUMENTS_DOCTRINE: RegExp[] = [
 
 // CA-1: atajo del lanzador de la Fase 0.
 const SUBAGENT_LAUNCHER_SHORTCUT =
-	/Atajo: \/chiche-run <spec\|#NN> \[--assume\] \[--no-pr\] \[--subagent\] \[--model M\] \[--effort E\] saltea este menu\./;
+	/Atajo: \/chiche-run <spec\|#NN> \[--assume\] \[--no-pr\] \[--subagent\] \[--model M\] \[--effort E\] \[--autonomy <level>\] saltea este menu\./;
 
 // Review #83 (h3): la Fase 0 dispara sin target; los flags sin target pasan por
 // el lanzador (antes decia «Si trajo spec, issue o flags, saltear», que
@@ -1898,7 +1900,7 @@ export function syntheticSddRunSkill({
 		"## Fase 0 — Lanzador (solo con `/chiche-run` pelado)",
 		"",
 		"```text",
-		"Atajo: /chiche-run <spec|#NN> [--assume] [--no-pr] [--subagent] [--model M] [--effort E] saltea este menu.",
+		"Atajo: /chiche-run <spec|#NN> [--assume] [--no-pr] [--subagent] [--model M] [--effort E] [--autonomy <level>] saltea este menu.",
 		"```",
 		"",
 	].join("\n");

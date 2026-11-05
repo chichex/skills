@@ -16,13 +16,76 @@ Tres ideas fuerza:
 ## Argumentos
 
 ```text
-/skill:design-system [<raíz de la superficie>] [--no-link]
+/skill:design-system [<raíz de la superficie>] [--no-link] [--autonomy <level>]
 ```
 
 - `<raíz de la superficie>` — directorio de la superficie a documentar (el del manifest que la detecta); saltea la elección de superficie de la Fase 1.
 - `--no-link` — saltea el enganche de la Fase 5: escribe el doc y no toca ningún otro archivo.
+- `--autonomy <level>` — se acepta por uniformidad y aborta con cualquier valor distinto de `supervised`/`A1`: la dirección visual es del humano y este skill no tiene modo desatendido (no tiene fila en `## Autonomy`). Ver «Niveles de autonomía» y «Nivel efectivo».
 
 `/skill:chiche-init` lo invoca sin flags al terminar el contrato, y nunca con `--assume`: este skill no tiene modo desatendido.
+
+<!-- autonomy-levels:start -->
+**Niveles de autonomía.** La escala es `manual (A0)`, `supervised (A1)`, `plan-approved (A2)`, `unattended (A3)`, `auto-land (A4)` y `auto-deploy (A5)`. `--autonomy <level>` acepta el código o la palabra, sin distinguir mayúsculas (`A2`, `a2` y `plan-approved` son el mismo nivel). Esta versión honra A1 a A3: con A0, A4 o A5 el skill aborta antes de cualquier mutación con el diagnóstico literal `--autonomy <nivel>: no soportado todavía (v1 honra A1–A3)`, y cualquier otro token aborta listando los valores válidos. Sin flag rige lo que resuelve «Nivel efectivo»; el default es `supervised (A1)`.
+<!-- autonomy-levels:end -->
+
+<!-- autonomy-resolve:start -->
+**Nivel efectivo.** El nivel efectivo es el del flag `--autonomy` si vino; si no, la fila del `Stage` en `## Autonomy` del contrato leído del branch default, nunca del branch de trabajo: un PR no puede subirse la autonomía a sí mismo. `grill` lee la fila `grill`, `chiche-spec` la fila `spec`, `chiche-run` la fila `run` y `chiche-land` la fila `land`; `chiche-init`, `issue-triage` y `design-system` no tienen fila: flag o `supervised (A1)`. La lectura hace `git fetch` best-effort de `origin` y `git show origin/<default>:.chiche/project.md`, con fallback a `.sdd/project.md` para un repo que mantuvo `.sdd/`; sin remote lee el working tree en ese mismo orden y avisa `nivel leído del working tree: sin remote`. Si el contrato no tiene `## Autonomy`, o la fila está `unrehearsed` o `FAILED`, rige `supervised (A1)` con aviso. Si el contrato no tiene `## Autonomy` pero sí `## Limites`, esa prosa sigue rigiendo como restricción, el nivel es `supervised (A1)` y el aviso es literal: `contrato sin ## Autonomy: rigen sus ## Limites; corré chiche-init --update`. La stop list (segunda tabla de `## Autonomy`) se lee de la misma fuente y frena en todo nivel: antes de correr un comando o tocar una ruta que matchee un `Pattern`, el skill frena y lo reporta citando la fila. La traza imprime `nivel efectivo: <nombre> (<código>), leído de <fuente>`. Lo imprime este comando, con `<stage>` y `<flag>` reemplazados (`<flag>` vacío sin el flag; `<stage>` es `none` en los skills sin fila), sin parámetros posicionales ni variables de argumentos del harness, que se sustituyen al cargar el skill con argumentos:
+
+```bash
+(
+  stage='<stage>' flag='<flag>'
+  export LC_ALL=C
+  pick=$(printf %s "$flag" | tr A-Z a-z); src='--autonomy'; aviso=''; stop=''; contract=''
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || root=.
+  ref=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)
+  if [ -z "$ref" ]; then for b in main master; do if git rev-parse -q --verify "refs/remotes/origin/$b" >/dev/null 2>&1; then ref="origin/$b"; break; fi; done; fi
+  if [ -n "$ref" ]; then
+    git fetch -q origin >/dev/null 2>&1 || aviso="$aviso aviso: fetch de origin falló, se usa la ref local;"
+    contract=$(git show "$ref:.chiche/project.md" 2>/dev/null) || contract=$(git show "$ref:.sdd/project.md" 2>/dev/null) || contract=''
+    fuente=$ref
+  else
+    contract=$(cat "$root/.chiche/project.md" 2>/dev/null) || contract=$(cat "$root/.sdd/project.md" 2>/dev/null) || contract=''
+    fuente='working tree'; aviso="$aviso aviso: nivel leído del working tree: sin remote;"
+  fi
+  section=$(printf '%s\n' "$contract" | sed -n '/^## Autonomy$/,$p' | sed -n '2,${/^## /q;p;}')
+  if [ -z "$section" ]; then
+    if printf '%s\n' "$contract" | grep -q '^## Limites$'; then aviso="$aviso aviso: contrato sin ## Autonomy: rigen sus ## Limites; corré chiche-init --update;"
+    elif [ -z "$contract" ]; then aviso="$aviso aviso: sin contrato: rige supervised (A1);"
+    else aviso="$aviso aviso: contrato sin ## Autonomy: rige supervised (A1); corré chiche-init --update;"; fi
+    [ -n "$pick" ] || pick=a1
+  else
+    stop=$(printf '%s\n' "$section" | sed -n '/^| *Action *| *Pattern *| *Reason *|/,$p' | sed -n '3,$p' | grep '^|')
+    if [ -z "$pick" ] && [ "$stage" = none ]; then pick=a1
+    elif [ -z "$pick" ]; then
+      row=$(printf '%s\n' "$section" | grep -E "^\|[[:space:]]*$stage[[:space:]]*\|" | head -n 1)
+      if [ -z "$row" ]; then pick=a1; aviso="$aviso aviso: ## Autonomy sin fila $stage: rige supervised (A1);"
+      else
+        pick=$(printf '%s\n' "$row" | cut -d'|' -f3 | sed 's/^[[:space:]]*//; s/[[:space:]].*$//' | tr A-Z a-z)
+        reh=$(printf '%s\n' "$row" | cut -d'|' -f5 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        case $pick in a1|supervised) ;; a2|plan-approved|a3|unattended) case $reh in rehearsed\ *) ;; *) aviso="$aviso aviso: fila $stage sin ensayo ($reh): rige supervised (A1);"; pick=a1 ;; esac ;; *) aviso="$aviso aviso: fila $stage con nivel desconocido ($pick): rige supervised (A1);"; pick=a1 ;; esac
+      fi
+    fi
+  fi
+  [ "$src" = '--autonomy' ] && [ -z "$flag" ] && src=$fuente
+  case $pick in
+    a1|supervised) nivel='supervised (A1)' ;;
+    a2|plan-approved) nivel='plan-approved (A2)' ;;
+    a3|unattended) nivel='unattended (A3)' ;;
+    a0|manual|a4|auto-land|a5|auto-deploy) echo "--autonomy $flag: no soportado todavía (v1 honra A1–A3)" >&2; exit 2 ;;
+    *) echo "--autonomy $flag: valor inválido; válidos: supervised (A1), plan-approved (A2), unattended (A3)" >&2; exit 2 ;;
+  esac
+  [ -n "$aviso" ] && echo "${aviso# }" | sed 's/;$//' >&2
+  echo "nivel efectivo: $nivel, leído de $src"
+  [ -z "$stop" ] || printf '%s\n' "$stop" | while IFS= read -r fila; do
+    pat=$(printf '%s\n' "$fila" | cut -d'|' -f3 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    if [ -z "$pat" ]; then echo "aviso: fila de la stop list sin Pattern, ignorada: $fila" >&2; else echo "parada: $fila"; fi
+  done
+)
+```
+
+El comando termina con exit 2 ante un nivel no soportado o inválido y el skill aborta ahí; con exit 0 imprime la traza y una línea `parada:` por cada fila de la stop list, e ignora con aviso una fila sin `Pattern`.
+<!-- autonomy-resolve:end -->
 
 ## Fase 1 — Detección de superficies y elementos existentes
 
@@ -152,7 +215,7 @@ Después del reporte, preguntar `Commit + PR (Recomendado)` / `Dejar sin commite
 
 `Commit + PR`:
 
-1. Comprobar la aptitud igual que `/skill:chiche-run`: hay remote y `gh` autenticado, y `## Limites` de `.chiche/project.md` permite pushear un branch nuevo. Si no, el cierre queda en `Dejar sin commitear` con el motivo.
+1. Comprobar la aptitud igual que `/skill:chiche-run`: hay remote y `gh` autenticado, y ninguna fila de la stop list matchea `git push -u origin <branch>` (la segunda tabla de `## Autonomy` de `.chiche/project.md`, leída del branch default). Si no, el cierre queda en `Dejar sin commitear` con el motivo.
 2. Revisar cada path que esta corrida escribió. Uno nuevo, ausente en `origin/<default>`, se copia. Uno que ya existía se copia solo si `HEAD:<path>` del checkout es igual a `origin/<default>:<path>` y el path no tenía cambios antes de la corrida; si no, el cierre queda en `Dejar sin commitear` con el motivo, para no meter cambios ajenos en el PR ni revertir lo que `origin/<default>` ya cambió.
 3. `git fetch origin` y crear el worktree con lock, con el branch `chore/design-system-<YYYY-MM-DD>` nacido de `origin/<default>`: `git worktree add --lock --reason "design-system <YYYY-MM-DD>" ../<repo>-design-system-<YYYY-MM-DD> -b chore/design-system-<YYYY-MM-DD> origin/<default>`. Si el branch o el path ya existen, usar en los dos el primer sufijo libre (`-2`, `-3`…).
 4. Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR con `gh pr create --base <default> --title "chore(design-system): <YYYY-MM-DD>" --body-file <archivo>`.

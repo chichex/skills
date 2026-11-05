@@ -307,7 +307,8 @@ test("CA-13: los cinco chiche-init nombran .chiche/project.md como contrato y .s
 			["MUST DO", /^MUST DO$/],
 			["MUST NOT DO", /^MUST NOT DO$/],
 		] as const) {
-			const body = section(markdown, pattern);
+			// Issue #102 CA-4: el bloque `autonomy-resolve` de ## Argumentos lee el contrato con fallback a .sdd/project.md (lo gatea autonomy-gate).
+			const body = withoutBlock(section(markdown, pattern), "autonomy-resolve");
 			if (body === "") problems.push(`${path}: falta la sección ${name}`);
 			else if (body.includes(".sdd/project.md") || body.includes(".sdd/coding-policies.md")) problems.push(`${path}: ${name} todavía nombra .sdd/`);
 		}

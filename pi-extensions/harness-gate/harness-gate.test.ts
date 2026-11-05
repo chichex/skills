@@ -369,6 +369,12 @@ export function validateTemplateLine(line: string, expectedType: TemplateType): 
 	return { ok: problems.length === 0, problems };
 }
 
+// Issue #102 CA-4: el bloque compartido `autonomy-resolve` (gateado por autonomy-gate) nombra el fallback
+// `.sdd/project.md` en su prosa y en su comando canónico; los conteos de «una sola frase de fallback» lo excluyen.
+function withoutAutonomyResolve(markdown: string): string {
+	return markdown.replace(/<!-- autonomy-resolve:start -->\n[\s\S]*?\n<!-- autonomy-resolve:end -->/, "");
+}
+
 function delimitedDoctrine(markdown: string, name: string): string {
 	const block = markdown.match(new RegExp(`<!-- ${name}:start -->\\n([\\s\\S]*?)\\n<!-- ${name}:end -->`));
 	assert.ok(block, `bloque delimitado ${name} presente`);
@@ -723,7 +729,7 @@ test("chiche-run entrega un stack de PRs por capas con preflight, verificación 
 		const phase5 = markdown.match(/## Fase 5 — PR\n([\s\S]*?)(?=\n## )/)?.[1] ?? "";
 		assert.match(
 			phase5,
-			/con 2 o más capas el push lo hace `gh stack submit`[\s\S]*solo verifica aptitud y Limites[\s\S]*no ejecuta `git push -u origin sdd\/<slug>`/,
+			/con 2 o más capas el push lo hace `gh stack submit`[\s\S]*solo verifica aptitud y stop list[\s\S]*no ejecuta `git push -u origin sdd\/<slug>`/,
 			`${harness}/chiche-run/SKILL.md: Fase 5 paso 1 sigue ordenando git push -u con 2 o más capas`,
 		);
 		// CA-10: el reporte sugiere chiche-land y lista los PRs por capa.
@@ -1489,7 +1495,9 @@ test("#103 L30 (a), T7c: los skills leen el contrato de .chiche/project.md con u
 	for (const skill of CONTRACT_FALLBACK_SKILLS) {
 		for (const harness of HARNESSES) {
 			const file = `${harness}/${skill}/SKILL.md`;
-			const markdown = await readRepoFile(file);
+			// Issue #102 CA-4: el bloque `autonomy-resolve` lee el contrato del branch default con el mismo
+			// fallback a `.sdd/project.md` (prosa y comando canónico); autonomy-gate lo verifica, así que queda fuera del conteo.
+			const markdown = withoutAutonomyResolve(await readRepoFile(file));
 			if (!markdown.includes("`.chiche/project.md`")) problems.push(`${file}: no lee .chiche/project.md`);
 			if ((markdown.match(/\.sdd\/project\.md/g) ?? []).length !== 1) problems.push(`${file}: debe nombrar .sdd/project.md una sola vez, en la frase de fallback`);
 			if (!CONTRACT_FALLBACK_SENTENCE.test(markdown)) problems.push(`${file}: falta la frase de fallback del contrato`);
@@ -1535,7 +1543,7 @@ test("review #107-2 (3): el enganche y el reporte de coding-policies y design-sy
 		}
 		if (!/^- enganche: <no intentado> \| contrato \(\.chiche\/project\.md o su fallback\) <agregado\|actualizado\|ya estaba\|omitido\|sin seccion\|no existe> · /m.test(designText)) problems.push(`${design}: el enum del reporte no dice «contrato (.chiche/project.md o su fallback)»`);
 		if (/\| \.chiche\/project\.md <agregado/.test(designText)) problems.push(`${design}: el enum del reporte todavía nombra solo .chiche/project.md`);
-		for (const [file, text] of [[policies, policiesText], [design, designText]] as const) {
+		for (const [file, text] of [[policies, policiesText], [design, withoutAutonomyResolve(designText)]] as const) {
 			if ((text.match(/\.sdd\/project\.md/g) ?? []).length !== 1) problems.push(`${file}: debe nombrar .sdd/project.md una sola vez, en la frase de fallback`);
 		}
 	}
@@ -1794,8 +1802,8 @@ test("#84 CA-20: chiche-init, coding-policies y design-system cierran con Commit
 				/Copiar al worktree, con la misma ruta relativa, solo los paths que esta corrida escribió; commitear, pushear ese branch y abrir el PR/,
 				/`git worktree unlock` y después `git worktree remove`/,
 				/`ya aterrizado`/,
-				// Review de #87.
-				/`## Limites` de `\.chiche\/project\.md` permite pushear un branch nuevo/,
+				// Review de #87; issue #102 CA-5: la aptitud consulta la stop list de ## Autonomy.
+				/ninguna fila de la stop list matchea `git push -u origin <branch>`/,
 				/se copia solo si `HEAD:<path>` del checkout es igual a `origin\/<default>:<path>` y el path no tenía cambios antes de la corrida/,
 				/`git status --porcelain=v1 -z` que la corrida tomó antes de escribir su primer archivo/,
 				/el primer sufijo libre \(`-2`, `-3`…\)/,

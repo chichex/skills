@@ -63,6 +63,11 @@ function doctrineBlock(markdown: string): string {
 	return block[1] ?? "";
 }
 
+function delimitedBlock(markdown: string, name: string): string | null {
+	const block = markdown.match(new RegExp(`<!-- ${escapeRegExp(name)}:start -->\\n([\\s\\S]*?)\\n<!-- ${escapeRegExp(name)}:end -->`));
+	return block ? (block[1] ?? "") : null;
+}
+
 function section(markdown: string, heading: RegExp): string {
 	const lines = markdown.split("\n");
 	const start = lines.findIndex((line) => line.startsWith("## ") && heading.test(line));
@@ -96,8 +101,8 @@ const DOCTRINE: Record<string, RegExp[]> = {
 	"CA-14": [
 		/`gh auth status`/,
 		/branch default leído del remote[\s\S]*nunca asumir `main`/,
-		/Leer `\.chiche\/project\.md` si existe[\s\S]*`## Comandos` verifican un branch actualizado[\s\S]*`## Limites` rigen como siempre, salvo las prohibiciones de merge[\s\S]*invocarlo y confirmar el plan es la autorización humana[\s\S]*el plan de la Fase 2 cita la línea textual y avisa que confirmar la pisa/,
-		/Respetar los `## Limites` del contrato, salvo las prohibiciones de merge[\s\S]*solo cae la parte de merge/,
+		/Leer `\.chiche\/project\.md` si existe[\s\S]*`## Comandos` verifican un branch actualizado[\s\S]*la stop list de `## Autonomy` rige como siempre, salvo las filas cuyo `Pattern` matchea `gh pr merge` o `gh stack merge`[\s\S]*invocarlo y confirmar el plan es la autorización humana[\s\S]*el plan de la Fase 2 cita esa fila textual y avisa que confirmar la pisa/,
+		/Respetar la stop list de `## Autonomy` del contrato, salvo las filas de merge \(`Pattern` que matchea `gh pr merge` o `gh stack merge`\)[\s\S]*solo cae la parte de merge/,
 		/`gh stack` exigido solo si algún target es un stack/,
 		/un PR pertenece a un stack si su `baseRefName` no es el default o si existe algún PR abierto cuyo `baseRefName` es su `headRefName`[\s\S]*se confirma con `gh stack view --json`/,
 		/se recorre `baseRefName` hasta el branch default/,
@@ -487,11 +492,26 @@ test("#84 CA-4: la doctrina de chiche-land no ejecuta `git reset --hard` ni `git
 	}
 });
 
-test("PR #91 CA-14: ninguna línea de chiche-land frena el merge por `## Limites` del contrato", async () => {
+test("PR #91 CA-14 (issue #102 CA-22): ninguna línea de chiche-land frena el merge por la stop list del contrato, y nadie cita ## Limites", async () => {
 	for (const harness of HARNESSES) {
 		const lines = (await readRepoFile(`${harness}/chiche-land/SKILL.md`)).split("\n");
-		const frena = lines.filter((line) => (/## Limites/.test(line) && /\b(frena|frenar|manda)\b|por encima/.test(line) && !/no frenan/.test(line)) || /contrato[^.]*manda/.test(line));
+		const frena = lines.filter((line) => (/stop list/.test(line) && /\b(frena|frenar|manda)\b|por encima/.test(line) && !/no frenan/.test(line) && !/frena en todo nivel/.test(line)) || /contrato[^.]*manda/.test(line));
 		assert.deepEqual(frena, [], `${harness}/chiche-land/SKILL.md`);
+		const limites = lines.filter((line) => /## Limites/.test(line) && !/contrato sin ## Autonomy: rigen sus ## Limites/.test(line) && !/esa prosa sigue rigiendo/.test(line));
+		assert.deepEqual(limites, [], `${harness}/chiche-land/SKILL.md: ## Limites ya no es fuente propia`);
+	}
+});
+
+test("issue #102 CA-22: chiche-land conserva la excepción de merge por fila de la stop list y acepta --autonomy solo en supervised", async () => {
+	for (const harness of HARNESSES) {
+		const file = `${harness}/chiche-land/SKILL.md`;
+		const markdown = await readRepoFile(file);
+		const preflight = section(markdown, /^## Fase 1 — Preflight/);
+		assert.match(preflight, /salvo las filas cuyo `Pattern` matchea `gh pr merge` o `gh stack merge`\. Esas no frenan este skill: invocarlo y confirmar el plan es la autorización humana/, `${file}: excepción de merge por Pattern`);
+		assert.match(preflight, /el plan de la Fase 2 cita esa fila textual y avisa que confirmar la pisa/, `${file}: el plan cita la fila`);
+		assert.match(section(markdown, /^## MUST DO$/), /^- Respetar la stop list de `## Autonomy` del contrato, salvo las filas de merge \(`Pattern` que matchea `gh pr merge` o `gh stack merge`\)/m, `${file}: MUST DO`);
+		assert.match(section(markdown, /^## Argumentos$/), /`--autonomy <level>`[^\n]*aborta con cualquier valor distinto de `supervised`\/`A1`/, `${file}: --autonomy solo supervised`);
+		assert.ok(delimitedBlock(markdown, "autonomy-levels") !== null && delimitedBlock(markdown, "autonomy-resolve") !== null, `${file}: bloques autonomy-levels y autonomy-resolve`);
 	}
 });
 

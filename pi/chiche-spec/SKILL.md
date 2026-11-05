@@ -14,12 +14,76 @@ Dos ideas fuerza:
 ## Argumentos
 
 ```text
-/skill:chiche-spec [pedido libre | #NN | URL de issue | ruta de spec] [--from-grill [ID|ruta.md]] [--out local|issue] [--assume]
+/skill:chiche-spec [pedido libre | #NN | URL de issue | ruta de spec] [--from-grill [ID|ruta.md]] [--out local|issue] [--assume] [--autonomy <level>]
 ```
 
 - `--from-grill [ID|ruta.md]` — usa como fuente autoritativa un handoff finalizado. Si no trae referencia, invocar `select_grill_session` con `status: "finalized"` e `intent: "spec-source"`. Si trae un ID, cargar el snapshot confinado mediante `grill_session` (`action: "get"`, con el ID lógico exacto) y usar su handoff completo, incluida `importedHandoff` cuando exista; no construir un filename desde el ID. Si trae una ruta, exigir una ruta absoluta a un único Markdown directamente bajo `<root>/.chiche/grills/`, `<root>/.sdd/grills/`, `<git-common-dir>/chiche/grills/` o `<git-common-dir>/sdd/grills/`, resolverla físicamente y validarla con el parser SDD como grill finalizado antes de cualquier publicación. Ese flujo admite un handoff sin snapshot hermano ni JSON runtime, con la raíz operativa que fija «Dónde viven los borradores»: la raíz física para un handoff de `<root>/.sdd/grills/` o de `<root>/.chiche/grills/`, donde el `project` del marker es procedencia histórica no bloqueante, y, para uno de `<git-common-dir>/chiche/grills/` o `<git-common-dir>/sdd/grills/`, su `Proyecto` si nombra un worktree del mismo repo o, si no, el worktree principal de ese common-dir. Tomar el `grill` canónico decodificado del marker y conservarlo en la spec.
 - `--out local|issue` — fuerza el destino de la spec por encima de la regla automática. `local` = `<git-common-dir>/chiche/specs/`; `issue` = actualizar el issue de origen (o crear uno nuevo si el pedido fue libre) **sin crear una copia en `.sdd/specs/`** (salvo `Llevar a issue` desde el menú, que publica una spec local y conserva el `.md`).
 - `--assume` — cero preguntas y sin menú final: además de lo que el flujo ya hace sin preguntar (inferencias `[ASSUMED]`, mecanismo propuesto, destino automático), si falta el contrato corre `/skill:chiche-init --assume`, y el reporte termina en `Spec lista`. Las decisiones ya confirmadas por grill nunca se degradan a supuestos.
+- `--autonomy <level>` — nivel de autonomía de esta corrida; manda sobre la fila `spec` de `## Autonomy` del contrato. Ver «Niveles de autonomía» y «Nivel efectivo».
+
+<!-- autonomy-levels:start -->
+**Niveles de autonomía.** La escala es `manual (A0)`, `supervised (A1)`, `plan-approved (A2)`, `unattended (A3)`, `auto-land (A4)` y `auto-deploy (A5)`. `--autonomy <level>` acepta el código o la palabra, sin distinguir mayúsculas (`A2`, `a2` y `plan-approved` son el mismo nivel). Esta versión honra A1 a A3: con A0, A4 o A5 el skill aborta antes de cualquier mutación con el diagnóstico literal `--autonomy <nivel>: no soportado todavía (v1 honra A1–A3)`, y cualquier otro token aborta listando los valores válidos. Sin flag rige lo que resuelve «Nivel efectivo»; el default es `supervised (A1)`.
+<!-- autonomy-levels:end -->
+
+<!-- autonomy-resolve:start -->
+**Nivel efectivo.** El nivel efectivo es el del flag `--autonomy` si vino; si no, la fila del `Stage` en `## Autonomy` del contrato leído del branch default, nunca del branch de trabajo: un PR no puede subirse la autonomía a sí mismo. `grill` lee la fila `grill`, `chiche-spec` la fila `spec`, `chiche-run` la fila `run` y `chiche-land` la fila `land`; `chiche-init`, `issue-triage` y `design-system` no tienen fila: flag o `supervised (A1)`. La lectura hace `git fetch` best-effort de `origin` y `git show origin/<default>:.chiche/project.md`, con fallback a `.sdd/project.md` para un repo que mantuvo `.sdd/`; sin remote lee el working tree en ese mismo orden y avisa `nivel leído del working tree: sin remote`. Si el contrato no tiene `## Autonomy`, o la fila está `unrehearsed` o `FAILED`, rige `supervised (A1)` con aviso. Si el contrato no tiene `## Autonomy` pero sí `## Limites`, esa prosa sigue rigiendo como restricción, el nivel es `supervised (A1)` y el aviso es literal: `contrato sin ## Autonomy: rigen sus ## Limites; corré chiche-init --update`. La stop list (segunda tabla de `## Autonomy`) se lee de la misma fuente y frena en todo nivel: antes de correr un comando o tocar una ruta que matchee un `Pattern`, el skill frena y lo reporta citando la fila. La traza imprime `nivel efectivo: <nombre> (<código>), leído de <fuente>`. Lo imprime este comando, con `<stage>` y `<flag>` reemplazados (`<flag>` vacío sin el flag; `<stage>` es `none` en los skills sin fila), sin parámetros posicionales ni variables de argumentos del harness, que se sustituyen al cargar el skill con argumentos:
+
+```bash
+(
+  stage='<stage>' flag='<flag>'
+  export LC_ALL=C
+  pick=$(printf %s "$flag" | tr A-Z a-z); src='--autonomy'; aviso=''; stop=''; contract=''
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || root=.
+  ref=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)
+  if [ -z "$ref" ]; then for b in main master; do if git rev-parse -q --verify "refs/remotes/origin/$b" >/dev/null 2>&1; then ref="origin/$b"; break; fi; done; fi
+  if [ -n "$ref" ]; then
+    git fetch -q origin >/dev/null 2>&1 || aviso="$aviso aviso: fetch de origin falló, se usa la ref local;"
+    contract=$(git show "$ref:.chiche/project.md" 2>/dev/null) || contract=$(git show "$ref:.sdd/project.md" 2>/dev/null) || contract=''
+    fuente=$ref
+  else
+    contract=$(cat "$root/.chiche/project.md" 2>/dev/null) || contract=$(cat "$root/.sdd/project.md" 2>/dev/null) || contract=''
+    fuente='working tree'; aviso="$aviso aviso: nivel leído del working tree: sin remote;"
+  fi
+  section=$(printf '%s\n' "$contract" | sed -n '/^## Autonomy$/,$p' | sed -n '2,${/^## /q;p;}')
+  if [ -z "$section" ]; then
+    if printf '%s\n' "$contract" | grep -q '^## Limites$'; then aviso="$aviso aviso: contrato sin ## Autonomy: rigen sus ## Limites; corré chiche-init --update;"
+    elif [ -z "$contract" ]; then aviso="$aviso aviso: sin contrato: rige supervised (A1);"
+    else aviso="$aviso aviso: contrato sin ## Autonomy: rige supervised (A1); corré chiche-init --update;"; fi
+    [ -n "$pick" ] || pick=a1
+  else
+    stop=$(printf '%s\n' "$section" | sed -n '/^| *Action *| *Pattern *| *Reason *|/,$p' | sed -n '3,$p' | grep '^|')
+    if [ -z "$pick" ] && [ "$stage" = none ]; then pick=a1
+    elif [ -z "$pick" ]; then
+      row=$(printf '%s\n' "$section" | grep -E "^\|[[:space:]]*$stage[[:space:]]*\|" | head -n 1)
+      if [ -z "$row" ]; then pick=a1; aviso="$aviso aviso: ## Autonomy sin fila $stage: rige supervised (A1);"
+      else
+        pick=$(printf '%s\n' "$row" | cut -d'|' -f3 | sed 's/^[[:space:]]*//; s/[[:space:]].*$//' | tr A-Z a-z)
+        reh=$(printf '%s\n' "$row" | cut -d'|' -f5 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        case $pick in a1|supervised) ;; a2|plan-approved|a3|unattended) case $reh in rehearsed\ *) ;; *) aviso="$aviso aviso: fila $stage sin ensayo ($reh): rige supervised (A1);"; pick=a1 ;; esac ;; *) aviso="$aviso aviso: fila $stage con nivel desconocido ($pick): rige supervised (A1);"; pick=a1 ;; esac
+      fi
+    fi
+  fi
+  [ "$src" = '--autonomy' ] && [ -z "$flag" ] && src=$fuente
+  case $pick in
+    a1|supervised) nivel='supervised (A1)' ;;
+    a2|plan-approved) nivel='plan-approved (A2)' ;;
+    a3|unattended) nivel='unattended (A3)' ;;
+    a0|manual|a4|auto-land|a5|auto-deploy) echo "--autonomy $flag: no soportado todavía (v1 honra A1–A3)" >&2; exit 2 ;;
+    *) echo "--autonomy $flag: valor inválido; válidos: supervised (A1), plan-approved (A2), unattended (A3)" >&2; exit 2 ;;
+  esac
+  [ -n "$aviso" ] && echo "${aviso# }" | sed 's/;$//' >&2
+  echo "nivel efectivo: $nivel, leído de $src"
+  [ -z "$stop" ] || printf '%s\n' "$stop" | while IFS= read -r fila; do
+    pat=$(printf '%s\n' "$fila" | cut -d'|' -f3 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    if [ -z "$pat" ]; then echo "aviso: fila de la stop list sin Pattern, ignorada: $fila" >&2; else echo "parada: $fila"; fi
+  done
+)
+```
+
+El comando termina con exit 2 ante un nivel no soportado o inválido y el skill aborta ahí; con exit 0 imprime la traza y una línea `parada:` por cada fila de la stop list, e ignora con aviso una fila sin `Pattern`.
+<!-- autonomy-resolve:end -->
+
 
 ### Entrada orquestada de Pi
 
@@ -47,7 +111,7 @@ verificable va a ser la ejecucion segun el contrato de autonomia (.chiche/projec
   • De un issue abierto  — abro el selector de issues del repo.
   • De un grill cerrado  — elijo un handoff confirmado como fuente.
 
-Atajo: /skill:chiche-spec [pedido libre | #NN | URL de issue | ruta de spec] [--from-grill [ID|ruta.md]] [--out local|issue] [--assume] saltea este menu.
+Atajo: /skill:chiche-spec [pedido libre | #NN | URL de issue | ruta de spec] [--from-grill [ID|ruta.md]] [--out local|issue] [--assume] [--autonomy <level>] saltea este menu.
 ```
 
 Luego usar `ask_user_question` — una pregunta, "¿De dónde sale la spec?":
@@ -59,7 +123,7 @@ Luego usar `ask_user_question` — una pregunta, "¿De dónde sale la spec?":
 ## Fase 1 — Raíz y contrato primero (bloqueante)
 
 1. Resolver la raíz del proyecto sin explorar código: cwd para pedido/issue; `projectPath` del snapshot para `--from-grill <ID>`; para `--from-grill <ruta.md>`, la que fija «Dónde viven los borradores»: la raíz física para un handoff de `<root>/.sdd/grills/` o de `<root>/.chiche/grills/` y, para uno de `<git-common-dir>/chiche/grills/` o `<git-common-dir>/sdd/grills/`, su `Proyecto` si nombra un worktree del mismo repo o, si no, el worktree principal de ese common-dir. Si la raíz operativa pertenece a otro proyecto, avisar y ejecutar todas las tools con ese `cwd`; nunca escribir la spec en el cwd equivocado.
-2. Leer `<raiz>/.chiche/project.md` ANTES de explorar el código; interesan sobre todo `## Comandos`, `## Verificacion autonoma`, `## Limites` y `## Politicas de generacion` (los gates duros que `/skill:chiche-run` va a aplicar — condicionan el veredicto y el tamaño sano de la spec). Un repo inicializado antes del renombre lo tiene en `.sdd/project.md`: se lee y se escribe ahí, y `/skill:chiche-init --update` ofrece migrarlo.
+2. Leer `<raiz>/.chiche/project.md` ANTES de explorar el código; interesan sobre todo `## Comandos`, `## Verificacion autonoma`, `## Autonomy` y `## Politicas de generacion` (los gates duros que `/skill:chiche-run` va a aplicar — condicionan el veredicto y el tamaño sano de la spec). Un repo inicializado antes del renombre lo tiene en `.sdd/project.md`: se lee y se escribe ahí, y `/skill:chiche-init --update` ofrece migrarlo.
 
 - **Si NO existe**: frenar. Explicar en una línea por qué (sin contrato el veredicto de verificabilidad es inventado) y usar `ask_user_question`: 1. `Correr /skill:chiche-init ahora (Recomendado)` — cargar y ejecutar ese skill en la raíz resuelta, esperar el contrato y seguir; 2. `Abortar`. NO generar spec "provisoria" sin contrato, ni siquiera si el usuario insiste con que es una feature chica: ofrecer `/skill:chiche-init --assume` como vía rápida.
 - **Con `--assume` y sin contrato**: correr `/skill:chiche-init --assume` automáticamente, anotarlo en el reporte, y seguir.
