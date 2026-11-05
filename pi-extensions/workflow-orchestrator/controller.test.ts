@@ -745,14 +745,16 @@ test("launch_sdd_run asks explicit authorization and bridges its direct request 
 		},
 	} as never);
 	let confirmations = 0;
+	const messages: string[] = [];
 	const toolContext = {
 		hasUI: true,
 		cwd: "/workspace/skills",
 		sessionManager: { getSessionId: () => "origin-session" },
 		ui: {
-			async confirm(title: string) {
+			async confirm(title: string, message: string) {
 				confirmations += 1;
 				assert.equal(title, "Ejecutar ahora");
+				messages.push(message);
 				return true;
 			},
 		},
@@ -766,6 +768,8 @@ test("launch_sdd_run asks explicit authorization and bridges its direct request 
 		toolContext,
 	) as { terminate?: boolean; details?: { authorized?: boolean } };
 	assert.equal(confirmations, 1);
+	// Review #116-5: el confirm es la única autorización; sin flag no muestra nivel.
+	assert.deepEqual(messages, ["Run issue #14.\n\nSe abrirá una sesión hija ligada a la actual."]);
 	assert.equal(result.terminate, true);
 	assert.equal(result.details?.authorized, true);
 	assert.deepEqual(sent, [{
@@ -782,6 +786,10 @@ test("launch_sdd_run asks explicit authorization and bridges its direct request 
 	};
 	await commands.get("__sdd-dispatch")!.handler("direct-receipt", commandContext);
 	assert.deepEqual(starts, [directRunRequest()]);
+	// Review #116-5: con --autonomy el confirm muestra el nivel que se va a autorizar.
+	const leveled = await tools.get("launch_sdd_run")!.execute("launch-2", { target: "#14", autonomy: "plan-approved" }, undefined, undefined, toolContext) as { details?: { authorized?: boolean } };
+	assert.equal(leveled.details?.authorized, true);
+	assert.equal(messages[1], "Run issue #14.\nNivel: A2\n\nSe abrirá una sesión hija ligada a la actual.");
 });
 
 test("launch_grill authorizes a qualified issue target and dispatches it through a one-shot receipt", async () => {

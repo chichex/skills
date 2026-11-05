@@ -345,7 +345,8 @@ export function createWorkflowController(
 			if (!resolved.ok) throw new Error(`${resolved.code}: ${resolved.message}`);
 			const authorized = await context.ui.confirm(
 				"Ejecutar ahora",
-				`${resolved.request.summary}\n\nSe abrirá una sesión hija ligada a la actual.`,
+				// Review #116-5: el confirm es la única autorización; muestra el nivel que se va a autorizar.
+				`${resolved.request.summary}${autonomy === undefined ? "" : `\nNivel: ${autonomy}`}\n\nSe abrirá una sesión hija ligada a la actual.`,
 			);
 			if (!authorized) {
 				return {

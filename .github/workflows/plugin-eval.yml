@@ -56,8 +56,8 @@ jobs:
   eval:
     name: Eval
     runs-on: ubuntu-latest
-    # 8 casos a un run tardan minutos; con runs=3 y baseline, bastante más.
-    timeout-minutes: 30
+    # 7 casos a un run tardan minutos; con runs=3 y baseline (-j 1, 900 s por caso) hasta 90.
+    timeout-minutes: 100
     permissions:
       contents: read
     env:

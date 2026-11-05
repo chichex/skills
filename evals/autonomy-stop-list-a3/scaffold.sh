@@ -7,5 +7,9 @@
 set -euo pipefail
 cp -R "$(dirname "$0")/fixtures/mini-cli-publish/." .
 git init -q -b main
-git -c user.name=chiche -c user.email=chiche@example.invalid -c commit.gpgsign=false add -A
-git -c user.name=chiche -c user.email=chiche@example.invalid -c commit.gpgsign=false commit -q -m "fixture mini-cli-publish"
+# El runner de la eval borra la identidad global de git: los commits del run la necesitan en el repo.
+git config user.name chiche
+git config user.email chiche@example.invalid
+git config commit.gpgsign false
+git add -A
+git commit -q -m "fixture mini-cli-publish"
