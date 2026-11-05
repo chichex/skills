@@ -84,11 +84,11 @@ Dos ideas fuerza:
     a2|plan-approved) nivel='plan-approved (A2)' ;;
     a3|unattended) nivel='unattended (A3)' ;;
   esac
-  [ -n "$aviso" ] && echo "${aviso# }" | sed 's/;$//' >&2
+  [ -n "$aviso" ] && printf '%s\n' "${aviso# }" | sed 's/;$//' >&2
   echo "nivel efectivo: $nivel, leído de $src"
   [ -z "$stop" ] || printf '%s\n' "$stop" | while IFS= read -r fila; do
     pat=$(printf '%s\n' "$fila" | cut -d'|' -f3 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-    if [ -z "$pat" ]; then echo "aviso: fila de la stop list sin Pattern, ignorada: $fila" >&2; else echo "parada: $fila"; fi
+    if [ -z "$pat" ]; then printf 'aviso: fila de la stop list sin Pattern, ignorada: %s\n' "$fila" >&2; else printf 'parada: %s\n' "$fila"; fi
   done
 )
 ```
@@ -300,7 +300,7 @@ Cuando la corrida re-especifica un pedido hacia un archivo nuevo o una revisión
 Con A2 o A3: el destino sigue la misma regla y no hay menú (sin menú, el reporte termina en `Spec lista`); en A2, responder las preguntas de impacto alto es la aprobación.
 <!-- chiche-spec-flow:end -->
 
-En Pi, cada destino se persiste con `persist_sdd_spec`: issue de origen como destino `issue` (la tool archiva el body original sólo en el transporte remoto y no crea un archivo en `.sdd/specs/`), issue nueva como `new-issue` (la tool hace el staging no-SDD) y local como archivo con la ruta lógica `.chiche/specs/<slug>.md` (`.sdd/specs/<slug>.md` si ya vive en un lugar `sdd`), que la tool resuelve con la precedencia de «Dónde viven los borradores» y, si es nueva, escribe en `<git-common-dir>/chiche/specs/`; `Llevar a issue` es una sola llamada con los dos destinos del mismo documento (el archivo existente + `new-issue`), así el runtime valida la equivalencia normativa. El `mode` del runtime fija el estado esperado: publicar con `mode: "assume"` (valida `draft`) y hacer la transición del menú con `mode: "interactive"` (valida `approved`), en una llamada propia sobre el mismo target. `chiche-run con subagente` aparece en el menú de Pi solo si la tool `subagent` del package está registrada en la sesión (ver "Acción posterior en Pi").
+En Pi, cada destino se persiste con `persist_sdd_spec`: issue de origen como destino `issue` (la tool archiva el body original sólo en el transporte remoto y no crea un archivo en `.sdd/specs/`), issue nueva como `new-issue` (la tool hace el staging no-SDD) y local como archivo con la ruta lógica `.chiche/specs/<slug>.md` (`.sdd/specs/<slug>.md` si ya vive en un lugar `sdd`), que la tool resuelve con la precedencia de «Dónde viven los borradores» y, si es nueva, escribe en `<git-common-dir>/chiche/specs/`; `Llevar a issue` es una sola llamada con los dos destinos del mismo documento (el archivo existente + `new-issue`), así el runtime valida la equivalencia normativa. El `mode` del runtime fija el estado esperado: publicar con `mode: "assume"` (valida `draft`) y hacer la transición del menú con `mode: "interactive"` (valida `approved`), en una llamada propia sobre el mismo target. `chiche-run --autonomy A3` se ofrece siempre; sin la tool `subagent` del package registrada en la sesión, avisa y corre inline, como `/skill:chiche-run` (ver "Acción posterior en Pi").
 
 <!-- chiche-spec-publication-gate:start -->
 ### Gate canónico de publicación (precondición obligatoria)
@@ -376,7 +376,7 @@ generacion condiciona la ejecucion (particion por tamaño, coverage), una linea 
 
 ## Acción posterior en Pi
 
-Sólo **después** de que la spec quedó persistida y el reporte `Spec lista` ya fue mostrado, ofrecer el menú final de "Flujo sin fricción" con `ask_user_question` (solo en A1), con el link o la ruta en la pregunta: `Llevar a issue` (sólo si la spec está en `.md`) / `chiche-run` / `chiche-run --autonomy A3` / `Solicitar cambios`. `chiche-run --autonomy A3` aparece solo si la tool `subagent` del package está registrada en la sesión; si no, se omite.
+Sólo **después** de que la spec quedó persistida y el reporte `Spec lista` ya fue mostrado, ofrecer el menú final de "Flujo sin fricción" con `ask_user_question` (solo en A1), con el link o la ruta en la pregunta: `Llevar a issue` (sólo si la spec está en `.md`) / `chiche-run` / `chiche-run --autonomy A3` / `Solicitar cambios`. `chiche-run --autonomy A3` se ofrece siempre: sin la tool `subagent` del package registrada en la sesión, avisa y corre inline, como hace `/skill:chiche-run`.
 
 - `chiche-run` persiste primero `state=approved` y después ofrece la acción explícita **Ejecutar ahora** invocando `launch_sdd_run` con el target exacto que acabás de reportar (ruta local absoluta o `#NN`). La tool vuelve a mostrar el gate humano `Ejecutar ahora` / cancelar y, únicamente si se autoriza, usa el launcher compartido para abrir una sesión hija.
 - `chiche-run --autonomy A3` persiste primero `state=approved` con `persist_sdd_spec` (`mode: "interactive"`) y sigue la sección «Run con subagente» de `/skill:chiche-run`: lanza la tool `subagent` con `agent: "implementer"`, `background: true` y el task `/skill:chiche-run <target> --autonomy A3 --inline` (el target exacto que acabás de reportar: ruta local absoluta o `#NN`). La tool devuelve al instante el id del job (`sa-N`) y la sesión queda libre; al llegar el mensaje `subagent-result`, relevar al usuario el PR y el reporte del run. Si la tool devuelve `Unknown agent`, anunciarlo y revertir el `approved` igual que en el caso cancelado. El task del subagente no es un mensaje de esta sesión: la prohibición de enviar `/skill:chiche-run` como mensaje sigue vigente.

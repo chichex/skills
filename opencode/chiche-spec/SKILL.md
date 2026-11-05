@@ -84,11 +84,11 @@ Dos ideas fuerza:
     a2|plan-approved) nivel='plan-approved (A2)' ;;
     a3|unattended) nivel='unattended (A3)' ;;
   esac
-  [ -n "$aviso" ] && echo "${aviso# }" | sed 's/;$//' >&2
+  [ -n "$aviso" ] && printf '%s\n' "${aviso# }" | sed 's/;$//' >&2
   echo "nivel efectivo: $nivel, leído de $src"
   [ -z "$stop" ] || printf '%s\n' "$stop" | while IFS= read -r fila; do
     pat=$(printf '%s\n' "$fila" | cut -d'|' -f3 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-    if [ -z "$pat" ]; then echo "aviso: fila de la stop list sin Pattern, ignorada: $fila" >&2; else echo "parada: $fila"; fi
+    if [ -z "$pat" ]; then printf 'aviso: fila de la stop list sin Pattern, ignorada: %s\n' "$fila" >&2; else printf 'parada: %s\n' "$fila"; fi
   done
 )
 ```
@@ -300,7 +300,7 @@ Cuando la corrida re-especifica un pedido hacia un archivo nuevo o una revisión
 Con A2 o A3: el destino sigue la misma regla y no hay menú (sin menú, el reporte termina en `Spec lista`); en A2, responder las preguntas de impacto alto es la aprobación.
 <!-- chiche-spec-flow:end -->
 
-En opencode, las opciones del menú se ofrecen con `question` (en texto plano si la tool no está disponible, terminando el turno y esperando la respuesta), con el link o la ruta en la pregunta. `chiche-run` carga el skill `chiche-run` sobre el target en esta sesión. `chiche-run con subagente` no se ofrece: opencode no delega a un subagente la responsabilidad integral de completar y cerrar la spec.
+En opencode, las opciones del menú se ofrecen con `question` (en texto plano si la tool no está disponible, terminando el turno y esperando la respuesta), con el link o la ruta en la pregunta. Igual que en Codex, con 4 opciones (spec en `.md`) y sin la tool el menú va en texto plano, terminando el turno. `chiche-run` carga el skill `chiche-run` sobre el target en esta sesión, con `--autonomy <level>` si esta corrida lo recibió. `chiche-run --autonomy A3` carga `/chiche-run <target> --autonomy A3` en esta misma sesión: opencode no tiene subagentes, así que el run corre inline con la conducta de A2 más la corrección automática del feedback (ver `/chiche-run`).
 
 <!-- chiche-spec-publication-gate:start -->
 ### Gate canónico de publicación (precondición obligatoria)

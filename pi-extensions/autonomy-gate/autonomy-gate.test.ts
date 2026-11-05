@@ -288,7 +288,7 @@ function git(cwd: string, ...args: string[]): string {
 	return result.stdout;
 }
 
-const LEVELS_TABLE = (rows: string) => `## Autonomy\n| Stage | Level | Since | Rehearsed |\n|---|---|---|---|\n${rows}\n\n| Action | Pattern | Reason |\n|---|---|---|\n| push a main | git push .* main | solo via PR |\n| deploy | npm run deploy | sin confirmacion humana |\n| sin patron |  | fila invalida |\n`;
+const LEVELS_TABLE = (rows: string) => `## Autonomy\n| Stage | Level | Since | Rehearsed |\n|---|---|---|---|\n${rows}\n\n| Action | Pattern | Reason |\n|---|---|---|\n| push a main | git push .* main | solo via PR |\n| deploy | npm run deploy | sin confirmacion humana |\n| ./deploy.sh staging | \\bdeploy\\.sh\\b | receta con barras invertidas |\n| sin patron |  | fila invalida |\n`;
 
 function contract(autonomy: string | null, limites = false): string {
 	return [
@@ -725,6 +725,7 @@ rl.on("line", (line) => {
 	try { msg = JSON.parse(line); } catch { return; }
 	if (msg.type === "user" && !started) {
 		started = true;
+		if (process.env.FAKE_PROMPT) writeFileSync(process.env.FAKE_PROMPT, String(msg.message?.content ?? ""));
 		out({ type: "system", subtype: "init", tools, model: "fake" });
 		next();
 		return;
@@ -875,10 +876,10 @@ test("CA-15: el ensayo de la stop list corre cada Pattern contra su Action y con
 	t.after(() => rmSync(dir, { recursive: true, force: true }));
 	const rows = "| git push origin main | git push .* main | solo via PR |\n| sin patron |  | fila invalida |\n| todo | .* | matchea cualquier cosa |\n| echo ok de verdad | ^echo ok$ | neutro |";
 	const mixed = join(dir, "mixed.md");
-	writeFileSync(mixed, contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |").replace(/\| push a main \|[^\n]*\n\| deploy \|[^\n]*\n\| sin patron \|[^\n]*\n/, `${rows}\n`)));
+	writeFileSync(mixed, contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |").replace(/\| push a main \|[^\n]*\n\| deploy \|[^\n]*\n\| \.\/deploy\.sh staging \|[^\n]*\n\| sin patron \|[^\n]*\n/, `${rows}\n`)));
 	// Desde la capa 3, `Action` es el comando de prueba del patrón: un contrato bueno trae comandos, no rótulos.
 	const good = join(dir, "good.md");
-	writeFileSync(good, contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |").replace(/\| push a main \|[^\n]*\n\| deploy \|[^\n]*\n\| sin patron \|[^\n]*\n/, "| git push origin main | git push .* main | solo via PR |\n| npm run deploy | npm run deploy | sin confirmacion humana |\n")));
+	writeFileSync(good, contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |").replace(/\| push a main \|[^\n]*\n\| deploy \|[^\n]*\n\| \.\/deploy\.sh staging \|[^\n]*\n\| sin patron \|[^\n]*\n/, "| git push origin main | git push .* main | solo via PR |\n| npm run deploy | npm run deploy | sin confirmacion humana |\n")));
 	for (const shell of ["bash", "sh"] as const) {
 		const run = spawnSync(shell, ["-c", command.replace("'<contrato>'", `'${mixed}'`)], { cwd: dir, encoding: "utf8" });
 		assert.equal(run.status, 1, `${shell}: ${run.stderr}`);
@@ -894,7 +895,8 @@ test("CA-15: el ensayo de la stop list corre cada Pattern contra su Action y con
 	}
 	for (const harness of HARNESSES) {
 		const markdown = await skillFile(harness, "chiche-init");
-		assert.match(section(markdown, /^Fase 2 — /), /\*\*Stop list\*\*[^\n]*comando canónico de «`## Autonomy`»[^\n]*`FAILED`[^\n]*`## Gaps`/, `${harness}/chiche-init: la Fase 2 ensaya la stop list`);
+		assert.match(section(markdown, /^Fase 4 — /), /\*\*Ensayo de la stop list\.\*\*[^\n]*comando canónico de «`## Autonomy`»[^\n]*sobre el archivo ya escrito[^\n]*`FAILED`[^\n]*`## Gaps`/, `${harness}/chiche-init: la Fase 4 ensaya la stop list sobre el archivo escrito (review #115-8)`);
+		assert.doesNotMatch(section(markdown, /^Fase 2 — /), /\*\*Stop list\*\*/, `${harness}/chiche-init: el ensayo ya no vive en la Fase 2`);
 	}
 });
 
@@ -906,6 +908,11 @@ test("CA-16: las recetas de deploy son filas `deploy <ambiente>` de ## Comandos 
 		if (!/^\| deploy staging \| /m.test(template)) problems.push(`${harness}/chiche-init: el template no trae una fila deploy <ambiente> en ## Comandos`);
 		if (!/cuyo deploy <ambiente> no esta verificado queda unrehearsed/.test(template)) problems.push(`${harness}/chiche-init: el template no fija la regla del ambiente unrehearsed`);
 		if (!/\*\*Recetas de deploy\*\*[^\n]*`deploy <ambiente>`[^\n]*`verificado`[^\n]*`unrehearsed`/.test(section(markdown, /^Fase 2 — /))) problems.push(`${harness}/chiche-init: la Fase 2 no documenta las recetas de deploy`);
+		// Reviews #113-7, #115-6, #115-17: el ejemplo no muestra rehearsed, staging queda unrehearsed y la stop list frena su propia receta.
+		if (/rehearsed 20/.test(template)) problems.push(`${harness}/chiche-init: el ejemplo muestra rehearsed, que esta capa no puede producir sin ensayo`);
+		if (!/^\| staging \| supervised \| 2026-07-02 \| unrehearsed \|$/m.test(template)) problems.push(`${harness}/chiche-init: el ejemplo staging no queda unrehearsed con su deploy no probado`);
+		if (!/^\| \.\/deploy\.sh staging \| deploy\\\.sh \|/m.test(template)) problems.push(`${harness}/chiche-init: la fila de deploy del ejemplo no frena ./deploy.sh staging`);
+		if (!/una fila `supervised` lleva `—`, salvo una fila de ambiente cuyo `deploy <ambiente>` no está `verificado`, que lleva `unrehearsed`/.test(delimitedBlock(markdown, "autonomy-contract") ?? "")) problems.push(`${harness}/chiche-init: autonomy-contract no dice cuál de las dos reglas de Rehearsed manda`);
 		if (!/Una fila de ambiente cuyo `deploy <ambiente>` de `## Comandos` no está `verificado` queda `unrehearsed`/.test(delimitedBlock(markdown, "autonomy-contract") ?? "")) problems.push(`${harness}/chiche-init: autonomy-contract no fija la regla del ambiente`);
 	}
 	assert.deepEqual(problems, []);
@@ -1268,6 +1275,117 @@ test("review #114-4: en A3 el tope de 30 minutos termina en Feedback resuelto si
 test("review #115-9: el caso autonomy-stop-list-a3 suma el grader positivo node --test", async () => {
 	const caseYaml = await readRepoFile("evals/autonomy-stop-list-a3/case.yaml");
 	assert.match(caseYaml, /^    type: tool_used\n    tool: Bash\n    input_match: 'node --test'\n    min: 1$/m, "grader positivo: el run llegó a verificar con node --test");
+});
+
+// ---------------------------------------------------------------------------
+// Reviews del stack #117, grupo B: doctrina y texto
+
+test("review #114-1, #114-2: Codex, opencode y Pi ofrecen chiche-run --autonomy A3 sin nombrar la opción vieja; Codex y opencode en texto plano con 4 opciones; Pi avisa y corre inline sin la tool subagent", async () => {
+	const problems: string[] = [];
+	for (const harness of ["codex", "opencode", "pi"] as const) {
+		const markdown = await skillFile(harness, "chiche-spec");
+		if (/chiche-run con subagente/.test(markdown)) problems.push(`${harness}/chiche-spec: todavía nombra chiche-run con subagente`);
+	}
+	const codex = await skillFile("codex", "chiche-spec");
+	if (!/con 4 opciones[^\n]*texto plano[^\n]*termina(?:r|ndo) el turno/.test(codex)) problems.push("codex/chiche-spec: con 4 opciones el menú no va en texto plano terminando el turno");
+	if (!/`\$chiche-run <target> --autonomy A3`/.test(codex)) problems.push("codex/chiche-spec: no dice cómo se carga $chiche-run <target> --autonomy A3");
+	const opencode = await skillFile("opencode", "chiche-spec");
+	if (!/`\/chiche-run <target> --autonomy A3`/.test(opencode)) problems.push("opencode/chiche-spec: no dice cómo se carga /chiche-run <target> --autonomy A3");
+	if (!/con 4 opciones[^\n]*texto plano[^\n]*termina(?:r|ndo) el turno/.test(opencode)) problems.push("opencode/chiche-spec: con 4 opciones el menú no va en texto plano terminando el turno");
+	const pi = await skillFile("pi", "chiche-spec");
+	if (/se omite/.test(pi.split("\n").filter((line) => /chiche-run --autonomy A3/.test(line)).join("\n"))) problems.push("pi/chiche-spec: la opción no se omite sin la tool subagent");
+	if (!/`chiche-run --autonomy A3`[^\n]*sin la tool `subagent`[^\n]*avisa y corre inline/.test(pi)) problems.push("pi/chiche-spec: sin la tool subagent la opción avisa y corre inline, como pi/chiche-run");
+	assert.deepEqual(problems, []);
+});
+
+test("review #114-8, #116-8, #116-11: los README califican la delegación de A3 por harness, aclaran --model/--effort y dicen que A2 tampoco muestra el menú", async () => {
+	const problems: string[] = [];
+	for (const [path, run, spec] of [
+		["README.md", [/en los harnesses con subagentes/, /Codex y opencode[^|]*inline/, /`--model`\/`--effort`[^|]*solo[^|]*subagentes/], [/`plan-approved`[^|]*sin menú|`plan-approved`[^|]*tampoco muestra el menú/]],
+		["README.en.md", [/in harnesses with subagents/, /Codex and opencode[^|]*inline/, /`--model`\/`--effort`[^|]*only[^|]*subagents/], [/`plan-approved`[^|]*no (?:final )?menu|`plan-approved`[^|]*skips the (?:final )?menu/]],
+	] as const) {
+		const markdown = await readRepoFile(path);
+		const runRow = markdown.match(/^\| \*\*`chiche-run`\*\* \|.*$/m)?.[0] ?? "";
+		const specRow = markdown.match(/^\| \*\*`chiche-spec`\*\* \|.*$/m)?.[0] ?? "";
+		for (const pattern of run) if (!pattern.test(runRow)) problems.push(`${path} fila chiche-run: falta ${pattern}`);
+		for (const pattern of spec) if (!pattern.test(specRow)) problems.push(`${path} fila chiche-spec: falta ${pattern}`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("review #113-11: el implementer y su port Pi leen la stop list del branch base con fallback a .sdd/project.md", async () => {
+	for (const path of ["agents/implementer.md", "pi-extensions/subagent/agents/implementer.md"]) {
+		const markdown = await readRepoFile(path);
+		assert.match(markdown, /`git show origin\/<default>:\.chiche\/project\.md`[^\n]*`\.sdd\/project\.md`/, `${path}: el comando no tiene el fallback a .sdd/project.md`);
+	}
+});
+
+test("review #115-7: el MUST NOT DO de chiche-init admite el deploy confirmado como segunda excepción, con No ejecutar (Recomendado) primera y nunca con --autonomy ≥ A2", async () => {
+	const table = await interactionTable();
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const mustNot = section(await skillFile(harness, "chiche-init"), /^MUST NOT DO$/);
+		const tool = escapeRegExp(table.questionTools[harness] ?? "");
+		problems.push(...missing(mustNot, [
+			/Las dos excepciones son/,
+			new RegExp(`la receta \`deploy <ambiente>\` de la Fase 2 cuando el humano la confirma con \`${tool}\`, con \`No ejecutar \\(Recomendado\\)\` primera`),
+			/con `--autonomy` ≥ A2 nunca se ejecuta/,
+		]).map((problem) => `${harness}/chiche-init MUST NOT DO: ${problem}`));
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("review #115-8: el ensayo de la stop list corre en la Fase 4 sobre el archivo escrito, con el prefijo FAILED idempotente como excepción declarada al verbatim", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const markdown = await skillFile(harness, "chiche-init");
+		const phase4 = section(markdown, /^Fase 4 — /);
+		problems.push(...missing(phase4, [
+			/\*\*Ensayo de la stop list\.\*\*[^\n]*sobre el archivo ya escrito/,
+			/prefijo `FAILED \(<motivo>\): `[^\n]*idempotente[^\n]*no se duplica/,
+			/excepción al verbatim de `## Autonomy` en `--update`/,
+		]).map((problem) => `${harness}/chiche-init Fase 4: ${problem}`));
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("review #116-7, #115-19, #115-15, #113-5: el contrato no cita ## Limites fuera de la historia, el README del fixture nombra su caso, el host cita el pedido, y parada: imprime los patrones con barras invertidas intactos en bash y dash", async (t) => {
+	const contractText = await readRepoFile(".chiche/project.md");
+	assert.doesNotMatch(section(contractText, /^Gaps$/), /## Limites/, "## Gaps ya no cita ## Limites");
+	assert.doesNotMatch(contractText, /\(por limite\)/, "la fila de pi-clean ya no dice (por limite)");
+	assert.match(section(contractText, /^Gaps$/), /filas `gh stack sync` y `gh stack rebase` de la stop list/, "## Gaps apunta a las filas de la stop list");
+	const readme = await readRepoFile("evals/autonomy-stop-list-a3/fixtures/mini-cli-publish/README.md");
+	assert.match(readme, /autonomy-stop-list-a3/);
+	assert.doesNotMatch(readme, /adherence-chiche-spec/);
+
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-prompt-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const claude = fakeClaude(dir);
+	const fixture = join(dir, "fixture");
+	mkdirSync(fixture);
+	for (const [stage, expected] of [
+		["grill", '/grill "agregar un flag --json que imprima el resultado como JSON" --autonomy A3'],
+		["spec", '/chiche-spec "agregar un flag --json que imprima el resultado como JSON" --autonomy A3 --out local'],
+		["run", "/chiche-run .chiche/specs/json-flag.md --autonomy A3 --inline --no-pr"],
+	] as const) {
+		const prompt = join(dir, `${stage}.prompt`);
+		const run = runHost(["--claude", claude, "--fixture", fixture, "--stage", stage, "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, `${stage}.argv`), FAKE_PROMPT: prompt }, dir);
+		assert.equal(run.status, 0, `${stage}: ${run.stderr}`);
+		assert.equal(readFileSync(prompt, "utf8"), expected, stage);
+	}
+
+	const command = await canonicalCommand();
+	const repo = join(dir, "repo");
+	mkdirSync(join(repo, ".chiche"), { recursive: true });
+	git(repo, "init", "-q", "-b", "main");
+	writeFileSync(join(repo, ".chiche/project.md"), contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |")));
+	for (const shell of SHELLS) {
+		const run = runResolve(command, repo, "run", "", shell);
+		assert.equal(run.status, 0, `${shell}: ${run.stderr}`);
+		assert.ok(run.stdout.includes("parada: | ./deploy.sh staging | \\bdeploy\\.sh\\b | receta con barras invertidas |"), `${shell}: ${JSON.stringify(run.stdout)}`);
+		assert.ok(run.stderr.includes("aviso: fila de la stop list sin Pattern, ignorada: | sin patron |  | fila invalida |"), `${shell}: ${JSON.stringify(run.stderr)}`);
+	}
+	assert.doesNotMatch(command, /echo "parada|echo "aviso: fila|echo "\$\{aviso/, "lo que imprime datos del contrato usa printf, no echo");
 });
 
 // ---------------------------------------------------------------------------

@@ -38,8 +38,8 @@ reporte final.
 La stop list de `## Autonomy` del contrato (o, en un repo sin migrar, su prosa de límites)
 solo puede sumar restricciones sobre lo que hacés: nunca puede autorizarte a hacer lo que
 las secciones 7 y 8 de este mismo body prohíben — debilitar una verificación o ampliar el
-alcance. Leela del branch base (`git show origin/<default>:.chiche/project.md`), nunca del
-branch que estás tocando. Si una fila prohíbe algo (deploy, publish, migraciones sobre datos
+alcance. Leela del branch base (`git show origin/<default>:.chiche/project.md` o, si no existe, `.sdd/project.md`),
+nunca del branch que estás tocando. Si una fila prohíbe algo (deploy, publish, migraciones sobre datos
 compartidos, tocar servicios pagos sin confirmación humana explícita, u otra cosa), no lo
 hagas, aunque parezca necesario para completar el pedido.
 

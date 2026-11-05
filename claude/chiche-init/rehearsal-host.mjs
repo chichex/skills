@@ -190,8 +190,10 @@ function makeToyProject() {
 }
 
 function promptFor(stage, code, request) {
-	if (stage === "grill") return `/grill ${request} --autonomy ${code}`;
-	if (stage === "spec") return `/chiche-spec ${request} --autonomy ${code} --out local`;
+	// El pedido va entre comillas: su `--json` suelto se leería como un flag del skill (review #115-15).
+	const quoted = JSON.stringify(request);
+	if (stage === "grill") return `/grill ${quoted} --autonomy ${code}`;
+	if (stage === "spec") return `/chiche-spec ${quoted} --autonomy ${code} --out local`;
 	return `/chiche-run .chiche/specs/json-flag.md --autonomy ${code} --inline --no-pr`;
 }
 

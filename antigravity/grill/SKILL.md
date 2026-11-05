@@ -79,11 +79,11 @@ Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. 
     a2|plan-approved) nivel='plan-approved (A2)' ;;
     a3|unattended) nivel='unattended (A3)' ;;
   esac
-  [ -n "$aviso" ] && echo "${aviso# }" | sed 's/;$//' >&2
+  [ -n "$aviso" ] && printf '%s\n' "${aviso# }" | sed 's/;$//' >&2
   echo "nivel efectivo: $nivel, leído de $src"
   [ -z "$stop" ] || printf '%s\n' "$stop" | while IFS= read -r fila; do
     pat=$(printf '%s\n' "$fila" | cut -d'|' -f3 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-    if [ -z "$pat" ]; then echo "aviso: fila de la stop list sin Pattern, ignorada: $fila" >&2; else echo "parada: $fila"; fi
+    if [ -z "$pat" ]; then printf 'aviso: fila de la stop list sin Pattern, ignorada: %s\n' "$fila" >&2; else printf 'parada: %s\n' "$fila"; fi
   done
 )
 ```

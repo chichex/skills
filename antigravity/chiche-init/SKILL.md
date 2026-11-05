@@ -95,11 +95,11 @@ Un repo inicializado antes del renombre guarda el contrato en `.sdd/project.md` 
     a2|plan-approved) nivel='plan-approved (A2)' ;;
     a3|unattended) nivel='unattended (A3)' ;;
   esac
-  [ -n "$aviso" ] && echo "${aviso# }" | sed 's/;$//' >&2
+  [ -n "$aviso" ] && printf '%s\n' "${aviso# }" | sed 's/;$//' >&2
   echo "nivel efectivo: $nivel, leído de $src"
   [ -z "$stop" ] || printf '%s\n' "$stop" | while IFS= read -r fila; do
     pat=$(printf '%s\n' "$fila" | cut -d'|' -f3 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-    if [ -z "$pat" ]; then echo "aviso: fila de la stop list sin Pattern, ignorada: $fila" >&2; else echo "parada: $fila"; fi
+    if [ -z "$pat" ]; then printf 'aviso: fila de la stop list sin Pattern, ignorada: %s\n' "$fila" >&2; else printf 'parada: %s\n' "$fila"; fi
   done
 )
 ```
@@ -201,8 +201,7 @@ La razón de ser del skill: un contrato con comandos no probados vale poco, porq
 2. **Comandos finitos** (test, build, lint, typecheck, coverage si el repo tiene tooling): correrlos con timeout de 120s c/u. Registrar: `verificado <fecha>` + duración + resumen (ej. "84 tests pasan"), o `FALLA` + el error resumido (una falla NO aborta el skill: se documenta y sigue — saber que el build está roto es exactamente el tipo de cosa que el contrato debe decir). Para coverage, registrar además el **% actual en las Notas: es el baseline** que la Fase 3.5 usa para anclar el gate.
 3. **Procesos largos** (dev server, app): arrancar en background, esperar la señal de vida (puerto abierto, línea de log), registrar cómo se reconoce el "está arriba" (ej. `curl -sf localhost:5173` responde), y MATARLO. Si no levanta en 60s, anotar `no levanta: <motivo>`.
 4. Lo que exceda timeout o requiera credenciales ausentes: `no probado (<motivo>)`. Nunca inventar el estado.
-5. **Stop list**: correr el comando canónico de «`## Autonomy`» (abajo, en «Ensayo de la stop list») sobre el contrato que se va a escribir; una fila `FAILED` conserva su `Pattern`, lleva el motivo al frente de su `Reason` y se lista en `## Gaps` para que el humano la corrija.
-6. **Recetas de deploy**: cada receta de deploy encontrada es una fila `deploy <ambiente>` de `## Comandos`, con el mismo `verificado | FALLA | no probado` que cualquier comando. Como muta un ambiente y suele estar en la stop list, se ejecuta solo si el humano lo confirma en esta fase; si no, queda `no probado (deploy: sin confirmación humana)`. Una fila de ambiente en `## Autonomy` cuyo `deploy <ambiente>` no está `verificado` queda `unrehearsed`.
+5. **Recetas de deploy**: cada receta de deploy encontrada es una fila `deploy <ambiente>` de `## Comandos`, con el mismo `verificado | FALLA | no probado` que cualquier comando. Como muta un ambiente y suele estar en la stop list, se ejecuta solo si el humano lo confirma en esta fase; si no, queda `no probado (deploy: sin confirmación humana)`. Una fila de ambiente en `## Autonomy` cuyo `deploy <ambiente>` no está `verificado` queda `unrehearsed`.
 
 ## Fase 3 — Gaps: preguntar solo lo no inferible
 
@@ -379,15 +378,16 @@ cada escalon. Y explicitamente que NO se puede verificar sin humano, con el moti
 ## Autonomy
 <nivel por etapa y paradas obligatorias (Fase 3; la forma exacta, abajo en "## Autonomy"). Niveles:
 supervised (A1), plan-approved (A2), unattended (A3); land, review y ambientes solo supervised.
-Una fila de ambiente cuyo deploy <ambiente> no esta verificado queda unrehearsed.
+Rehearsed: rehearsed <fecha> solo si el ensayo paso; sin ensayo, unrehearsed. Una fila supervised lleva —;
+una fila de ambiente cuyo deploy <ambiente> no esta verificado queda unrehearsed.
 | Stage | Level | Since | Rehearsed |
 |---|---|---|---|
 | grill | supervised | 2026-07-02 | — |
-| spec | plan-approved | 2026-07-02 | rehearsed 2026-07-02 |
+| spec | plan-approved | 2026-07-02 | unrehearsed |
 | run | supervised | 2026-07-02 | — |
 | review | supervised | 2026-07-02 | — |
 | land | supervised | 2026-07-02 | — |
-| staging | supervised | 2026-07-02 | — |
+| staging | supervised | 2026-07-02 | unrehearsed |
 
 Stop list: lo que el agente nunca hace solo, en ningun nivel. Pattern es una regex POSIX extendida
 (grep -E) sobre el comando completo o la ruta tocada, una por fila y sin "|". Defaults siempre
@@ -395,7 +395,7 @@ presentes: deploy, migraciones sobre datos compartidos, push a main, force-push,
 pagos. Mas lo que sumo el usuario.
 | Action | Pattern | Reason |
 |---|---|---|
-| pnpm run deploy | pnpm run deploy | sin confirmacion humana |
+| ./deploy.sh staging | deploy\.sh | sin confirmacion humana: frena la receta deploy staging de ## Comandos |
 | prisma migrate deploy | prisma migrate deploy | datos compartidos |
 | git push origin main | git push .*[ :/]main([^-[:alnum:]_/.].*)?$ | push a main solo via PR |
 | git push --force | git push .*--force | nunca |
@@ -427,7 +427,7 @@ La línea `Chiche-Tracking` es el marker canónico de tracking (contrato `docs/c
 <!-- autonomy-contract:start -->
 **`## Autonomy`.** Reemplaza a `## Limites`: dice hasta dónde llega el agente solo en cada etapa y qué no hace nunca. Dos tablas:
 
-1. **Niveles**, `| Stage | Level | Since | Rehearsed |`: filas fijas `grill`, `spec`, `run`, `review` y `land`, más una por ambiente de `## Ambientes` (con `Stage` el nombre del ambiente). `Level` es `supervised`, `plan-approved` o `unattended`; `land`, `review` y los ambientes solo aceptan `supervised` en esta versión, y ningún skill lee `review` hasta que exista esa etapa. `Since` es la fecha `YYYY-MM-DD` en que se fijó el nivel. `Rehearsed` es `rehearsed <YYYY-MM-DD>` si la fila pasó el ensayo, `unrehearsed` si nunca se ensayó y `FAILED (<motivo>)` si no pasó; una fila `supervised` lleva `—`. Un nivel ≥ A2 solo rige si está `rehearsed`: `unrehearsed` o `FAILED` equivalen a `supervised` para quien lo lee. Una fila de ambiente cuyo `deploy <ambiente>` de `## Comandos` no está `verificado` queda `unrehearsed`.
+1. **Niveles**, `| Stage | Level | Since | Rehearsed |`: filas fijas `grill`, `spec`, `run`, `review` y `land`, más una por ambiente de `## Ambientes` (con `Stage` el nombre del ambiente). `Level` es `supervised`, `plan-approved` o `unattended`; `land`, `review` y los ambientes solo aceptan `supervised` en esta versión, y ningún skill lee `review` hasta que exista esa etapa. `Since` es la fecha `YYYY-MM-DD` en que se fijó el nivel. `Rehearsed` es `rehearsed <YYYY-MM-DD>` si la fila pasó el ensayo, `unrehearsed` si nunca se ensayó y `FAILED (<motivo>)` si no pasó; una fila `supervised` lleva `—`, salvo una fila de ambiente cuyo `deploy <ambiente>` no está `verificado`, que lleva `unrehearsed`. Un nivel ≥ A2 solo rige si está `rehearsed`: `unrehearsed` o `FAILED` equivalen a `supervised` para quien lo lee. Una fila de ambiente cuyo `deploy <ambiente>` de `## Comandos` no está `verificado` queda `unrehearsed`.
 2. **Stop list**, `| Action | Pattern | Reason |`: lo que el agente nunca hace solo, en ningún nivel. `Action` es un comando representativo de lo prohibido (`git push origin main`, `pnpm run deploy`): es el rótulo de la fila y el comando de prueba de su ensayo. `Pattern` es una regex POSIX extendida (`grep -E`) sobre el comando completo o la ruta tocada, una por fila y sin `|` (una alternativa por fila, porque `|` es el separador de la tabla). Una fila con `Pattern` vacío es inválida: este skill la rechaza y la ofrece como regla fechada para `## Decisiones humanas`; los skills la ignoran con aviso. Defaults siempre presentes: deploy, migraciones sobre datos compartidos, push a `main`, force-push, merge de PRs (que solo `chiche-land` pisa al confirmar su plan) y servicios pagos; más lo que sume el usuario.
 
 **Ensayo de la stop list.** No necesita agente: cada `Pattern` se corre contra su propio `Action` (tiene que matchear) y contra el comando neutro `echo ok` (no tiene que matchear). Un patrón vacío, inválido, que no matchea su acción o que matchea el neutro deja la fila `FAILED`; una stop list ausente (sin el header `| Action | Pattern | Reason |`) o sin filas es `FAILED: stop list (sin filas)`, porque los defaults tienen que estar siempre; las filas se leen hasta la primera línea que no empieza con `|`. Este comando lo hace sobre el contrato que se le indica, sin parámetros posicionales: imprime `ok: <Action>` o `FAILED: <Action> (<motivo>)` por fila y termina con exit 1 si alguna falló.
@@ -456,6 +456,8 @@ La línea `Chiche-Tracking` es el marker canónico de tracking (contrato `docs/c
 )
 ```
 <!-- autonomy-contract:end -->
+
+**Ensayo de la stop list.** Con el archivo escrito, correr el comando canónico de «`## Autonomy`» (abajo, «Ensayo de la stop list») sobre el archivo ya escrito; una fila `FAILED` conserva su `Pattern`, recibe el prefijo `FAILED (<motivo>): ` al frente de su `Reason` (idempotente: si ya lo tiene, se reemplaza y no se duplica) y se lista en `## Gaps` para que el humano la corrija. Ese prefijo es, junto con la columna `Rehearsed`, la excepción al verbatim de `## Autonomy` en `--update`.
 
 En `--update`: regenerar todo salvo `## Decisiones humanas`, `## Politicas de generacion` (las políticas solo cambian si el usuario eligió `Revisar` en Fase 3.5), `## Autonomy` (preservar verbatim, salvo la columna `Rehearsed` que reescribe la fila `Ensayo de niveles` de «Upgrade de contrato» y el prefijo `FAILED` del ensayo de la stop list) y un `## Limites` sin migrar, que se preserva verbatim hasta que la fila `Stop list` lo migre; y los `[NEEDS-INPUT]` aún sin respuesta (mantenerlos, no duplicarlos).
 
@@ -522,7 +524,7 @@ La pregunta del cierre `Commit + PR` usa `ask_question`, con la recomendada prim
 
 ## MUST NOT DO
 
-- No correr NADA que mute estado externo o compartido: deploy, publish, migraciones contra DBs remotas, git push. La verificación es local y read-only hacia afuera. La única excepción es el `Commit + PR` del cierre, cuando el usuario lo elige: pushea solo `chore/chiche-init-<YYYY-MM-DD>` y abre su PR.
+- No correr NADA que mute estado externo o compartido: deploy, publish, migraciones contra DBs remotas, git push. La verificación es local y read-only hacia afuera. Las dos excepciones son el `Commit + PR` del cierre, cuando el usuario lo elige (pushea solo `chore/chiche-init-<YYYY-MM-DD>` y abre su PR), y la receta `deploy <ambiente>` de la Fase 2 cuando el humano la confirma con `ask_question`, con `No ejecutar (Recomendado)` primera; con `--autonomy` ≥ A2 nunca se ejecuta.
 - No documentar comandos adivinados por el nombre del script sin leer qué hacen.
 - No preguntar lo que la exploración ya respondió.
 - No escribir secrets ni valores de env vars en el contrato — solo el NOMBRE de la var y de dónde sale.
