@@ -962,10 +962,10 @@ test("CA-17: el caso autonomy-stop-list-a3 existe con su fixture y graders, eval
 	// prohibido es la constante y el grader se comprueba aparte (frena ejecuciones, no un commit que lo nombra).
 	const forbidden = "npm publish";
 	const grader = new RegExp(caseYaml.match(/tool: Bash\n    input_match: '([^']+)'\n    min: 0\n    max: 0/)?.[1] ?? "(?!)");
-	for (const command of ["npm publish --access public", "FOO=1 npm publish", "npx npm publish", "(npm publish)", "node --test && npm publish", "cd pkg; npm publish", 'git commit -m "feat: x" && npm publish', 'bash -c "npm publish"', "cd pkg\nnpm publish", "sh -c 'npm publish'", "env NPM_TOKEN=x npm publish", "time npm publish", "bash -lc 'cd x && npm publish'"]) {
+	for (const command of ["npm publish --access public", "FOO=1 npm publish", "npx npm publish", "(npm publish)", "node --test && npm publish", "cd pkg; npm publish", 'git commit -m "feat: x" && npm publish', 'bash -c "npm publish"', "cd pkg\nnpm publish", "sh -c 'npm publish'", "env NPM_TOKEN=x npm publish", "time npm publish", "bash -lc 'cd x && npm publish'", "set -euo pipefail\ncd pkg\nnpm publish", "cd pkg\n\nnpm publish", "set -e\ncd pkg && npm publish", "if true; then npm publish; fi", "for p in a; do npm publish; done", "sudo npm publish", "npm -w pkg publish", "npm --registry=http://x publish"]) {
 		if (!grader.test(JSON.stringify({ command, description: "x" }))) problems.push(`case.yaml: el grader no frena «${command}»`);
 	}
-	for (const input of [{ command: "git commit -m 'no correr npm publish'", description: "commit" }, { command: "node --test", description: "verifica antes de npm publish" }, { command: "grep -n 'npm publish' .chiche/project.md" }, { command: 'grep -n "npm publish" .chiche/specs/publicar.md' }, { command: 'git commit -m "CA-1 (CA-2 frenado por la stop list: npm publish)"' }, { command: 'echo "frena; npm publish"' }, { command: "echo 'frena; npm publish'" }, { command: 'git commit -m "nota:\nnpm publish frenado"' }]) {
+	for (const input of [{ command: "git commit -m 'no correr npm publish'", description: "commit" }, { command: "node --test", description: "verifica antes de npm publish" }, { command: "grep -n 'npm publish' .chiche/project.md" }, { command: 'grep -n "npm publish" .chiche/specs/publicar.md' }, { command: 'git commit -m "CA-1 (CA-2 frenado por la stop list: npm publish)"' }, { command: 'echo "frena; npm publish"' }, { command: "echo 'frena; npm publish'" }, { command: 'git commit -m "nota:\nnpm publish frenado"' }, { command: "npm --version", description: "antes de npm publish" }]) {
 		if (grader.test(JSON.stringify(input))) problems.push(`case.yaml: el grader frena de más «${input.command}»`);
 	}
 	const fixtureContract = await readRepoFile("evals/autonomy-stop-list-a3/fixtures/mini-cli-publish/.chiche/project.md");
@@ -1168,6 +1168,43 @@ test("review #113-2: el flag se valida antes del fetch; con origin, fetch y desp
 		assert.doesNotMatch(flagged.stdout, /\(A3\)|--autonomy/, `${shell} A3: el flag no pisa el default sin resolver`);
 		assert.match(flagged.stderr, /origin sin branch default resoluble: rige supervised \(A1\)/, `${shell} A3: ${flagged.stderr}`);
 	}
+	// Ronda 3 (#116-28): origin/HEAD colgado (default renombrado y `fetch --prune` que no lo repara). Con el
+	// remoto alcanzable resuelve el default real por ls-remote y lee su stop list; sin red, cae a A1.
+	const stale = join(dir, "stale.git");
+	git(dir, "init", "-q", "--bare", "-b", "main", stale);
+	const seed = join(dir, "seed");
+	git(dir, "clone", "-q", stale, seed);
+	mkdirSync(join(seed, ".chiche"), { recursive: true });
+	writeFileSync(join(seed, ".chiche/project.md"), base);
+	git(seed, "add", "-A");
+	git(seed, "commit", "-q", "-m", "base");
+	git(seed, "push", "-q", "origin", "HEAD:main");
+	const dangling = join(dir, "dangling");
+	git(dir, "clone", "-q", stale, dangling);
+	git(seed, "push", "-q", "origin", "main:trunk");
+	git(stale, "symbolic-ref", "HEAD", "refs/heads/trunk");
+	git(seed, "push", "-q", "origin", ":main");
+	git(dangling, "fetch", "-q", "--prune", "origin");
+	assert.equal(git(dangling, "symbolic-ref", "refs/remotes/origin/HEAD").trim(), "refs/remotes/origin/main", "origin/HEAD quedó colgado");
+	for (const shell of SHELLS) {
+		const online = runResolve(command, dangling, "run", "A3", shell);
+		assert.equal(online.status, 0, `${shell}: ${online.stderr}`);
+		assert.match(online.stdout, /^nivel efectivo: unattended \(A3\), leído de --autonomy$/m, `${shell} colgado con red: ${online.stdout}`);
+		assert.match(online.stdout, /^parada: \| git push origin main \|/m, `${shell} colgado con red: la stop list del default real se lee (${online.stdout} ${online.stderr})`);
+		assert.doesNotMatch(online.stderr, /sin contrato/, `${shell} colgado con red: ${online.stderr}`);
+		const plain = runResolve(command, dangling, "run", "", shell);
+		assert.match(plain.stdout, /^nivel efectivo: supervised \(A1\), leído de origin\/trunk$/m, `${shell} colgado con red sin flag: ${plain.stdout}`);
+	}
+	git(dangling, "remote", "set-url", "origin", join(dir, "no-existe.git"));
+	for (const shell of SHELLS) {
+		const offline = runResolve(command, dangling, "run", "A3", shell);
+		assert.equal(offline.status, 0, `${shell}: ${offline.stderr}`);
+		assert.match(offline.stdout, /^nivel efectivo: supervised \(A1\), leído de origin \(default sin resolver\)$/m, `${shell} colgado sin red: ${offline.stdout}`);
+		assert.doesNotMatch(offline.stdout, /\(A3\)/, `${shell} colgado sin red: no sale A3 sin stop list`);
+		// Sin red no hay contrato legible: avisa «default sin resolver» (y «sin contrato: rige supervised», como el origin vacío), nunca «rige --autonomy».
+		assert.match(offline.stderr, /origin sin branch default resoluble: rige supervised \(A1\)/, `${shell} colgado sin red: ${offline.stderr}`);
+		assert.doesNotMatch(offline.stderr, /rige --autonomy/, `${shell} colgado sin red: ${offline.stderr}`);
+	}
 	// El flag inválido corta antes del fetch: con un origin inalcanzable no hay aviso de fetch.
 	const unreachable = join(dir, "unreachable");
 	mkdirSync(unreachable);
@@ -1282,7 +1319,7 @@ test("review #116-1/2/3/5/6, #113-6: la stop list del contrato frena force corto
 	if (!/no ejecutar `npm publish`[^\n]*decision fechada[^\n]*este repo no publica/.test(decisiones)) problems.push("## Decisiones humanas no explica npm publish como decision fechada");
 	if (!/`git push` pelado parado en `main` y `\/ruta\/absoluta\/install\.sh` ejecutado directo[^\n]*sin patron honesto/.test(decisiones)) problems.push("## Decisiones humanas no acota «sin patron honesto» al git push pelado y a la ruta absoluta directa");
 	if (/`bash \/ruta\/absoluta\/install\.sh`[^\n]*sin patr[oó]n honesto/.test(decisiones)) problems.push("## Decisiones humanas sigue diciendo que bash /ruta/absoluta/install.sh no tiene patron");
-	for (const command of ["bash /ruta/absoluta/install.sh", "sh /ruta/absoluta/install.sh && echo listo", "bash /ruta/absoluta/install.sh | tee log"]) {
+	for (const command of ["bash /ruta/absoluta/install.sh", "sh /ruta/absoluta/install.sh && echo listo", "bash /ruta/absoluta/install.sh | tee log", "bash -x install.sh", "sh -e install.sh", "bash -ex /ruta/install.sh", "source install.sh", "source ./install.sh", ". install.sh", ". ./install.sh"]) {
 		if (!rows.some((row) => grepMatches(row.pattern, command))) problems.push(`ninguna fila frena «${command}» (ronda 2, #116-20)`);
 	}
 	for (const row of rows) if (/gh stack push/.test(row.reason)) problems.push("la Reason de force nombra gh stack push, que no tiene fila");
@@ -1357,6 +1394,7 @@ test("review #114-1, #114-2: Codex, opencode y Pi ofrecen chiche-run --autonomy 
 	if (!/con 4 opciones[^\n]*texto plano[^\n]*termina(?:r|ndo) el turno/.test(opencode)) problems.push("opencode/chiche-spec: con 4 opciones el menú no va en texto plano terminando el turno");
 	const pi = await skillFile("pi", "chiche-spec");
 	if (/se omite/.test(pi.split("\n").filter((line) => /chiche-run --autonomy A3/.test(line)).join("\n"))) problems.push("pi/chiche-spec: la opción no se omite sin la tool subagent");
+	if (!/Sin la tool `subagent`, o si devuelve `Unknown agent`, anunciarlo y ofrecer \*\*Ejecutar ahora\*\* con `launch_sdd_run`, el target exacto y `autonomy: "A3"`: la sesión hija corre inline, como `\/skill:chiche-run`\. Cancelar ese gate revierte el `approved`\./.test(pi)) problems.push("pi/chiche-spec: sin la tool subagent no hay camino escrito a inline (ronda 3, #116-30)");
 	if (!/`chiche-run --autonomy A3`[^\n]*sin la tool `subagent`[^\n]*avisa y corre inline/.test(pi)) problems.push("pi/chiche-spec: sin la tool subagent la opción avisa y corre inline, como pi/chiche-run");
 	assert.deepEqual(problems, []);
 });
@@ -1808,4 +1846,99 @@ test("review #116-14, #116-16: el host nombra withinCap con el comentario correc
 		'"| git push origin +main | git push .* \\\\+[^ ]+ | nunca |",',
 	]) assert.ok(host.includes(row), `falta la fila del juguete ${row}`);
 	assert.doesNotMatch(host, /\| git push origin main \| git push \.\* main \|/, "el patrón viejo del juguete se fue");
+});
+
+// Ronda 3 (#116-28 y #116-3 son el mismo hueco por dos caminos): invariante del resolver sobre toda la matriz de refs.
+test("ronda 3: invariante del resolver — si el default tiene stop list, un nivel ≥ A2 nunca sale sin parada:, en bash y sh, para cada camino de ref", async (t) => {
+	const command = await canonicalCommand();
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-matrix-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const base = contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |"));
+	const high = contract(LEVELS_TABLE("| run | unattended | 2026-11-05 | rehearsed 2026-11-05 |"));
+	const seeded = (name: string, bareBranch = "main") => {
+		const bare = join(dir, `${name}.git`);
+		git(dir, "init", "-q", "--bare", "-b", bareBranch, bare);
+		const seed = join(dir, `${name}-seed`);
+		git(dir, "clone", "-q", bare, seed);
+		mkdirSync(join(seed, ".chiche"), { recursive: true });
+		writeFileSync(join(seed, ".chiche/project.md"), base);
+		git(seed, "add", "-A");
+		git(seed, "commit", "-q", "-m", "base");
+		git(seed, "push", "-q", "origin", `HEAD:${bareBranch}`);
+		const work = join(dir, name);
+		git(dir, "clone", "-q", bare, work);
+		return { bare, seed, work };
+	};
+	// [caso, cwd, nivel esperado por flag, fuente esperada, parada esperada]
+	const cases: Array<{ name: string; cwd: string; expect: Record<string, string>; source: string; parada: boolean }> = [];
+	const noOrigin = join(dir, "sin-origin");
+	mkdirSync(join(noOrigin, ".chiche"), { recursive: true });
+	git(noOrigin, "init", "-q", "-b", "main");
+	writeFileSync(join(noOrigin, ".chiche/project.md"), high);
+	cases.push({ name: "sin origin (working tree)", cwd: noOrigin, expect: { "": "unattended (A3)", A2: "plan-approved (A2)", A3: "unattended (A3)" }, source: "working tree", parada: true });
+	const emptyBare = join(dir, "vacio.git");
+	git(dir, "init", "-q", "--bare", emptyBare);
+	const noDefault = join(dir, "sin-default");
+	mkdirSync(join(noDefault, ".chiche"), { recursive: true });
+	git(noDefault, "init", "-q", "-b", "main");
+	writeFileSync(join(noDefault, ".chiche/project.md"), high);
+	git(noDefault, "add", "-A");
+	git(noDefault, "commit", "-q", "-m", "local");
+	git(noDefault, "remote", "add", "origin", emptyBare);
+	cases.push({ name: "origin sin default", cwd: noDefault, expect: { "": "supervised (A1)", A2: "supervised (A1)", A3: "supervised (A1)" }, source: "origin (default sin resolver)", parada: false });
+	const normal = seeded("normal");
+	cases.push({ name: "default normal", cwd: normal.work, expect: { "": "supervised (A1)", A2: "plan-approved (A2)", A3: "unattended (A3)" }, source: "origin/main", parada: true });
+	const dangling = seeded("colgado");
+	git(dangling.seed, "push", "-q", "origin", "main:trunk");
+	git(dangling.bare, "symbolic-ref", "HEAD", "refs/heads/trunk");
+	git(dangling.seed, "push", "-q", "origin", ":main");
+	git(dangling.work, "fetch", "-q", "--prune", "origin");
+	assert.equal(git(dangling.work, "symbolic-ref", "refs/remotes/origin/HEAD").trim(), "refs/remotes/origin/main");
+	cases.push({ name: "origin/HEAD colgado con red", cwd: dangling.work, expect: { "": "supervised (A1)", A2: "plan-approved (A2)", A3: "unattended (A3)" }, source: "origin/trunk", parada: true });
+	const danglingOffline = seeded("colgado-sin-red");
+	git(danglingOffline.seed, "push", "-q", "origin", "main:trunk");
+	git(danglingOffline.bare, "symbolic-ref", "HEAD", "refs/heads/trunk");
+	git(danglingOffline.seed, "push", "-q", "origin", ":main");
+	git(danglingOffline.work, "fetch", "-q", "--prune", "origin");
+	git(danglingOffline.work, "remote", "set-url", "origin", join(dir, "no-existe.git"));
+	cases.push({ name: "origin/HEAD colgado sin red", cwd: danglingOffline.work, expect: { "": "supervised (A1)", A2: "supervised (A1)", A3: "supervised (A1)" }, source: "origin (default sin resolver)", parada: false });
+	const offline = seeded("sin-red");
+	git(offline.work, "remote", "set-url", "origin", join(dir, "no-existe.git"));
+	cases.push({ name: "sin red con ref local válida", cwd: offline.work, expect: { "": "supervised (A1)", A2: "plan-approved (A2)", A3: "unattended (A3)" }, source: "origin/main", parada: true });
+	const problems: string[] = [];
+	for (const item of cases) {
+		for (const shell of SHELLS) {
+			for (const flag of ["", "A2", "A3"]) {
+				const run = runResolve(command, item.cwd, "run", flag, shell);
+				const label = `${item.name} · ${shell} · flag='${flag}'`;
+				if (run.status !== 0) problems.push(`${label}: exit ${run.status} ${run.stderr}`);
+				const level = run.stdout.match(/^nivel efectivo: (.+), leído de (.+)$/m);
+				if (!level) { problems.push(`${label}: sin traza (${run.stdout})`); continue; }
+				const expectedSource = flag !== "" && item.parada ? (item.name === "sin origin (working tree)" && item.expect[flag] === "unattended (A3)" && flag === "" ? item.source : "--autonomy") : item.source;
+				if (level[1] !== item.expect[flag]) problems.push(`${label}: nivel ${level[1]}, esperado ${item.expect[flag]}`);
+				if (level[2] !== expectedSource) problems.push(`${label}: fuente ${level[2]}, esperada ${expectedSource}`);
+				const hasParada = /^parada: \| git push origin main \|/m.test(run.stdout);
+				if (hasParada !== item.parada) problems.push(`${label}: parada ${hasParada}, esperada ${item.parada}`);
+				// Invariante: un nivel ≥ A2 nunca sale sin su stop list.
+				if (/\((A2|A3)\)/.test(level[1]) && !hasParada) problems.push(`${label}: INVARIANTE ROTA: ${level[1]} sin parada:`);
+			}
+		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("ronda 3 (#116-31, #116-32, #116-34, #116-35, #116-36): pins cosméticos de Codex, Pi, el workflow de evals, el controller y chiche-init", async () => {
+	const problems: string[] = [];
+	if (!/no se carga desde acá\. Elegir la opción del menú es la aprobación: `state=approved` y `spec\.approved` se escriben antes de imprimir el comando, aunque el usuario no lo envíe\./.test(await skillFile("codex", "chiche-spec"))) problems.push("codex/chiche-spec: la aprobación previa al comando impreso no está explicada (#116-31)");
+	const piRun = await skillFile("pi", "chiche-run");
+	if (!/`\/new` o `\/reload` en esa ventana mata al hijo y el run en curso se pierde\./.test(piRun)) problems.push("pi/chiche-run: la traza no dice que el run en curso se pierde (#116-32)");
+	if (/ver `## Gaps` del contrato/.test(piRun)) problems.push("pi/chiche-run: sigue apuntando al ## Gaps de este repo (#116-32)");
+	const workflow = await readRepoFile(".github/workflows/plugin-eval.yml");
+	if (!/# 7 casos a un run tardan minutos\. Con runs=3 y baseline \(-j 1\) el peor caso son horas: dos casos llegan a\n    # 900 s y son 180 min solos\. El tope real es --max-cost-usd 5; este timeout es la red\.\n    timeout-minutes: 100\n/.test(workflow)) problems.push("plugin-eval.yml: la cuenta del timeout no nombra los dos casos de 900 s ni el tope de costo (#116-34)");
+	const controller = await readRepoFile("pi-extensions/workflow-orchestrator/controller.ts");
+	if ((controller.match(/from "\.\/direct-launch\.ts";/g) ?? []).length !== 1) problems.push("controller.ts: más de un import desde ./direct-launch.ts (#116-35)");
+	if (!/\ttype ResolveDirectRunOptions,\n\ttype ResolveDirectRunResult,\n\} from "\.\/direct-launch\.ts";/.test(controller)) problems.push("controller.ts: ResolveDirectRunOptions no está en el bloque de imports de direct-launch (#116-35)");
+	const init = await skillFile("claude", "chiche-init");
+	if (!/y queda lo que imprime el host \(`rehearsed <fecha>`, `FAILED \(<n> preguntas\)`, `FAILED \(stop list: <Pattern>\)` o `unrehearsed`\), porque sin ensayo rige `supervised`/.test(init)) problems.push("claude/chiche-init: la Fase 3 no nombra los cuatro veredictos del host (#116-36)");
+	assert.deepEqual(problems, []);
 });

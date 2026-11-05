@@ -15,11 +15,11 @@ import {
 	resolveDirectRunRequest as resolveDirectRunRequestDefault,
 	startDirectRun as startDirectRunDefault,
 	type ResolveDirectRunDependencies,
+	type ResolveDirectRunOptions,
 	type ResolveDirectRunResult,
 } from "./direct-launch.ts";
 import type { DirectGrillRequestV1, DirectRunRequestV1 } from "./direct-protocol.ts";
 import { resolveWorkflowDispatchForCwd } from "./dispatch.ts";
-import type { ResolveDirectRunOptions } from "./direct-launch.ts";
 import { type AutonomyCode, parseAutonomyLevel, withAutonomy } from "./autonomy.ts";
 import {
 	startFreshStage as startFreshStageDefault,

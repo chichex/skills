@@ -56,7 +56,8 @@ jobs:
   eval:
     name: Eval
     runs-on: ubuntu-latest
-    # 7 casos a un run tardan minutos; con runs=3 y baseline (-j 1, 900 s por caso) hasta 90.
+    # 7 casos a un run tardan minutos. Con runs=3 y baseline (-j 1) el peor caso son horas: dos casos llegan a
+    # 900 s y son 180 min solos. El tope real es --max-cost-usd 5; este timeout es la red.
     timeout-minutes: 100
     permissions:
       contents: read
