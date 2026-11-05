@@ -414,10 +414,16 @@ test("CA-24: plugin.json y marketplace.json nombran chiche-land con descripcione
 	assert.ok(sidecars.length >= 10, `sidecars de Codex: ${sidecars.length}`);
 });
 
-test("CA-24: el contrato autoriza el merge de /chiche-land, declara el gate nuevo y pinea la versión de gh-stack", async () => {
+test("CA-24 (issue #102 CA-21): la stop list de ## Autonomy del contrato autoriza el merge de /chiche-land por fila, declara el gate nuevo y pinea la versión de gh-stack", async () => {
 	const contract = await readRepoFile(".chiche/project.md");
-	const limites = section(contract, /^## Limites$/);
-	assert.match(limites, /No hacer `git push` a `main`, force-push ni mergear PRs, salvo `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear\./);
+	const autonomy = section(contract, /^## Autonomy$/);
+	assert.ok(autonomy, "el contrato tiene ## Autonomy (## Limites migró en la capa 4 del issue #102)");
+	assert.doesNotMatch(contract, /^## Limites$/m, "## Limites ya no existe en el contrato");
+	for (const command of ["gh pr merge", "gh stack merge"]) {
+		const row = autonomy.split("\n").find((line) => line.startsWith(`| ${command} |`)) ?? "";
+		assert.ok(row, `fila de la stop list para ${command}`);
+		assert.match(row, /salvo `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear|solo `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear/, `${command}: la fila cita la excepción de chiche-land`);
+	}
 	assert.match(section(contract, /^## Comandos$/), /node --test pi-extensions\/chiche-land-gate\/chiche-land-gate\.test\.ts/);
 	assert.match(section(contract, /^## Gaps$/), /gh-stack[^\n]*v\d+\.\d+\.\d+/);
 });

@@ -2028,10 +2028,10 @@ test("issue #82 CA-11 (issue #102): READMEs y contrato documentan --autonomy A3,
 	const rowEn = readmeEn.match(/^\| \*\*`chiche-run`\*\* \|.*$/m)?.[0] ?? "";
 	assert.ok(rowEs, "README.md: fila chiche-run");
 	assert.ok(rowEn, "README.en.md: fila chiche-run");
-	for (const pattern of [/--autonomy unattended/, /modelo[^|]*effort/i, /recomendado/i, /`--model`\/`--effort`/, /`xhigh`/]) {
+	for (const pattern of [/`--autonomy`/, /`unattended` \(A3\) delega el run completo/, /modelo[^|]*effort/i, /recomendado/i, /`--model`\/`--effort`/, /`xhigh`/]) {
 		assert.match(rowEs, pattern, `README.md fila chiche-run: falta ${pattern}`);
 	}
-	for (const pattern of [/--autonomy unattended/, /model[^|]*effort/i, /recommended/i, /`--model`\/`--effort`/, /`xhigh`/]) {
+	for (const pattern of [/`--autonomy`/, /`unattended` \(A3\) delegates the whole run/, /model[^|]*effort/i, /recommended/i, /`--model`\/`--effort`/, /`xhigh`/]) {
 		assert.match(rowEn, pattern, `README.en.md fila chiche-run: falta ${pattern}`);
 	}
 	const specRowEs = readmeEs.match(/^\| \*\*`chiche-spec`\*\* \|.*$/m)?.[0] ?? "";

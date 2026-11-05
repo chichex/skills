@@ -1129,13 +1129,18 @@ function sddMentionProblems(path: string, lines: string[]): string[] {
 	return problems;
 }
 
-test("issue #103 CA-18: los README se titulan # chiche, abren con el tagline y nombran el flujo chiche", async () => {
+test("issue #103 CA-18 (issue #102 CA-20): los README se titulan # chiche, abren con el tagline, nombran los niveles y --autonomy, y el flujo chiche", async () => {
 	const problems: string[] = [];
 	for (const readme of README_PITCH) {
 		const markdown = await readRepoFile(readme.path);
 		const lines = markdown.split("\n");
 		if (lines[0] !== "# chiche") problems.push(`${readme.path}: la línea 1 es «${lines[0]}» y debe ser «# chiche»`);
 		if (!lines.slice(0, 8).join("\n").toLowerCase().includes(readme.tagline)) problems.push(`${readme.path}: las primeras 8 líneas no dicen «${readme.tagline}»`);
+		// Issue #102 CA-20: el párrafo de apertura nombra los tres niveles y el flag del dial.
+		const opening = lines.slice(0, 8).join("\n");
+		for (const token of ["`supervised`", "`plan-approved`", "`unattended`", "`--autonomy`"]) {
+			if (!opening.includes(token)) problems.push(`${readme.path}: el párrafo de apertura no nombra ${token}`);
+		}
 
 		const flowStart = lines.indexOf(readme.flow);
 		if (flowStart === -1) problems.push(`${readme.path}: falta el heading «${readme.flow}»`);
