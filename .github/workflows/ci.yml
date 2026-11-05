@@ -39,6 +39,9 @@ jobs:
   version:
     name: Versión semver
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,12 +51,16 @@ jobs:
         run: bash scripts/version.sh check
       # Cada PR sube VERSION un paso semver desde el branch base (patch, minor o
       # major). Si el base todavía no tiene VERSION, cuenta el último tag vX.Y.Z.
+      # La base sale de la API: en un stack vinculado, el evento del PR puede
+      # traer el trunk en lugar de la capa de abajo.
       - name: Salto semver desde el branch base
         if: github.event_name == 'pull_request'
         env:
-          BASE_REF: ${{ github.base_ref }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          base=$(bash scripts/version.sh base "origin/$BASE_REF")
+          base_ref=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .base.ref)
+          base=$(bash scripts/version.sh base "origin/$base_ref")
           bash scripts/version.sh check --next-of "$base"
 
   tests:
