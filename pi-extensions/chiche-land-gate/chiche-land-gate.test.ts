@@ -101,8 +101,8 @@ const DOCTRINE: Record<string, RegExp[]> = {
 	"CA-14": [
 		/`gh auth status`/,
 		/branch default leído del remote[\s\S]*nunca asumir `main`/,
-		/Leer `\.chiche\/project\.md` si existe[\s\S]*`## Comandos` verifican un branch actualizado[\s\S]*la stop list de `## Autonomy` rige como siempre, salvo las filas cuyo `Pattern` matchea `gh pr merge` o `gh stack merge`[\s\S]*invocarlo y confirmar el plan es la autorización humana[\s\S]*el plan de la Fase 2 cita esa fila textual y avisa que confirmar la pisa/,
-		/Respetar la stop list de `## Autonomy` del contrato, salvo las filas de merge \(`Pattern` que matchea `gh pr merge` o `gh stack merge`\)[\s\S]*solo cae la parte de merge/,
+		/Leer `\.chiche\/project\.md` si existe[\s\S]*`## Comandos` verifican un branch actualizado[\s\S]*la stop list de `## Autonomy` rige como siempre, salvo los comandos exactos del plan confirmado: `gh pr merge <N> --<method>` y `gh stack merge <N>`[\s\S]*invocarlo y confirmar el plan es la autorización humana[\s\S]*el plan de la Fase 2 cita esa fila textual y avisa que confirmar la pisa/,
+		/Respetar la stop list de `## Autonomy` del contrato, salvo los comandos exactos del plan confirmado \(`gh pr merge <N> --<method>` y `gh stack merge <N>`\)[\s\S]*solo cae la parte de merge/,
 		/`gh stack` exigido solo si algún target es un stack/,
 		/un PR pertenece a un stack si su `baseRefName` no es el default o si existe algún PR abierto cuyo `baseRefName` es su `headRefName`[\s\S]*se confirma con `gh stack view --json`/,
 		/se recorre `baseRefName` hasta el branch default/,
@@ -419,10 +419,12 @@ test("CA-24 (issue #102 CA-21): la stop list de ## Autonomy del contrato autoriz
 	const autonomy = section(contract, /^## Autonomy$/);
 	assert.ok(autonomy, "el contrato tiene ## Autonomy (## Limites migró en la capa 4 del issue #102)");
 	assert.doesNotMatch(contract, /^## Limites$/m, "## Limites ya no existe en el contrato");
-	for (const command of ["gh pr merge", "gh stack merge"]) {
-		const row = autonomy.split("\n").find((line) => line.startsWith(`| ${command} |`)) ?? "";
-		assert.ok(row, `fila de la stop list para ${command}`);
-		assert.match(row, /salvo `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear|solo `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear/, `${command}: la fila cita la excepción de chiche-land`);
+	// Review #116-10: la doctrina identifica la fila por su `Pattern` contra el comando del plan, no por `Action`.
+	const rows = autonomy.split("\n").filter((line) => line.startsWith("| ")).map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim())).filter((cells) => cells.length === 3 && cells[0] !== "Action");
+	for (const command of ["gh pr merge 113 --squash", "gh stack merge 117"]) {
+		const row = rows.find(([, pattern = ""]) => pattern !== "" && new RegExp(pattern).test(command));
+		assert.ok(row, `fila de la stop list cuyo Pattern matchea «${command}»`);
+		assert.match(row?.[2] ?? "", /(?:salvo|solo) `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear/, `${command}: la fila cita la excepción de chiche-land`);
 	}
 	assert.match(section(contract, /^## Comandos$/), /node --test pi-extensions\/chiche-land-gate\/chiche-land-gate\.test\.ts/);
 	assert.match(section(contract, /^## Gaps$/), /gh-stack[^\n]*v\d+\.\d+\.\d+/);
@@ -506,7 +508,7 @@ test("PR #91 CA-14 (issue #102 CA-22, review #113-10): fuera de los bloques comp
 		for (const block of ["autonomy-levels", "autonomy-resolve"]) assert.ok(delimitedBlock(markdown, block) !== null, `${harness}/chiche-land/SKILL.md: bloque ${block}`);
 		const outside = markdown.replace(/<!-- autonomy-(?:levels|resolve):start -->\n[\s\S]*?\n<!-- autonomy-(?:levels|resolve):end -->/g, "");
 		const lines = outside.split("\n");
-		const frena = lines.filter((line) => (/stop list/.test(line) && /\b(frena|frenar|manda)\b|por encima/.test(line) && !/no frenan/.test(line)) || /contrato[^.]*manda/.test(line));
+		const frena = lines.filter((line) => (/stop list/.test(line) && /\b(frena|frenar|manda)\b|por encima/.test(line) && !/no (?:los )?frenan?\b/.test(line)) || /contrato[^.]*manda/.test(line));
 		assert.deepEqual(frena, [], `${harness}/chiche-land/SKILL.md`);
 		const limites = lines.filter((line) => /## Limites/.test(line) && !/contrato sin ## Autonomy: rigen sus ## Limites/.test(line) && !/esa prosa sigue rigiendo/.test(line));
 		assert.deepEqual(limites, [], `${harness}/chiche-land/SKILL.md: ## Limites ya no es fuente propia`);
@@ -518,9 +520,9 @@ test("issue #102 CA-22: chiche-land conserva la excepción de merge por fila de 
 		const file = `${harness}/chiche-land/SKILL.md`;
 		const markdown = await readRepoFile(file);
 		const preflight = section(markdown, /^## Fase 1 — Preflight/);
-		assert.match(preflight, /salvo las filas cuyo `Pattern` matchea `gh pr merge` o `gh stack merge`\. Esas no frenan este skill: invocarlo y confirmar el plan es la autorización humana/, `${file}: excepción de merge por Pattern`);
+		assert.match(preflight, /salvo los comandos exactos del plan confirmado: `gh pr merge <N> --<method>` y `gh stack merge <N>`\. Esos no los frena este skill: invocarlo y confirmar el plan es la autorización humana/, `${file}: excepción de merge por comando exacto (review #113-9)`);
 		assert.match(preflight, /el plan de la Fase 2 cita esa fila textual y avisa que confirmar la pisa/, `${file}: el plan cita la fila`);
-		assert.match(section(markdown, /^## MUST DO$/), /^- Respetar la stop list de `## Autonomy` del contrato, salvo las filas de merge \(`Pattern` que matchea `gh pr merge` o `gh stack merge`\)/m, `${file}: MUST DO`);
+		assert.match(section(markdown, /^## MUST DO$/), /^- Respetar la stop list de `## Autonomy` del contrato, salvo los comandos exactos del plan confirmado \(`gh pr merge <N> --<method>` y `gh stack merge <N>`\)/m, `${file}: MUST DO`);
 		assert.match(section(markdown, /^## Argumentos$/), /`--autonomy <level>`[^\n]*aborta con cualquier valor distinto de `supervised`\/`A1`/, `${file}: --autonomy solo supervised`);
 		assert.ok(delimitedBlock(markdown, "autonomy-levels") !== null && delimitedBlock(markdown, "autonomy-resolve") !== null, `${file}: bloques autonomy-levels y autonomy-resolve`);
 	}

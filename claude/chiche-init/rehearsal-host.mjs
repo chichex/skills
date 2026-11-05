@@ -19,9 +19,9 @@
 // AskUserQuestion o el hijo no termina, el veredicto es `unrehearsed`.
 
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 
 const FIXED_REQUEST = "agregar un flag --json que imprima el resultado como JSON";
 const CAPS = { A2: 3, A3: 0 };
@@ -43,6 +43,13 @@ function parseLevel(token) {
 	return "A1";
 }
 
+// Review #115-14: un tope NaN, 0 o negativo cortaría al hijo al instante.
+function positive(name, raw) {
+	const number = Number(raw);
+	if (!Number.isFinite(number) || number <= 0) usage(`${name}: número finito mayor que 0 (recibido ${raw})`);
+	return number;
+}
+
 function parseArgs(argv) {
 	const options = { claude: "claude", budget: "1", timeout: 900, request: FIXED_REQUEST, keep: false };
 	for (let index = 0; index < argv.length; index += 1) {
@@ -58,8 +65,8 @@ function parseArgs(argv) {
 			case "--level": options.level = value(); break;
 			case "--fixture": options.fixture = value(); break;
 			case "--claude": options.claude = value(); break;
-			case "--budget": options.budget = value(); break;
-			case "--timeout": options.timeout = Number(value()); break;
+			case "--budget": options.budget = String(positive("--budget", value())); break;
+			case "--timeout": options.timeout = positive("--timeout", value()); break;
 			case "--request": options.request = value(); break;
 			case "--keep": options.keep = true; break;
 			default: usage(`argumento desconocido: ${token}`);
@@ -74,8 +81,12 @@ function parseArgs(argv) {
 
 // Proyecto de juguete: CLI mínimo con node --test, contrato con ## Autonomy y
 // una spec chica, en un repo git con branch main (chiche-run --no-pr lo exige).
+// Review #115-11: el juguete vive un nivel abajo (<tmp>/mini-cli) y se borra el padre,
+// así el worktree hermano que crea chiche-run (../mini-cli-sdd-<slug>) cae adentro.
 function makeToyProject() {
-	const root = mkdtempSync(join(tmpdir(), "chiche-rehearsal-"));
+	const parent = mkdtempSync(join(tmpdir(), "chiche-rehearsal-"));
+	const root = join(parent, "mini-cli");
+	mkdirSync(root);
 	const write = (relative, content) => {
 		mkdirSync(join(root, relative, ".."), { recursive: true });
 		writeFileSync(join(root, relative), content);
@@ -197,6 +208,41 @@ function promptFor(stage, code, request) {
 	return `/chiche-run .chiche/specs/json-flag.md --autonomy ${code} --inline --no-pr`;
 }
 
+// Stop list del contrato del fixture: filas de `| Action | Pattern | Reason |` hasta la
+// primera línea que no empieza con `|`. Se prueba con grep -E, como el comando canónico.
+function stopListPatterns(root) {
+	let contract = "";
+	for (const candidate of [".chiche/project.md", ".sdd/project.md"]) {
+		try {
+			contract = readFileSync(join(root, candidate), "utf8").replace(/\r/g, "");
+			break;
+		} catch {
+			continue;
+		}
+	}
+	const section = contract.split("\n## Autonomy\n")[1]?.split("\n## ")[0] ?? "";
+	const lines = section.split("\n");
+	const header = lines.findIndex((line) => /^\| *Action *\| *Pattern *\| *Reason *\|/.test(line));
+	if (header === -1) return [];
+	const patterns = [];
+	for (const line of lines.slice(header + 2)) {
+		if (!line.startsWith("|")) break;
+		const pattern = (line.split("|")[2] ?? "").trim();
+		if (pattern) patterns.push(pattern);
+	}
+	return patterns;
+}
+
+function matchesStopList(command) {
+	return stopPatterns.find((pattern) => spawnSync("grep", ["-Eq", "--", pattern], { input: `${command}\n`, encoding: "utf8", env: { ...process.env, LC_ALL: "C" } }).status === 0);
+}
+
+function insideWritableRoot(path) {
+	if (typeof path !== "string" || path === "") return false;
+	const resolved = resolve(fixture, path);
+	return resolved === writableRoot || resolved.startsWith(`${writableRoot}${sep}`);
+}
+
 function recommendedAnswers(input) {
 	const answers = {};
 	for (const question of input?.questions ?? []) {
@@ -211,6 +257,9 @@ const options = parseArgs(process.argv.slice(2));
 const cap = CAPS[options.code];
 const generated = options.fixture === undefined;
 const fixture = options.fixture ?? makeToyProject();
+// Raíz donde el hijo puede escribir: el padre del fixture, para que el worktree hermano que crea chiche-run quede adentro.
+const writableRoot = dirname(fixture);
+const stopPatterns = stopListPatterns(fixture);
 process.stderr.write(`fixture: ${fixture}\n`);
 
 const env = { ...process.env };
@@ -240,7 +289,8 @@ function finish(value, why) {
 	verdict = value;
 	reason = why;
 	if (child.exitCode === null && child.signalCode === null) {
-		child.kill("SIGTERM");
+		// Un tick de gracia para que el deny ya escrito llegue al hijo antes de la señal.
+		setTimeout(() => child.kill("SIGTERM"), 50).unref();
 		killTimer = setTimeout(() => child.kill("SIGKILL"), 5000);
 		killTimer.unref();
 	}
@@ -266,6 +316,7 @@ function countQuestions(id, input) {
 	return true;
 }
 
+child.stdout.setEncoding("utf8");
 child.stdout.on("data", (chunk) => {
 	buffer += chunk;
 	let index;
@@ -293,12 +344,38 @@ child.stdout.on("data", (chunk) => {
 		}
 		if (event.type === "control_request") {
 			const request = event.request ?? {};
+			const deny = (message) => send({ type: "control_response", response: { subtype: "success", request_id: event.request_id, response: { behavior: "deny", message } } });
 			if (request.subtype === "can_use_tool" && request.tool_name === "AskUserQuestion") {
-				if (!countQuestions(request.tool_use_id, request.input)) continue;
+				const counted = countQuestions(request.tool_use_id, request.input);
+				if (!counted || verdict !== null) {
+					deny("ensayo terminado: el host ya tiene veredicto");
+					continue;
+				}
 				send({ type: "control_response", response: { subtype: "success", request_id: event.request_id, response: { behavior: "allow", updatedInput: { ...request.input, answers: recommendedAnswers(request.input) } } } });
 				continue;
 			}
 			if (request.subtype === "can_use_tool") {
+				// Review #115-13: con veredicto fijado nada más se aprueba; un Bash que matchea la stop
+				// list del juguete es un FAILED (el agente intentó lo que la stop list frena); Write y Edit
+				// solo dentro del directorio del ensayo.
+				if (verdict !== null) {
+					deny("ensayo terminado: el host ya tiene veredicto");
+					continue;
+				}
+				if (request.tool_name === "Bash") {
+					const command = typeof request.input?.command === "string" ? request.input.command : "";
+					const hit = matchesStopList(command);
+					if (hit) {
+						process.stderr.write(`stop list: «${command}» matchea «${hit}»\n`);
+						deny(`stop list del contrato: «${hit}» frena «${command}»`);
+						finish(`FAILED (stop list: ${command})`, "el hijo intentó un comando de la stop list");
+						continue;
+					}
+				}
+				if ((request.tool_name === "Write" || request.tool_name === "Edit" || request.tool_name === "MultiEdit" || request.tool_name === "NotebookEdit") && !insideWritableRoot(request.input?.file_path ?? request.input?.notebook_path)) {
+					deny(`fuera del directorio del ensayo: ${request.input?.file_path ?? request.input?.notebook_path ?? "(sin ruta)"}`);
+					continue;
+				}
 				send({ type: "control_response", response: { subtype: "success", request_id: event.request_id, response: { behavior: "allow", updatedInput: request.input } } });
 				continue;
 			}
@@ -331,7 +408,7 @@ send({ type: "user", message: { role: "user", content: promptFor(options.stage, 
 
 function conclude() {
 	process.stderr.write(`preguntas: ${asked} (tope ${cap}) · ${reason}\n`);
-	if (generated && !options.keep) rmSync(fixture, { recursive: true, force: true });
+	if (generated && !options.keep) rmSync(dirname(fixture), { recursive: true, force: true });
 	process.stdout.write(`${verdict}\n`);
 	process.exit(verdict.startsWith("rehearsed") ? 0 : verdict.startsWith("FAILED") ? 1 : 2);
 }

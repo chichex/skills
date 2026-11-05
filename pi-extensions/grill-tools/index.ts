@@ -1482,6 +1482,7 @@ export default function grillTools(pi: ExtensionAPI) {
 			let continuationAutonomy: AutonomyCode | undefined;
 			if (params.autonomy !== undefined) {
 				if (params.action !== "finalize") throw new Error("autonomy is valid only for finalize");
+				if (!params.continueWithSpec) throw new Error("autonomy requires continueWithSpec");
 				const parsedAutonomy = parseAutonomyLevel(params.autonomy);
 				if (!parsedAutonomy.ok) throw new Error(parsedAutonomy.message);
 				continuationAutonomy = parsedAutonomy.code;

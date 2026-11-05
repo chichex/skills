@@ -19,6 +19,7 @@ import {
 } from "./direct-launch.ts";
 import type { DirectGrillRequestV1, DirectRunRequestV1 } from "./direct-protocol.ts";
 import { resolveWorkflowDispatchForCwd } from "./dispatch.ts";
+import type { ResolveDirectRunOptions } from "./direct-launch.ts";
 import { type AutonomyCode, parseAutonomyLevel, withAutonomy } from "./autonomy.ts";
 import {
 	startFreshStage as startFreshStageDefault,
@@ -60,6 +61,7 @@ export interface WorkflowControllerDependencies {
 		target: string,
 		cwd: string,
 		dependencies?: ResolveDirectRunDependencies,
+		options?: ResolveDirectRunOptions,
 	) => Promise<ResolveDirectRunResult>;
 	resolveDirectGrillRequest?: (
 		target: string,
@@ -317,11 +319,11 @@ export function createWorkflowController(
 	pi.registerTool({
 		name: LAUNCH_SDD_RUN_TOOL,
 		label: "Launch SDD run",
-		description: "Validate an SDD spec target, ask for explicit execution authorization, and launch it in a fresh session.",
+		description: "Validate an SDD spec target, ask for explicit execution authorization, and launch it in a fresh session. Optional autonomy (A1-A3 or its name) travels as --autonomy.",
 		parameters: {
 			type: "object",
 			required: ["target"],
-			properties: { target: { type: "string" } },
+			properties: { target: { type: "string" }, autonomy: { type: "string" } },
 			additionalProperties: false,
 		},
 		async execute(_toolCallId, params, _signal, _onUpdate, context) {
@@ -330,7 +332,16 @@ export function createWorkflowController(
 				throw new Error("launch_sdd_run requires target=<ruta|#NN|owner/repo#NN|GitHub issue URL>");
 			}
 			const target = (params as { target: string }).target.trim();
-			const resolved = await resolveDirectRunRequest(target, context.cwd, dependencies.directRunDependencies);
+			// Issue #102 (review #114-7): el nivel se valida con la escala antes de resolver el target.
+			let autonomy: AutonomyCode | undefined;
+			const rawAutonomy = (params as { autonomy?: unknown }).autonomy;
+			if (rawAutonomy !== undefined) {
+				if (typeof rawAutonomy !== "string") throw new Error("launch_sdd_run autonomy must be a string (A1-A3 or its name)");
+				const parsed = parseAutonomyLevel(rawAutonomy);
+				if (!parsed.ok) throw new Error(parsed.message);
+				autonomy = parsed.code;
+			}
+			const resolved = await resolveDirectRunRequest(target, context.cwd, dependencies.directRunDependencies, { autonomy });
 			if (!resolved.ok) throw new Error(`${resolved.code}: ${resolved.message}`);
 			const authorized = await context.ui.confirm(
 				"Ejecutar ahora",

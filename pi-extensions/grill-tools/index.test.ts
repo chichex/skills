@@ -1169,6 +1169,11 @@ test("issue #102 CA-9: grill_session finalize con continueWithSpec y autonomy pr
 		tool.execute("configure-autonomy-invalid", { action: "configure", sessionId: id, autonomy: "A2" }, undefined, undefined, { cwd: main }),
 		/autonomy is valid only for finalize/,
 	);
+	// Review #114-10: sin continueWithSpec no hay a quién propagar el nivel; se rechaza en vez de ignorarse en silencio.
+	await assert.rejects(
+		tool.execute("finalize-autonomy-sin-continue", { action: "finalize", sessionId: id, autonomy: "A2", handoffMarkdown: "# Grill\n\n## Handoff\nx\n" }, undefined, undefined, { cwd: main }),
+		/autonomy requires continueWithSpec/,
+	);
 	await assert.rejects(
 		tool.execute("finalize-autonomy-a4", { action: "finalize", sessionId: id, continueWithSpec: true, autonomy: "A4", handoffMarkdown: "# Grill\n\n## Handoff\nx\n" }, undefined, undefined, { cwd: main }),
 		/--autonomy A4: no soportado todavía \(v1 honra A1–A3\)/,

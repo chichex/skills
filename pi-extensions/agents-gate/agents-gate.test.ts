@@ -516,7 +516,9 @@ test("issue #66 CA-9, CA-10, CA-24: chiche-run acota el force a gh stack, sugier
 	assert.match(marketplace.plugins.find((entry) => entry.name === "chiche")?.description ?? "", /chiche-land/, "marketplace.json nombra chiche-land");
 
 	const contract = await readRepoFile(".chiche/project.md");
-	assert.match(contract, /salvo `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear/, "contrato: excepción de merge para chiche-land en ## Limites");
+	// Issue #102: la excepción vive en la stop list de ## Autonomy, no en ## Limites (review #116, fuera del diff).
+	const autonomySection = contract.match(/^## Autonomy\n([\s\S]*?)\n## /m)?.[1] ?? "";
+	assert.match(autonomySection, /(?:salvo|solo) `\/chiche-land` invocado por el humano, que confirma el plan antes de mergear/, "contrato: excepción de merge para chiche-land en la stop list de ## Autonomy");
 	assert.match(contract, /node --test pi-extensions\/chiche-land-gate\/chiche-land-gate\.test\.ts/, "contrato: fila del gate de chiche-land");
 	assert.match(contract, /gh-stack/, "contrato: versión de gh-stack verificada en ## Gaps");
 	// Literales que pi-package.test.ts assertea sobre el mismo archivo.

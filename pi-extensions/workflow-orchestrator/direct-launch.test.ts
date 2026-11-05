@@ -784,3 +784,24 @@ test("review #86: startFreshStage rechaza un borrador que no está en el common-
 	const ownChiche = await launchChiche("/workspace/skills/.git/chiche/specs/borrador.md");
 	assert.ok(ownChiche.ok || ownChiche.code !== "invalid-direct-request", JSON.stringify(ownChiche));
 });
+
+// Review #114-7 (issue #102): launch_sdd_run acepta `autonomy` opcional y el protocolo directo lo lleva a los args.
+test("review #114-7: DirectRunRequestV1 acepta autonomy opcional validado (A1–A3), lo rechaza fuera de la escala y describeDirectRun lo agrega a los args", () => {
+	const base = draftRequest("/workspace/skills", "/workspace/skills/.git/chiche/specs/borrador.md", "chichex/chiche:.chiche/specs/borrador.md");
+	const plain = orchestrator.validateDirectRunRequest(base);
+	assert.equal(plain.ok, true, JSON.stringify(plain));
+	assert.equal(orchestrator.describeDirectRun(base as never).skill.args, "/workspace/skills/.git/chiche/specs/borrador.md");
+	for (const [token, code] of [["A2", "A2"], ["unattended", "A3"], ["a1", "A1"]] as const) {
+		const validation = orchestrator.validateDirectRunRequest({ ...base, autonomy: token });
+		assert.equal(validation.ok, true, `${token}: ${JSON.stringify(validation)}`);
+		if (validation.ok) {
+			assert.equal(validation.value.autonomy, code);
+			assert.equal(orchestrator.describeDirectRun(validation.value).skill.args, `/workspace/skills/.git/chiche/specs/borrador.md --autonomy ${code}`);
+		}
+	}
+	for (const token of ["A4", "auto-deploy", "extreme", 3]) {
+		const validation = orchestrator.validateDirectRunRequest({ ...base, autonomy: token });
+		assert.equal(validation.ok, false, String(token));
+		if (!validation.ok) assert.ok(validation.diagnostics.some((diagnostic) => diagnostic.path === "$.autonomy"), JSON.stringify(validation.diagnostics));
+	}
+});

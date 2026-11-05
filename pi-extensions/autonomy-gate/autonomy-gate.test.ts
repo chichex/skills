@@ -16,7 +16,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 
 import type { Harness } from "../harness-gate/interaction.ts";
@@ -681,9 +681,10 @@ let asked = 0;
 let started = false;
 let step = 0;
 const steps = [];
-if (bashCommand) steps.push({ kind: "bash" });
+if (bashCommand && !process.env.FAKE_BASH_AFTER) steps.push({ kind: "bash" });
 if (writePath) steps.push({ kind: "write" });
 for (let i = 0; i < n; i += 1) steps.push({ kind: "ask" });
+if (bashCommand && process.env.FAKE_BASH_AFTER) steps.push({ kind: "bash" });
 if (assistantMode === "orphan") steps.push({ kind: "orphan" });
 function questions(count) {
 	return Array.from({ length: count }, (_, i) => ({ question: i === 0 ? "¿Formato?" : "¿Pregunta " + i + "?", header: "JSON", options: [{ label: "Compacto (Recomendado)", description: "" }, { label: "Indentado", description: "" }], multiSelect: false }));
@@ -737,6 +738,8 @@ rl.on("line", (line) => {
 		decide(kind === "ask" ? "AskUserQuestion" : kind === "bash" ? "Bash" : "Write", msg);
 		const answers = msg.response?.response?.updatedInput?.answers ?? {};
 		if (kind === "ask" && process.env.FAKE_ANSWERS) writeFileSync(process.env.FAKE_ANSWERS, JSON.stringify(answers));
+		// Un deny en un ensayo real llega junto con el corte: el falso se queda quieto salvo que el test pida seguir.
+		if (msg.response?.response?.behavior === "deny" && process.env.FAKE_CONTINUE_AFTER_DENY !== "1") return;
 		next();
 	}
 });
@@ -1386,6 +1389,122 @@ test("review #116-7, #115-19, #115-15, #113-5: el contrato no cita ## Limites fu
 		assert.ok(run.stderr.includes("aviso: fila de la stop list sin Pattern, ignorada: | sin patron |  | fila invalida |"), `${shell}: ${JSON.stringify(run.stderr)}`);
 	}
 	assert.doesNotMatch(command, /echo "parada|echo "aviso: fila|echo "\$\{aviso/, "lo que imprime datos del contrato usa printf, no echo");
+});
+
+// ---------------------------------------------------------------------------
+// Reviews del stack #117, grupo C
+
+test("review #115-13: el host niega Bash que matchea la stop list del juguete (FAILED), Write/Edit fuera del directorio del ensayo, y todo can_use_tool con veredicto ya fijado", async (t) => {
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-deny-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const claude = fakeClaude(dir);
+	const fixture = join(dir, "fixture");
+	mkdirSync(join(fixture, ".chiche"), { recursive: true });
+	writeFileSync(join(fixture, ".chiche/project.md"), contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |").replace("| push a main | git push .* main | solo via PR |", "| npm publish | npm publish | nunca |")));
+	const run = (name: string, args: string[], env: Record<string, string>) => {
+		const decisions = join(dir, `${name}.decisions`);
+		const result = runHost(["--claude", claude, "--fixture", fixture, ...args], { FAKE_ARGV: join(dir, `${name}.argv`), FAKE_DECISIONS: decisions, ...env }, dir);
+		return { ...result, decisions: existsSync(decisions) ? readFileSync(decisions, "utf8").trim().split("\n") : [] };
+	};
+	const publish = run("publish", ["--stage", "run", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_BASH: "npm publish --access public" });
+	assert.equal(publish.status, 1, publish.stderr);
+	assert.equal(publish.stdout.trim(), "FAILED (stop list: npm publish --access public)");
+	assert.deepEqual(publish.decisions, ["Bash deny"]);
+	const tests = run("tests", ["--stage", "run", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_BASH: "node --test" });
+	assert.equal(tests.status, 0, tests.stderr);
+	assert.deepEqual(tests.decisions, ["Bash allow"]);
+	// La raíz escribible es el padre del fixture (ahí cae el worktree hermano de chiche-run); afuera de eso, deny.
+	const outside = run("outside", ["--stage", "run", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_WRITE: join(dirname(dir), "autonomy-gate-afuera.txt"), FAKE_CONTINUE_AFTER_DENY: "1" });
+	assert.equal(outside.status, 0, outside.stderr);
+	assert.deepEqual(outside.decisions, ["Write deny"]);
+	assert.equal(existsSync(join(dirname(dir), "autonomy-gate-afuera.txt")), false);
+	const inside = run("inside", ["--stage", "run", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_WRITE: join(fixture, "src", "nuevo.mjs") });
+	assert.deepEqual(inside.decisions, ["Write allow"]);
+	// Con el veredicto fijado (tope superado), lo que siga se niega: la pregunta cortada y el Bash posterior.
+	const after = run("after", ["--stage", "run", "--level", "A3"], { FAKE_QUESTIONS: "1", FAKE_BASH: "node --test", FAKE_BASH_AFTER: "1", FAKE_CONTINUE_AFTER_DENY: "1" });
+	assert.equal(after.status, 1, after.stderr);
+	assert.deepEqual(after.decisions, ["AskUserQuestion deny", "Bash deny"]);
+});
+
+test("review #115-11, #115-12, #115-14: el juguete vive en <tmp>/mini-cli y se borra el padre (el worktree hermano cae adentro); stdout en utf8; --timeout y --budget inválidos son uso", async (t) => {
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-toy2-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const claude = fakeClaude(dir);
+	const kept = runHost(["--claude", claude, "--stage", "run", "--level", "A3", "--keep"], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, "keep.argv"), FAKE_WRITE: "" }, dir);
+	assert.equal(kept.status, 0, kept.stderr);
+	const toy = kept.stderr.match(/^fixture: (.+)$/m)?.[1] ?? "";
+	assert.ok(toy.endsWith("/mini-cli"), `el juguete es <tmp>/mini-cli: ${toy}`);
+	const parent = toy.slice(0, -"/mini-cli".length);
+	t.after(() => rmSync(parent, { recursive: true, force: true }));
+	const sibling = runHost(["--claude", claude, "--fixture", toy, "--stage", "run", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, "sib.argv"), FAKE_DECISIONS: join(dir, "sib.decisions"), FAKE_WRITE: join(parent, "mini-cli-sdd-json-flag", "src", "cli.mjs") }, dir);
+	assert.equal(sibling.status, 0, sibling.stderr);
+	assert.equal(readFileSync(join(dir, "sib.decisions"), "utf8").trim(), "Write allow", "el worktree hermano del ensayo de run queda dentro del padre y se permite");
+	const dropped = runHost(["--claude", claude, "--stage", "spec", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, "drop.argv") }, dir);
+	const dropToy = dropped.stderr.match(/^fixture: (.+)$/m)?.[1] ?? "";
+	assert.equal(existsSync(dropToy.slice(0, -"/mini-cli".length)), false, "sin --keep se borra el padre entero");
+	assert.match(await readRepoFile(HOST), /child\.stdout\.setEncoding\("utf8"\)/, "la decodificación es por stream, no por chunk");
+	for (const args of [["--timeout", "abc"], ["--timeout", "0"], ["--timeout", "-5"], ["--budget", "nan"], ["--budget", "0"], ["--budget", "-1"]]) {
+		const bad = runHost(["--claude", claude, "--fixture", dir, "--stage", "spec", "--level", "A3", ...args], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, "bad.argv") }, dir);
+		assert.equal(bad.status, 2, args.join(" "));
+		assert.equal(bad.stdout.trim(), "unrehearsed", args.join(" "));
+		assert.match(bad.stderr, new RegExp(`${args[0]}: número finito mayor que 0`), args.join(" "));
+		assert.equal(existsSync(join(dir, "bad.argv")), false, `${args.join(" ")}: no se lanza el hijo`);
+	}
+});
+
+test("review #115-20: la fila de evals del contrato dice qué alcanza el grant de Bash y que la calibración de 1.15 USD ya no vale", async () => {
+	const row = (await readRepoFile(".chiche/project.md")).split("\n").find((line) => line.startsWith("| evals del plugin (Claude Code) |")) ?? "";
+	assert.match(row, /`--allow-tools Write Bash`[^|]*solo llega a los casos que listan `Bash` en `allowed_tools`/);
+	assert.match(row, /la calibracion de 1\.15 USD[^|]*ya no vale/);
+});
+
+test("review #113-8: la aptitud del cierre toma la unión de la stop list del branch default y la del working tree, y el nivel sigue saliendo del default", async () => {
+	const problems: string[] = [];
+	for (const skill of ["chiche-init", "coding-policies", "design-system"] as const) {
+		for (const harness of HARNESSES) {
+			const close = delimitedBlock(await skillFile(harness, skill), "commit-pr-close") ?? "";
+			if (!/ninguna fila de la stop list matchea `git push -u origin <branch>`[^\n]*la unión de la stop list del branch default y la del working tree[^\n]*el nivel sigue saliendo del default/.test(close)) problems.push(`${harness}/${skill}: la aptitud no une las dos stop lists`);
+		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("review #113-9: chiche-land exime solo los comandos exactos del plan confirmado (gh pr merge <N> --<method>, gh stack merge <N>) en la Fase 1, el plan y MUST DO", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const markdown = await skillFile(harness, "chiche-land");
+		const preflight = section(markdown, /^Fase 1 — Preflight/);
+		problems.push(...missing(preflight, [
+			/salvo los comandos exactos del plan confirmado: `gh pr merge <N> --<method>` y `gh stack merge <N>`/,
+			/una fila que los matchea no los frena y sigue frenando cualquier otro comando que matchee/,
+			/el plan de la Fase 2 cita esa fila textual y avisa que confirmar la pisa/,
+		]).map((problem) => `${harness}/chiche-land Fase 1: ${problem}`));
+		if (!/^- Respetar la stop list de `## Autonomy` del contrato, salvo los comandos exactos del plan confirmado \(`gh pr merge <N> --<method>` y `gh stack merge <N>`\)/m.test(section(markdown, /^MUST DO$/))) problems.push(`${harness}/chiche-land MUST DO: la excepción no es por comando exacto`);
+		if (/filas cuyo `Pattern` matchea `gh pr merge` o `gh stack merge`/.test(markdown)) problems.push(`${harness}/chiche-land: queda la excepción por string pelado`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("review #114-5, #114-6: con A2 y sin GHA, Codex, opencode y Pi sin tool subagent corren el review nativo inline y terminan; si el review nativo no está disponible, se avisa y se sigue sin bloquear el run", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const phase6 = section(await skillFile(harness, "chiche-run"), /^Fase 6 — /);
+		if (!/[Ss]i el code review nativo no está disponible[^\n]*avisar y seguir, sin bloquear el run/.test(phase6)) problems.push(`${harness}/chiche-run: falta el fallback del review nativo`);
+		if (harness === "codex" || harness === "opencode") {
+			if (!/Con A2 y sin GHA[^\n]*el review nativo corre inline[^\n]*y la corrida termina/.test(phase6)) problems.push(`${harness}/chiche-run: A2 sin GHA no corre el review nativo inline`);
+		}
+		if (harness === "pi" && !/Con A2 y sin GHA ni la tool `subagent`[^\n]*el review nativo corre inline[^\n]*y la corrida termina/.test(phase6)) problems.push("pi/chiche-run: A2 sin GHA ni subagent no corre el review nativo inline");
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("review #114-7: el menú de chiche-spec dice que chiche-run corre con --autonomy <level> si vino y, si no, resuelve su fila run", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const flow = delimitedBlock(await skillFile(harness, "chiche-spec"), "chiche-spec-flow") ?? "";
+		if (!/`chiche-run` lo corre con `--autonomy <level>` si vino; si no, `chiche-run` resuelve su fila `run`/.test(flow)) problems.push(`${harness}/chiche-spec: el bloque no dice que chiche-run resuelve su fila run`);
+	}
+	assert.deepEqual(problems, []);
 });
 
 // ---------------------------------------------------------------------------
