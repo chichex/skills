@@ -1135,11 +1135,12 @@ test("issue #103 CA-18 (issue #102 CA-20): los README se titulan # chiche, abren
 		const markdown = await readRepoFile(readme.path);
 		const lines = markdown.split("\n");
 		if (lines[0] !== "# chiche") problems.push(`${readme.path}: la línea 1 es «${lines[0]}» y debe ser «# chiche»`);
-		if (!lines.slice(0, 8).join("\n").toLowerCase().includes(readme.tagline)) problems.push(`${readme.path}: las primeras 8 líneas no dicen «${readme.tagline}»`);
-		// Issue #102 CA-20: el párrafo de apertura nombra los tres niveles y el flag del dial.
+		// Las primeras 8 líneas: título, tagline y el párrafo de apertura.
 		const opening = lines.slice(0, 8).join("\n");
+		if (!opening.toLowerCase().includes(readme.tagline)) problems.push(`${readme.path}: las primeras 8 líneas no dicen «${readme.tagline}»`);
+		// Issue #102 CA-20: las primeras 8 líneas nombran los tres niveles y el flag del dial.
 		for (const token of ["`supervised`", "`plan-approved`", "`unattended`", "`--autonomy`"]) {
-			if (!opening.includes(token)) problems.push(`${readme.path}: el párrafo de apertura no nombra ${token}`);
+			if (!opening.includes(token)) problems.push(`${readme.path}: las primeras 8 líneas no nombran ${token}`);
 		}
 
 		const flowStart = lines.indexOf(readme.flow);
