@@ -101,8 +101,8 @@ const DOCTRINE: Record<string, RegExp[]> = {
 	"CA-14": [
 		/`gh auth status`/,
 		/branch default leído del remote[\s\S]*nunca asumir `main`/,
-		/Leer `\.chiche\/project\.md` si existe[\s\S]*`## Comandos` verifican un branch actualizado[\s\S]*la stop list de `## Autonomy` rige como siempre, salvo los comandos exactos del plan confirmado: `gh pr merge <N> --<method>` y `gh stack merge <N>`[\s\S]*invocarlo y confirmar el plan es la autorización humana[\s\S]*el plan de la Fase 2 cita esa fila textual y avisa que confirmar la pisa/,
-		/Respetar la stop list de `## Autonomy` del contrato, salvo los comandos exactos del plan confirmado \(`gh pr merge <N> --<method>` y `gh stack merge <N>`\)[\s\S]*solo cae la parte de merge/,
+		/Leer `\.chiche\/project\.md` si existe[\s\S]*`## Comandos` verifican un branch actualizado[\s\S]*la stop list de `## Autonomy` rige como siempre, salvo los comandos exactos del plan confirmado: `gh pr merge <N> --<method>` y `gh stack merge <N> --merge-method <m> --yes`[\s\S]*invocarlo y confirmar el plan es la autorización humana[\s\S]*el plan de la Fase 2 cita esa fila textual y avisa que confirmar la pisa/,
+		/Respetar la stop list de `## Autonomy` del contrato, salvo los comandos exactos del plan confirmado \(`gh pr merge <N> --<method>` y `gh stack merge <N> --merge-method <m> --yes`\)[\s\S]*solo cae la parte de merge/,
 		/`gh stack` exigido solo si algún target es un stack/,
 		/un PR pertenece a un stack si su `baseRefName` no es el default o si existe algún PR abierto cuyo `baseRefName` es su `headRefName`[\s\S]*se confirma con `gh stack view --json`/,
 		/se recorre `baseRefName` hasta el branch default/,
@@ -510,7 +510,7 @@ test("PR #91 CA-14 (issue #102 CA-22, review #113-10): fuera de los bloques comp
 		const lines = outside.split("\n");
 		const frena = lines.filter((line) => (/stop list/.test(line) && /\b(frena|frenar|manda)\b|por encima/.test(line) && !/no (?:los )?frenan?\b/.test(line)) || /contrato[^.]*manda/.test(line));
 		assert.deepEqual(frena, [], `${harness}/chiche-land/SKILL.md`);
-		const limites = lines.filter((line) => /## Limites/.test(line) && !/contrato sin ## Autonomy: rigen sus ## Limites/.test(line) && !/esa prosa sigue rigiendo/.test(line));
+		const limites = lines.filter((line) => /## Limites/.test(line) && !/contrato sin ## Autonomy: rigen sus ## Limites/.test(line) && !/esa prosa sigue rigiendo/.test(line) && !/las prohibiciones de merge de su `## Limites` tampoco frenan este skill/.test(line));
 		assert.deepEqual(limites, [], `${harness}/chiche-land/SKILL.md: ## Limites ya no es fuente propia`);
 	}
 });
@@ -520,9 +520,10 @@ test("issue #102 CA-22: chiche-land conserva la excepción de merge por fila de 
 		const file = `${harness}/chiche-land/SKILL.md`;
 		const markdown = await readRepoFile(file);
 		const preflight = section(markdown, /^## Fase 1 — Preflight/);
-		assert.match(preflight, /salvo los comandos exactos del plan confirmado: `gh pr merge <N> --<method>` y `gh stack merge <N>`\. Esos no los frena este skill: invocarlo y confirmar el plan es la autorización humana/, `${file}: excepción de merge por comando exacto (review #113-9)`);
+		assert.match(preflight, /salvo los comandos exactos del plan confirmado: `gh pr merge <N> --<method>` y `gh stack merge <N> --merge-method <m> --yes`\. Esos no los frena este skill: invocarlo y confirmar el plan es la autorización humana/, `${file}: excepción de merge por comando exacto (review #113-9)`);
 		assert.match(preflight, /el plan de la Fase 2 cita esa fila textual y avisa que confirmar la pisa/, `${file}: el plan cita la fila`);
-		assert.match(section(markdown, /^## MUST DO$/), /^- Respetar la stop list de `## Autonomy` del contrato, salvo los comandos exactos del plan confirmado \(`gh pr merge <N> --<method>` y `gh stack merge <N>`\)/m, `${file}: MUST DO`);
+		assert.match(preflight, /En un contrato sin `## Autonomy`, las prohibiciones de merge de su `## Limites` tampoco frenan este skill: el plan las cita textuales y avisa que confirmar las pisa\./, `${file}: la excepción cubre la prosa de un repo sin migrar (review #113-2)`);
+		assert.match(section(markdown, /^## MUST DO$/), /^- Respetar la stop list de `## Autonomy` del contrato, salvo los comandos exactos del plan confirmado \(`gh pr merge <N> --<method>` y `gh stack merge <N> --merge-method <m> --yes`\)/m, `${file}: MUST DO`);
 		assert.match(section(markdown, /^## Argumentos$/), /`--autonomy <level>`[^\n]*aborta con cualquier valor distinto de `supervised`\/`A1`/, `${file}: --autonomy solo supervised`);
 		assert.ok(delimitedBlock(markdown, "autonomy-levels") !== null && delimitedBlock(markdown, "autonomy-resolve") !== null, `${file}: bloques autonomy-levels y autonomy-resolve`);
 	}

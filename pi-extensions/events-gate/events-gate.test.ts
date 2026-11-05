@@ -251,7 +251,7 @@ test("CA-9: chiche-spec registra spec.published con receipt, spec.approved en el
 		problems.push(...missing(events, [
 			/receipt de cada publicación/,
 			/`spec\.published` cuando la spec queda `draft`/,
-			/`spec\.approved` en la transición del menú a `aprobada` \(una republicación de una spec que ya estaba `aprobada` no lo registra\)/,
+			/`spec\.approved` en la transición a `aprobada`, la del menú o la de A2 \(una republicación de una spec que ya estaba `aprobada` no lo registra\)/,
 			/un `spec\.superseded` por cada predecesora/,
 			/`Llevar a issue` registra antes un `spec\.moved`: `previous` es la identidad events-v1 `\.sdd\/specs\/<slug>\.md` que la spec tenía y `spec` el `#NN` nuevo/,
 			/si no su identidad events-v1 `\.sdd\/specs\/<slug>\.md`/,
