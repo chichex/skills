@@ -158,6 +158,8 @@ La razón de ser del skill: un contrato con comandos no probados vale poco, porq
 2. **Comandos finitos** (test, build, lint, typecheck, coverage si el repo tiene tooling): correrlos con timeout de 120s c/u. Registrar: `verificado <fecha>` + duración + resumen (ej. "84 tests pasan"), o `FALLA` + el error resumido (una falla NO aborta el skill: se documenta y sigue — saber que el build está roto es exactamente el tipo de cosa que el contrato debe decir). Para coverage, registrar además el **% actual en las Notas: es el baseline** que la Fase 3.5 usa para anclar el gate.
 3. **Procesos largos** (dev server, app): arrancar en background, esperar la señal de vida (puerto abierto, línea de log), registrar cómo se reconoce el "está arriba" (ej. `curl -sf localhost:5173` responde), y MATARLO. Si no levanta en 60s, anotar `no levanta: <motivo>`.
 4. Lo que exceda timeout o requiera credenciales ausentes: `no probado (<motivo>)`. Nunca inventar el estado.
+5. **Stop list**: correr el comando canónico de «`## Autonomy`» (abajo, en «Ensayo de la stop list») sobre el contrato que se va a escribir; una fila `FAILED` conserva su `Pattern`, lleva el motivo al frente de su `Reason` y se lista en `## Gaps` para que el humano la corrija.
+6. **Recetas de deploy**: cada receta de deploy encontrada es una fila `deploy <ambiente>` de `## Comandos`, con el mismo `verificado | FALLA | no probado` que cualquier comando. Como muta un ambiente y suele estar en la stop list, se ejecuta solo si el humano lo confirma en esta fase; si no, queda `no probado (deploy: sin confirmación humana)`. Una fila de ambiente en `## Autonomy` cuyo `deploy <ambiente>` no está `verificado` queda `unrehearsed`.
 
 ## Fase 3 — Gaps: preguntar solo lo no inferible
 
@@ -167,7 +169,7 @@ Listar las preguntas que el código NO respondió. Típicas: ¿cuál ambiente us
 - Lo ya claro NO se pregunta: preguntar lo inferible erosiona la confianza en el skill.
 - Con `--autonomy` ≥ A2 (o si el usuario no responde): assumption más conservadora (ej. "solo local, nunca staging"), documentada en el doc con `[NEEDS-INPUT]`.
 
-**Nivel de autonomía por etapa.** Después de los gaps, preguntar el nivel con `request_user_input`, una pregunta por fila — "¿Hasta dónde llega el agente solo en <stage>?", con `supervised (Recomendado)` primera y después `plan-approved` y `unattended` —: filas fijas `grill`, `spec`, `run`, `review` y `land`, más una por ambiente de `## Ambientes`. `land`, `review` y los ambientes solo aceptan `supervised` en esta versión: no se preguntan, se escriben. Cada respuesta va a la tabla de niveles de `## Autonomy` con `Since` de hoy; `Rehearsed` queda `—` en una fila `supervised` y `unrehearsed` en toda fila ≥ A2, porque sin ensayo rige `supervised`. Con `--autonomy` ≥ A2 no se pregunta: asume `supervised` en todas las filas y marca `[NEEDS-INPUT]`.
+**Nivel de autonomía por etapa.** Después de los gaps, preguntar el nivel con `request_user_input`, una pregunta por fila — "¿Hasta dónde llega el agente solo en <stage>?", con `supervised (Recomendado)` primera y después `plan-approved` y `unattended` —: filas fijas `grill`, `spec`, `run`, `review` y `land`, más una por ambiente de `## Ambientes`. `land`, `review` y los ambientes solo aceptan `supervised` en esta versión: no se preguntan, se escriben. Cada respuesta va a la tabla de niveles de `## Autonomy` con `Since` de hoy; `Rehearsed` queda `—` en una fila `supervised` y `unrehearsed` en toda fila ≥ A2, con el aviso literal `ensayo disponible desde Claude Code: corré chiche-init --update ahí`, porque el ensayo de niveles vive en el skill de Claude Code y sin ensayo rige `supervised`; con `--no-verify` queda `unrehearsed` en todas. Con `--autonomy` ≥ A2 no se pregunta: asume `supervised` en todas las filas y marca `[NEEDS-INPUT]`.
 
 **Stop list.** La pregunta de qué requiere confirmación humana además de los defaults se responde como filas de la stop list de `## Autonomy`: por cada respuesta, proponer la fila con `Action`, el `Pattern` inferido (regex POSIX extendida sobre el comando o la ruta, sin `|`) y `Reason`, y confirmarla con `request_user_input`; una respuesta sin patrón honesto se ofrece como regla fechada para `## Decisiones humanas`, nunca como fila con `Pattern` vacío. Los defaults (deploy, migraciones sobre datos compartidos, push a `main`, force-push, merge de PRs y servicios pagos) se escriben sin preguntar, con el patrón que el repo sugiere. En `--update` sobre un contrato con límites en prosa, la fila `Stop list` de «Upgrade de contrato» propone una fila por bullet con este mismo mecanismo. Corre después de «Migración a .chiche/» y funciona igual sobre un repo que eligió `Mantener .sdd/`: lee y escribe el contrato donde esté.
 
@@ -320,6 +322,7 @@ Con superficies, una fila por superficie; Estado es `con sistema` o `sin sistema
 | test | pnpm test | . | verificado 2026-07-02 | 12s | 84 tests pasan |
 | build | pnpm build | . | FALLA | 40s | TS2345 en src/x.ts — ver Gaps |
 | run | pnpm dev | . | verificado 2026-07-02 | — | listo cuando responde curl -sf localhost:5173 |
+| deploy staging | ./deploy.sh staging | . | no probado (deploy: sin confirmacion humana) | — | receta; muta staging, se ejecuta solo con confirmacion |
 
 ## Ambientes
 <cuales hay, CUAL usar para probar, env vars: resueltas vs faltantes y de donde salen.
@@ -334,6 +337,7 @@ cada escalon. Y explicitamente que NO se puede verificar sin humano, con el moti
 ## Autonomy
 <nivel por etapa y paradas obligatorias (Fase 3; la forma exacta, abajo en "## Autonomy"). Niveles:
 supervised (A1), plan-approved (A2), unattended (A3); land, review y ambientes solo supervised.
+Una fila de ambiente cuyo deploy <ambiente> no esta verificado queda unrehearsed.
 | Stage | Level | Since | Rehearsed |
 |---|---|---|---|
 | grill | supervised | 2026-07-02 | — |
@@ -349,13 +353,13 @@ presentes: deploy, migraciones sobre datos compartidos, push a main, force-push,
 pagos. Mas lo que sumo el usuario.
 | Action | Pattern | Reason |
 |---|---|---|
-| deploy | pnpm run deploy | sin confirmacion humana |
-| migraciones | prisma migrate deploy | datos compartidos |
-| push a main | git push .* main | solo via PR |
-| force-push | git push .*--force | nunca |
-| merge de PRs | gh pr merge | solo chiche-land, con el plan confirmado |
-| merge de stacks | gh stack merge | solo chiche-land, con el plan confirmado |
-| servicios pagos | <comando que consume cuota> | sin confirmacion humana |>
+| pnpm run deploy | pnpm run deploy | sin confirmacion humana |
+| prisma migrate deploy | prisma migrate deploy | datos compartidos |
+| git push origin main | git push .* main | solo via PR |
+| git push --force | git push .*--force | nunca |
+| gh pr merge | gh pr merge | solo chiche-land, con el plan confirmado |
+| gh stack merge | gh stack merge | solo chiche-land, con el plan confirmado |
+| <comando que consume cuota> | <patron> | sin confirmacion humana |>
 
 ## Politicas de generacion
 <gates duros que $chiche-run verifica antes de abrir el PR. Elegidas por el usuario en
@@ -379,8 +383,33 @@ La línea `Chiche-Tracking` es el marker canónico de tracking (contrato `docs/c
 <!-- autonomy-contract:start -->
 **`## Autonomy`.** Reemplaza a `## Limites`: dice hasta dónde llega el agente solo en cada etapa y qué no hace nunca. Dos tablas:
 
-1. **Niveles**, `| Stage | Level | Since | Rehearsed |`: filas fijas `grill`, `spec`, `run`, `review` y `land`, más una por ambiente de `## Ambientes` (con `Stage` el nombre del ambiente). `Level` es `supervised`, `plan-approved` o `unattended`; `land`, `review` y los ambientes solo aceptan `supervised` en esta versión, y ningún skill lee `review` hasta que exista esa etapa. `Since` es la fecha `YYYY-MM-DD` en que se fijó el nivel. `Rehearsed` es `rehearsed <YYYY-MM-DD>` si la fila pasó el ensayo, `unrehearsed` si nunca se ensayó y `FAILED (<motivo>)` si no pasó; una fila `supervised` lleva `—`. Un nivel ≥ A2 solo rige si está `rehearsed`: `unrehearsed` o `FAILED` equivalen a `supervised` para quien lo lee.
-2. **Stop list**, `| Action | Pattern | Reason |`: lo que el agente nunca hace solo, en ningún nivel. `Pattern` es una regex POSIX extendida (`grep -E`) sobre el comando completo o la ruta tocada, una por fila y sin `|` (una alternativa por fila, porque `|` es el separador de la tabla). Una fila con `Pattern` vacío es inválida: este skill la rechaza y la ofrece como regla fechada para `## Decisiones humanas`; los skills la ignoran con aviso. Defaults siempre presentes: deploy, migraciones sobre datos compartidos, push a `main`, force-push, merge de PRs (que solo `chiche-land` pisa al confirmar su plan) y servicios pagos; más lo que sume el usuario.
+1. **Niveles**, `| Stage | Level | Since | Rehearsed |`: filas fijas `grill`, `spec`, `run`, `review` y `land`, más una por ambiente de `## Ambientes` (con `Stage` el nombre del ambiente). `Level` es `supervised`, `plan-approved` o `unattended`; `land`, `review` y los ambientes solo aceptan `supervised` en esta versión, y ningún skill lee `review` hasta que exista esa etapa. `Since` es la fecha `YYYY-MM-DD` en que se fijó el nivel. `Rehearsed` es `rehearsed <YYYY-MM-DD>` si la fila pasó el ensayo, `unrehearsed` si nunca se ensayó y `FAILED (<motivo>)` si no pasó; una fila `supervised` lleva `—`. Un nivel ≥ A2 solo rige si está `rehearsed`: `unrehearsed` o `FAILED` equivalen a `supervised` para quien lo lee. Una fila de ambiente cuyo `deploy <ambiente>` de `## Comandos` no está `verificado` queda `unrehearsed`.
+2. **Stop list**, `| Action | Pattern | Reason |`: lo que el agente nunca hace solo, en ningún nivel. `Action` es un comando representativo de lo prohibido (`git push origin main`, `pnpm run deploy`): es el rótulo de la fila y el comando de prueba de su ensayo. `Pattern` es una regex POSIX extendida (`grep -E`) sobre el comando completo o la ruta tocada, una por fila y sin `|` (una alternativa por fila, porque `|` es el separador de la tabla). Una fila con `Pattern` vacío es inválida: este skill la rechaza y la ofrece como regla fechada para `## Decisiones humanas`; los skills la ignoran con aviso. Defaults siempre presentes: deploy, migraciones sobre datos compartidos, push a `main`, force-push, merge de PRs (que solo `chiche-land` pisa al confirmar su plan) y servicios pagos; más lo que sume el usuario.
+
+**Ensayo de la stop list.** No necesita agente: cada `Pattern` se corre contra su propio `Action` (tiene que matchear) y contra el comando neutro `echo ok` (no tiene que matchear). Un patrón vacío, inválido, que no matchea su acción o que matchea el neutro deja la fila `FAILED`. Este comando lo hace sobre el contrato que se le indica, sin parámetros posicionales: imprime `ok: <Action>` o `FAILED: <Action> (<motivo>)` por fila y termina con exit 1 si alguna falló.
+
+```bash
+(
+  contract='<contrato>'
+  export LC_ALL=C
+  section=$(sed -n '/^## Autonomy$/,$p' "$contract" | sed -n '2,${/^## /q;p;}')
+  rows=$(printf '%s\n' "$section" | sed -n '/^| *Action *| *Pattern *| *Reason *|/,$p' | sed -n '3,$p' | grep '^|')
+  out=$(printf '%s\n' "$rows" | while IFS= read -r fila; do
+    [ -n "$fila" ] || continue
+    action=$(printf '%s\n' "$fila" | cut -d'|' -f2 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    pattern=$(printf '%s\n' "$fila" | cut -d'|' -f3 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    if [ -z "$pattern" ]; then echo "FAILED: $action (Pattern vacío)"; continue; fi
+    printf '%s\n' "$action" | grep -Eq -- "$pattern" 2>/dev/null; rc=$?
+    if [ "$rc" -eq 2 ]; then echo "FAILED: $action (Pattern inválido para grep -E)"
+    elif [ "$rc" -ne 0 ]; then echo "FAILED: $action (el Pattern no matchea su Action)"
+    elif printf '%s\n' 'echo ok' | grep -Eq -- "$pattern" 2>/dev/null; then echo "FAILED: $action (el Pattern matchea el comando neutro echo ok)"
+    else echo "ok: $action"; fi
+  done)
+  printf '%s\n' "$out"
+  printf '%s\n' "$out" | grep -q '^FAILED: ' && exit 1
+  exit 0
+)
+```
 <!-- autonomy-contract:end -->
 
 En `--update`: regenerar todo salvo `## Decisiones humanas`, `## Politicas de generacion` y `## Autonomy` (preservar verbatim — las políticas solo cambian si el usuario eligió `Revisar` en Fase 3.5) y los `[NEEDS-INPUT]` aún sin respuesta (mantenerlos, no duplicarlos).

@@ -81,10 +81,11 @@ jobs:
           claude --version
 
       # --trust-plugin: sin TTY no hay prompt de confianza; es nuestro propio repo.
-      # --allow-tools Write: Write es un tool gateado y el caso de adherencia
-      # escribe la spec. --scaffold: el caso de adherencia copia su fixture al
-      # workspace con evals/adherence-chiche-spec/scaffold.sh. --no-publish: el
-      # reporte HTML queda en el artifact.
+      # --allow-tools Write Bash: Write y Bash son tools gateados; el caso de
+      # adherencia escribe la spec y el caso autonomy-stop-list-a3 corre
+      # chiche-run --inline (git, node --test) para que su Bash quede en el trace
+      # (issue #102, CA-17). --scaffold: esos casos copian su fixture al workspace
+      # con su scaffold.sh. --no-publish: el reporte HTML queda en el artifact.
       - name: Correr la suite
         env:
           CASE: ${{ inputs.case }}
@@ -93,7 +94,7 @@ jobs:
           ABLATION: ${{ inputs.ablation }}
         run: |
           mkdir -p evals/results
-          args=(plugin eval . --trust-plugin --json evals/results/ci.json --no-publish --threshold 1.0 --max-cost-usd 5 --allow-tools Write --scaffold --ablation "$ABLATION" --runs "$RUNS" --model "$MODEL")
+          args=(plugin eval . --trust-plugin --json evals/results/ci.json --no-publish --threshold 1.0 --max-cost-usd 5 --allow-tools Write Bash --scaffold --ablation "$ABLATION" --runs "$RUNS" --model "$MODEL")
           if [ -n "$CASE" ]; then args+=(--case "$CASE"); fi
           claude "${args[@]}"
 
