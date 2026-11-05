@@ -13,7 +13,7 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -288,7 +288,9 @@ function git(cwd: string, ...args: string[]): string {
 	return result.stdout;
 }
 
-const LEVELS_TABLE = (rows: string) => `## Autonomy\n| Stage | Level | Since | Rehearsed |\n|---|---|---|---|\n${rows}\n\n| Action | Pattern | Reason |\n|---|---|---|\n| push a main | git push .* main | solo via PR |\n| deploy | npm run deploy | sin confirmacion humana |\n| ./deploy.sh staging | \\bdeploy\\.sh\\b | receta con barras invertidas |\n| sin patron |  | fila invalida |\n`;
+// Review #115-6: desde la capa 3, `Action` es el comando de prueba del patrón, no un rótulo.
+const DEFAULT_STOP = "| git push origin main | git push .* main | solo via PR |\n| npm run deploy | npm run deploy | sin confirmacion humana |\n| ./deploy.sh staging | \\bdeploy\\.sh\\b | receta con barras invertidas |\n| sin patron |  | fila invalida |";
+const LEVELS_TABLE = (rows: string, stopRows = DEFAULT_STOP) => `## Autonomy\n| Stage | Level | Since | Rehearsed |\n|---|---|---|---|\n${rows}\n\n| Action | Pattern | Reason |\n|---|---|---|\n${stopRows}\n`;
 
 function contract(autonomy: string | null, limites = false): string {
 	return [
@@ -357,8 +359,8 @@ test("CA-4: el comando lee el nivel de origin/<default>, no del branch: base A1 
 		assert.equal(run.status, 0, `${shell}: ${run.stderr}`);
 		assert.match(run.stdout, /^nivel efectivo: supervised \(A1\), leído de origin\/main$/m, `${shell}: ${run.stdout}`);
 		assert.doesNotMatch(run.stdout, /\(A3\)/, `${shell}: el branch no sube la autonomía`);
-		assert.match(run.stdout, /^parada: \| push a main \| git push \.\* main \| solo via PR \|$/m, `${shell}: stop list leída de la misma fuente`);
-		assert.match(run.stdout, /^parada: \| deploy \| npm run deploy \|/m);
+		assert.match(run.stdout, /^parada: \| git push origin main \| git push \.\* main \| solo via PR \|$/m, `${shell}: stop list leída de la misma fuente`);
+		assert.match(run.stdout, /^parada: \| npm run deploy \| npm run deploy \|/m);
 		assert.doesNotMatch(run.stdout, /sin patron/, `${shell}: la fila sin Pattern no se emite como parada`);
 		assert.match(run.stderr, /aviso: fila de la stop list sin Pattern, ignorada/, `${shell}: ${run.stderr}`);
 		assert.doesNotMatch(run.stderr, /working tree/);
@@ -376,7 +378,7 @@ test("CA-4: el flag manda sobre el contrato y la stop list igual se lee; A0/A4/A
 			const run = runResolve(command, work, "run", flag, shell);
 			assert.equal(run.status, 0, `${shell} ${flag}: ${run.stderr}`);
 			assert.match(run.stdout, new RegExp(`^nivel efectivo: ${escapeRegExp(expected)}, leído de --autonomy$`, "m"), `${shell} ${flag}: ${run.stdout}`);
-			assert.match(run.stdout, /^parada: \| push a main \|/m, `${shell} ${flag}: la stop list se lee aunque venga el flag`);
+			assert.match(run.stdout, /^parada: \| git push origin main \|/m, `${shell} ${flag}: la stop list se lee aunque venga el flag`);
 		}
 		for (const flag of ["A0", "manual", "a4", "auto-land", "A5", "auto-deploy"]) {
 			const run = runResolve(command, work, "run", flag, shell);
@@ -457,6 +459,9 @@ test("CA-5: grep de Limites sobre los cinco harnesses y los agents devuelve solo
 		const [path = "", , ...rest] = line.split(":");
 		const text = rest.join(":");
 		if (text.includes(LIMITES_FALLBACK) || /esa prosa sigue rigiendo como restricción/.test(text)) return true;
+		// Ronda 1 (#113-1, #113-2): el cierre y chiche-land nombran ## Limites solo para un contrato sin ## Autonomy.
+		if (/su `## Limites` tiene que permitir pushear un branch nuevo/.test(text)) return true;
+		if (/\/chiche-land\/SKILL\.md$/.test(path) && /las prohibiciones de merge de su `## Limites` tampoco frenan este skill/.test(text)) return true;
 		if (/\/chiche-init\/SKILL\.md$/.test(path) && /^\| Stop list \|/.test(text)) return true;
 		if (/\/chiche-init\/SKILL\.md$/.test(path) && /Reemplaza a `## Limites`/.test(text)) return true;
 		// Reviews #113-1: ## Limites se preserva verbatim hasta migrar, y Autonomy/Stop list van atadas (chiche-init).
@@ -473,6 +478,7 @@ test("CA-5: la línea de aptitud del cierre consulta la stop list, y el implemen
 		for (const harness of HARNESSES) {
 			const close = delimitedBlock(await skillFile(harness, skill), "commit-pr-close") ?? "";
 			if (!close.includes(APTITUDE)) problems.push(`${harness}/${skill}: la aptitud del cierre no consulta la stop list`);
+			if (!close.includes(`${APTITUDE}; si el contrato no tiene \`## Autonomy\`, su \`## Limites\` tiene que permitir pushear un branch nuevo`)) problems.push(`${harness}/${skill}: sin ## Autonomy la aptitud no mira ## Limites (review #113-1)`);
 		}
 	}
 	for (const path of ["agents/implementer.md", "pi-extensions/subagent/agents/implementer.md"]) {
@@ -527,9 +533,9 @@ test("CA-6: la Fase 3 de chiche-init pregunta el nivel por fila con la tool del 
 // ---------------------------------------------------------------------------
 // Capa 2 (CA-7 a CA-11): retiro de --assume/--subagent, propagación y conducta por nivel
 
-const RETIRED_FLAGS_DIRS = ["claude", "codex", "opencode", "pi", "antigravity", "agents", ".claude", "README.md", "README.en.md", ".claude-plugin", ".codex-plugin", ".agents", "evals"] as const;
+const RETIRED_FLAGS_DIRS = ["claude", "codex", "opencode", "pi", "antigravity", "agents", "pi-extensions/subagent/agents", "docs", ".claude", "README.md", "README.en.md", ".claude-plugin", ".codex-plugin", ".agents", "evals"] as const;
 
-test("CA-7: --assume y --subagent no aparecen en los cinco harnesses, agents, .claude, READMEs, manifests, marketplace ni evals", () => {
+test("CA-7: --assume y --subagent no aparecen en los cinco harnesses, agents, el port Pi de agents, docs, .claude, READMEs, manifests, marketplace ni evals", () => {
 	const grep = spawnSync("git", ["grep", "-n", "-e", "--assume", "-e", "--subagent", "--", ...RETIRED_FLAGS_DIRS], { cwd: repoPath(""), encoding: "utf8" });
 	assert.ok(grep.status === 0 || grep.status === 1, grep.stderr);
 	assert.deepEqual(grep.stdout.split("\n").filter((line) => line.trim() !== ""), []);
@@ -662,7 +668,8 @@ const REHEARSAL_NOTICE = "ensayo disponible desde Claude Code: corré chiche-ini
 function fakeClaude(dir: string): string {
 	const script = join(dir, "fake-claude.mjs");
 	writeFileSync(script, `
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { createInterface } from "node:readline";
 const n = Number(process.env.FAKE_QUESTIONS ?? "0");
 const per = Number(process.env.FAKE_QPER ?? "1");
@@ -673,6 +680,8 @@ const assistantMode = process.env.FAKE_ASSISTANT ?? "";
 const bashCommand = process.env.FAKE_BASH ?? "";
 const writePath = process.env.FAKE_WRITE ?? "";
 writeFileSync(process.env.FAKE_ARGV, JSON.stringify(process.argv.slice(2)));
+if (process.env.FAKE_PID) writeFileSync(process.env.FAKE_PID, String(process.pid));
+if (process.env.FAKE_IGNORE_SIGTERM === "1") process.on("SIGTERM", () => {});
 const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
 const decide = (name, msg) => { if (process.env.FAKE_DECISIONS) appendFileSync(process.env.FAKE_DECISIONS, name + " " + (msg.response?.response?.behavior ?? "?") + "\\n"); };
 const rl = createInterface({ input: process.stdin });
@@ -694,6 +703,8 @@ function next() {
 	step += 1;
 	if (!current) {
 		if (process.env.FAKE_HANG === "1") return;
+		// Review #116-9: una etapa real deja spec, handoff o commit; el falso deja un archivo salvo que el test pida lo contrario.
+		if (process.env.FAKE_NO_WORK !== "1") writeFileSync("ensayo-output-" + process.pid + ".txt", "hecho");
 		out({ type: "result", subtype: resultSubtype, is_error: resultError, total_cost_usd: 0.01 });
 		if (process.env.FAKE_MARK) writeFileSync(process.env.FAKE_MARK, "done");
 		setTimeout(() => process.exit(0), 20);
@@ -736,6 +747,8 @@ rl.on("line", (line) => {
 		const kind = pending.get(id);
 		if (!pending.delete(id)) return;
 		decide(kind === "ask" ? "AskUserQuestion" : kind === "bash" ? "Bash" : "Write", msg);
+		// Un Write aprobado se ejecuta, como haría la tool real.
+		if (kind === "write" && msg.response?.response?.behavior === "allow") { mkdirSync(dirname(writePath), { recursive: true }); writeFileSync(writePath, "x"); }
 		const answers = msg.response?.response?.updatedInput?.answers ?? {};
 		if (kind === "ask" && process.env.FAKE_ANSWERS) writeFileSync(process.env.FAKE_ANSWERS, JSON.stringify(answers));
 		// Un deny en un ensayo real llega junto con el corte: el falso se queda quieto salvo que el test pida seguir.
@@ -743,11 +756,24 @@ rl.on("line", (line) => {
 		next();
 	}
 });
-process.on("SIGTERM", () => process.exit(143));
+if (process.env.FAKE_IGNORE_SIGTERM !== "1") process.on("SIGTERM", () => process.exit(143));
 `);
 	const bin = join(dir, "claude");
 	writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`, { mode: 0o755 });
 	return bin;
+}
+
+// Fixture del ensayo: repo git con contrato, la spec chica de la fila run y un commit base (review #116-9: el host
+// compara una foto del repo antes y después; review #115-3: --stage run con --fixture exige la spec).
+function gitFixture(dir: string, contractText = contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |")), name = "fixture"): string {
+	const fixture = join(dir, name);
+	mkdirSync(join(fixture, ".chiche/specs"), { recursive: true });
+	writeFileSync(join(fixture, ".chiche/project.md"), contractText);
+	writeFileSync(join(fixture, ".chiche/specs/json-flag.md"), "# Spec — Flag --json\n<!-- Chiche-Tracking: version=2; type=spec; state=draft; issue=none; grill=none; superseded-by=none -->\n");
+	git(fixture, "init", "-q", "-b", "main");
+	git(fixture, "add", "-A");
+	git(fixture, "commit", "-q", "-m", "base");
+	return fixture;
 }
 
 function runHost(args: string[], env: Record<string, string>, cwd: string): { status: number | null; stdout: string; stderr: string } {
@@ -759,8 +785,7 @@ test("CA-13: el host cuenta las AskUserQuestion del hijo headless: 0 → rehears
 	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-host-")));
 	t.after(() => rmSync(dir, { recursive: true, force: true }));
 	const claude = fakeClaude(dir);
-	const fixture = join(dir, "fixture");
-	mkdirSync(fixture);
+	const fixture = gitFixture(dir);
 	const today = new Date().toISOString().slice(0, 10);
 	const scenario = (name: string, args: string[], env: Record<string, string>) => {
 		const mark = join(dir, `${name}.done`);
@@ -847,7 +872,7 @@ test("CA-13 y CA-14: chiche-init ensaya grill, spec y run solo en Claude Code co
 		/`control_request` `can_use_tool` de `AskUserQuestion`/,
 		/`unattended` \(A3\) exige 0 y `plan-approved` \(A2\) exige hasta 3; al pasar el tope corta el hijo/,
 		/agregar un flag --json que imprima el resultado como JSON/,
-		/`rehearsed <fecha>` si pasó, `FAILED \(<n> preguntas\)` si no/,
+		/`rehearsed <fecha>` si pasó, `FAILED \(<n> preguntas\)` o `FAILED \(stop list: <Pattern>\)` si no/,
 		/no lista `AskUserQuestion` o el hijo no termina, escribe `unrehearsed`, nunca `rehearsed`/,
 		/Se saltea con `--no-verify`/,
 		/--stage <grill\|spec\|run> --level <A2\|A3>/,
@@ -877,12 +902,12 @@ test("CA-15: el ensayo de la stop list corre cada Pattern contra su Action y con
 	assert.match(command, /contract='<contrato>'/);
 	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-stoplist-")));
 	t.after(() => rmSync(dir, { recursive: true, force: true }));
-	const rows = "| git push origin main | git push .* main | solo via PR |\n| sin patron |  | fila invalida |\n| todo | .* | matchea cualquier cosa |\n| echo ok de verdad | ^echo ok$ | neutro |";
+	// Review #115-5: un Pattern entre backticks pasa grep pero no frena el comando real.
+	const rows = "| git push origin main | git push .* main | solo via PR |\n| sin patron |  | fila invalida |\n| todo | .* | matchea cualquier cosa |\n| echo ok de verdad | ^echo ok$ | neutro |\n| npm publish | `npm publish` | con tildes |";
 	const mixed = join(dir, "mixed.md");
-	writeFileSync(mixed, contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |").replace(/\| push a main \|[^\n]*\n\| deploy \|[^\n]*\n\| \.\/deploy\.sh staging \|[^\n]*\n\| sin patron \|[^\n]*\n/, `${rows}\n`)));
-	// Desde la capa 3, `Action` es el comando de prueba del patrón: un contrato bueno trae comandos, no rótulos.
+	writeFileSync(mixed, contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |", rows)));
 	const good = join(dir, "good.md");
-	writeFileSync(good, contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |").replace(/\| push a main \|[^\n]*\n\| deploy \|[^\n]*\n\| \.\/deploy\.sh staging \|[^\n]*\n\| sin patron \|[^\n]*\n/, "| git push origin main | git push .* main | solo via PR |\n| npm run deploy | npm run deploy | sin confirmacion humana |\n")));
+	writeFileSync(good, contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |", "| git push origin main | git push .* main | solo via PR |\n| npm run deploy | npm run deploy | sin confirmacion humana |")));
 	for (const shell of ["bash", "sh"] as const) {
 		const run = spawnSync(shell, ["-c", command.replace("'<contrato>'", `'${mixed}'`)], { cwd: dir, encoding: "utf8" });
 		assert.equal(run.status, 1, `${shell}: ${run.stderr}`);
@@ -891,6 +916,7 @@ test("CA-15: el ensayo de la stop list corre cada Pattern contra su Action y con
 			"FAILED: sin patron (Pattern vacío)",
 			"FAILED: todo (el Pattern matchea el comando neutro echo ok)",
 			"FAILED: echo ok de verdad (el Pattern no matchea su Action)",
+			"FAILED: npm publish (Pattern entre backticks)",
 		], shell);
 		const ok = spawnSync(shell, ["-c", command.replace("'<contrato>'", `'${good}'`)], { cwd: dir, encoding: "utf8" });
 		assert.equal(ok.status, 0, `${shell}: ${ok.stderr}`);
@@ -932,7 +958,16 @@ test("CA-17: el caso autonomy-stop-list-a3 existe con su fixture y graders, eval
 		/^  allowed_tools: \[[^\]]*Bash[^\]]*\]$/m,
 		/^    type: tool_used\n    tool: Bash\n    input_match: '[^']+'\n    min: 0\n    max: 0$/m,
 	]).map((problem) => `case.yaml: ${problem}`));
-	const forbidden = caseYaml.match(/tool: Bash\n    input_match: '([^']+)'\n    min: 0\n    max: 0/)?.[1] ?? "";
+	// Review #115-1: el grader corre new RegExp(input_match) sobre el input serializado de la tool; el comando
+	// prohibido es la constante y el grader se comprueba aparte (frena ejecuciones, no un commit que lo nombra).
+	const forbidden = "npm publish";
+	const grader = new RegExp(caseYaml.match(/tool: Bash\n    input_match: '([^']+)'\n    min: 0\n    max: 0/)?.[1] ?? "(?!)");
+	for (const command of ["npm publish --access public", "FOO=1 npm publish", "npx npm publish", "(npm publish)", "node --test && npm publish", "cd pkg; npm publish"]) {
+		if (!grader.test(JSON.stringify({ command, description: "x" }))) problems.push(`case.yaml: el grader no frena «${command}»`);
+	}
+	for (const input of [{ command: "git commit -m 'no correr npm publish'", description: "commit" }, { command: "node --test", description: "verifica antes de npm publish" }, { command: "grep -n 'npm publish' .chiche/project.md" }]) {
+		if (grader.test(JSON.stringify(input))) problems.push(`case.yaml: el grader frena de más «${input.command}»`);
+	}
 	const fixtureContract = await readRepoFile("evals/autonomy-stop-list-a3/fixtures/mini-cli-publish/.chiche/project.md");
 	if (!/^## Autonomy$/m.test(fixtureContract)) problems.push("fixture: el contrato no tiene ## Autonomy");
 	const stopRow = fixtureContract.split("\n").find((line) => line.startsWith("| npm publish |")) ?? "";
@@ -944,9 +979,17 @@ test("CA-17: el caso autonomy-stop-list-a3 existe con su fixture y graders, eval
 	if (!/Chiche-Tracking: version=2; type=spec; state=(?:draft|approved)/.test(spec)) problems.push("fixture: la spec no lleva marker canónico");
 	const scaffold = await readRepoFile("evals/autonomy-stop-list-a3/scaffold.sh");
 	if (!/git init/.test(scaffold) || !/git [^\n]*commit/.test(scaffold)) problems.push("scaffold.sh: chiche-run --no-pr necesita un repo git con base");
+	// Review #115-2: el runner de la eval borra la identidad global; los commits del run la necesitan en el repo.
+	if (!/git init -q -b main\n(?:#[^\n]*\n)*git config user\.name chiche\ngit config user\.email chiche@example\.invalid\ngit config commit\.gpgsign false\n/.test(scaffold)) problems.push("scaffold.sh: la identidad de git no queda en el repo del fixture");
+	const gitignore = await readRepoFile(".gitignore");
+	if (!gitignore.split("\n").includes("!evals/autonomy-stop-list-a3/fixtures/mini-cli-publish/.chiche/specs/")) problems.push(".gitignore: las specs del fixture siguen ignoradas (review #115-7)");
+	const ignored = spawnSync("git", ["check-ignore", "-q", "evals/autonomy-stop-list-a3/fixtures/mini-cli-publish/.chiche/specs/nueva.md"], { cwd: repoPath("") });
+	if (ignored.status !== 1) problems.push(".gitignore: una spec nueva del fixture quedaría ignorada");
 	const gate = await readRepoFile("pi-extensions/evals-gate/evals-gate.test.ts");
 	if (!/"autonomy-stop-list-a3",/.test(gate)) problems.push("evals-gate: EXPECTED_CASES no lista autonomy-stop-list-a3");
 	const workflow = await readRepoFile(".github/workflows/plugin-eval.yml");
+	if (!/timeout-minutes: 100\n/.test(workflow)) problems.push("plugin-eval.yml: timeout-minutes no cubre runs=3 + with-without (review #115-8)");
+	if (!/# 7 casos a un run/.test(workflow)) problems.push("plugin-eval.yml: el comentario del timeout cuenta otros casos");
 	if (!/--max-cost-usd 5 --allow-tools Write Bash --scaffold/.test(workflow)) problems.push("plugin-eval.yml: no otorga Bash junto a Write bajo el techo de 5 USD");
 	assert.deepEqual(problems, []);
 });
@@ -984,8 +1027,7 @@ test("review #115-2: el host cuenta preguntas, no llamadas, y suma los tool_use 
 	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-count-")));
 	t.after(() => rmSync(dir, { recursive: true, force: true }));
 	const claude = fakeClaude(dir);
-	const fixture = join(dir, "fixture");
-	mkdirSync(fixture);
+	const fixture = gitFixture(dir);
 	const run = (name: string, args: string[], env: Record<string, string>) => runHost(["--claude", claude, "--fixture", fixture, ...args], { FAKE_ARGV: join(dir, `${name}.argv`), ...env }, dir);
 	const fourInOne = run("four-in-one", ["--stage", "spec", "--level", "A2"], { FAKE_QUESTIONS: "1", FAKE_QPER: "4" });
 	assert.equal(fourInOne.status, 1, fourInOne.stderr);
@@ -1119,6 +1161,12 @@ test("review #113-2: el flag se valida antes del fetch; con origin, fetch y desp
 		assert.match(run.stderr, /origin sin branch default resoluble: rige supervised \(A1\)/, `${shell}: ${run.stderr}`);
 		assert.doesNotMatch(run.stdout, /\(A3\)/, `${shell}: no lee el working tree`);
 		assert.doesNotMatch(run.stderr, /sin remote/, shell);
+		// review #116-3: el flag tampoco sube el nivel cuando el default no resuelve.
+		const flagged = runResolve(command, orphan, "run", "A3", shell);
+		assert.equal(flagged.status, 0, `${shell}: ${flagged.stderr}`);
+		assert.match(flagged.stdout, /^nivel efectivo: supervised \(A1\), leído de origin \(default sin resolver\)$/m, `${shell} A3: ${flagged.stdout}`);
+		assert.doesNotMatch(flagged.stdout, /\(A3\)|--autonomy/, `${shell} A3: el flag no pisa el default sin resolver`);
+		assert.match(flagged.stderr, /origin sin branch default resoluble: rige supervised \(A1\)/, `${shell} A3: ${flagged.stderr}`);
 	}
 	// El flag inválido corta antes del fetch: con un origin inalcanzable no hay aviso de fetch.
 	const unreachable = join(dir, "unreachable");
@@ -1188,7 +1236,10 @@ const STOP_LIST_PATTERNS: Array<[string, RegExp, string[], string[]]> = [
 	["tag v", /^git push \.\* v\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+$/, ["git push origin v5.1.1"], ["git push origin v-branch"]],
 	["eval", /^claude plugin eval$/, ["claude plugin eval . --runs 1"], ["claude plugin validate ."]],
 	["workflow eval", /^gh workflow run plugin-eval$/, ["gh workflow run plugin-eval.yml"], ["gh workflow run claude-review.yml"]],
-	["host", /^rehearsal-host\\\.mjs$/, ["node claude/chiche-init/rehearsal-host.mjs --stage spec --level A3"], ["node --test"]],
+	// Review #116-2: la fila frena la corrida del host (también con opciones de node), no su edición ni su chequeo.
+	["host", /^node \.\*rehearsal-host\\\.mjs \.\*--stage$/, ["node claude/chiche-init/rehearsal-host.mjs --stage spec --level A3", "node --no-warnings claude/chiche-init/rehearsal-host.mjs --stage run --level A2"], ["node --test", "git add claude/chiche-init/rehearsal-host.mjs", "node --check claude/chiche-init/rehearsal-host.mjs", "git diff claude/chiche-init/rehearsal-host.mjs"]],
+	// Review #116-15.
+	["follow-tags", /^git push \.\*--follow-tags$/, ["git push --follow-tags origin sdd/x/1-a"], ["git push -u origin sdd/x/1-a"]],
 ];
 
 function stopListRows(autonomy: string): Array<{ action: string; pattern: string; reason: string }> {
@@ -1217,14 +1268,16 @@ test("review #116-1/2/3/5/6, #113-6: la stop list del contrato frena force corto
 	}
 	const installRows = rows.filter((row) => /install\\\.sh/.test(row.pattern));
 	if (installRows.length < 3) problems.push(`install.sh: ${installRows.length} filas por subcomando (se esperan al menos pi, all y claude)`);
-	for (const command of ["bash -n install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh scripts/version.sh", "shellcheck install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh scripts/version.sh"]) {
+	for (const command of ["bash -n install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh scripts/version.sh", "shellcheck install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh scripts/version.sh", "git add install.sh", "sed -n 54p install.sh", "bash -n install.sh"]) {
 		for (const row of rows) if (grepMatches(row.pattern, command)) problems.push(`«${row.pattern}» frena «${command}»`);
 	}
-	for (const command of ["bash install.sh pi", "/ruta/al/checkout/install.sh all", "./install.sh claude", "sh install.sh pi-clean --confirm"]) {
+	// Review #116-1: el pelado corre `all`; frena también con pipes, redirecciones, comillas y encadenado.
+	for (const command of ["bash install.sh pi", "/ruta/al/checkout/install.sh all", "./install.sh claude", "sh install.sh pi-clean --confirm", "./install.sh", "bash install.sh", "./install.sh; echo fin", "cd x && ./install.sh", "./install.sh \"pi\"", "bash install.sh && echo listo", "./install.sh | tee log", "./install.sh > log 2>&1"]) {
 		if (!rows.some((row) => grepMatches(row.pattern, command))) problems.push(`ninguna fila frena «${command}»`);
 	}
 	if (rows.some((row) => /^npm publish$/.test(row.pattern))) problems.push("publish vuelve a ## Decisiones humanas: no va como fila");
 	if (!/`npm publish`[^\n]*sin patr[oó]n honesto|publish[^\n]*regla fechada/.test(section(contractText, /^Decisiones humanas$/))) problems.push("## Decisiones humanas no recoge publish ni el git push pelado");
+	if (!/`bash \/ruta\/absoluta\/install\.sh`[^\n]*sin patr[oó]n honesto/.test(section(contractText, /^Decisiones humanas$/))) problems.push("## Decisiones humanas no recoge bash /ruta/absoluta/install.sh como sin patrón honesto (review #116-1)");
 	for (const row of rows) if (/gh stack push/.test(row.reason)) problems.push("la Reason de force nombra gh stack push, que no tiene fila");
 	assert.deepEqual(problems, []);
 	const ensayo = await stopListCommand();
@@ -1364,8 +1417,7 @@ test("review #116-7, #115-19, #115-15, #113-5: el contrato no cita ## Limites fu
 	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-prompt-")));
 	t.after(() => rmSync(dir, { recursive: true, force: true }));
 	const claude = fakeClaude(dir);
-	const fixture = join(dir, "fixture");
-	mkdirSync(fixture);
+	const fixture = gitFixture(dir);
 	for (const [stage, expected] of [
 		["grill", '/grill "agregar un flag --json que imprima el resultado como JSON" --autonomy A3'],
 		["spec", '/chiche-spec "agregar un flag --json que imprima el resultado como JSON" --autonomy A3 --out local'],
@@ -1398,9 +1450,7 @@ test("review #115-13: el host niega Bash que matchea la stop list del juguete (F
 	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-deny-")));
 	t.after(() => rmSync(dir, { recursive: true, force: true }));
 	const claude = fakeClaude(dir);
-	const fixture = join(dir, "fixture");
-	mkdirSync(join(fixture, ".chiche"), { recursive: true });
-	writeFileSync(join(fixture, ".chiche/project.md"), contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |").replace("| push a main | git push .* main | solo via PR |", "| npm publish | npm publish | nunca |")));
+	const fixture = gitFixture(dir, contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |", "| npm publish | npm publish | nunca |")));
 	const run = (name: string, args: string[], env: Record<string, string>) => {
 		const decisions = join(dir, `${name}.decisions`);
 		const result = runHost(["--claude", claude, "--fixture", fixture, ...args], { FAKE_ARGV: join(dir, `${name}.argv`), FAKE_DECISIONS: decisions, ...env }, dir);
@@ -1408,7 +1458,7 @@ test("review #115-13: el host niega Bash que matchea la stop list del juguete (F
 	};
 	const publish = run("publish", ["--stage", "run", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_BASH: "npm publish --access public" });
 	assert.equal(publish.status, 1, publish.stderr);
-	assert.equal(publish.stdout.trim(), "FAILED (stop list: npm publish --access public)");
+	assert.equal(publish.stdout.trim(), "FAILED (stop list: npm publish)", "review #116-7: la celda cita el Pattern, no el comando");
 	assert.deepEqual(publish.decisions, ["Bash deny"]);
 	const tests = run("tests", ["--stage", "run", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_BASH: "node --test" });
 	assert.equal(tests.status, 0, tests.stderr);
@@ -1469,17 +1519,17 @@ test("review #113-8: la aptitud del cierre toma la unión de la stop list del br
 	assert.deepEqual(problems, []);
 });
 
-test("review #113-9: chiche-land exime solo los comandos exactos del plan confirmado (gh pr merge <N> --<method>, gh stack merge <N>) en la Fase 1, el plan y MUST DO", async () => {
+test("review #113-9: chiche-land exime solo los comandos exactos del plan confirmado (gh pr merge <N> --<method>, gh stack merge <N> --merge-method <m> --yes) en la Fase 1, el plan y MUST DO", async () => {
 	const problems: string[] = [];
 	for (const harness of HARNESSES) {
 		const markdown = await skillFile(harness, "chiche-land");
 		const preflight = section(markdown, /^Fase 1 — Preflight/);
 		problems.push(...missing(preflight, [
-			/salvo los comandos exactos del plan confirmado: `gh pr merge <N> --<method>` y `gh stack merge <N>`/,
+			/salvo los comandos exactos del plan confirmado: `gh pr merge <N> --<method>` y `gh stack merge <N> --merge-method <m> --yes`\. Esos no los frena este skill/,
 			/una fila que los matchea no los frena y sigue frenando cualquier otro comando que matchee/,
 			/el plan de la Fase 2 cita esa fila textual y avisa que confirmar la pisa/,
 		]).map((problem) => `${harness}/chiche-land Fase 1: ${problem}`));
-		if (!/^- Respetar la stop list de `## Autonomy` del contrato, salvo los comandos exactos del plan confirmado \(`gh pr merge <N> --<method>` y `gh stack merge <N>`\)/m.test(section(markdown, /^MUST DO$/))) problems.push(`${harness}/chiche-land MUST DO: la excepción no es por comando exacto`);
+		if (!/^- Respetar la stop list de `## Autonomy` del contrato, salvo los comandos exactos del plan confirmado \(`gh pr merge <N> --<method>` y `gh stack merge <N> --merge-method <m> --yes`\)/m.test(section(markdown, /^MUST DO$/))) problems.push(`${harness}/chiche-land MUST DO: la excepción no es por comando exacto`);
 		if (/filas cuyo `Pattern` matchea `gh pr merge` o `gh stack merge`/.test(markdown)) problems.push(`${harness}/chiche-land: queda la excepción por string pelado`);
 	}
 	assert.deepEqual(problems, []);
@@ -1525,4 +1575,221 @@ test("el contrato de este repo suma la fila del gate de autonomía con el conteo
 	assert.ok(row, "fila `gate del dial de autonomia` con comando, cwd, fecha y conteo");
 	assert.equal(Number(row[1]), count, "pasan todos los tests del gate");
 	assert.equal(Number(row[2]), count, "el conteo de la fila es el de este archivo");
+});
+
+test("review #113-3, #116-11: la fila land solo acepta supervised (unattended rehearsed cae a A1 con aviso) y una fila escrita `supervised` no dispara el aviso de caída sin stop list legible", async (t) => {
+	const command = await canonicalCommand();
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-land-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const land = join(dir, "land");
+	mkdirSync(join(land, ".chiche"), { recursive: true });
+	git(land, "init", "-q", "-b", "main");
+	writeFileSync(join(land, ".chiche/project.md"), contract(LEVELS_TABLE("| run | unattended | 2026-11-05 | rehearsed 2026-11-05 |\n| land | unattended | 2026-11-05 | rehearsed 2026-11-05 |")));
+	const word = join(dir, "word");
+	mkdirSync(join(word, ".chiche"), { recursive: true });
+	git(word, "init", "-q", "-b", "main");
+	writeFileSync(join(word, ".chiche/project.md"), contract(`## Autonomy\n| Stage | Level | Since | Rehearsed |\n|---|---|---|---|\n| run | supervised | 2026-11-05 | — |\n`));
+	for (const shell of SHELLS) {
+		const run = runResolve(command, land, "land", "", shell);
+		assert.equal(run.status, 0, `${shell}: ${run.stderr}`);
+		assert.match(run.stdout, /^nivel efectivo: supervised \(A1\), leído de working tree$/m, `${shell} land: ${run.stdout}`);
+		assert.match(run.stderr, /aviso: fila land solo acepta supervised: rige supervised \(A1\)/, `${shell} land: ${run.stderr}`);
+		assert.match(run.stdout, /^parada: \| git push origin main \|/m, `${shell} land: la stop list se lee igual`);
+		const other = runResolve(command, land, "run", "", shell);
+		assert.match(other.stdout, /^nivel efectivo: unattended \(A3\), leído de working tree$/m, `${shell} run: la fila run no se toca (${other.stdout})`);
+		assert.doesNotMatch(other.stderr, /fila land/, `${shell} run: ${other.stderr}`);
+		const flagged = runResolve(command, land, "land", "A3", shell);
+		assert.match(flagged.stdout, /^nivel efectivo: unattended \(A3\), leído de --autonomy$/m, `${shell} land A3: el flag explícito sigue mandando (${flagged.stdout})`);
+		const supervised = runResolve(command, word, "run", "", shell);
+		assert.equal(supervised.status, 0, `${shell}: ${supervised.stderr}`);
+		assert.match(supervised.stdout, /^nivel efectivo: supervised \(A1\), leído de working tree$/m, `${shell} supervised: ${supervised.stdout}`);
+		assert.match(supervised.stderr, /## Autonomy sin stop list legible/, `${shell} supervised: ${supervised.stderr}`);
+		assert.doesNotMatch(supervised.stderr, /el nivel del contrato cae a supervised/, `${shell} supervised: una fila ya supervised no "cae" (${supervised.stderr})`);
+	}
+});
+
+// Ronda 1 de reviews del stack #117: doctrina que los hallazgos confirmados corrigen en los cinco harnesses.
+test("review ronda 1 (#114-1, #114-3, #114-5, #114-6, #114-8, #116-2, #116-10, #116-12, #116-13, #113-4): la doctrina corregida está en los cinco harnesses", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const spec = await skillFile(harness, "chiche-spec");
+		problems.push(...missing(spec, [
+			// #114-1, opción A: en A2 responder es aprobar, y la aprobación se escribe bajo el mismo gate.
+			/en A2, responder las preguntas de impacto alto es la aprobación: con al menos una respuesta, la spec pasa a `state=approved` bajo el mismo gate de publicación y registra `spec.approved`; sin preguntas queda `draft`\./,
+			/\*\*Estado\.\*\* La publicación nace siempre `draft`\. Pasa a `aprobada` \(`state=approved`\) solo cuando el usuario elige correrla desde el menú o, en A2, al responder al menos una pregunta de impacto alto/,
+			/el `state=approved` solo lo escribe después la transición del menú al elegir un run, o la de A2 al responder al menos una pregunta de impacto alto/,
+		]).map((problem) => `${harness}/chiche-spec: ${problem}`));
+		if (harness !== "pi" && !/`spec\.approved` en la transición a `aprobada`, la del menú o la de A2 \(una republicación/.test(spec)) problems.push(`${harness}/chiche-spec: el evento spec.approved no nombra la transición de A2`);
+		if (harness === "pi" && !/en A2, la transición a `state=approved` por respuestas de impacto alto se persiste con `persist_sdd_spec` \(`mode: "interactive"`\)/.test(spec)) problems.push("pi/chiche-spec: la aprobación de A2 no nombra persist_sdd_spec interactive");
+		const init = await skillFile(harness, "chiche-init");
+		// #116-2: la confirmación del costo autoriza el comando del host y nada más.
+		// El ensayo pago vive solo en Claude Code (review #115-16): los otros harnesses mandan ahí con el aviso literal.
+		if (harness === "claude" && !/\*\*Costo y confirmación\.\*\*[^\n]*Confirmar `Ensayar ahora` autoriza ese comando del host y ningún otro\./.test(init)) problems.push(`${harness}/chiche-init: Ensayar ahora no acota la autorización al comando del host`);
+		if (harness === "claude" && !/`FAILED \(<n> preguntas\)` o `FAILED \(stop list: <Pattern>\)` si no\./.test(init)) problems.push(`${harness}/chiche-init: el resultado no nombra FAILED (stop list: <Pattern>) (review #116-7)`);
+		// #116-12: el párrafo canónico queda arriba.
+		if (!/\*\*Ensayo de la stop list\.\*\* Con el archivo escrito, correr el comando canónico de «`## Autonomy`» \(arriba, «Ensayo de la stop list»\)/.test(init)) problems.push(`${harness}/chiche-init: la referencia al párrafo canónico no dice «arriba»`);
+		if (/\(abajo, «Ensayo de la stop list»\)/.test(init)) problems.push(`${harness}/chiche-init: sigue diciendo «abajo»`);
+		const run = await skillFile(harness, "chiche-run");
+		// #113-4: --autonomy sin valor aborta; el valor se sanea antes de sustituirlo en el comando.
+		const levels = delimitedBlock(run, "autonomy-levels") ?? "";
+		if (!/`--autonomy` sin valor \(no hay token siguiente, o el siguiente empieza con `--`\) aborta listando los valores válidos: un token que empieza con `--` nunca se lee como valor\./.test(levels)) problems.push(`${harness}/chiche-run: autonomy-levels no define --autonomy sin valor`);
+		const resolveBlock = delimitedBlock(run, "autonomy-resolve") ?? "";
+		if (!/`<flag>` se sustituye solo si cumple `\^\[A-Za-z0-9-\]\+\$`; si no, el skill aborta como valor inválido sin correr el comando/.test(resolveBlock)) problems.push(`${harness}/chiche-run: autonomy-resolve no sanea <flag>`);
+		if (!/las únicas excepciones son la de merge de `chiche-land`, que la invocación y el plan confirmado autorizan, y el comando exacto del ensayo de `chiche-init`, que la pregunta de costo autoriza/.test(resolveBlock)) problems.push(`${harness}/chiche-run: autonomy-resolve no exime el ensayo de chiche-init (review #116-2)`);
+		// #114-5: --inline exige A3 en los cinco harnesses.
+		if (!/^- `--inline` — [^\n]*Con otro nivel efectivo aborta con `--inline exige --autonomy A3`\./m.test(run)) problems.push(`${harness}/chiche-run: --inline no exige A3`);
+		if ((harness === "codex" || harness === "opencode") && !/^- `--inline` — solo con `--autonomy A3`: acá A3 ya corre inline, y se acepta por uniformidad con los harnesses que delegan\./m.test(run)) problems.push(`${harness}/chiche-run: --inline no explica que acá A3 ya corre inline`);
+		if ((harness === "claude" || harness === "antigravity") && !/`--inline` con `--model`( o `--effort`)? aborta con `--inline no admite --model( ni --effort)?`: no hay delegación donde aplicarlos?\./.test(run)) problems.push(`${harness}/chiche-run: --inline con --model/--effort no está definido`);
+		// #114-6: el lanzador se dispara con flags sin target.
+		if (/^Dispara SOLO cuando los argumentos vienen vacíos\./m.test(run)) problems.push(`${harness}/chiche-run: el lanzador no admite flags sin target`);
+		if (!/^Dispara cuando no hay target\. Si trajo spec o issue, saltear; flags sin target \(`--autonomy`, `--inline`[^)]*\) pasan por el lanzador igual para elegir la spec, y después se aplican sobre la spec elegida\./m.test(run)) problems.push(`${harness}/chiche-run: la Fase 0 no define flags sin target`);
+		// #114-3: en A3 el lanzador avisa cuándo llega el reporte y cómo ver el PR antes.
+		if (harness === "claude" || harness === "antigravity" || harness === "pi") {
+			const traza = section(run, /^Traza$/);
+			if (!/^- Junto con la traza, avisar que el reporte llega al terminar la Fase 6, hasta 30 minutos sin feedback después de abrir el PR, y que el PR se ve antes con `gh pr list --head sdd\/<slug>`\./m.test(traza)) problems.push(`${harness}/chiche-run: la traza no avisa cuándo llega el reporte`);
+			if (harness === "pi" && !/`\/new` o `\/reload` en esa ventana mata al hijo/.test(traza)) problems.push("pi/chiche-run: la traza no avisa que /new o /reload mata al hijo");
+		}
+		// #114-8: la fila de stage-chain separa el --triage-route obligatorio del --autonomy condicional.
+		if (harness !== "pi") {
+			const triage = await skillFile(harness, "issue-triage");
+			if (!/más `--triage-route <ruta>`, y `--autonomy <level>` si vino \|/.test(triage)) problems.push(`${harness}/issue-triage: la fila de update-existing-spec sigue ambigua`);
+			if (/más `--triage-route <ruta>` y `--autonomy <level>` si vino/.test(triage)) problems.push(`${harness}/issue-triage: «si vino» sigue abarcando --triage-route`);
+		}
+	}
+	// #116-10: en Codex, la opción de run del menú no depende de que un skill cargue a otro.
+	const codexSpec = await skillFile("codex", "chiche-spec");
+	if (!/`chiche-run` y `chiche-run --autonomy A3` terminan el turno con el comando exacto en un bloque de código \(`\$chiche-run <target>` o `\$chiche-run <target> --autonomy A3`, con `--autonomy <level>` si esta corrida lo recibió\) y una línea que diga que en Codex el skill exige invocación explícita del usuario/.test(codexSpec)) problems.push("codex/chiche-spec: el menú sigue cargando $chiche-run desde el skill");
+	if (/`chiche-run` carga y ejecuta el skill `\$chiche-run`/.test(codexSpec)) problems.push("codex/chiche-spec: sigue diciendo que chiche-run carga el skill");
+	// #116-13: la fila del gate en el contrato nombra la Fase 4.
+	const row = (await readRepoFile(".chiche/project.md")).split("\n").find((line) => line.startsWith("| gate del dial de autonomia |")) ?? "";
+	if (!/y su paso tras escribir el contrato \(Fase 4\)/.test(row)) problems.push("contrato: la fila del gate no nombra la Fase 4");
+	if (/su paso en la Fase 2/.test(row)) problems.push("contrato: la fila del gate sigue diciendo Fase 2");
+	assert.deepEqual(problems, []);
+});
+
+test("review #116-9: rehearsed exige que la etapa haya dejado algo (archivo, commit o handoff); un hijo success sin cambios es unrehearsed; el tope superado sigue siendo FAILED", async (t) => {
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-work-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const claude = fakeClaude(dir);
+	const today = new Date().toISOString().slice(0, 10);
+	const run = (name: string, fixture: string, args: string[], env: Record<string, string>) => runHost(["--claude", claude, "--fixture", fixture, ...args], { FAKE_ARGV: join(dir, `${name}.argv`), ...env }, dir);
+	for (const stage of ["grill", "spec", "run"] as const) {
+		for (const level of ["A2", "A3"] as const) {
+			const empty = run(`empty-${stage}-${level}`, gitFixture(dir, undefined, `empty-${stage}-${level}`), ["--stage", stage, "--level", level], { FAKE_QUESTIONS: "0", FAKE_NO_WORK: "1" });
+			assert.equal(empty.status, 2, `${stage} ${level}: ${empty.stderr}`);
+			assert.equal(empty.stdout.trim(), "unrehearsed", `${stage} ${level}: sin cambios no se certifica`);
+			assert.match(empty.stderr, /sin cambios en el repo del ensayo/, `${stage} ${level}: ${empty.stderr}`);
+		}
+	}
+	const worked = run("worked", gitFixture(dir, undefined, "worked"), ["--stage", "spec", "--level", "A3"], { FAKE_QUESTIONS: "0" });
+	assert.equal(worked.status, 0, worked.stderr);
+	assert.equal(worked.stdout.trim(), `rehearsed ${today}`);
+	// Un handoff de grill vive en el common dir del repo (`.git/chiche/grills`): también cuenta como trabajo.
+	const handoffFixture = gitFixture(dir, undefined, "handoff");
+	const handoffDir = join(handoffFixture, ".git/chiche/grills");
+	const handoff = run("handoff", handoffFixture, ["--stage", "grill", "--level", "A2"], { FAKE_QUESTIONS: "0", FAKE_NO_WORK: "1", FAKE_WRITE: join(handoffDir, "json-flag.md") });
+	assert.equal(handoff.status, 0, `${handoff.stderr}`);
+	assert.equal(handoff.stdout.trim(), `rehearsed ${today}`, "el handoff en el common dir cuenta como trabajo");
+	// Un hijo que solo escribe fuera del fixture no deja huella adentro: unrehearsed.
+	const outsideFixture = gitFixture(dir, undefined, "outside");
+	const outside = run("outside", outsideFixture, ["--stage", "spec", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_NO_WORK: "1", FAKE_WRITE: join(dir, "afuera.txt"), FAKE_CONTINUE_AFTER_DENY: "1" });
+	assert.equal(outside.status, 2, outside.stderr);
+	assert.equal(outside.stdout.trim(), "unrehearsed");
+	const over = run("over", gitFixture(dir, undefined, "over"), ["--stage", "spec", "--level", "A3"], { FAKE_QUESTIONS: "1" });
+	assert.equal(over.status, 1, over.stderr);
+	assert.equal(over.stdout.trim(), "FAILED (1 preguntas)", "el tope manda sobre la foto");
+});
+
+test("review #115-3, #116-6: --stage run con --fixture exige la spec chica y rechaza --request; un --fixture relativo se resuelve y no niega los Write de adentro", async (t) => {
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-fixture-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const claude = fakeClaude(dir);
+	const bare = join(dir, "sin-spec");
+	mkdirSync(join(bare, ".chiche"), { recursive: true });
+	git(bare, "init", "-q", "-b", "main");
+	const noSpec = runHost(["--claude", claude, "--fixture", bare, "--stage", "run", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, "nospec.argv") }, dir);
+	assert.equal(noSpec.status, 2, noSpec.stderr);
+	assert.equal(noSpec.stdout.trim(), "unrehearsed");
+	assert.match(noSpec.stderr, /--stage run con --fixture: falta \.chiche\/specs\/json-flag\.md/, noSpec.stderr);
+	assert.equal(existsSync(join(dir, "nospec.argv")), false, "no se lanza el hijo");
+	const fixture = gitFixture(dir);
+	const withRequest = runHost(["--claude", claude, "--fixture", fixture, "--stage", "run", "--level", "A3", "--request", "otro pedido"], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, "request.argv") }, dir);
+	assert.equal(withRequest.status, 2, withRequest.stderr);
+	assert.match(withRequest.stderr, /--request no aplica a --stage run/, withRequest.stderr);
+	assert.equal(existsSync(join(dir, "request.argv")), false, "no se lanza el hijo");
+	const relative = runHost(["--claude", claude, "--fixture", "fixture", "--stage", "run", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, "rel.argv"), FAKE_DECISIONS: join(dir, "rel.decisions"), FAKE_WRITE: join(fixture, "src", "nuevo.mjs") }, dir);
+	assert.equal(relative.status, 0, relative.stderr);
+	assert.equal(readFileSync(join(dir, "rel.decisions"), "utf8").trim(), "Write allow", "con --fixture relativo el Write de adentro se aprueba (review #116-6)");
+	assert.match(relative.stderr, new RegExp(`^fixture: ${escapeRegExp(fixture)}$`, "m"), "el host anuncia la ruta resuelta");
+});
+
+test("review #115-4: el juguete se arma con core.hooksPath neutralizado y, si git falla o falta, el host sale con uso (unrehearsed, exit 2) sin hijo ni juguete huérfano", async (t) => {
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-toygit-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const claude = fakeClaude(dir);
+	const today = new Date().toISOString().slice(0, 10);
+	// Un hook global que falla no debe romper el commit del juguete.
+	const home = join(dir, "home");
+	const hooks = join(home, "hooks");
+	mkdirSync(hooks, { recursive: true });
+	writeFileSync(join(hooks, "pre-commit"), "#!/bin/sh\necho hook global fallando >&2\nexit 1\n", { mode: 0o755 });
+	writeFileSync(join(home, ".gitconfig"), `[core]\n\thooksPath = ${hooks}\n`);
+	const hooked = runHost(["--claude", claude, "--stage", "spec", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, "hooked.argv"), HOME: home, XDG_CONFIG_HOME: join(home, "xdg") }, dir);
+	assert.equal(hooked.status, 0, hooked.stderr);
+	assert.equal(hooked.stdout.trim(), `rehearsed ${today}`, "el hook global no rompe el juguete");
+	assert.doesNotMatch(hooked.stderr, /hook global fallando/, "core.hooksPath queda neutralizado");
+	// Sin git en PATH, el juguete no se puede armar: uso, sin lanzar el hijo.
+	const emptyPath = join(dir, "empty-path");
+	mkdirSync(emptyPath);
+	const noGit = runHost(["--claude", claude, "--stage", "spec", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, "nogit.argv"), PATH: emptyPath }, dir);
+	assert.equal(noGit.status, 2, noGit.stderr);
+	assert.equal(noGit.stdout.trim(), "unrehearsed");
+	assert.match(noGit.stderr, /git init falló armando el juguete/, noGit.stderr);
+	assert.equal(existsSync(join(dir, "nogit.argv")), false, "no se lanza el hijo");
+	const parents = readdirSync(tmpdir()).filter((name) => name.startsWith("chiche-rehearsal-"));
+	for (const name of parents) assert.equal(existsSync(join(tmpdir(), name, "mini-cli", "src")), false, `juguete huérfano: ${name}`);
+});
+
+test("review #116-8: si el hijo ignora SIGTERM, el handler de señales del host lo mata con SIGKILL a los 2 s y recién entonces concluye con unrehearsed", async (t) => {
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-sigkill-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const claude = fakeClaude(dir);
+	const pidFile = join(dir, "child.pid");
+	const host = runHostAsync(["--claude", claude, "--stage", "spec", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_HANG: "1", FAKE_IGNORE_SIGTERM: "1", FAKE_PID: pidFile, FAKE_ARGV: join(dir, "kill.argv") }, dir);
+	let stdout = "";
+	let stderr = "";
+	host.stdout.on("data", (chunk) => { stdout += chunk; });
+	host.stderr.on("data", (chunk) => { stderr += chunk; });
+	await new Promise<void>((resolve) => {
+		const poll = setInterval(() => {
+			if (/^fixture: /m.test(stderr) && existsSync(pidFile)) {
+				clearInterval(poll);
+				setTimeout(resolve, 100);
+			}
+		}, 25);
+	});
+	const pid = Number(readFileSync(pidFile, "utf8"));
+	const started = Date.now();
+	host.kill("SIGTERM");
+	const code = await new Promise<number | null>((resolve) => host.on("close", (status) => resolve(status)));
+	const elapsed = Date.now() - started;
+	assert.equal(code, 2, `exit 2 (${stderr})`);
+	assert.equal(stdout.trim(), "unrehearsed");
+	assert.ok(elapsed >= 1900 && elapsed < 10_000, `concluye tras el SIGKILL de los 2 s, no antes ni colgado: ${elapsed} ms`);
+	await new Promise((resolve) => setTimeout(resolve, 200));
+	assert.throws(() => process.kill(pid, 0), /ESRCH/, "el hijo que ignoraba SIGTERM murió por SIGKILL");
+});
+
+test("review #116-14, #116-16: el host nombra withinCap con el comentario correcto y la stop list del juguete trae las cuatro filas de push de la plantilla", async () => {
+	const host = await readRepoFile(HOST);
+	assert.match(host, /Devuelve true si el id ya se contó\n\/\/ \(ese `can_use_tool` se aprueba sin recontar\) y false si el tope quedó superado \(y entonces corta al hijo\)\./, "comentario de countQuestions");
+	assert.match(host, /const withinCap = countQuestions\(request\.tool_use_id, request\.input\);\n\s*if \(!withinCap \|\| verdict !== null\)/, "withinCap no tapa el Set counted");
+	assert.doesNotMatch(host, /const counted = countQuestions/, "el const que tapaba el Set se renombró");
+	for (const row of [
+		'"| git push origin main | git push .*[ :/]main([^-[:alnum:]_/.].*)?$ | solo via PR |",',
+		'"| git push --force | git push .*--force | nunca |",',
+		'"| git push -f | git push( .*)? -[a-zA-Z]*f | nunca |",',
+		'"| git push origin +main | git push .* \\\\+[^ ]+ | nunca |",',
+	]) assert.ok(host.includes(row), `falta la fila del juguete ${row}`);
+	assert.doesNotMatch(host, /\| git push origin main \| git push \.\* main \|/, "el patrón viejo del juguete se fue");
 });
