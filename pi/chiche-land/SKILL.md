@@ -24,7 +24,7 @@ Tres ideas fuerza:
 - `--wait N` — minutos de espera máxima por checks pendientes o por la cola de merge. Default 20.
 - `--dry-run` — imprime el plan y termina sin mutar nada.
 - `--clean-only` (sin targets) — salta el merge y va directo a checkout principal → limpieza local → barrido → reporte (Fases 5 a 8). Es incompatible con targets, `--method` y `--wait`; con `--dry-run` imprime qué limpiaría y termina.
-- No existen `--yes` ni `--assume`: la confirmación del plan es siempre humana.
+- No existe `--yes`, y `--autonomy` solo acepta `supervised`: la confirmación del plan es siempre humana.
 - `--autonomy <level>` — se acepta por uniformidad y aborta con cualquier valor distinto de `supervised`/`A1`: la confirmación del plan es siempre humana. Lee la fila `land` del contrato solo para la traza. Ver «Niveles de autonomía» y «Nivel efectivo».
 
 Los gates usan la tool de preguntas del harness (`ask_user_question`). Donde la tool no cubre la forma del gate —más opciones de las que admite, selección múltiple— o no existe, formular el mismo gate en texto plano, terminar el turno y esperar la respuesta.

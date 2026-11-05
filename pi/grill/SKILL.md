@@ -21,7 +21,7 @@ Usá `ask_user_question` para una sola decisión, `ask_user_questions` para rond
 - `#NN` inicia el reconocimiento desde ese issue del repositorio actual.
 - `owner/repo#NN` o una URL canónica `https://github.com/owner/repo/issues/NN` pueden apuntar a otro proyecto. Si NO recibiste un envelope `workflow-launch`, invocá inmediatamente `launch_grill` usando sólo esa referencia calificada como target exacto y terminá el turno: la tool localiza un único checkout entre los proyectos conocidos por Pi, pide autorización y abre allí una sesión hija. No explores, no crees una sesión de grill y no interpretes la URL como path. Si la tool no está disponible, frená con el comando manual `/grill <target>`; no continúes en el cwd equivocado.
 - `--resume <sessionId>` viene de un selector o del orquestador: cargá directamente el snapshot autoritativo con `grill_session` (`action: "get"`), sin volver a abrir `select_grill_session`, y continuá en esta misma conversación.
-- `--autonomy <level>` — nivel de autonomía de esta corrida; manda sobre la fila `grill` de `## Autonomy` del contrato. Ver «Niveles de autonomía» y «Nivel efectivo».
+- `--autonomy <level>` — nivel de autonomía de esta corrida; manda sobre la fila `grill` de `## Autonomy` del contrato: `supervised` (A1) pregunta todo, `plan-approved` (A2) solo lo de impacto alto y `unattended` (A3) no pregunta y aborta si el pedido es muy abierto. Al encadenar `/skill:chiche-spec` se le pasa el mismo flag. Ver «Niveles de autonomía», «Nivel efectivo» y «Autonomía por nivel».
 
 <!-- autonomy-levels:start -->
 **Niveles de autonomía.** La escala es `manual (A0)`, `supervised (A1)`, `plan-approved (A2)`, `unattended (A3)`, `auto-land (A4)` y `auto-deploy (A5)`. `--autonomy <level>` acepta el código o la palabra, sin distinguir mayúsculas (`A2`, `a2` y `plan-approved` son el mismo nivel). Esta versión honra A1 a A3: con A0, A4 o A5 el skill aborta antes de cualquier mutación con el diagnóstico literal `--autonomy <nivel>: no soportado todavía (v1 honra A1–A3)`, y cualquier otro token aborta listando los valores válidos. Sin flag rige lo que resuelve «Nivel efectivo»; el default es `supervised (A1)`.
@@ -84,6 +84,10 @@ Usá `ask_user_question` para una sola decisión, `ask_user_questions` para rond
 
 El comando termina con exit 2 ante un nivel no soportado o inválido y el skill aborta ahí; con exit 0 imprime la traza y una línea `parada:` por cada fila de la stop list, e ignora con aviso una fila sin `Pattern`.
 <!-- autonomy-resolve:end -->
+
+<!-- autonomy-a2:start -->
+**Autonomía por nivel.** Con `plan-approved` (A2) se preguntan solo las decisiones de impacto alto: una decisión es de impacto alto si define el alcance entero, o roza la stop list, datos o migraciones, o un contrato externo (API, formato, evento); el resto queda `[ASSUMED]` en el handoff o en la tabla de inferencias. Con `unattended` (A3), `grill` corre el reconocimiento siempre y cuenta las decisiones de alcance abiertas: con 0 sigue sin preguntar; con 1 a 3 aplica el atajo liviano y sigue; con más de 3 aborta con el listado y el diagnóstico `pedido no autonomizable en A3: bajá a A2 o partilo`. En `chiche-spec`, con `supervised` (A1) no se pregunta antes de publicar y la corrida termina en el menú final, donde se revisa la spec entera; con A2 se preguntan las de impacto alto y no hay menú: responderlas es la aprobación; con A3 no se pregunta nada ni hay menú.
+<!-- autonomy-a2:end -->
 
 
 ### Lanzamiento orquestado de Pi
@@ -433,7 +437,7 @@ Si pide ajustar, retomá una sola rama. Una corrección inequívoca de un supues
 Después de finalizar:
 
 - si eligió **Confirmar entendimiento**, terminá e informá el handoff;
-- si eligió **Confirmar y crear spec SDD**, `grill_session finalize` con `continueWithSpec: true` entrega el skill canónico materializado con `--from-grill <sessionId>`;
+- si eligió **Confirmar y crear spec SDD**, `grill_session finalize` con `continueWithSpec: true` entrega el skill canónico materializado con `--from-grill <sessionId>` (más `--autonomy <código>` si esta corrida recibió `--autonomy`: pasalo en el parámetro `autonomy` del finalize);
 - no leas un `SKILL.md` por un path inferido ni envíes slash commands;
 - el handoff confirmado es fuente autoritativa: no vuelvas a preguntar decisiones ya resueltas;
 - la spec sigue exigiendo `.chiche/project.md`.

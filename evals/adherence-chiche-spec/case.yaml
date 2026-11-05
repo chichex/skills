@@ -1,6 +1,6 @@
 schema_version: "1.1"
 name: adherence-chiche-spec
-description: chiche-spec lee el contrato del fixture, escribe la spec con inferencias [ASSUMED] y no frena a preguntar.
+description: chiche-spec en A3 lee el contrato del fixture y escribe la spec con inferencias [ASSUMED]; el conteo de preguntas no es observable acá (AskUserQuestion no existe en un eval) y se cubre con rehearsal-host.
 tags: [adherence, chiche-spec]
 runs: 1
 context:
@@ -12,7 +12,7 @@ execution:
   allowed_tools: [Read, Glob, Grep, Skill, Write]
   prompt: |
     Estás en la raíz de un proyecto que ya tiene su contrato de autonomía en .chiche/project.md.
-    Corré /chiche-spec con --assume para este pedido: agregar un flag --json al CLI que imprima el resultado como JSON en vez de texto.
+    Corré /chiche-spec con --autonomy A3 para este pedido: agregar un flag --json al CLI que imprima el resultado como JSON en vez de texto.
     Guardá la spec en .chiche/specs/json-flag.md (ese nombre exacto).
 graders:
   - name: read-contract
@@ -20,11 +20,6 @@ graders:
     tool: Read
     input_match: '\.chiche/project\.md'
     min: 1
-  - name: no-questions
-    type: tool_used
-    tool: AskUserQuestion
-    min: 0
-    max: 0
   - name: spec-written
     type: file_exists
     path: "**/.chiche/specs/*.md"

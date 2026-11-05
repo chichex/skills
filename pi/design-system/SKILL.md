@@ -23,7 +23,7 @@ Tres ideas fuerza:
 - `--no-link` — saltea el enganche de la Fase 5: escribe el doc y no toca ningún otro archivo.
 - `--autonomy <level>` — se acepta por uniformidad y aborta con cualquier valor distinto de `supervised`/`A1`: la dirección visual es del humano y este skill no tiene modo desatendido (no tiene fila en `## Autonomy`). Ver «Niveles de autonomía» y «Nivel efectivo».
 
-`/skill:chiche-init` lo invoca sin flags al terminar el contrato, y nunca con `--assume`: este skill no tiene modo desatendido.
+`/skill:chiche-init` lo invoca sin flags al terminar el contrato, y nunca con `--autonomy` ≥ A2: este skill no tiene modo desatendido.
 
 <!-- autonomy-levels:start -->
 **Niveles de autonomía.** La escala es `manual (A0)`, `supervised (A1)`, `plan-approved (A2)`, `unattended (A3)`, `auto-land (A4)` y `auto-deploy (A5)`. `--autonomy <level>` acepta el código o la palabra, sin distinguir mayúsculas (`A2`, `a2` y `plan-approved` son el mismo nivel). Esta versión honra A1 a A3: con A0, A4 o A5 el skill aborta antes de cualquier mutación con el diagnóstico literal `--autonomy <nivel>: no soportado todavía (v1 honra A1–A3)`, y cualquier otro token aborta listando los valores válidos. Sin flag rige lo que resuelve «Nivel efectivo»; el default es `supervised (A1)`.

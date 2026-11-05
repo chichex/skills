@@ -337,3 +337,35 @@ test("#84 CA-12: resolveWorkflowDispatchForCwd resuelve el common-dir con git de
 		await rm(base, { recursive: true, force: true });
 	}
 });
+
+// Issue #102, CA-9: /issues --autonomy <level> llega al orquestador y el despacho
+// lo agrega a los argumentos de toda ruta; sin flag no agrega nada.
+test("#102 CA-9: dispatch agrega --autonomy <código> a los args de cada ruta cuando el flag vino, y nada sin flag", () => {
+	const routes = [
+		["grill", "grill", "new", [], "#14"],
+		["spec", "spec", "new", [], "#14"],
+		["run-existing-spec", "run-existing-spec", null, [artifact("spec")], "/workspace/skills/.sdd/specs/issue-14.md"],
+	] as const;
+	for (const [route, stage, mode, artifacts, base] of routes) {
+		const handoff = resolution({ code: route, recommendedRoute: route, selectedRoute: route, stage, mode, artifacts });
+		const plain = orchestrator.resolveWorkflowDispatch(handoff);
+		assert.ok(plain.ok, route);
+		assert.equal(plain.request.skill.args, base, `${route}: sin flag no agrega nada`);
+		for (const [token, code] of [["A2", "A2"], ["plan-approved", "A2"], ["unattended", "A3"], ["a1", "A1"]] as const) {
+			const withLevel = orchestrator.resolveWorkflowDispatch(handoff, undefined, { autonomy: token });
+			assert.ok(withLevel.ok, `${route} ${token}`);
+			assert.equal(withLevel.request.skill.args, `${base} --autonomy ${code}`, `${route}: ${token} → ${code}`);
+			assert.equal(withLevel.request.skill.name, plain.request.skill.name);
+		}
+	}
+	const handoff = resolution();
+	const unsupported = orchestrator.resolveWorkflowDispatch(handoff, undefined, { autonomy: "A4" });
+	assert.equal(unsupported.ok, false);
+	if (!unsupported.ok) {
+		assert.equal(unsupported.code, "invalid-autonomy");
+		assert.equal(unsupported.message, "--autonomy A4: no soportado todavía (v1 honra A1–A3)");
+	}
+	const invalid = orchestrator.resolveWorkflowDispatch(handoff, undefined, { autonomy: "extreme" });
+	assert.equal(invalid.ok, false);
+	if (!invalid.ok) assert.equal(invalid.code, "invalid-autonomy");
+});

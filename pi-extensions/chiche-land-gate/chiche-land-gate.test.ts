@@ -96,7 +96,7 @@ const DOCTRINE: Record<string, RegExp[]> = {
 		/`<PR#>` dentro de un stack significa «hasta ese PR inclusive»[\s\S]*`gh stack merge <PR>`[\s\S]*el plan lista exactamente qué PRs aterrizan/,
 		/Un PR sin stack es un stack de uno/,
 		/`isCrossRepository`[\s\S]*se rechazan con diagnóstico/,
-		/No existen `--yes` ni `--assume`/,
+		/No existe `--yes`, y `--autonomy` solo acepta `supervised`/,
 	],
 	"CA-14": [
 		/`gh auth status`/,

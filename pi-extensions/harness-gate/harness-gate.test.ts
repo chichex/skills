@@ -76,7 +76,9 @@ const SDD_RUN_DIRTY_CHECKOUT_DOCTRINE = [
 const FEEDBACK_REMEDIATION_DOCTRINE = [
 	/## Fase 6 — Seguimiento y resolución automática del feedback del PR/,
 	/Run completo[\s\S]*PR creado/,
-	/`--assume`[\s\S]*no (?:preguntar|ofrecer)[\s\S]*no esperar/,
+	// Issue #102 CA-11: con A2 o A3 no se pregunta; «Por nivel» fija la conducta.
+	/Con A2 o A3 no se pregunta: ver «Por nivel»/,
+	/\*\*Por nivel\.\*\*[^\n]*`plan-approved` \(A2\)[^\n]*termina sin esperar[^\n]*`unattended` \(A3\)[^\n]*tope de 2 ciclos de corrección[^\n]*30 minutos sin feedback nuevo[^\n]*`SEGUIMIENTO DE FEEDBACK DETENIDO`/,
 	/ID estable \+ `updatedAt`/,
 	/threads por `thread\.id` \+ `isResolved`/,
 	/conversaci[oó]n[\s\S]*reviews[\s\S]*comentarios inline/,
@@ -121,13 +123,13 @@ const SDD_SPEC_FLOW_DOCTRINE = [
 	/staging no-SDD/,
 	/`Llevar a issue`/,
 	/`Solicitar cambios`/,
-	/`chiche-run con subagente`[\s\S]*solo[\s\S]*subagentes/i,
+	/`chiche-run --autonomy A3`[\s\S]*harnesses con subagentes lo delega en un `implementer`/,
 	/`state=approved`[\s\S]*antes de lanzar/i,
 	/comments[\s\S]*posteriores[\s\S]*última publicación/i,
 	/--paginate/,
 	/`updated_at`/,
 	/vuelve al menú/i,
-	/`--assume`[\s\S]*sin menú/i,
+	/Con A2 o A3[\s\S]*no hay menú/,
 ];
 
 // Issue #45: chiche-run imprime el plan y sigue, desvía sin preguntar cuando no
@@ -221,7 +223,7 @@ const SDD_RUN_STACK_DOCTRINE = [
 	// CA-3: preflight
 	/`## Plan de entrega` de 2 o más capas[\s\S]*`gh` ≥ 2\.90\.0[\s\S]*`git` ≥ 2\.36[\s\S]*`github\/gh-stack`[\s\S]*`gh extension list`/,
 	/interactivo[\s\S]*`gh extension install github\/gh-stack` ahí mismo/,
-	/`--assume`[\s\S]*frena antes de ramificar[\s\S]*comando exacto/,
+	/con A2 o A3 frena antes de ramificar[\s\S]*comando exacto/,
 	/una sola capa[\s\S]*nada cambia/i,
 	// CA-4: ramificado
 	/`gh stack init -b <base> sdd\/<slug>\/1-<etapa>`[\s\S]*`\.\.\/<repo>-sdd-<slug>`/,
@@ -626,17 +628,17 @@ test("chiche-spec lanza el run con subagente implementer en background en Claude
 	assert.match(claude, /subagent_type: "implementer"/);
 	assert.match(claude, /run_in_background/);
 	assert.match(claude, /`general-purpose`[\s\S]*(anunci|avis)/i);
-	assert.match(claude, /--assume/);
+	assert.match(claude, /`\/chiche-run <target> --autonomy A3 --inline`/);
 	for (const harness of HARNESSES.filter((candidate) => candidate !== "claude")) {
 		const markdown = await readRepoFile(`${harness}/chiche-spec/SKILL.md`);
 		assert.doesNotMatch(markdown, /subagent_type/, `${harness}/chiche-spec/SKILL.md no debe depender de subagentes de Claude`);
 	}
 	// Issue #44 CA-9/CA-12: Pi lanza la tool `subagent` con el agente bundleado
-	// `implementer` en background y el task `/skill:chiche-run <target> --assume`.
+	// `implementer` en background y el task `/skill:chiche-run <target> --autonomy A3 --inline` (issue #102 CA-8).
 	const pi = await readRepoFile("pi/chiche-spec/SKILL.md");
 	assert.match(pi, /agent: "implementer"/, "pi/chiche-spec lanza el implementer bundleado");
 	assert.match(pi, /background: true/, "pi/chiche-spec lanza el subagente en background");
-	assert.match(pi, /`chiche-run con subagente`[\s\S]*--assume/, "pi/chiche-spec corre chiche-run desatendido en el hijo");
+	assert.match(pi, /`chiche-run --autonomy A3`[\s\S]*`\/skill:chiche-run <target> --autonomy A3 --inline`/, "pi/chiche-spec corre chiche-run desatendido en el hijo");
 	assert.doesNotMatch(pi, /Pi no tiene subagentes/, "pi/chiche-spec ya tiene subagentes");
 	assert.match(pi, PI_SCOUT_EXPLORATION, "pi/chiche-spec explora con scouts");
 	assert.match(pi, PI_SCOUT_BUDGET_SPEC, "pi/chiche-spec acota los scouts: cantidad, exhaustividad, task cerrado y timeout");
@@ -680,8 +682,8 @@ test("chiche-run imprime el plan y sigue, desvía sin preguntar y ofrece code re
 		if (harness !== "claude") {
 			assert.doesNotMatch(markdown, /subagent_type/, `${harness}/chiche-run/SKILL.md no debe depender de subagentes de Claude`);
 		}
-		// Hallazgo 2: con `--assume` la política de dependencias `preguntar` no puede frenar.
-		assert.match(markdown, /`preguntar` → [^\n]*`--assume`/, `${harness}/chiche-run/SKILL.md frena con --assume ante deps 'preguntar'`);
+		// Hallazgo 2: con A2 o A3 la política de dependencias `preguntar` no puede frenar.
+		assert.match(markdown, /`preguntar` → [^\n]*con A2 o A3, no agregar la dep/, `${harness}/chiche-run/SKILL.md no frena con A2 o A3 ante deps 'preguntar'`);
 	}
 	const claude = await readRepoFile("claude/chiche-run/SKILL.md");
 	assert.match(claude, /subagent_type: "reviewer"/, "Claude lanza el review con el subagente reviewer");

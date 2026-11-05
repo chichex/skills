@@ -1639,52 +1639,56 @@ const SDD_RUN_SKILL = "claude/chiche-run/SKILL.md";
 const SDD_SPEC_SKILL = "claude/chiche-spec/SKILL.md";
 
 const SDD_RUN_SUBAGENT_SYNTAX =
-	"/chiche-run [.chiche/specs/<spec>.md | #NN] [--assume] [--no-pr] [--base <branch>] [--subagent] [--model M] [--effort E] [--autonomy <level>]";
-const SDD_RUN_SUBAGENT_HEADING = "## Run con subagente (solo con --subagent, --model o --effort)";
+	"/chiche-run [.chiche/specs/<spec>.md | #NN] [--no-pr] [--base <branch>] [--autonomy <level>] [--inline] [--model M] [--effort E]";
+// Issue #102 CA-8: la sección se activa por nivel A3, no por un flag propio.
+const SDD_RUN_SUBAGENT_HEADING = "## Run con subagente (solo con --autonomy A3 y sin --inline)";
 const SDD_RUN_SHARED_BLOCKS = ["chiche-run-flow", "chiche-run-stack", "chiche-run-design", "chiche-run-dirty-checkout"];
 
 function escapeRegExp(text: string): string {
 	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// CA-1: flags en ## Argumentos (antes del bloque chiche-run-flow).
+// CA-1 (issue #82) reescrito por el issue #102 CA-8: flags en ## Argumentos
+// (antes del bloque chiche-run-flow). Los flags viejos de delegación y de
+// «cero preguntas» se retiraron; --model/--effort exigen A3 y --inline evita
+// que el subagente vuelva a delegar.
 const SUBAGENT_ARGUMENTS_DOCTRINE: RegExp[] = [
 	new RegExp(`^${escapeRegExp(SDD_RUN_SUBAGENT_SYNTAX)}$`, "m"),
-	/`--subagent`[^\n]*delega el run completo[^\n]*`implementer`[^\n]*background[^\n]*`\/chiche-run <target> --assume`/,
+	/`unattended` \(A3\)[^\n]*delega el run en un subagente `implementer`[^\n]*«Run con subagente»/,
+	/`--inline`[^\n]*solo con `--autonomy A3`[^\n]*sin delegar[^\n]*`--inline exige --autonomy A3`/,
 	/`--model M`[^\n]*`sonnet`[^\n]*`opus`[^\n]*`fable`[^\n]*`haiku`/,
 	/`--effort E`[^\n]*`low`[^\n]*`medium`[^\n]*`high`[^\n]*`xhigh`[^\n]*`max`/,
-	/sin `--subagent` implican `--subagent`/,
-	// Review #83 (h6): valores fuera del enum o flag sin valor, en una sola linea.
-	/`--model`\/`--effort` con un valor fuera de su lista[^\n]*sin valor[^\n]*se trata como ausente[^\n]*`--assume`[^\n]*abortar con diagnóstico antes de preguntar y antes de lanzar/,
+	/`--model` y `--effort` solo son válidos junto con `--autonomy unattended`\/`A3`[^\n]*`--model\/--effort exigen --autonomy A3`/,
+	/`--model`\/`--effort` con un valor fuera de su lista[^\n]*sin valor[^\n]*abortar con diagnóstico antes de lanzar/,
 ];
 
 // CA-1: atajo del lanzador de la Fase 0.
 const SUBAGENT_LAUNCHER_SHORTCUT =
-	/Atajo: \/chiche-run <spec\|#NN> \[--assume\] \[--no-pr\] \[--subagent\] \[--model M\] \[--effort E\] \[--autonomy <level>\] saltea este menu\./;
+	/Atajo: \/chiche-run <spec\|#NN> \[--no-pr\] \[--autonomy <level>\] \[--inline\] \[--model M\] \[--effort E\] saltea este menu\./;
 
 // Review #83 (h3): la Fase 0 dispara sin target; los flags sin target pasan por
-// el lanzador (antes decia «Si trajo spec, issue o flags, saltear», que
-// contradecia a «/chiche-run --subagent sin target pasa por la Fase 0»).
+// el lanzador.
 const SUBAGENT_LAUNCHER_PHRASE =
-	/Dispara cuando no hay target\. Si trajo spec o issue, saltear; flags sin target \(`--subagent`, `--model`, `--effort`, `--assume`…\) pasan por el lanzador igual para elegir la spec/;
+	/Dispara cuando no hay target\. Si trajo spec o issue, saltear; flags sin target \(`--autonomy`, `--inline`, `--model`, `--effort`…\) pasan por el lanzador igual para elegir la spec/;
 
-// CA-2: la sesion que recibe --subagent es lanzadora, no corredora. Review #83
+// CA-2: con A3 y sin --inline la sesion es lanzadora, no corredora. Review #83
 // (h2, h4): corre las precondiciones de la Fase 1 (pasos 1 a 3) y el preflight
-// de stack antes de preguntar, y la enumeracion sigue el orden real de la traza.
+// de stack antes de lanzar; issue #102 CA-11: el implementer corre la Fase 6.
 const SUBAGENT_LAUNCHER_DOCTRINE: RegExp[] = [
 	/lanzadora, no corredora/,
 	/`gh issue view`/,
-	/imprime la traza con el recomendado[^\n]*pregunta lo que falte[^\n]*imprime la traza con la elección final[^\n]*lanza/,
+	/imprime la traza y lanza/,
 	/no ejecuta ninguna fase/,
 	/precondiciones de la Fase 1 \(pasos 1 a 3\)/,
 	/preflight de stack/,
 	/ni crea worktree/,
 	/no ofrece la Fase 6/,
 	/`--no-pr`[^\n]*`--base`[^\n]*propagan/,
-	/`\/chiche-init --assume`/,
-	/ofrecer `\/chiche-spec <target>`/,
-	/`\/chiche-spec <target> --assume`/,
+	/`\/chiche-init --autonomy A3`/,
+	/`\/chiche-spec <target> --autonomy A3`/,
 	/gh extension install github\/gh-stack/,
+	/Con `--inline` nada de esta sección aplica/,
+	/corre la Fase 6 de A3 él mismo, sin volver a delegar/,
 ];
 
 // CA-3: derivacion del recomendado. Las dos constantes sueltas son las que los
@@ -1705,23 +1709,15 @@ const SUBAGENT_RECOMMENDATION_DOCTRINE: RegExp[] = [
 	/nunca mueve el escalón/,
 ];
 
-// CA-4: pregunta de modelo y effort con AskUserQuestion.
-const SUBAGENT_QUESTION_DOCTRINE: RegExp[] = [
-	/una sola[^\n]*`AskUserQuestion`[^\n]*dos preguntas/i,
-	/`sonnet` \/ `opus` \/ `fable` \/ `Modelo de la sesión`/,
-	/`medium` \/ `high` \/ `xhigh` \/ `max`/,
-	/\(Recomendado\)/,
-	/«Other»[^\n]*`haiku`[^\n]*`low`/,
-	/`--model` presente saltea/,
-	/`--effort` presente saltea/,
-	/`--assume`[^\n]*nunca se pregunta/,
-	/no pasar `model`/,
-	/`CLAUDE_CODE_SUBAGENT_MODEL`/,
-	/`effort` se pasa siempre/,
-	// Review #83 (h5): con la variable definida el hijo no hereda el modelo de la
-	// sesion, y la opcion, la traza y la linea `subagente:` lo dicen.
-	/printenv CLAUDE_CODE_SUBAGENT_MODEL/,
-	/modelo heredado \(CLAUDE_CODE_SUBAGENT_MODEL=<valor>\)[^\n]*en vez de `modelo de la sesión`/,
+// CA-4 (issue #82) reescrito por el issue #102 CA-8 y CA-18: A3 no pregunta.
+// Modelo y effort salen del flag o del recomendado; fuera de A3 abortan.
+const SUBAGENT_MODEL_EFFORT_DOCTRINE: RegExp[] = [
+	/A3 no pregunta/,
+	/`model` es `--model` si vino y, si no, el escalón derivado/,
+	/`effort` es `--effort` si vino y, si no, `xhigh`/,
+	/`--model\/--effort exigen --autonomy A3`/,
+	/antes de cualquier mutación/,
+	/`model` se pasa siempre a la tool `Agent`[^\n]*`CLAUDE_CODE_SUBAGENT_MODEL` no interviene[^\n]*`effort` se pasa siempre/,
 ];
 
 // CA-5: lanzamiento de la tool Agent con model y effort.
@@ -1729,9 +1725,8 @@ const SUBAGENT_LAUNCH_DOCTRINE: RegExp[] = [
 	/subagent_type: "implementer"/,
 	/run_in_background: true/,
 	/pide explícitamente pasar `effort`/,
-	/`\/chiche-run <target> --assume`/,
+	/`\/chiche-run <target> --autonomy A3 --inline`/,
 	/subagente: <modelo> · <effort>/,
-	/subagente: modelo de la sesión · <effort>/,
 	/`general-purpose`[^\n]*anunciarlo/,
 	/no acepta `effort`[^\n]*lanzar sin él/,
 ];
@@ -1744,29 +1739,29 @@ const SUBAGENT_TRACE_DOCTRINE: RegExp[] = [
 	// Review #83 (h4): con el fallback la traza nombra el tipo real.
 	/fallback[^\n]*`Subagente general-purpose: modelo <m>/,
 	/al llegar la notificación[^\n]*modelo y effort/i,
-	/Sin `--subagent`, `--model` ni `--effort`[^\n]*como hoy/,
+	/Con A1 o A2, o con `--inline`, nada de lo anterior aparece/,
 ];
 
 // CA-7: ownership coherente con la sesion lanzadora.
 const SUBAGENT_OWNERSHIP_DOCTRINE: RegExp[] = [
-	/`implementer` lanzado por `--subagent` o por `chiche-run con subagente`/,
+	/`implementer` lanzado por «Run con subagente» en A3/,
 	/NO delegar "completar toda la spec"/,
-	/La sesión que lanza con `--subagent` no es el agente que corre/,
+	/La sesión que lanza en A3 sin `--inline` no es el agente que corre/,
 ];
 
 // CA-8: el parrafo Claude de chiche-spec (fuera de chiche-spec-flow) reusa la
-// doctrina y conserva los literales que harness-gate ya exige.
+// doctrina y conserva los literales que harness-gate ya exige. Issue #102 CA-8
+// y CA-9: la opcion es `chiche-run --autonomy A3` y `chiche-run` propaga el nivel.
 const SDD_SPEC_SUBAGENT_DOCTRINE: RegExp[] = [
-	// Review #83 (h1): la opcion dice como se llega a la seccion: cargando
-	// chiche-run con --subagent en esta sesion (sin el flag correria inline).
-	/carga el skill `chiche-run` sobre el target con `--subagent` \(`\/chiche-run <target> --subagent`\)/,
+	/carga el skill `chiche-run` sobre el target con `--autonomy A3` \(`\/chiche-run <target> --autonomy A3`\)/,
 	/sigue la sección «Run con subagente» de `chiche-run`/,
-	/dos preguntas/,
+	/imprime la traza sin preguntar/,
 	/subagent_type: "implementer"/,
 	/run_in_background/,
 	/`model` y `effort`/,
 	/`general-purpose`[\s\S]*(anunci|avis)/i,
-	/--assume/,
+	/`\/chiche-run <target> --autonomy A3 --inline`/,
+	/con `--autonomy <level>` si esta corrida lo recibió/,
 ];
 
 function sliceBetween(markdown: string, start: RegExp, end: RegExp): string | null {
@@ -1832,7 +1827,7 @@ export function checkSddRunSubagentDoctrine(path: string, markdown: string): str
 	const sectionDoctrine = [
 		...SUBAGENT_LAUNCHER_DOCTRINE,
 		...SUBAGENT_RECOMMENDATION_DOCTRINE,
-		...SUBAGENT_QUESTION_DOCTRINE,
+		...SUBAGENT_MODEL_EFFORT_DOCTRINE,
 		...SUBAGENT_LAUNCH_DOCTRINE,
 		...SUBAGENT_TRACE_DOCTRINE,
 	];
@@ -1872,35 +1867,34 @@ export function syntheticSddRunSkill({
 	const section = [
 		SDD_RUN_SUBAGENT_HEADING,
 		"",
-		"La sesión que recibe `--subagent` es **lanzadora, no corredora**: resuelve el target (leyendo el body con `gh issue view` cuando es issue), imprime la traza con el recomendado, pregunta lo que falte, imprime la traza con la elección final y lanza el subagente; no ejecuta ninguna fase del run más allá de las precondiciones de la Fase 1 (pasos 1 a 3) y el preflight de stack, ni crea worktree ni branch, y no ofrece la Fase 6. `--no-pr` y `--base` se propagan tal cual al prompt del subagente.",
+		"Con nivel efectivo `unattended` (A3) y sin `--inline`, la sesión es **lanzadora, no corredora**: resuelve el target (leyendo el body con `gh issue view` cuando es issue), corre las precondiciones del lanzador, imprime la traza y lanza el subagente; no ejecuta ninguna fase del run más allá de las precondiciones de la Fase 1 (pasos 1 a 3) y el preflight de stack, ni crea worktree ni branch. El `implementer` corre la Fase 6 de A3 él mismo, sin volver a delegar; la sesión lanzadora no ofrece la Fase 6. `--no-pr` y `--base` se propagan tal cual al prompt del subagente. Con `--inline` nada de esta sección aplica.",
 		"",
-		"- Contrato: si falta, interactivo → ofrecer `/chiche-init`; `--assume` → correr `/chiche-init --assume`.",
-		"- Spec: si el target no resuelve a una spec SDD, interactivo → frenar y ofrecer `/chiche-spec <target>`; `--assume` → encadenar `/chiche-spec <target> --assume`.",
-		"- Stack: con 2 o más capas, preflight de stack; interactivo → ofrecer `gh extension install github/gh-stack`; `--assume` → frenar con el comando exacto.",
+		"- Contrato: si falta, correr `/chiche-init --autonomy A3`.",
+		"- Spec: si el target no resuelve a una spec SDD, encadenar `/chiche-spec <target> --autonomy A3`.",
+		"- Stack: con 2 o más capas, preflight de stack; si falta la extensión, frenar con el comando exacto `gh extension install github/gh-stack`.",
 		"",
 		"- **Conteo de CAs**: ids únicos `CA-N` en los headings de `## Comportamiento esperado`; si da 0, las filas `| CA-N |` de `## Plan de verificacion`; si ambos dan 0, el recomendado es `opus` con el aviso «no pude contar CAs».",
 		"- **Capas**: filas numeradas de la tabla de `## Plan de entrega`; sin sección, 1 capa.",
 		table,
 		`- **Effort recomendado: \`${effort}\` siempre**, independiente del escalón.`,
 		"- **Verificabilidad solo avisa**: nunca mueve el escalón.",
-		"- Interactivo y sin flags: **una sola** llamada a `AskUserQuestion` con **dos preguntas**: modelo, con opciones `sonnet` / `opus` / `fable` / `Modelo de la sesión`, el recomendado primero y marcado `(Recomendado)`; y effort, con opciones `medium` / `high` / `xhigh` / `max`. «Other» cubre `haiku` y `low`.",
-		"- `--model` presente saltea la pregunta de modelo; `--effort` presente saltea la de effort.",
-		"- Con `--assume` nunca se pregunta.",
-		"- `Modelo de la sesión` significa no pasar `model` a la tool `Agent` (hereda el de la sesión o `CLAUDE_CODE_SUBAGENT_MODEL`); `effort` se pasa siempre. Antes de preguntar, chequear `printenv CLAUDE_CODE_SUBAGENT_MODEL`: si está definida, la opción, la traza y la línea `subagente:` dicen `modelo heredado (CLAUDE_CODE_SUBAGENT_MODEL=<valor>)` en vez de `modelo de la sesión`.",
+		"- A3 no pregunta: `model` es `--model` si vino y, si no, el escalón derivado; `effort` es `--effort` si vino y, si no, `xhigh`.",
+		"- `--model` y `--effort` solo son válidos con A3: con otro nivel efectivo el run aborta con `--model/--effort exigen --autonomy A3` antes de cualquier mutación.",
+		"- `model` se pasa siempre a la tool `Agent`, así que `CLAUDE_CODE_SUBAGENT_MODEL` no interviene; `effort` se pasa siempre.",
 		'- Lanzar la tool `Agent` con `subagent_type: "implementer"`, `run_in_background: true`, `model` y `effort`. Este skill pide explícitamente pasar `effort`.',
-		"- El prompt pide `/chiche-run <target> --assume` y la línea `subagente: <modelo> · <effort>` (con `Modelo de la sesión`, `subagente: modelo de la sesión · <effort>`).",
+		"- El prompt pide `/chiche-run <target> --autonomy A3 --inline` y la línea `subagente: <modelo> · <effort>`.",
 		"- Si el tipo `implementer` no está disponible, usar `general-purpose` y anunciarlo. Si la tool no acepta `effort`, anunciarlo y lanzar sin él.",
 		"- Traza: `Subagente implementer: modelo <m> (<escalón>: <N> CAs · <k> capas) · effort <e> · verificabilidad: ALTA <a> · MEDIA/BAJA <b> · NULA <c>`.",
 		"- Con el fallback la traza nombra el tipo real: `Subagente general-purpose: modelo <m> …`.",
 		"- Al llegar la notificación del subagente, la sesión releva el PR y el reporte repitiendo modelo y effort.",
-		"- Sin `--subagent`, `--model` ni `--effort`, nada de lo anterior aparece y el run corre como hoy.",
+		"- Con A1 o A2, o con `--inline`, nada de lo anterior aparece y el run corre en esta sesión.",
 		"",
 	].join("\n");
 	const fase0 = [
 		"## Fase 0 — Lanzador (solo con `/chiche-run` pelado)",
 		"",
 		"```text",
-		"Atajo: /chiche-run <spec|#NN> [--assume] [--no-pr] [--subagent] [--model M] [--effort E] [--autonomy <level>] saltea este menu.",
+		"Atajo: /chiche-run <spec|#NN> [--no-pr] [--autonomy <level>] [--inline] [--model M] [--effort E] saltea este menu.",
 		"```",
 		"",
 	].join("\n");
@@ -1913,12 +1907,12 @@ export function syntheticSddRunSkill({
 		SDD_RUN_SUBAGENT_SYNTAX,
 		"```",
 		"",
-		"- `--assume` — cero preguntas.",
-		"- `--subagent` — delega el run completo a un subagente `implementer` en background que corre `/chiche-run <target> --assume`; la sesión queda libre.",
+		"- `--autonomy <level>` — nivel de autonomía; `unattended` (A3) hace lo mismo y además delega el run en un subagente `implementer` (ver «Run con subagente»).",
+		"- `--inline` — solo con `--autonomy A3`: corre el run en esta sesión sin delegar. Con otro nivel efectivo aborta con `--inline exige --autonomy A3`.",
 		"- `--model M` — modelo del subagente; `M` es un alias de la tool `Agent`: `sonnet`, `opus`, `fable` o `haiku`.",
 		"- `--effort E` — effort del subagente; `E` es `low`, `medium`, `high`, `xhigh` o `max`.",
-		"- `--model` o `--effort` sin `--subagent` implican `--subagent`.",
-		"- `--model`/`--effort` con un valor fuera de su lista o sin valor: interactivo → se trata como ausente, se avisa y se pregunta; `--assume` → abortar con diagnóstico antes de preguntar y antes de lanzar.",
+		"- `--model` y `--effort` solo son válidos junto con `--autonomy unattended`/`A3`; con otro nivel efectivo abortan con `--model/--effort exigen --autonomy A3`.",
+		"- `--model`/`--effort` con un valor fuera de su lista o sin valor: abortar con diagnóstico antes de lanzar.",
 		"",
 		"<!-- chiche-run-flow:start -->",
 		"### Flujo sin fricción",
@@ -1933,15 +1927,15 @@ export function syntheticSddRunSkill({
 		"",
 		"### Ownership y tareas",
 		"",
-		'- El agente que corre el run (la sesión principal, o el `implementer` lanzado por `--subagent` o por `chiche-run con subagente` de `chiche-spec`) conserva ownership. NO delegar "completar toda la spec".',
-		"- La sesión que lanza con `--subagent` no es el agente que corre.",
+		'- El agente que corre el run (la sesión principal, o el `implementer` lanzado por «Run con subagente» en A3) conserva ownership. NO delegar "completar toda la spec".',
+		"- La sesión que lanza en A3 sin `--inline` no es el agente que corre.",
 		"",
 		"### Timeouts",
 		"",
 	].join("\n");
 }
 
-test("issue #82 CA-1: chiche-run declara --subagent, --model M y --effort E en ## Argumentos y en el atajo de la Fase 0", async () => {
+test("issue #82 CA-1 (issue #102 CA-8): chiche-run declara --autonomy, --inline, --model M y --effort E en ## Argumentos y en el atajo de la Fase 0", async () => {
 	const markdown = await readRepoFile(SDD_RUN_SKILL);
 	const slices = sliceSddRunSkill(markdown);
 	const problems = [
@@ -1967,7 +1961,7 @@ test("issue #82 CA-2: la sección Run con subagente vive entre Entrega por capas
 	for (const block of SDD_RUN_SHARED_BLOCKS) {
 		const shared = markdown.match(new RegExp(`<!-- ${block}:start -->([\\s\\S]*?)<!-- ${block}:end -->`))?.[1] ?? "";
 		assert.ok(shared, `${SDD_RUN_SKILL}: bloque ${block} presente`);
-		assert.doesNotMatch(shared, /--subagent|--effort|`--model`/, `${SDD_RUN_SKILL}: el bloque compartido ${block} no debe ganar la doctrina del run con subagente`);
+		assert.doesNotMatch(shared, /--inline|--effort|`--model`/, `${SDD_RUN_SKILL}: el bloque compartido ${block} no debe ganar la doctrina del run con subagente`);
 	}
 });
 
@@ -1977,9 +1971,9 @@ test("issue #82 CA-3: la sección deriva el recomendado por CAs y capas con la t
 	assert.deepEqual(problems, [], problems.join("\n"));
 });
 
-test("issue #82 CA-4: una sola AskUserQuestion con dos preguntas, Modelo de la sesión, (Recomendado), flags que saltean y --assume que no pregunta", async () => {
+test("issue #82 CA-4 (issue #102 CA-8): A3 no pregunta modelo ni effort: flag o recomendado, y fuera de A3 abortan con el diagnóstico literal", async () => {
 	const markdown = await readRepoFile(SDD_RUN_SKILL);
-	const problems = missingPatterns(SDD_RUN_SKILL, sliceSddRunSkill(markdown).section, SUBAGENT_QUESTION_DOCTRINE, "## Run con subagente");
+	const problems = missingPatterns(SDD_RUN_SKILL, sliceSddRunSkill(markdown).section, SUBAGENT_MODEL_EFFORT_DOCTRINE, "## Run con subagente");
 	assert.deepEqual(problems, [], problems.join("\n"));
 });
 
@@ -2000,7 +1994,7 @@ test("issue #82 CA-6: la traza Subagente implementer se imprime al lanzar y al r
 	assert.deepEqual(problems, [], problems.join("\n"));
 });
 
-test("issue #82 CA-7: Ownership y tareas nombra al implementer lanzado por --subagent y a la sesión lanzadora que no corre", async () => {
+test("issue #82 CA-7: Ownership y tareas nombra al implementer lanzado por «Run con subagente» en A3 y a la sesión lanzadora que no corre", async () => {
 	const markdown = await readRepoFile(SDD_RUN_SKILL);
 	const problems = missingPatterns(SDD_RUN_SKILL, sliceSddRunSkill(markdown).ownership, SUBAGENT_OWNERSHIP_DOCTRINE, "### Ownership y tareas");
 	assert.deepEqual(problems, [], problems.join("\n"));
@@ -2027,28 +2021,28 @@ test("issue #82 CA-8: el párrafo Claude de chiche-spec reusa la sección Run co
 	assert.doesNotMatch(flow, /Run con subagente|`effort`|subagent_type/, `${SDD_SPEC_SKILL}: el bloque compartido chiche-spec-flow no debe ganar la doctrina Claude`);
 });
 
-test("issue #82 CA-11: READMEs y contrato documentan --subagent, modelo/effort con recomendado, y el contrato lleva el conteo real del gate", async () => {
+test("issue #82 CA-11 (issue #102): READMEs y contrato documentan --autonomy A3, modelo/effort con recomendado, y el contrato lleva el conteo real del gate", async () => {
 	const readmeEs = await readRepoFile("README.md");
 	const readmeEn = await readRepoFile("README.en.md");
 	const rowEs = readmeEs.match(/^\| \*\*`chiche-run`\*\* \|.*$/m)?.[0] ?? "";
 	const rowEn = readmeEn.match(/^\| \*\*`chiche-run`\*\* \|.*$/m)?.[0] ?? "";
 	assert.ok(rowEs, "README.md: fila chiche-run");
 	assert.ok(rowEn, "README.en.md: fila chiche-run");
-	for (const pattern of [/--subagent/, /modelo[^|]*effort/i, /recomendado/i, /`--model`\/`--effort`/, /`xhigh`/]) {
+	for (const pattern of [/--autonomy unattended/, /modelo[^|]*effort/i, /recomendado/i, /`--model`\/`--effort`/, /`xhigh`/]) {
 		assert.match(rowEs, pattern, `README.md fila chiche-run: falta ${pattern}`);
 	}
-	for (const pattern of [/--subagent/, /model[^|]*effort/i, /recommended/i, /`--model`\/`--effort`/, /`xhigh`/]) {
+	for (const pattern of [/--autonomy unattended/, /model[^|]*effort/i, /recommended/i, /`--model`\/`--effort`/, /`xhigh`/]) {
 		assert.match(rowEn, pattern, `README.en.md fila chiche-run: falta ${pattern}`);
 	}
 	const specRowEs = readmeEs.match(/^\| \*\*`chiche-spec`\*\* \|.*$/m)?.[0] ?? "";
 	const specRowEn = readmeEn.match(/^\| \*\*`chiche-spec`\*\* \|.*$/m)?.[0] ?? "";
-	assert.match(specRowEs, /`chiche-run con subagente`[^|]*misma elección/i, "README.md fila chiche-spec: el menú de Claude usa la misma elección de modelo y effort");
-	assert.match(specRowEn, /`chiche-run con subagente`[^|]*same[^|]*(choice|selection)/i, "README.en.md fila chiche-spec: the Claude menu uses the same model/effort choice");
+	assert.match(specRowEs, /`chiche-run --autonomy A3`[^|]*`implementer`/, "README.md fila chiche-spec: el menú ofrece chiche-run --autonomy A3 y delega en el implementer");
+	assert.match(specRowEn, /`chiche-run --autonomy A3`[^|]*`implementer`/, "README.en.md fila chiche-spec: the menu offers chiche-run --autonomy A3 and delegates to the implementer");
 
 	const contract = await readRepoFile(".chiche/project.md");
 	const gateRow = contract.match(/^\| gate anti-drift de agentes de plugin \|.*$/m)?.[0] ?? "";
 	assert.ok(gateRow, ".chiche/project.md: fila del gate de agentes");
-	for (const pattern of [/--subagent/, /modelo[^|]*effort/i, /umbrales/i]) {
+	for (const pattern of [/--autonomy A3/, /modelo[^|]*effort/i, /umbrales/i]) {
 		assert.match(gateRow, pattern, `.chiche/project.md fila del gate de agentes: falta ${pattern}`);
 	}
 	// El total de la fila coincide con los tests declarados en este archivo

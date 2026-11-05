@@ -24,14 +24,13 @@ Un repo inicializado antes del renombre guarda el contrato en `.sdd/project.md` 
 ## Argumentos
 
 ```text
-/skill:chiche-init [pistas libres] [--assume] [--no-verify] [--update] [--no-import] [--autonomy <level>]
+/skill:chiche-init [pistas libres] [--no-verify] [--update] [--no-import] [--autonomy <level>]
 ```
 
-- `--assume` — cero preguntas: los gaps se resuelven con la assumption más conservadora y quedan marcados `[NEEDS-INPUT]` en el doc. Para correr desatendido.
 - `--no-verify` — no ejecutar comandos: documenta lo detectado como `no probado`. Útil en repos con builds carísimos.
 - `--update` — refresco de un `.chiche/project.md` existente: re-explora, re-verifica, pero PRESERVA la sección `## Decisiones humanas` y las respuestas previas. Además ofrece las capacidades que el skill ganó desde que el contrato se generó (ver "## Upgrade de contrato").
 - `--no-import` — no tocar `AGENTS.md` ni `CLAUDE.md`.
-- `--autonomy <level>` — nivel de autonomía de esta corrida (este skill no tiene fila en `## Autonomy`: flag o `supervised`). Con `plan-approved` o `unattended` corre sin preguntar, como `--assume`: cada duda se asume conservadora y queda `[NEEDS-INPUT]`, los niveles del contrato quedan `supervised` y la stop list en prosa no se migra. Ver «Niveles de autonomía» y «Nivel efectivo».
+- `--autonomy <level>` — nivel de autonomía de esta corrida (este skill no tiene fila en `## Autonomy`: flag o `supervised`). Con `plan-approved` o `unattended` corre sin preguntar: cada duda se asume conservadora y queda `[NEEDS-INPUT]`, los niveles del contrato quedan `supervised` y la stop list en prosa no se migra. Ver «Niveles de autonomía» y «Nivel efectivo».
 
 <!-- autonomy-levels:start -->
 **Niveles de autonomía.** La escala es `manual (A0)`, `supervised (A1)`, `plan-approved (A2)`, `unattended (A3)`, `auto-land (A4)` y `auto-deploy (A5)`. `--autonomy <level>` acepta el código o la palabra, sin distinguir mayúsculas (`A2`, `a2` y `plan-approved` son el mismo nivel). Esta versión honra A1 a A3: con A0, A4 o A5 el skill aborta antes de cualquier mutación con el diagnóstico literal `--autonomy <nivel>: no soportado todavía (v1 honra A1–A3)`, y cualquier otro token aborta listando los valores válidos. Sin flag rige lo que resuelve «Nivel efectivo»; el default es `supervised (A1)`.
@@ -117,16 +116,16 @@ commits, politicas de tu tecnologia) que /skill:chiche-run aplica como gates dur
                             caros o lentos.                          (--no-verify)
   • Sin preguntar nada    — ejecuta y verifica, pero no te interrumpe: cada duda
                             se asume conservadora y queda [NEEDS-INPUT] en el doc
-                            para revisar despues.                    (--assume)
+                            para revisar despues.                    (--autonomy A2)
 
-Atajo: /skill:chiche-init <pistas> [--assume] [--no-verify] [--autonomy <level>] saltea este menu.
+Atajo: /skill:chiche-init <pistas> [--no-verify] [--autonomy <level>] saltea este menu.
 ```
 
 Luego usar `ask_user_question` — una pregunta, "¿Ejecuto los comandos para verificarlos, y te pregunto las dudas?":
 
 1. `Verificar y preguntar (Recomendado)` — ejecuta test/build para probar que funcionan; pregunta solo los gaps que el código no responde.
 2. `Sin ejecutar nada` — solo explora y documenta; los comandos quedan `no probado` (`--no-verify`).
-3. `Sin preguntar nada` — corre desatendido; las dudas se asumen conservadoras y quedan `[NEEDS-INPUT]` (`--assume`).
+3. `Sin preguntar nada` — corre desatendido; las dudas se asumen conservadoras y quedan `[NEEDS-INPUT]` (`--autonomy A2`).
 
 ## Fase 1 — Exploración
 
@@ -164,9 +163,9 @@ Listar las preguntas que el código NO respondió. Típicas: ¿cuál ambiente us
 
 - Preguntar con `ask_user_question`, de a UNA, opciones concretas derivadas de la exploración, la recomendada primera y marcada `(Recomendado)`. Máximo 5 preguntas; si hay más gaps, priorizar por impacto en autonomía y el resto va a `## Gaps`.
 - Lo ya claro NO se pregunta: preguntar lo inferible erosiona la confianza en el skill.
-- Con `--assume` (o si el usuario no responde): assumption más conservadora (ej. "solo local, nunca staging"), documentada en el doc con `[NEEDS-INPUT]`.
+- Con `--autonomy` ≥ A2 (o si el usuario no responde): assumption más conservadora (ej. "solo local, nunca staging"), documentada en el doc con `[NEEDS-INPUT]`.
 
-**Nivel de autonomía por etapa.** Después de los gaps, preguntar el nivel con `ask_user_question`, una pregunta por fila — "¿Hasta dónde llega el agente solo en <stage>?", con `supervised (Recomendado)` primera y después `plan-approved` y `unattended` —: filas fijas `grill`, `spec`, `run`, `review` y `land`, más una por ambiente de `## Ambientes`. `land`, `review` y los ambientes solo aceptan `supervised` en esta versión: no se preguntan, se escriben. Cada respuesta va a la tabla de niveles de `## Autonomy` con `Since` de hoy; `Rehearsed` queda `—` en una fila `supervised` y `unrehearsed` en toda fila ≥ A2, porque sin ensayo rige `supervised`. Con `--autonomy` ≥ A2 o `--assume` no se pregunta: asume `supervised` en todas las filas y marca `[NEEDS-INPUT]`.
+**Nivel de autonomía por etapa.** Después de los gaps, preguntar el nivel con `ask_user_question`, una pregunta por fila — "¿Hasta dónde llega el agente solo en <stage>?", con `supervised (Recomendado)` primera y después `plan-approved` y `unattended` —: filas fijas `grill`, `spec`, `run`, `review` y `land`, más una por ambiente de `## Ambientes`. `land`, `review` y los ambientes solo aceptan `supervised` en esta versión: no se preguntan, se escriben. Cada respuesta va a la tabla de niveles de `## Autonomy` con `Since` de hoy; `Rehearsed` queda `—` en una fila `supervised` y `unrehearsed` en toda fila ≥ A2, porque sin ensayo rige `supervised`. Con `--autonomy` ≥ A2 no se pregunta: asume `supervised` en todas las filas y marca `[NEEDS-INPUT]`.
 
 **Stop list.** La pregunta de qué requiere confirmación humana además de los defaults se responde como filas de la stop list de `## Autonomy`: por cada respuesta, proponer la fila con `Action`, el `Pattern` inferido (regex POSIX extendida sobre el comando o la ruta, sin `|`) y `Reason`, y confirmarla con `ask_user_question`; una respuesta sin patrón honesto se ofrece como regla fechada para `## Decisiones humanas`, nunca como fila con `Pattern` vacío. Los defaults (deploy, migraciones sobre datos compartidos, push a `main`, force-push, merge de PRs y servicios pagos) se escriben sin preguntar, con el patrón que el repo sugiere. En `--update` sobre un contrato con límites en prosa, la fila `Stop list` de «Upgrade de contrato» propone una fila por bullet con este mismo mecanismo. Corre después de «Migración a .chiche/» y funciona igual sobre un repo que eligió `Mantener .sdd/`: lee y escribe el contrato donde esté.
 
@@ -190,7 +189,7 @@ Reglas:
 - Política no medible = no ofrecida. Coverage sin comando de coverage verificado no aparece en el menú: se anota en `## Gaps` ("coverage no activable: no hay tooling de coverage verificado") y se ofrece activarla cuando el tooling exista.
 - **Baseline primero (coverage)**: el umbral se elige mirando el % actual medido en Fase 2, nunca en el aire. Ofrecer: `No bajar del baseline (X%) (Recomendado)` — ratchet, cumplible desde el día uno — / un % fijo que el repo YA cumple / custom. Un umbral por encima del baseline nace en FALLA (pedir 90% con un repo en 10% = todos los PRs en draft para siempre): decirlo con los dos números sobre la mesa y aceptarlo SOLO si el usuario lo confirma viendo el baseline; queda anotado `aspiracional` junto al baseline.
 - **Políticas de la tecnología (custom)**: el usuario describe la preferencia en texto libre ("seguir la guía de estilo de Uber en Go", "max 300 líneas por archivo", "prohibir panic() fuera de main"). Por cada una, proponer el gate MÁS BARATO que la observe — regla de un linter ya configurado > config nueva de un linter que el repo ya tiene > script corto del contrato (ej. `wc -l` sobre los archivos del diff) > grep — y VERIFICARLO ejecutándolo antes de escribirlo, como cualquier comando. Sin gate medible, ofrecer escribirla como **`guia`**: `/skill:chiche-run` la sigue al GENERAR el código y el reviewer la juzga en el PR — una `guia` nunca se reporta verificada ni gatea. Si un linter la haría medible pero falta configurarlo, anotarlo en `## Gaps` ("sería gate si golangci-lint tuviera config").
-- **Coding policies del proyecto**: si existe `.chiche/coding-policies.md` (generado por `/skill:coding-policies`) — o si la fila `coding-policies` ya presente en `## Politicas de generacion` apunta a un archivo existente, porque el skill acepta `--out` —, escribir sin preguntar la fila `guia` `| coding-policies | <ruta> (<stacks del marker>) | guia — sin gate: /skill:chiche-run la sigue al generar, la juzga el reviewer |` — también con `--assume`, y en `--update` aunque se elija `Mantener` (si la fila ya existe se actualiza en su lugar): el archivo ya es una decisión humana en el repo y la fila solo la refleja. Si no existe, sumar al menú la opción `Generar coding policies` que, al terminar el contrato, invoca `/skill:coding-policies`; nunca con `--assume`: generar el archivo es una elección humana.
+- **Coding policies del proyecto**: si existe `.chiche/coding-policies.md` (generado por `/skill:coding-policies`) — o si la fila `coding-policies` ya presente en `## Politicas de generacion` apunta a un archivo existente, porque el skill acepta `--out` —, escribir sin preguntar la fila `guia` `| coding-policies | <ruta> (<stacks del marker>) | guia — sin gate: /skill:chiche-run la sigue al generar, la juzga el reviewer |` — también con `--autonomy` ≥ A2, y en `--update` aunque se elija `Mantener` (si la fila ya existe se actualiza en su lugar): el archivo ya es una decisión humana en el repo y la fila solo la refleja. Si no existe, sumar al menú la opción `Generar coding policies` que, al terminar el contrato, invoca `/skill:coding-policies`; nunca con `--autonomy` ≥ A2: generar el archivo es una elección humana.
 <!-- chiche-init-design-policies:start -->
 - **Gates de diseño**: solo para superficies `con sistema` con tokens detectados, sumar al menú gates ratchet de diseño medibles con grep y baseline. `git grep` mira solo archivos trackeados (sin `node_modules` ni builds), y `:!` excluye tanto archivos como directorios. `<raíces>` son los globs de código de la superficie (ej. `'apps/web/src/**/*.tsx'`), `<tokens>` el archivo o directorio de tokens y `<ui kit>` el de los componentes base:
   - hex fuera del directorio de tokens: `git grep -IhoE '#([0-9a-fA-F]{3}){1,2}' -- <raíces> ':!<tokens>' | wc -l`;
@@ -198,10 +197,10 @@ Reglas:
   - componentes duplicados por nombre: `git grep -hoE '(function|const|class) [A-Z][A-Za-z0-9]+' -- <raíces> ':!<ui kit>' | sort | uniq -d | wc -l`.
 
   Cada gate se verifica ejecutándolo como cualquier comando, y su conteo actual es el baseline: la política queda `no superar el baseline (<N>, <fecha>)`. Sin tokens detectados no se ofrecen: no hay contra qué medir.
-- **Design system**: sumar al menú la opción `Generar design system` solo si hay al menos una superficie `sin sistema`, también en `--update` aunque se elija `Mantener`; al terminar el contrato invoca `/skill:design-system` sin flags, nunca con `--assume`: la dirección visual es una elección humana. Con todas las superficies `con sistema` y ningún `DESIGN_SYSTEM.md` que referenciar, el reporte dice `con sistema (no ofrecido)`.
+- **Design system**: sumar al menú la opción `Generar design system` solo si hay al menos una superficie `sin sistema`, también en `--update` aunque se elija `Mantener`; al terminar el contrato invoca `/skill:design-system` sin flags, nunca con `--autonomy` ≥ A2: la dirección visual es una elección humana. Con todas las superficies `con sistema` y ningún `DESIGN_SYSTEM.md` que referenciar, el reporte dice `con sistema (no ofrecido)`.
 <!-- chiche-init-design-policies:end -->
 - Pistas de los argumentos que fijen políticas ("coverage 80", "PRs de max 300 líneas") cuentan como elección del usuario: se activan sin preguntar (verificando igual que el gate sea medible). Única excepción: un umbral de coverage por encima del baseline se confirma igual — regla del baseline.
-- Con `--assume`: ninguna política se activa — son elecciones humanas, no se asumen.
+- Con `--autonomy` ≥ A2: ninguna política se activa — son elecciones humanas, no se asumen.
 - Con `--update` y políticas ya activas: preguntar `Mantener (Recomendado)` / `Revisar` — mantener preserva la sección verbatim; revisar re-abre el menú con los valores actuales como default. Si el menú ganó políticas que el contrato no conocía (ej. las de tecnología), decirlo en esa misma pregunta.
 
 ## Upgrade de contrato (corridas sobre contrato existente)
@@ -216,12 +215,12 @@ El skill evoluciona; los contratos generados por versiones anteriores no. En TOD
 | Capacidad de Git/PR | `## Ambientes` no declara branch default, remote o estado de `gh` |
 | Señal de vida de procesos largos | comandos `run` sin el "cómo se reconoce que está arriba" |
 | Coding policies | existe `.chiche/coding-policies.md` pero `## Politicas de generacion` no tiene la fila `coding-policies` — no entra al menú: la Fase 3.5 la escribe sin preguntar y el reporte la lista como `referenciado` |
-| Diseño | no existe la sección `## Diseño` — no entra al menú: el censo de la Fase 1 corre siempre y la Fase 4 la escribe sin preguntar, también con `--assume`; el reporte la lista como mejora aplicada |
+| Diseño | no existe la sección `## Diseño` — no entra al menú: el censo de la Fase 1 corre siempre y la Fase 4 la escribe sin preguntar, también con `--autonomy` ≥ A2; el reporte la lista como mejora aplicada |
 | Directorio .chiche/ | existe .sdd/project.md, trackeado o no — no entra al menú: lo ofrece la pregunta propia de "## Migración a .chiche/", antes que todo lo demás |
-| Autonomy | no existe la sección `## Autonomy` — la Fase 3 pregunta el nivel por fila y la Fase 4 la escribe; con `--autonomy` ≥ A2 o `--assume`, `supervised` en todas las filas con `[NEEDS-INPUT]` |
-| Stop list | existe `## Limites` en prosa — `--update` propone una fila de la stop list por bullet, con el `Pattern` inferido, y pide confirmación fila por fila; lo que no tiene un patrón honesto se ofrece como regla fechada para `## Decisiones humanas`; al escribir `## Autonomy` esa prosa se retira; con `--autonomy` ≥ A2 o `--assume` no migra y queda como `mejora disponible` |
+| Autonomy | no existe la sección `## Autonomy` — la Fase 3 pregunta el nivel por fila y la Fase 4 la escribe; con `--autonomy` ≥ A2, `supervised` en todas las filas con `[NEEDS-INPUT]` |
+| Stop list | existe `## Limites` en prosa — `--update` propone una fila de la stop list por bullet, con el `Pattern` inferido, y pide confirmación fila por fila; lo que no tiene un patrón honesto se ofrece como regla fechada para `## Decisiones humanas`; al escribir `## Autonomy` esa prosa se retira; con `--autonomy` ≥ A2 no migra y queda como `mejora disponible` |
 
-Con faltantes: listarlos como texto visible (una línea por capacidad, con qué aporta) y usar `ask_user_question` con `selectionMode: "multiple"` y `allowEmptySelection: true` — "El contrato es de una versión anterior del skill; ¿qué mejoras le agrego?". SOLO lo elegido se releva, pregunta y escribe, cada capacidad con el mecanismo de su fase (ej. elegir `Politicas de generacion` se resuelve con el menú de la Fase 3.5); lo no elegido no se anota como gap — es una elección, no una deuda. Con `--assume`: no se agrega ninguna (varias exigen elección humana); quedan en el reporte como `mejoras disponibles`.
+Con faltantes: listarlos como texto visible (una línea por capacidad, con qué aporta) y usar `ask_user_question` con `selectionMode: "multiple"` y `allowEmptySelection: true` — "El contrato es de una versión anterior del skill; ¿qué mejoras le agrego?". SOLO lo elegido se releva, pregunta y escribe, cada capacidad con el mecanismo de su fase (ej. elegir `Politicas de generacion` se resuelve con el menú de la Fase 3.5); lo no elegido no se anota como gap — es una elección, no una deuda. Con `--autonomy` ≥ A2: no se agrega ninguna (varias exigen elección humana); quedan en el reporte como `mejoras disponibles`.
 
 **Regla de mantenimiento del skill**: al agregarle una capacidad nueva a este skill, sumar SIEMPRE su fila a esta checklist. Es lo que hace que los contratos viejos se pongan al día preguntando, en vez de quedar silenciosamente desactualizados.
 
@@ -286,7 +285,7 @@ fi
 - La reescritura saltea los symlinks: `CLAUDE.md -> AGENTS.md` queda como link y `AGENTS.md` se reescribe por su propio nombre; un link trackeado bajo `.chiche/` que apunta fuera nunca toca su destino.
 - Si el harness no puede escribir en `<git-common-dir>/chiche/`, el paso del common-dir se saltea con el aviso `chiche-init: no se pudo escribir en <git-common-dir>/chiche` y el resto de la migración sigue: es la misma política que el append del log de eventos.
 - `Mantener .sdd/` no cambia nada: el contrato sigue en `.sdd/project.md`, la corrida lo lee de ahí y la oferta se repite en el próximo `--update`.
-- Con `--assume` no se migra ni se pregunta: el reporte lo lista como `mejora disponible`.
+- Con `--autonomy` ≥ A2 no se migra ni se pregunta: el reporte lo lista como `mejora disponible`.
 - Tras migrar, el resto de la corrida lee y escribe `.chiche/project.md`.
 - Si la corrida migró, el cierre `Commit + PR` queda en `Dejar sin commitear` con el motivo `migración: los renames viven en el checkout principal`: ese cierre copia solo los paths que la corrida escribió y no reproduce los renames de `git mv`. El reporte nombra el commit sugerido para el humano: `git add -u -- .chiche $(ls CLAUDE.md AGENTS.md .gitignore 2>/dev/null) && git commit -m "chore(chiche-init): migracion a .chiche/"` (los `git mv` ya están en el índice; `git add -u` toma las reescrituras de `.chiche/**`, `CLAUDE.md`, `AGENTS.md` y `.gitignore`, también lo que el grupo (a) ya tenía cambiado en esos paths, y nunca agrega archivos sin trackear).
 - El reporte de la migración separa tres grupos con el `git status --porcelain=v1 -z` que `commit-pr-close` ya tomó antes de la primera escritura: (a) los paths que ya tenían cambios antes de migrar, que el humano saca del commit con `git restore --staged -- <ruta>` o commitea aparte; (b) lo que escribió esta corrida: los artefactos reescritos, los imports, `.gitignore` y lo que crearon `coding-policies` o `design-system` encadenados (`.chiche/coding-policies.md`, `DESIGN_SYSTEM.md`), que el commit sugerido no toma y el reporte nombra con `git add -- <ruta>`; (c) lo que `git mv` arrastró a `.chiche/` sin trackear (`git ls-files --others --exclude-standard .chiche`) o ignorado (`git ls-files --others -i --exclude-standard .chiche`), que el commit sugerido tampoco toma y decide el humano.
@@ -406,12 +405,12 @@ Contrato de autonomia listo: .chiche/project.md
 - escalera de verificacion: llega hasta <escalon mas alto>
 - politicas de generacion: <lista con valores | ninguna activa>
 - preguntas hechas: <K> · gaps abiertos: <G>
-- coding-policies: <referenciado|generado|no existe (ofrecido)|--assume: no ofrecido>
-- design-system: <referenciado|generado|no existe (ofrecido)|con sistema (no ofrecido)|--assume: no ofrecido|sin superficies UI>
+- coding-policies: <referenciado|generado|no existe (ofrecido)|--autonomy ≥ A2: no ofrecido>
+- design-system: <referenciado|generado|no existe (ofrecido)|con sistema (no ofrecido)|--autonomy ≥ A2: no ofrecido|sin superficies UI>
 - referencia en AGENTS.md: <agregada|ya estaba|--no-import> · CLAUDE.md: <import agregado|ya estaba|--no-import>
-- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>; con cambios previos: <lista|ninguno>; escritos fuera del commit sugerido: <lista|ninguno>; sin trackear o ignorado en .chiche/: <lista|ninguno>) | mantenida .sdd/ | mejora disponible (--assume) | no aplica>
+- migracion: <.sdd/ → .chiche/ (<N> artefactos; <git-common-dir>/sdd/ movido|conservado: <motivo>; con cambios previos: <lista|ninguno>; escritos fuera del commit sugerido: <lista|ninguno>; sin trackear o ignorado en .chiche/: <lista|ninguno>) | mantenida .sdd/ | mejora disponible (--autonomy ≥ A2) | no aplica>
 <en corridas sobre contrato existente: mejoras de version agregadas, u ofrecidas y no
-tomadas ("mejoras disponibles" con --assume), una linea>
+tomadas ("mejoras disponibles" con --autonomy ≥ A2), una linea>
 <si hay FALLAs o gaps criticos, una linea por cada uno>
 ```
 
@@ -449,6 +448,6 @@ La pregunta del cierre `Commit + PR` usa `ask_user_question`, con la recomendada
 - No documentar comandos adivinados por el nombre del script sin leer qué hacen.
 - No preguntar lo que la exploración ya respondió.
 - No escribir secrets ni valores de env vars en el contrato — solo el NOMBRE de la var y de dónde sale.
-- No inferir ni asumir políticas de generación: si el usuario no las eligió (o corrió `--assume`), la sección queda vacía. Y no activar una cuyo gate no se pueda medir hoy (coverage sin comando verificado va a Gaps, no al contrato). Una preferencia sin gate medible jamás se disfraza de gate: o es `guia` explícita o no entra.
+- No inferir ni asumir políticas de generación: si el usuario no las eligió (o corrió con `--autonomy` ≥ A2), la sección queda vacía. Y no activar una cuyo gate no se pueda medir hoy (coverage sin comando verificado va a Gaps, no al contrato). Una preferencia sin gate medible jamás se disfraza de gate: o es `guia` explícita o no entra.
 - No pisar un `.chiche/project.md` editado a mano sin preservar `## Decisiones humanas`.
 - No commitear en el checkout principal: el único commit es el de `Commit + PR`, en su worktree, cuando el usuario lo elige.

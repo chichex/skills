@@ -523,6 +523,130 @@ test("CA-6: la Fase 3 de chiche-init pregunta el nivel por fila con la tool del 
 });
 
 // ---------------------------------------------------------------------------
+// Capa 2 (CA-7 a CA-11): retiro de --assume/--subagent, propagación y conducta por nivel
+
+const RETIRED_FLAGS_DIRS = ["claude", "codex", "opencode", "pi", "antigravity", "agents", ".claude", "README.md", "README.en.md", ".claude-plugin", ".codex-plugin", ".agents", "evals"] as const;
+
+test("CA-7: --assume y --subagent no aparecen en los cinco harnesses, agents, .claude, READMEs, manifests, marketplace ni evals", () => {
+	const grep = spawnSync("git", ["grep", "-n", "-e", "--assume", "-e", "--subagent", "--", ...RETIRED_FLAGS_DIRS], { cwd: repoPath(""), encoding: "utf8" });
+	assert.ok(grep.status === 0 || grep.status === 1, grep.stderr);
+	assert.deepEqual(grep.stdout.split("\n").filter((line) => line.trim() !== ""), []);
+});
+
+test("CA-8: en chiche-run --model/--effort exigen A3, --inline evita la segunda delegación, Pi gana «Run con subagente» con la tool subagent y Codex/opencode corren A3 inline", async () => {
+	const table = await interactionTable();
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const markdown = await skillFile(harness, "chiche-run");
+		const args = section(markdown, /^Argumentos$/);
+		const signature = fencedBlocks(args)[0]?.content ?? "";
+		if (!/\[--autonomy <level>\] \[--inline\]/.test(signature)) problems.push(`${harness}/chiche-run: la firma no lleva [--autonomy <level>] [--inline]`);
+		if (!/^- `--inline` — /m.test(args)) problems.push(`${harness}/chiche-run: ## Argumentos no describe --inline`);
+		if (harness === "codex" || harness === "opencode") {
+			problems.push(...missing(args, [
+				/corre inline en esta sesión con la conducta de A2 más la corrección automática del feedback de la Fase 6/,
+				/`nivel efectivo: unattended \(A3\), leído de <fuente> · corre inline en (?:Codex|opencode)`/,
+				/`--model\/--effort: este harness corre A3 inline`/,
+			]).map((problem) => `${harness}/chiche-run: ${problem}`));
+			if (/^## Run con subagente/m.test(markdown)) problems.push(`${harness}/chiche-run: no tiene subagentes y no debe ganar «Run con subagente»`);
+			continue;
+		}
+		const subagent = section(markdown, /^Run con subagente \(solo con --autonomy A3 y sin --inline\)$/);
+		if (!subagent) {
+			problems.push(`${harness}/chiche-run: falta ## Run con subagente (solo con --autonomy A3 y sin --inline)`);
+			continue;
+		}
+		const prefix = escapeRegExp(table.prefixes[harness]);
+		problems.push(...missing(subagent, [
+			/lanzadora, no corredora/,
+			new RegExp(`\`${prefix}chiche-run <target> --autonomy A3 --inline\``),
+			new RegExp(`\`${prefix}chiche-init --autonomy A3\``),
+			new RegExp(`\`${prefix}chiche-spec <target> --autonomy A3\``),
+			/corre la Fase 6 de A3 él mismo/,
+			/Con `--inline` nada de esta sección aplica/,
+		]).map((problem) => `${harness}/chiche-run «Run con subagente»: ${problem}`));
+		if (harness === "pi") {
+			problems.push(...missing(subagent, [/tool `subagent`/, /agent: "implementer"/, /background: true/, /PI_SUBAGENT_DEPTH=1/]).map((problem) => `pi/chiche-run: ${problem}`));
+			if (!/`chiche-run --autonomy A3`[^\n]*«Run con subagente» de `\/skill:chiche-run`/.test(await skillFile("pi", "chiche-spec"))) problems.push("pi/chiche-spec: el menú no apunta a «Run con subagente» de pi/chiche-run");
+		} else if (!/`--model\/--effort exigen --autonomy A3`/.test(args)) problems.push(`${harness}/chiche-run: --model/--effort sin A3 no abortan con el literal`);
+	}
+	for (const harness of HARNESSES) {
+		const flow = delimitedBlock(await skillFile(harness, "chiche-spec"), "chiche-spec-flow") ?? "";
+		if (!/`Llevar a issue` \/ `chiche-run` \/ `chiche-run --autonomy A3` \/ `Solicitar cambios`/.test(flow)) problems.push(`${harness}/chiche-spec: el menú no ofrece chiche-run --autonomy A3`);
+		if (/chiche-run con subagente/.test(flow)) problems.push(`${harness}/chiche-spec: el menú todavía ofrece chiche-run con subagente`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("CA-9: issue-triage agrega --autonomy a toda ruta encadenada, chiche-spec/chiche-run/grill lo propagan y Pi lo lleva por /issues y el orquestador", async () => {
+	const problems: string[] = [];
+	for (const harness of ["claude", "codex", "opencode", "antigravity"] as const) {
+		const block = delimitedBlock(await skillFile(harness, "issue-triage"), "stage-chain") ?? "";
+		const rows = block.split("\n").filter((line) => line.startsWith("|")).slice(2);
+		if (rows.length < 6) problems.push(`${harness}/issue-triage: tabla stage-chain con ${rows.length} rutas`);
+		for (const row of rows) if (!/`--autonomy <level>` si vino \|$/.test(row)) problems.push(`${harness}/issue-triage: la ruta ${row.slice(0, 40)}… no propaga --autonomy`);
+	}
+	for (const harness of HARNESSES) {
+		const spec = section(await skillFile(harness, "chiche-spec"), /^Argumentos$/);
+		if (!/el flag se propaga a `[^`]*chiche-run` y a `[^`]*chiche-init` cuando este skill los encadena/.test(spec)) problems.push(`${harness}/chiche-spec: no propaga --autonomy a chiche-run y chiche-init`);
+		const run = await skillFile(harness, "chiche-run");
+		if (!/con A2 o A3 → correr `[^`]*chiche-init --autonomy <level>` y seguir/.test(run)) problems.push(`${harness}/chiche-run: no propaga --autonomy a chiche-init`);
+		if (!/encadenarlo con `--autonomy <level>` \(A2 o A3\)/.test(run)) problems.push(`${harness}/chiche-run: no propaga --autonomy a chiche-spec`);
+		const grill = await skillFile(harness, "grill");
+		if (!/--from-grill <(?:ruta-del-handoff|sessionId)>`[^\n]*más `--autonomy <(?:level|código)>` si esta corrida (?:lo )?recibió/.test(grill)) problems.push(`${harness}/grill: no propaga --autonomy a chiche-spec`);
+	}
+	const triagePi = section(await skillFile("pi", "issue-triage"), /^Invocación$/);
+	if (!/`\/issues --autonomy <level>`[^\n]*el orquestador lo agrega a los argumentos del skill del stage elegido/.test(triagePi)) problems.push("pi/issue-triage: no documenta /issues --autonomy ni el despacho");
+	const issues = await readRepoFile("pi-extensions/github-issues.ts");
+	if (!/parseIssuesCommandArgs\(args/.test(issues)) problems.push("pi-extensions/github-issues.ts: /issues no parsea sus args");
+	const dispatch = await readRepoFile("pi-extensions/workflow-orchestrator/dispatch.ts");
+	if (!/withAutonomy\(args, autonomy\)/.test(dispatch)) problems.push("dispatch.ts: no agrega --autonomy a los args");
+	assert.deepEqual(problems, []);
+});
+
+test("CA-10: el bloque autonomy-a2 está en grill y chiche-spec de los cinco harnesses, byte a byte, con la definición de impacto alto, la regla 0 / 1–3 / >3 de A3 y la conducta de chiche-spec por nivel", async () => {
+	const { problems, blocks } = await sharedBlocks("autonomy-a2", ["grill", "chiche-spec"], { normalized: false });
+	assert.deepEqual(problems, []);
+	assert.equal(blocks.size, 10);
+	const block = delimitedBlock(await skillFile("claude", "grill"), "autonomy-a2") ?? "";
+	assert.deepEqual(missing(block, [
+		/define el alcance entero, o roza la stop list, datos o migraciones, o un contrato externo \(API, formato, evento\)/,
+		/el resto queda `\[ASSUMED\]` en el handoff o en la tabla de inferencias/,
+		/`grill` corre el reconocimiento siempre/,
+		/con 0 sigue sin preguntar; con 1 a 3 aplica el atajo liviano y sigue; con más de 3 aborta con el listado y el diagnóstico `pedido no autonomizable en A3: bajá a A2 o partilo`/,
+		/con `supervised` \(A1\) no se pregunta antes de publicar y la corrida termina en el menú final/,
+		/con A2 se preguntan las de impacto alto y no hay menú: responderlas es la aprobación/,
+		/con A3 no se pregunta nada ni hay menú/,
+	]), []);
+	for (const skill of ["chiche-init", "chiche-run", "chiche-land", "design-system", "issue-triage"]) {
+		for (const harness of HARNESSES) {
+			if (delimitedBlock(await skillFile(harness, skill), "autonomy-a2") !== null) problems.push(`${harness}/${skill}: autonomy-a2 es solo de grill y chiche-spec`);
+		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("CA-11: la Fase 6 de chiche-run fija la conducta por nivel en los cinco harnesses: A2 lanza el review y termina, A3 corrige solo con tope de 2 ciclos y 30 minutos", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const markdown = await skillFile(harness, "chiche-run");
+		const phase6 = section(markdown, /^Fase 6 — /);
+		problems.push(...missing(phase6, [
+			/\*\*Por nivel\.\*\* Con `supervised` \(A1\) rige el menú del paso 2/,
+			/Con `plan-approved` \(A2\) no se pregunta: se lanza `Code review`[^\n]*termina sin esperar; los findings los lee el humano/,
+			/Con `unattended` \(A3\) no se pregunta: se ejecutan `Code review` y `Resolver feedback automáticamente` con tope de 2 ciclos de corrección; al tercer lote de feedback se dejan los threads abiertos y se reporta/,
+			/Corre en el mismo agente que corrió el run \(el `implementer` delegado, o la sesión con `--inline`\); el lanzador solo releva/,
+			/Sin `\.github\/workflows\/claude-review\.yml`, el review corre en ese mismo agente con el code review nativo \(`[^`]*code-review[^`]*` sobre el PR\), sin lanzar otro subagente/,
+			/El snapshot del paso 1 y la conservación del worktree aplican también en A3/,
+			/30 minutos sin feedback nuevo terminan el seguimiento con `SEGUIMIENTO DE FEEDBACK DETENIDO` y limpian el worktree/,
+			/Con A2 o A3 no se pregunta: ver «Por nivel»/,
+		]).map((problem) => `${harness}/chiche-run Fase 6: ${problem}`));
+		if (!/si el nivel efectivo es A1 o A3 y la corrida creó un PR/.test(section(markdown, /^Fase 5 — /))) problems.push(`${harness}/chiche-run: la Fase 5 ata el snapshot a A1 o A3`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+// ---------------------------------------------------------------------------
 // Cableado: solo-tests y fila del contrato
 
 test("autonomy-gate es solo-tests y el package sigue con 11 extensiones", async () => {
