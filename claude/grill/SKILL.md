@@ -21,24 +21,37 @@ Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. 
 <!-- autonomy-levels:end -->
 
 <!-- autonomy-resolve:start -->
-**Nivel efectivo.** El nivel efectivo es el del flag `--autonomy` si vino; si no, la fila del `Stage` en `## Autonomy` del contrato leído del branch default, nunca del branch de trabajo: un PR no puede subirse la autonomía a sí mismo. `grill` lee la fila `grill`, `chiche-spec` la fila `spec`, `chiche-run` la fila `run` y `chiche-land` la fila `land`; `chiche-init`, `issue-triage` y `design-system` no tienen fila: flag o `supervised (A1)`. La lectura hace `git fetch` best-effort de `origin` y `git show origin/<default>:.chiche/project.md`, con fallback a `.sdd/project.md` para un repo que mantuvo `.sdd/`; sin remote lee el working tree en ese mismo orden y avisa `nivel leído del working tree: sin remote`. Si el contrato no tiene `## Autonomy`, o la fila está `unrehearsed` o `FAILED`, rige `supervised (A1)` con aviso. Si el contrato no tiene `## Autonomy` pero sí `## Limites`, esa prosa sigue rigiendo como restricción, el nivel es `supervised (A1)` y el aviso es literal: `contrato sin ## Autonomy: rigen sus ## Limites; corré chiche-init --update`. La stop list (segunda tabla de `## Autonomy`) se lee de la misma fuente y frena en todo nivel: antes de correr un comando o tocar una ruta que matchee un `Pattern`, el skill frena y lo reporta citando la fila. La traza imprime `nivel efectivo: <nombre> (<código>), leído de <fuente>`. Lo imprime este comando, con `<stage>` y `<flag>` reemplazados (`<flag>` vacío sin el flag; `<stage>` es `none` en los skills sin fila), sin parámetros posicionales ni variables de argumentos del harness, que se sustituyen al cargar el skill con argumentos:
+**Nivel efectivo.** El nivel efectivo es el del flag `--autonomy` si vino; si no, la fila del `Stage` en `## Autonomy` del contrato leído del branch default, nunca del branch de trabajo: un PR no puede subirse la autonomía a sí mismo. `grill` lee la fila `grill`, `chiche-spec` la fila `spec`, `chiche-run` la fila `run` y `chiche-land` la fila `land`; `chiche-init`, `issue-triage` y `design-system` no tienen fila: flag o `supervised (A1)`. La lectura valida el flag primero y, si existe el remote `origin`, hace `git fetch` best-effort, resuelve el branch default (`git symbolic-ref refs/remotes/origin/HEAD` y, si falla, `git ls-remote --symref origin HEAD`) y lee `git show origin/<default>:.chiche/project.md`, con fallback a `.sdd/project.md` para un repo que mantuvo `.sdd/`; con `origin` y un default que no se resuelve rige `supervised (A1)` con el aviso `origin sin branch default resoluble`, sin leer el working tree; solo sin `origin` lee el working tree en ese mismo orden y avisa `nivel leído del working tree: sin remote`. Si el contrato no tiene `## Autonomy`, o la fila está `unrehearsed` o `FAILED`, rige `supervised (A1)` con aviso. Si el contrato no tiene `## Autonomy` pero sí `## Limites`, esa prosa sigue rigiendo como restricción, el nivel es `supervised (A1)` y el aviso es literal: `contrato sin ## Autonomy: rigen sus ## Limites; corré chiche-init --update`. La stop list (segunda tabla de `## Autonomy`, con el header `| Action | Pattern | Reason |` y hasta la primera línea que no empieza con `|`) se lee de la misma fuente y frena en todo nivel (la única excepción es la de merge de `chiche-land`, que la invocación y el plan confirmado autorizan): antes de correr un comando o tocar una ruta que matchee un `Pattern`, el skill frena y lo reporta citando la fila. Un `## Autonomy` sin stop list legible (sin ese header o con 0 filas) avisa `## Autonomy sin stop list legible` y el nivel que sale del contrato cae a `supervised (A1)`; con `--autonomy` el flag sigue mandando y solo se avisa. La traza imprime `nivel efectivo: <nombre> (<código>), leído de <fuente>`. Lo imprime este comando, con `<stage>` y `<flag>` reemplazados (`<flag>` vacío sin el flag; `<stage>` es `none` en los skills sin fila), sin parámetros posicionales ni variables de argumentos del harness, que se sustituyen al cargar el skill con argumentos:
 
 ```bash
 (
   stage='<stage>' flag='<flag>'
   export LC_ALL=C
-  pick=$(printf %s "$flag" | tr A-Z a-z); src='--autonomy'; aviso=''; stop=''; contract=''
+  pick=$(printf %s "$flag" | tr A-Z a-z); aviso=''; stop=''; contract=''; legible=1
+  case $pick in
+    ''|a1|supervised|a2|plan-approved|a3|unattended) ;;
+    a0|manual|a4|auto-land|a5|auto-deploy) echo "--autonomy $flag: no soportado todavía (v1 honra A1–A3)" >&2; exit 2 ;;
+    *) echo "--autonomy $flag: valor inválido; válidos: supervised (A1), plan-approved (A2), unattended (A3)" >&2; exit 2 ;;
+  esac
   root=$(git rev-parse --show-toplevel 2>/dev/null) || root=.
-  ref=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)
-  if [ -z "$ref" ]; then for b in main master; do if git rev-parse -q --verify "refs/remotes/origin/$b" >/dev/null 2>&1; then ref="origin/$b"; break; fi; done; fi
-  if [ -n "$ref" ]; then
+  if git remote get-url origin >/dev/null 2>&1; then
     git fetch -q origin >/dev/null 2>&1 || aviso="$aviso aviso: fetch de origin falló, se usa la ref local;"
-    contract=$(git show "$ref:.chiche/project.md" 2>/dev/null) || contract=$(git show "$ref:.sdd/project.md" 2>/dev/null) || contract=''
-    fuente=$ref
+    ref=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)
+    if [ -z "$ref" ]; then
+      def=$(git ls-remote --symref origin HEAD 2>/dev/null | sed -n 's|^ref: refs/heads/\(.*\)[[:space:]]HEAD$|\1|p' | head -n 1)
+      if [ -n "$def" ] && git rev-parse -q --verify "refs/remotes/origin/$def" >/dev/null 2>&1; then ref="origin/$def"; fi
+    fi
+    if [ -n "$ref" ]; then
+      contract=$(git show "$ref:.chiche/project.md" 2>/dev/null) || contract=$(git show "$ref:.sdd/project.md" 2>/dev/null) || contract=''
+      fuente=$ref
+    else
+      fuente='origin (default sin resolver)'; aviso="$aviso aviso: origin sin branch default resoluble: rige supervised (A1) y no se lee el working tree;"
+    fi
   else
     contract=$(cat "$root/.chiche/project.md" 2>/dev/null) || contract=$(cat "$root/.sdd/project.md" 2>/dev/null) || contract=''
     fuente='working tree'; aviso="$aviso aviso: nivel leído del working tree: sin remote;"
   fi
+  contract=$(printf '%s\n' "$contract" | tr -d '\r')
   section=$(printf '%s\n' "$contract" | sed -n '/^## Autonomy$/,$p' | sed -n '2,${/^## /q;p;}')
   if [ -z "$section" ]; then
     if printf '%s\n' "$contract" | grep -q '^## Limites$'; then aviso="$aviso aviso: contrato sin ## Autonomy: rigen sus ## Limites; corré chiche-init --update;"
@@ -46,7 +59,8 @@ Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. 
     else aviso="$aviso aviso: contrato sin ## Autonomy: rige supervised (A1); corré chiche-init --update;"; fi
     [ -n "$pick" ] || pick=a1
   else
-    stop=$(printf '%s\n' "$section" | sed -n '/^| *Action *| *Pattern *| *Reason *|/,$p' | sed -n '3,$p' | grep '^|')
+    stop=$(printf '%s\n' "$section" | sed -n '/^| *Action *| *Pattern *| *Reason *|/,$p' | sed -n '3,$p' | sed -n '/^|/!q;p')
+    if [ -z "$stop" ]; then legible=0; aviso="$aviso aviso: ## Autonomy sin stop list legible (sin el header | Action | Pattern | Reason | o sin filas);"; fi
     if [ -z "$pick" ] && [ "$stage" = none ]; then pick=a1
     elif [ -z "$pick" ]; then
       row=$(printf '%s\n' "$section" | grep -E "^\|[[:space:]]*$stage[[:space:]]*\|" | head -n 1)
@@ -56,15 +70,14 @@ Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. 
         reh=$(printf '%s\n' "$row" | cut -d'|' -f5 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
         case $pick in a1|supervised) ;; a2|plan-approved|a3|unattended) case $reh in rehearsed\ *) ;; *) aviso="$aviso aviso: fila $stage sin ensayo ($reh): rige supervised (A1);"; pick=a1 ;; esac ;; *) aviso="$aviso aviso: fila $stage con nivel desconocido ($pick): rige supervised (A1);"; pick=a1 ;; esac
       fi
+      if [ "$legible" -eq 0 ] && [ "$pick" != a1 ]; then aviso="$aviso aviso: sin stop list legible el nivel del contrato cae a supervised (A1);"; pick=a1; fi
     fi
   fi
-  [ "$src" = '--autonomy' ] && [ -z "$flag" ] && src=$fuente
+  if [ -n "$flag" ]; then src='--autonomy'; else src=$fuente; fi
   case $pick in
     a1|supervised) nivel='supervised (A1)' ;;
     a2|plan-approved) nivel='plan-approved (A2)' ;;
     a3|unattended) nivel='unattended (A3)' ;;
-    a0|manual|a4|auto-land|a5|auto-deploy) echo "--autonomy $flag: no soportado todavía (v1 honra A1–A3)" >&2; exit 2 ;;
-    *) echo "--autonomy $flag: valor inválido; válidos: supervised (A1), plan-approved (A2), unattended (A3)" >&2; exit 2 ;;
   esac
   [ -n "$aviso" ] && echo "${aviso# }" | sed 's/;$//' >&2
   echo "nivel efectivo: $nivel, leído de $src"
@@ -75,11 +88,11 @@ Desambiguá el tema implacablemente hasta alcanzar un entendimiento compartido. 
 )
 ```
 
-El comando termina con exit 2 ante un nivel no soportado o inválido y el skill aborta ahí; con exit 0 imprime la traza y una línea `parada:` por cada fila de la stop list, e ignora con aviso una fila sin `Pattern`.
+El comando termina con exit 2 ante un nivel no soportado o inválido, antes de tocar la red, y el skill aborta ahí; con exit 0 imprime la traza y una línea `parada:` por cada fila de la stop list, e ignora con aviso una fila sin `Pattern`.
 <!-- autonomy-resolve:end -->
 
 <!-- autonomy-a2:start -->
-**Autonomía por nivel.** Con `plan-approved` (A2) se preguntan solo las decisiones de impacto alto: una decisión es de impacto alto si define el alcance entero, o roza la stop list, datos o migraciones, o un contrato externo (API, formato, evento); el resto queda `[ASSUMED]` en el handoff o en la tabla de inferencias. Con `unattended` (A3), `grill` corre el reconocimiento siempre y cuenta las decisiones de alcance abiertas: con 0 sigue sin preguntar; con 1 a 3 aplica el atajo liviano y sigue; con más de 3 aborta con el listado y el diagnóstico `pedido no autonomizable en A3: bajá a A2 o partilo`. En `chiche-spec`, con `supervised` (A1) no se pregunta antes de publicar y la corrida termina en el menú final, donde se revisa la spec entera; con A2 se preguntan las de impacto alto y no hay menú: responderlas es la aprobación; con A3 no se pregunta nada ni hay menú.
+**Autonomía por nivel.** Con `plan-approved` (A2) se preguntan solo las decisiones de impacto alto: una decisión es de impacto alto si define el alcance entero, o roza la stop list, datos o migraciones, o un contrato externo (API, formato, evento); el resto queda `[ASSUMED]` en el handoff o en la tabla de inferencias. Con `unattended` (A3), `grill` corre el reconocimiento siempre y cuenta las decisiones de alcance abiertas: con 0 sigue sin preguntar; con 1 a 3 las deja `[ASSUMED]` en el handoff, sin preguntar; con más de 3 aborta con el listado y el diagnóstico `pedido no autonomizable en A3: bajá a A2 o partilo`. En A2 y A3 no hay preguntas de configuración, de frontera de bloque ni de confirmación de cierre: el handoff se congela con lo decidido y lo asumido. En `chiche-spec`, con `supervised` (A1) no se pregunta antes de publicar y la corrida termina en el menú final, donde se revisa la spec entera; con A2 se preguntan las de impacto alto y no hay menú: responderlas es la aprobación; con A3 no se pregunta nada ni hay menú.
 <!-- autonomy-a2:end -->
 
 ## Interacción en Claude Code

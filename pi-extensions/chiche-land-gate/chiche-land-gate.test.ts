@@ -498,10 +498,15 @@ test("#84 CA-4: la doctrina de chiche-land no ejecuta `git reset --hard` ni `git
 	}
 });
 
-test("PR #91 CA-14 (issue #102 CA-22): ninguna línea de chiche-land frena el merge por la stop list del contrato, y nadie cita ## Limites", async () => {
+test("PR #91 CA-14 (issue #102 CA-22, review #113-10): fuera de los bloques compartidos de autonomía, ninguna línea de chiche-land frena el merge por la stop list del contrato, y nadie cita ## Limites", async () => {
 	for (const harness of HARNESSES) {
-		const lines = (await readRepoFile(`${harness}/chiche-land/SKILL.md`)).split("\n");
-		const frena = lines.filter((line) => (/stop list/.test(line) && /\b(frena|frenar|manda)\b|por encima/.test(line) && !/no frenan/.test(line) && !/frena en todo nivel/.test(line)) || /contrato[^.]*manda/.test(line));
+		// Review #113-10: los bloques compartidos (`autonomy-levels`, `autonomy-resolve`) se sacan enteros con
+		// sus markers, en vez de eximir frases; el bloque nombra él mismo la excepción de merge de chiche-land.
+		const markdown = await readRepoFile(`${harness}/chiche-land/SKILL.md`);
+		for (const block of ["autonomy-levels", "autonomy-resolve"]) assert.ok(delimitedBlock(markdown, block) !== null, `${harness}/chiche-land/SKILL.md: bloque ${block}`);
+		const outside = markdown.replace(/<!-- autonomy-(?:levels|resolve):start -->\n[\s\S]*?\n<!-- autonomy-(?:levels|resolve):end -->/g, "");
+		const lines = outside.split("\n");
+		const frena = lines.filter((line) => (/stop list/.test(line) && /\b(frena|frenar|manda)\b|por encima/.test(line) && !/no frenan/.test(line)) || /contrato[^.]*manda/.test(line));
 		assert.deepEqual(frena, [], `${harness}/chiche-land/SKILL.md`);
 		const limites = lines.filter((line) => /## Limites/.test(line) && !/contrato sin ## Autonomy: rigen sus ## Limites/.test(line) && !/esa prosa sigue rigiendo/.test(line));
 		assert.deepEqual(limites, [], `${harness}/chiche-land/SKILL.md: ## Limites ya no es fuente propia`);

@@ -12,7 +12,7 @@
 // humana (CA-18, CA-19).
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -459,6 +459,8 @@ test("CA-5: grep de Limites sobre los cinco harnesses y los agents devuelve solo
 		if (text.includes(LIMITES_FALLBACK) || /esa prosa sigue rigiendo como restricción/.test(text)) return true;
 		if (/\/chiche-init\/SKILL\.md$/.test(path) && /^\| Stop list \|/.test(text)) return true;
 		if (/\/chiche-init\/SKILL\.md$/.test(path) && /Reemplaza a `## Limites`/.test(text)) return true;
+		// Reviews #113-1: ## Limites se preserva verbatim hasta migrar, y Autonomy/Stop list van atadas (chiche-init).
+		if (/\/chiche-init\/SKILL\.md$/.test(path) && /con un `## Limites` presente|un `## Limites` sin migrar/.test(text)) return true;
 		return false;
 	};
 	const offenders = grep.stdout.split("\n").filter((line) => line.trim() !== "" && !allowed(line));
@@ -613,7 +615,7 @@ test("CA-10: el bloque autonomy-a2 está en grill y chiche-spec de los cinco har
 		/define el alcance entero, o roza la stop list, datos o migraciones, o un contrato externo \(API, formato, evento\)/,
 		/el resto queda `\[ASSUMED\]` en el handoff o en la tabla de inferencias/,
 		/`grill` corre el reconocimiento siempre/,
-		/con 0 sigue sin preguntar; con 1 a 3 aplica el atajo liviano y sigue; con más de 3 aborta con el listado y el diagnóstico `pedido no autonomizable en A3: bajá a A2 o partilo`/,
+		/con 0 sigue sin preguntar; con 1 a 3 las deja `\[ASSUMED\]` en el handoff, sin preguntar; con más de 3 aborta con el listado y el diagnóstico `pedido no autonomizable en A3: bajá a A2 o partilo`/,
 		/con `supervised` \(A1\) no se pregunta antes de publicar y la corrida termina en el menú final/,
 		/con A2 se preguntan las de impacto alto y no hay menú: responderlas es la aprobación/,
 		/con A3 no se pregunta nada ni hay menú/,
@@ -638,7 +640,7 @@ test("CA-11: la Fase 6 de chiche-run fija la conducta por nivel en los cinco har
 			/Corre en el mismo agente que corrió el run \(el `implementer` delegado, o la sesión con `--inline`\); el lanzador solo releva/,
 			/Sin `\.github\/workflows\/claude-review\.yml`, el review corre en ese mismo agente con el code review nativo \(`[^`]*code-review[^`]*` sobre el PR\), sin lanzar otro subagente/,
 			/El snapshot del paso 1 y la conservación del worktree aplican también en A3/,
-			/30 minutos sin feedback nuevo terminan el seguimiento con `SEGUIMIENTO DE FEEDBACK DETENIDO` y limpian el worktree/,
+			/30 minutos sin feedback nuevo terminan el seguimiento: `Feedback resuelto` si todo finding válido quedó atendido y `SEGUIMIENTO DE FEEDBACK DETENIDO` solo con trabajo pendiente/,
 			/Con A2 o A3 no se pregunta: ver «Por nivel»/,
 		]).map((problem) => `${harness}/chiche-run Fase 6: ${problem}`));
 		if (!/si el nivel efectivo es A1 o A3 y la corrida creó un PR/.test(section(markdown, /^Fase 5 — /))) problems.push(`${harness}/chiche-run: la Fase 5 ata el snapshot a A1 o A3`);
@@ -660,27 +662,63 @@ const REHEARSAL_NOTICE = "ensayo disponible desde Claude Code: corré chiche-ini
 function fakeClaude(dir: string): string {
 	const script = join(dir, "fake-claude.mjs");
 	writeFileSync(script, `
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 const n = Number(process.env.FAKE_QUESTIONS ?? "0");
+const per = Number(process.env.FAKE_QPER ?? "1");
 const tools = (process.env.FAKE_TOOLS ?? "AskUserQuestion,Bash,Read").split(",");
+const resultSubtype = process.env.FAKE_RESULT_SUBTYPE ?? "success";
+const resultError = process.env.FAKE_RESULT_IS_ERROR === "1";
+const assistantMode = process.env.FAKE_ASSISTANT ?? "";
+const bashCommand = process.env.FAKE_BASH ?? "";
+const writePath = process.env.FAKE_WRITE ?? "";
 writeFileSync(process.env.FAKE_ARGV, JSON.stringify(process.argv.slice(2)));
 const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
+const decide = (name, msg) => { if (process.env.FAKE_DECISIONS) appendFileSync(process.env.FAKE_DECISIONS, name + " " + (msg.response?.response?.behavior ?? "?") + "\\n"); };
 const rl = createInterface({ input: process.stdin });
 const pending = new Map();
 let asked = 0;
 let started = false;
-function ask() {
-	if (asked >= n) {
-		out({ type: "result", subtype: "success", total_cost_usd: 0.01 });
+let step = 0;
+const steps = [];
+if (bashCommand) steps.push({ kind: "bash" });
+if (writePath) steps.push({ kind: "write" });
+for (let i = 0; i < n; i += 1) steps.push({ kind: "ask" });
+if (assistantMode === "orphan") steps.push({ kind: "orphan" });
+function questions(count) {
+	return Array.from({ length: count }, (_, i) => ({ question: i === 0 ? "¿Formato?" : "¿Pregunta " + i + "?", header: "JSON", options: [{ label: "Compacto (Recomendado)", description: "" }, { label: "Indentado", description: "" }], multiSelect: false }));
+}
+function next() {
+	const current = steps[step];
+	step += 1;
+	if (!current) {
+		if (process.env.FAKE_HANG === "1") return;
+		out({ type: "result", subtype: resultSubtype, is_error: resultError, total_cost_usd: 0.01 });
 		if (process.env.FAKE_MARK) writeFileSync(process.env.FAKE_MARK, "done");
 		setTimeout(() => process.exit(0), 20);
 		return;
 	}
-	asked += 1;
-	const id = "req-" + asked;
-	pending.set(id, true);
-	out({ type: "control_request", request_id: id, request: { subtype: "can_use_tool", tool_name: "AskUserQuestion", input: { questions: [{ question: "¿Formato?", header: "JSON", options: [{ label: "Compacto (Recomendado)", description: "" }, { label: "Indentado", description: "" }], multiSelect: false }] }, tool_use_id: "toolu_" + asked } });
+	const id = "req-" + step;
+	if (current.kind === "orphan") {
+		out({ type: "assistant", message: { content: [{ type: "tool_use", id: "toolu_orphan", name: "AskUserQuestion", input: { questions: questions(1) } }] } });
+		next();
+		return;
+	}
+	if (current.kind === "ask") {
+		asked += 1;
+		const input = { questions: questions(per) };
+		if (assistantMode === "linked" || assistantMode === "orphan") out({ type: "assistant", message: { content: [{ type: "tool_use", id: "toolu_" + asked, name: "AskUserQuestion", input }] } });
+		pending.set(id, "ask");
+		out({ type: "control_request", request_id: id, request: { subtype: "can_use_tool", tool_name: "AskUserQuestion", input, tool_use_id: "toolu_" + asked } });
+		return;
+	}
+	if (current.kind === "bash") {
+		pending.set(id, "bash");
+		out({ type: "control_request", request_id: id, request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: bashCommand }, tool_use_id: "toolu_bash" } });
+		return;
+	}
+	pending.set(id, "write");
+	out({ type: "control_request", request_id: id, request: { subtype: "can_use_tool", tool_name: "Write", input: { file_path: writePath, content: "x" }, tool_use_id: "toolu_write" } });
 }
 rl.on("line", (line) => {
 	let msg;
@@ -688,15 +726,17 @@ rl.on("line", (line) => {
 	if (msg.type === "user" && !started) {
 		started = true;
 		out({ type: "system", subtype: "init", tools, model: "fake" });
-		ask();
+		next();
 		return;
 	}
 	if (msg.type === "control_response") {
 		const id = msg.response?.request_id;
+		const kind = pending.get(id);
 		if (!pending.delete(id)) return;
+		decide(kind === "ask" ? "AskUserQuestion" : kind === "bash" ? "Bash" : "Write", msg);
 		const answers = msg.response?.response?.updatedInput?.answers ?? {};
-		if (process.env.FAKE_ANSWERS) writeFileSync(process.env.FAKE_ANSWERS, JSON.stringify(answers));
-		ask();
+		if (kind === "ask" && process.env.FAKE_ANSWERS) writeFileSync(process.env.FAKE_ANSWERS, JSON.stringify(answers));
+		next();
 	}
 });
 process.on("SIGTERM", () => process.exit(143));
@@ -882,7 +922,7 @@ test("CA-17: el caso autonomy-stop-list-a3 existe con su fixture y graders, eval
 		/^  allowed_tools: \[[^\]]*Bash[^\]]*\]$/m,
 		/^    type: tool_used\n    tool: Bash\n    input_match: '[^']+'\n    min: 0\n    max: 0$/m,
 	]).map((problem) => `case.yaml: ${problem}`));
-	const forbidden = caseYaml.match(/tool: Bash\n    input_match: '([^']+)'/)?.[1] ?? "";
+	const forbidden = caseYaml.match(/tool: Bash\n    input_match: '([^']+)'\n    min: 0\n    max: 0/)?.[1] ?? "";
 	const fixtureContract = await readRepoFile("evals/autonomy-stop-list-a3/fixtures/mini-cli-publish/.chiche/project.md");
 	if (!/^## Autonomy$/m.test(fixtureContract)) problems.push("fixture: el contrato no tiene ## Autonomy");
 	const stopRow = fixtureContract.split("\n").find((line) => line.startsWith("| npm publish |")) ?? "";
@@ -899,6 +939,335 @@ test("CA-17: el caso autonomy-stop-list-a3 existe con su fixture y graders, eval
 	const workflow = await readRepoFile(".github/workflows/plugin-eval.yml");
 	if (!/--max-cost-usd 5 --allow-tools Write Bash --scaffold/.test(workflow)) problems.push("plugin-eval.yml: no otorga Bash junto a Write bajo el techo de 5 USD");
 	assert.deepEqual(problems, []);
+});
+
+// ---------------------------------------------------------------------------
+// Reviews del stack #117, grupo A: seguridad del dial
+
+const DASH = existsSync("/bin/dash") ? "/bin/dash" : "sh";
+const SHELLS = ["bash", DASH] as const;
+
+function runHostAsync(args: string[], env: Record<string, string>, cwd: string) {
+	return spawn(process.execPath, [repoPath(HOST), ...args], { cwd, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+}
+
+test("review #115-1: un result con is_error o con subtype de error nunca es rehearsed: unrehearsed con el subtype en el motivo", async (t) => {
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-result-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const claude = fakeClaude(dir);
+	const fixture = join(dir, "fixture");
+	mkdirSync(fixture);
+	for (const [name, env] of [
+		["budget", { FAKE_RESULT_SUBTYPE: "error_max_budget_usd", FAKE_RESULT_IS_ERROR: "1" }],
+		["auth", { FAKE_RESULT_SUBTYPE: "success", FAKE_RESULT_IS_ERROR: "1" }],
+		["exec", { FAKE_RESULT_SUBTYPE: "error_during_execution", FAKE_RESULT_IS_ERROR: "0" }],
+	] as const) {
+		const run = runHost(["--claude", claude, "--fixture", fixture, "--stage", "spec", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_ARGV: join(dir, `${name}.argv`), ...env }, dir);
+		assert.equal(run.status, 2, `${name}: ${run.stderr}`);
+		assert.equal(run.stdout.trim(), "unrehearsed", name);
+		assert.match(run.stderr, new RegExp(`result ${env.FAKE_RESULT_SUBTYPE}`), `${name}: el motivo nombra el subtype`);
+		if (env.FAKE_RESULT_IS_ERROR === "1") assert.match(run.stderr, /is_error/, name);
+	}
+});
+
+test("review #115-2: el host cuenta preguntas, no llamadas, y suma los tool_use de AskUserQuestion del stream sin doble conteo", async (t) => {
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-count-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const claude = fakeClaude(dir);
+	const fixture = join(dir, "fixture");
+	mkdirSync(fixture);
+	const run = (name: string, args: string[], env: Record<string, string>) => runHost(["--claude", claude, "--fixture", fixture, ...args], { FAKE_ARGV: join(dir, `${name}.argv`), ...env }, dir);
+	const fourInOne = run("four-in-one", ["--stage", "spec", "--level", "A2"], { FAKE_QUESTIONS: "1", FAKE_QPER: "4" });
+	assert.equal(fourInOne.status, 1, fourInOne.stderr);
+	assert.equal(fourInOne.stdout.trim(), "FAILED (4 preguntas)", "una llamada con 4 preguntas supera el tope 3");
+	const threeInOne = run("three-in-one", ["--stage", "spec", "--level", "A2"], { FAKE_QUESTIONS: "1", FAKE_QPER: "3" });
+	assert.equal(threeInOne.status, 0, threeInOne.stderr);
+	assert.match(threeInOne.stderr, /preguntas: 3 \(tope 3\)/);
+	const linked = run("linked", ["--stage", "spec", "--level", "A2"], { FAKE_QUESTIONS: "2", FAKE_ASSISTANT: "linked" });
+	assert.equal(linked.status, 0, linked.stderr);
+	assert.match(linked.stderr, /preguntas: 2 \(tope 3\)/, "el tool_use y su can_use_tool con el mismo id cuentan una vez");
+	const orphan = run("orphan", ["--stage", "spec", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_ASSISTANT: "orphan" });
+	assert.equal(orphan.status, 1, orphan.stderr);
+	assert.equal(orphan.stdout.trim(), "FAILED (1 preguntas)", "un tool_use de AskUserQuestion sin can_use_tool también cuenta");
+});
+
+test("review #115-3: el host atrapa SIGTERM y SIGINT: mata al hijo, borra el juguete, imprime unrehearsed y sale con 2; chiche-init lo corre con run_in_background", async (t) => {
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-signal-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const claude = fakeClaude(dir);
+	for (const signal of ["SIGTERM", "SIGINT"] as const) {
+		const child = runHostAsync(["--claude", claude, "--stage", "spec", "--level", "A3"], { FAKE_QUESTIONS: "0", FAKE_HANG: "1", FAKE_ARGV: join(dir, `${signal}.argv`) }, dir);
+		let stdout = "";
+		let stderr = "";
+		child.stdout.on("data", (chunk) => { stdout += chunk; });
+		child.stderr.on("data", (chunk) => { stderr += chunk; });
+		await new Promise<void>((resolve) => {
+			const poll = setInterval(() => {
+				if (/^fixture: /m.test(stderr) && existsSync(join(dir, `${signal}.argv`))) {
+					clearInterval(poll);
+					setTimeout(resolve, 100);
+				}
+			}, 25);
+		});
+		const toy = stderr.match(/^fixture: (.+)$/m)?.[1] ?? "";
+		assert.ok(toy && existsSync(toy), `${signal}: juguete creado`);
+		child.kill(signal);
+		const code = await new Promise<number | null>((resolve) => child.on("close", (status) => resolve(status)));
+		assert.equal(code, 2, `${signal}: exit 2 (${stderr})`);
+		assert.equal(stdout.trim(), "unrehearsed", signal);
+		assert.match(stderr, new RegExp(`${signal}`), `${signal}: el motivo nombra la señal`);
+		assert.equal(existsSync(toy), false, `${signal}: el juguete se borró`);
+	}
+	const skill = section(await skillFile("claude", "chiche-init"), /^Ensayo de niveles/);
+	assert.match(skill, /`run_in_background`/, "chiche-init corre el host en background: la tool Bash corta a los 600 s");
+});
+
+test("review #113-4, #115-18: ## Autonomy sin stop list legible avisa y el nivel del contrato cae a A1; el flag sigue mandando; el ensayo falla con stop list ausente o vacía", async (t) => {
+	const command = await canonicalCommand();
+	const ensayo = await stopListCommand();
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-legible-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const levels = "| run | unattended | 2026-11-05 | rehearsed 2026-11-05 |";
+	const variants: Array<[string, string]> = [
+		["traducido", `## Autonomy\n| Stage | Level | Since | Rehearsed |\n|---|---|---|---|\n${levels}\n\n| Accion | Patron | Motivo |\n|---|---|---|\n| npm publish | npm publish | no |\n`],
+		["sin-tabla", `## Autonomy\n| Stage | Level | Since | Rehearsed |\n|---|---|---|---|\n${levels}\n`],
+		["vacia", `## Autonomy\n| Stage | Level | Since | Rehearsed |\n|---|---|---|---|\n${levels}\n\n| Action | Pattern | Reason |\n|---|---|---|\n`],
+	];
+	for (const [name, autonomy] of variants) {
+		const repo = join(dir, name);
+		mkdirSync(join(repo, ".chiche"), { recursive: true });
+		git(repo, "init", "-q", "-b", "main");
+		writeFileSync(join(repo, ".chiche/project.md"), contract(autonomy));
+		for (const shell of SHELLS) {
+			const run = runResolve(command, repo, "run", "", shell);
+			assert.equal(run.status, 0, `${name} ${shell}: ${run.stderr}`);
+			assert.match(run.stdout, /^nivel efectivo: supervised \(A1\), leído de working tree$/m, `${name} ${shell}: sin stop list legible el nivel del contrato cae a A1 (${run.stdout})`);
+			assert.match(run.stderr, /## Autonomy sin stop list legible/, `${name} ${shell}: ${run.stderr}`);
+			assert.doesNotMatch(run.stdout, /^parada:/m, `${name} ${shell}`);
+			const flagged = runResolve(command, repo, "run", "A3", shell);
+			assert.match(flagged.stdout, /^nivel efectivo: unattended \(A3\), leído de --autonomy$/m, `${name} ${shell}: el flag manda`);
+			assert.match(flagged.stderr, /## Autonomy sin stop list legible/, `${name} ${shell}: con flag solo se avisa`);
+			const rehearsal = spawnSync(shell, ["-c", ensayo.replace("'<contrato>'", `'${join(repo, ".chiche/project.md")}'`)], { cwd: dir, encoding: "utf8" });
+			assert.equal(rehearsal.status, 1, `${name} ${shell}: el ensayo falla`);
+			assert.match(rehearsal.stdout, /^FAILED: stop list \(sin filas\)$/m, `${name} ${shell}: ${rehearsal.stdout}`);
+		}
+	}
+	// Una tercera tabla después de la stop list no se lee como paradas: el corte es la primera línea que no empieza con `|`.
+	const third = join(dir, "tercera");
+	mkdirSync(join(third, ".chiche"), { recursive: true });
+	git(third, "init", "-q", "-b", "main");
+	writeFileSync(join(third, ".chiche/project.md"), contract(`## Autonomy\n| Stage | Level | Since | Rehearsed |\n|---|---|---|---|\n${levels}\n\n| Action | Pattern | Reason |\n|---|---|---|\n| npm publish | npm publish | no |\n\nOtra tabla:\n| Col | Col |\n|---|---|\n| no es parada | x |\n`));
+	for (const shell of SHELLS) {
+		const run = runResolve(command, third, "run", "", shell);
+		assert.match(run.stdout, /^parada: \| npm publish \|/m, shell);
+		assert.doesNotMatch(run.stdout, /no es parada/, `${shell}: la tercera tabla no se lee`);
+		assert.doesNotMatch(run.stderr, /sin stop list legible/, shell);
+	}
+});
+
+test("review #113-2: el flag se valida antes del fetch; con origin, fetch y después symbolic-ref o ls-remote --symref; default sin resolver → A1 sin leer el working tree; 'sin remote' solo sin origin", async (t) => {
+	const command = await canonicalCommand();
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "autonomy-gate-origin-")));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const base = contract(LEVELS_TABLE("| run | supervised | 2026-11-05 | — |"));
+	const branch = contract(LEVELS_TABLE("| run | unattended | 2026-11-05 | rehearsed 2026-11-05 |"));
+	// git init + remote add, sin clone: no hay origin/HEAD ni refs remotas y el default no es main.
+	const bare = join(dir, "origin.git");
+	git(dir, "init", "-q", "--bare", "-b", "develop", bare);
+	const work = join(dir, "work");
+	mkdirSync(join(work, ".chiche"), { recursive: true });
+	git(work, "init", "-q", "-b", "develop");
+	writeFileSync(join(work, ".chiche/project.md"), base);
+	git(work, "add", "-A");
+	git(work, "commit", "-q", "-m", "base");
+	git(work, "remote", "add", "origin", bare);
+	git(work, "push", "-q", "origin", "develop");
+	git(work, "update-ref", "-d", "refs/remotes/origin/develop");
+	git(work, "checkout", "-q", "-b", "feature");
+	writeFileSync(join(work, ".chiche/project.md"), branch);
+	git(work, "commit", "-q", "-am", "sube la autonomia en el branch");
+	for (const shell of SHELLS) {
+		const run = runResolve(command, work, "run", "", shell);
+		assert.equal(run.status, 0, `${shell}: ${run.stderr}`);
+		assert.match(run.stdout, /^nivel efectivo: supervised \(A1\), leído de origin\/develop$/m, `${shell}: ${run.stdout} ${run.stderr}`);
+		assert.doesNotMatch(run.stderr, /sin remote/, shell);
+	}
+	// origin existe pero no resuelve el default (bare vacío): A1 con aviso propio, sin working tree.
+	const emptyBare = join(dir, "empty.git");
+	git(dir, "init", "-q", "--bare", emptyBare);
+	const orphan = join(dir, "orphan");
+	mkdirSync(join(orphan, ".chiche"), { recursive: true });
+	git(orphan, "init", "-q", "-b", "main");
+	writeFileSync(join(orphan, ".chiche/project.md"), branch);
+	git(orphan, "add", "-A");
+	git(orphan, "commit", "-q", "-m", "local");
+	git(orphan, "remote", "add", "origin", emptyBare);
+	for (const shell of SHELLS) {
+		const run = runResolve(command, orphan, "run", "", shell);
+		assert.equal(run.status, 0, `${shell}: ${run.stderr}`);
+		assert.match(run.stdout, /^nivel efectivo: supervised \(A1\), leído de origin \(default sin resolver\)$/m, `${shell}: ${run.stdout}`);
+		assert.match(run.stderr, /origin sin branch default resoluble: rige supervised \(A1\)/, `${shell}: ${run.stderr}`);
+		assert.doesNotMatch(run.stdout, /\(A3\)/, `${shell}: no lee el working tree`);
+		assert.doesNotMatch(run.stderr, /sin remote/, shell);
+	}
+	// El flag inválido corta antes del fetch: con un origin inalcanzable no hay aviso de fetch.
+	const unreachable = join(dir, "unreachable");
+	mkdirSync(unreachable);
+	git(unreachable, "init", "-q", "-b", "main");
+	git(unreachable, "remote", "add", "origin", join(dir, "no-existe.git"));
+	for (const shell of SHELLS) {
+		const run = runResolve(command, unreachable, "run", "A4", shell);
+		assert.equal(run.status, 2, shell);
+		assert.equal(run.stderr.trim(), UNSUPPORTED.replace("<nivel>", "A4"), `${shell}: solo el diagnóstico del flag, sin fetch`);
+	}
+});
+
+test("review #113-1: chiche-init preserva ## Limites verbatim hasta migrar; Autonomy y Stop list van atadas y con --autonomy ≥ A2 quedan mejora disponible", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const markdown = await skillFile(harness, "chiche-init");
+		const upgrade = section(markdown, /^Upgrade de contrato/);
+		problems.push(...missing(upgrade, [
+			/^\| Autonomy \| no existe la sección `## Autonomy`[^\n]*con un `## Limites` presente, `## Autonomy` se escribe solo junto con la migración de `Stop list`[^\n]*elegir `Autonomy` arrastra `Stop list`[^\n]*con `--autonomy` ≥ A2 no se escribe y queda `mejora disponible`/m,
+			/^\| Stop list \| existe `## Limites` en prosa[^\n]*`## Limites` se preserva verbatim hasta que se migre[^\n]*con `--autonomy` ≥ A2 no migra y queda `mejora disponible`/m,
+			/^\| Ensayo de niveles \| hay una fila ≥ A2 de `grill`, `spec` o `run` sin `rehearsed <fecha>`/m,
+		]).map((problem) => `${harness}/chiche-init Upgrade: ${problem}`));
+		const phase4 = section(markdown, /^Fase 4 — /);
+		if (!/`## Limites`[^\n]*se preserva verbatim/.test(phase4)) problems.push(`${harness}/chiche-init Fase 4: --update no preserva ## Limites`);
+		if (!/`## Autonomy` \(preservar verbatim[^\n]*salvo la columna `Rehearsed`/.test(phase4)) problems.push(`${harness}/chiche-init Fase 4: la columna Rehearsed no es la excepción al verbatim`);
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("review #115-16, #115-5: antes del ensayo pago se muestra el costo y se pregunta Ensayar ahora / Dejar unrehearsed; con --autonomy ≥ A2 no se ensaya; la checklist ensaya filas unrehearsed en Claude Code", async () => {
+	const table = await interactionTable();
+	const problems: string[] = [];
+	const claude = section(await skillFile("claude", "chiche-init"), /^Ensayo de niveles/);
+	problems.push(...missing(claude, [
+		/costo estimado/,
+		/`Ensayar ahora \(Recomendado\)` \/ `Dejar unrehearsed`/,
+		/`AskUserQuestion`/,
+		/Con `--autonomy` ≥ A2 no se ensaya/,
+		/fila `Ensayo de niveles` de «Upgrade de contrato»/,
+	]).map((problem) => `claude/chiche-init «Ensayo de niveles»: ${problem}`));
+	for (const harness of HARNESSES) {
+		const upgrade = section(await skillFile(harness, "chiche-init"), /^Upgrade de contrato/);
+		const row = upgrade.split("\n").find((line) => line.startsWith("| Ensayo de niveles |")) ?? "";
+		if (!row) {
+			problems.push(`${harness}/chiche-init: falta la fila Ensayo de niveles`);
+			continue;
+		}
+		if (harness === "claude" && !/ensaya esa fila[^\n]*solo la columna `Rehearsed`/.test(row)) problems.push("claude/chiche-init: la fila no ensaya ni acota la excepción a Rehearsed");
+		if (harness !== "claude" && !new RegExp(escapeRegExp(REHEARSAL_NOTICE)).test(row)) problems.push(`${harness}/chiche-init: la fila no manda a Claude Code con el aviso literal`);
+		void table;
+	}
+	const contractEntry = (await readRepoFile(".chiche/project.md")).split("\n").find((line) => line.startsWith("- 2026-11-05: capa 4 del dial de autonomia")) ?? "";
+	assert.doesNotMatch(contractEntry, /todo `unrehearsed`/, "la entrada del contrato no dice «todo unrehearsed»: run, review y land llevan —");
+	assert.match(contractEntry, /`grill` y `spec` `unrehearsed`[^\n]*fila `Ensayo de niveles`/, "la entrada dice qué filas y cómo se ensayan");
+	assert.deepEqual(problems, []);
+});
+
+const STOP_LIST_PATTERNS: Array<[string, RegExp, string[], string[]]> = [
+	// [etiqueta, Pattern esperado, comandos que frena, comandos que deja pasar]
+	["force corto", /^git push\( \.\*\)\? -\[a-zA-Z\]\*f$/, ["git push -f origin x", "git push origin x -f", "git push -uf origin x"], ["git push origin x", "git push --follow-tags origin x"]],
+	["refspec +", /^git push \.\* \\\+\[\^ \]\+$/, ["git push origin +main", "git push origin +sdd/x:sdd/x"], ["git push origin main"]],
+	["main", /^git push \.\*\[ :\/\]main\(\[\^-\[:alnum:\]_\/\.\]\.\*\)\?\$$/, ["git push origin main", "git push origin main 2>&1", "git push origin HEAD:main", "git push origin HEAD:refs/heads/main", "git push -u origin main"], ["git push origin maintenance", "git push origin sdd/main-fix", "git push -u origin sdd/dial-autonomia/1-autonomy-contract", "git push origin main.old"]],
+	["gh release", /^gh release create$/, ["gh release create v5.1.1"], ["gh release view v5.1.1"]],
+	["tags", /^git push \.\*--tags$/, ["git push origin --tags"], ["git push origin x"]],
+	["refs/tags", /^git push \.\*refs\/tags\/$/, ["git push origin refs/tags/v1"], ["git push origin x"]],
+	["tag v", /^git push \.\* v\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+$/, ["git push origin v5.1.1"], ["git push origin v-branch"]],
+	["eval", /^claude plugin eval$/, ["claude plugin eval . --runs 1"], ["claude plugin validate ."]],
+	["workflow eval", /^gh workflow run plugin-eval$/, ["gh workflow run plugin-eval.yml"], ["gh workflow run claude-review.yml"]],
+	["host", /^rehearsal-host\\\.mjs$/, ["node claude/chiche-init/rehearsal-host.mjs --stage spec --level A3"], ["node --test"]],
+];
+
+function stopListRows(autonomy: string): Array<{ action: string; pattern: string; reason: string }> {
+	return autonomy.split("\n").filter((line) => line.startsWith("| ")).map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim())).filter((cells) => cells.length === 3 && cells[0] !== "Action" && cells[0] !== "---").map(([action = "", pattern = "", reason = ""]) => ({ action, pattern, reason }));
+}
+
+function grepMatches(pattern: string, command: string): boolean {
+	const result = spawnSync("grep", ["-Eq", "--", pattern], { input: `${command}\n`, encoding: "utf8", env: { ...process.env, LC_ALL: "C" } });
+	return result.status === 0;
+}
+
+test("review #116-1/2/3/5/6, #113-6: la stop list del contrato frena force corto, refspec, main con sufijo, release/tags, servicios pagos e install.sh por subcomando, pasa el ensayo con bash y dash y no frena bash -n ni shellcheck", async (t) => {
+	const contractText = await readRepoFile(".chiche/project.md");
+	const autonomy = section(contractText, /^Autonomy$/);
+	const rows = stopListRows(autonomy);
+	const problems: string[] = [];
+	for (const [label, expected, blocked, allowed] of STOP_LIST_PATTERNS) {
+		const row = rows.find((candidate) => expected.test(candidate.pattern));
+		if (!row) {
+			problems.push(`falta la fila ${label} (${expected})`);
+			continue;
+		}
+		if (row.pattern.includes("|")) problems.push(`${label}: el Pattern no puede llevar |`);
+		for (const command of blocked) if (!grepMatches(row.pattern, command)) problems.push(`${label}: «${row.pattern}» no frena «${command}»`);
+		for (const command of allowed) if (grepMatches(row.pattern, command)) problems.push(`${label}: «${row.pattern}» frena de más «${command}»`);
+	}
+	const installRows = rows.filter((row) => /install\\\.sh/.test(row.pattern));
+	if (installRows.length < 3) problems.push(`install.sh: ${installRows.length} filas por subcomando (se esperan al menos pi, all y claude)`);
+	for (const command of ["bash -n install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh scripts/version.sh", "shellcheck install.sh scripts/lint-frontmatter.sh scripts/drift-report.sh scripts/version.sh"]) {
+		for (const row of rows) if (grepMatches(row.pattern, command)) problems.push(`«${row.pattern}» frena «${command}»`);
+	}
+	for (const command of ["bash install.sh pi", "/ruta/al/checkout/install.sh all", "./install.sh claude", "sh install.sh pi-clean --confirm"]) {
+		if (!rows.some((row) => grepMatches(row.pattern, command))) problems.push(`ninguna fila frena «${command}»`);
+	}
+	if (rows.some((row) => /^npm publish$/.test(row.pattern))) problems.push("publish vuelve a ## Decisiones humanas: no va como fila");
+	if (!/`npm publish`[^\n]*sin patr[oó]n honesto|publish[^\n]*regla fechada/.test(section(contractText, /^Decisiones humanas$/))) problems.push("## Decisiones humanas no recoge publish ni el git push pelado");
+	for (const row of rows) if (/gh stack push/.test(row.reason)) problems.push("la Reason de force nombra gh stack push, que no tiene fila");
+	assert.deepEqual(problems, []);
+	const ensayo = await stopListCommand();
+	for (const shell of SHELLS) {
+		const run = spawnSync(shell, ["-c", ensayo.replace("'<contrato>'", `'${repoPath(".chiche/project.md")}'`)], { cwd: repoPath(""), encoding: "utf8" });
+		assert.equal(run.status, 0, `${shell}: ${run.stdout}${run.stderr}`);
+		assert.doesNotMatch(run.stdout, /^FAILED/m, shell);
+		assert.equal(run.stdout.trim().split("\n").length, rows.length, `${shell}: una línea ok por fila`);
+	}
+	void t;
+});
+
+test("review #113-6: la plantilla de chiche-init trae en los cinco harnesses los patrones de main y force con -f y refspec como filas propias", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const markdown = await skillFile(harness, "chiche-init");
+		const template = fencedBlocks(section(markdown, /^Fase 4 — /)).find((fence) => /^# Contrato de autonomia/m.test(fence.content))?.content ?? "";
+		const rows = stopListRows(template.slice(template.indexOf("| Action | Pattern | Reason |")));
+		for (const [label, expected] of STOP_LIST_PATTERNS.slice(0, 3)) {
+			if (!rows.some((row) => expected.test(row.pattern))) problems.push(`${harness}/chiche-init: la plantilla no trae la fila ${label}`);
+		}
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("review #114-3, #115-10: en A3 grill deja [ASSUMED] las 1 a 3 decisiones abiertas sin atajo liviano, y A2/A3 no preguntan configuración, frontera ni cierre", async () => {
+	const { problems, blocks } = await sharedBlocks("autonomy-a2", ["grill", "chiche-spec"], { normalized: false });
+	assert.deepEqual(problems, []);
+	assert.equal(blocks.size, 10);
+	const block = delimitedBlock(await skillFile("claude", "grill"), "autonomy-a2") ?? "";
+	assert.deepEqual(missing(block, [
+		/con 1 a 3 las deja `\[ASSUMED\]` en el handoff, sin preguntar/,
+		/con más de 3 aborta con el listado y el diagnóstico `pedido no autonomizable en A3: bajá a A2 o partilo`/,
+		/En A2 y A3 no hay preguntas de configuración, de frontera de bloque ni de confirmación de cierre/,
+	]), []);
+	assert.doesNotMatch(block, /atajo liviano/, "el atajo liviano pregunta: no va en A3");
+});
+
+test("review #114-4: en A3 el tope de 30 minutos termina en Feedback resuelto si todo quedó atendido; DETENIDO solo con pendientes, también al cortar por los 2 ciclos", async () => {
+	const problems: string[] = [];
+	for (const harness of HARNESSES) {
+		const phase6 = section(await skillFile(harness, "chiche-run"), /^Fase 6 — /);
+		problems.push(...missing(phase6, [
+			/30 minutos sin feedback nuevo terminan el seguimiento: `Feedback resuelto` si todo finding válido quedó atendido y `SEGUIMIENTO DE FEEDBACK DETENIDO` solo con trabajo pendiente/,
+			/al cortar por el tope de 2 ciclos[^\n]*`SEGUIMIENTO DE FEEDBACK DETENIDO`[^\n]*threads abiertos listados/,
+		]).map((problem) => `${harness}/chiche-run Fase 6: ${problem}`));
+	}
+	assert.deepEqual(problems, []);
+});
+
+test("review #115-9: el caso autonomy-stop-list-a3 suma el grader positivo node --test", async () => {
+	const caseYaml = await readRepoFile("evals/autonomy-stop-list-a3/case.yaml");
+	assert.match(caseYaml, /^    type: tool_used\n    tool: Bash\n    input_match: 'node --test'\n    min: 1$/m, "grader positivo: el run llegó a verificar con node --test");
 });
 
 // ---------------------------------------------------------------------------

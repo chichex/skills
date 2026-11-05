@@ -229,6 +229,9 @@ let verdict = null;
 let reason = "";
 let buffer = "";
 let killTimer = null;
+// Ids de tool_use de AskUserQuestion ya contados: un bloque `tool_use` del
+// stream `assistant` y su `can_use_tool` llevan el mismo id y cuentan una vez.
+const counted = new Set();
 
 function finish(value, why) {
 	if (verdict !== null) return;
@@ -244,6 +247,22 @@ function finish(value, why) {
 const send = (message) => {
 	if (!child.stdin.destroyed) child.stdin.write(`${JSON.stringify(message)}\n`);
 };
+
+// Cuenta preguntas, no llamadas: una llamada trae hasta 4. Devuelve false si el
+// id ya se contó o si el tope quedó superado (y entonces corta al hijo).
+function countQuestions(id, input) {
+	if (id && counted.has(id)) return true;
+	if (id) counted.add(id);
+	const questions = Array.isArray(input?.questions) ? input.questions : [];
+	asked += Math.max(1, questions.length);
+	process.stderr.write(`preguntas hasta ahora ${asked}: ${JSON.stringify(questions.map((question) => question.question))}\n`);
+	if (asked > cap) {
+		process.stderr.write(`corte: tope de ${cap} preguntas superado\n`);
+		finish(`FAILED (${asked} preguntas)`, "tope superado");
+		return false;
+	}
+	return true;
+}
 
 child.stdout.on("data", (chunk) => {
 	buffer += chunk;
@@ -263,16 +282,17 @@ child.stdout.on("data", (chunk) => {
 			if (!tools.includes("AskUserQuestion")) finish("unrehearsed", "init sin AskUserQuestion: el hijo no puede preguntar, el conteo no vale");
 			continue;
 		}
+		if (event.type === "assistant") {
+			const content = Array.isArray(event.message?.content) ? event.message.content : [];
+			for (const block of content) {
+				if (block?.type === "tool_use" && block.name === "AskUserQuestion") countQuestions(block.id, block.input);
+			}
+			continue;
+		}
 		if (event.type === "control_request") {
 			const request = event.request ?? {};
 			if (request.subtype === "can_use_tool" && request.tool_name === "AskUserQuestion") {
-				asked += 1;
-				process.stderr.write(`pregunta ${asked}: ${JSON.stringify(request.input?.questions?.map((question) => question.question) ?? [])}\n`);
-				if (asked > cap) {
-					process.stderr.write(`corte: tope de ${cap} preguntas superado\n`);
-					finish(`FAILED (${asked} preguntas)`, "tope superado");
-					continue;
-				}
+				if (!countQuestions(request.tool_use_id, request.input)) continue;
 				send({ type: "control_response", response: { subtype: "success", request_id: event.request_id, response: { behavior: "allow", updatedInput: { ...request.input, answers: recommendedAnswers(request.input) } } } });
 				continue;
 			}
@@ -285,8 +305,14 @@ child.stdout.on("data", (chunk) => {
 		}
 		if (event.type === "result") {
 			if (verdict === null) {
-				verdict = asked <= cap ? `rehearsed ${new Date().toISOString().slice(0, 10)}` : `FAILED (${asked} preguntas)`;
-				reason = `result recibido; costo ${event.total_cost_usd ?? "?"} USD`;
+				const ok = event.subtype === "success" && event.is_error !== true;
+				if (!ok) {
+					verdict = "unrehearsed";
+					reason = `result ${event.subtype ?? "sin subtype"}${event.is_error === true ? " con is_error" : ""}: el hijo no terminó bien, el conteo no vale; costo ${event.total_cost_usd ?? "?"} USD`;
+				} else {
+					verdict = asked <= cap ? `rehearsed ${new Date().toISOString().slice(0, 10)}` : `FAILED (${asked} preguntas)`;
+					reason = `result success; costo ${event.total_cost_usd ?? "?"} USD`;
+				}
 			}
 			child.stdin.end();
 		}
@@ -301,6 +327,13 @@ timeout.unref();
 
 send({ type: "user", message: { role: "user", content: promptFor(options.stage, options.code, options.request) }, parent_tool_use_id: null, session_id: "" });
 
+function conclude() {
+	process.stderr.write(`preguntas: ${asked} (tope ${cap}) · ${reason}\n`);
+	if (generated && !options.keep) rmSync(fixture, { recursive: true, force: true });
+	process.stdout.write(`${verdict}\n`);
+	process.exit(verdict.startsWith("rehearsed") ? 0 : verdict.startsWith("FAILED") ? 1 : 2);
+}
+
 child.on("close", (code, signal) => {
 	clearTimeout(timeout);
 	if (killTimer) clearTimeout(killTimer);
@@ -308,8 +341,21 @@ child.on("close", (code, signal) => {
 		verdict = "unrehearsed";
 		reason = `el hijo terminó sin result (exit ${code ?? signal})`;
 	}
-	process.stderr.write(`preguntas: ${asked} (tope ${cap}) · ${reason}\n`);
-	if (generated && !options.keep) rmSync(fixture, { recursive: true, force: true });
-	process.stdout.write(`${verdict}\n`);
-	process.exit(verdict.startsWith("rehearsed") ? 0 : verdict.startsWith("FAILED") ? 1 : 2);
+	conclude();
 });
+
+// Si matan al host (la tool Bash del harness, Ctrl-C), no queda un hijo pago
+// corriendo ni un juguete huérfano: mata al hijo, limpia e imprime unrehearsed.
+for (const signal of ["SIGTERM", "SIGINT"]) {
+	process.on(signal, () => {
+		if (verdict === null) {
+			verdict = "unrehearsed";
+			reason = `el host recibió ${signal}: hijo cortado, sin veredicto`;
+		}
+		if (child.exitCode === null && child.signalCode === null) {
+			child.kill("SIGTERM");
+			setTimeout(() => child.kill("SIGKILL"), 2000).unref();
+		}
+		conclude();
+	});
+}

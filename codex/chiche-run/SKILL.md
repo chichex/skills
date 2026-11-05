@@ -31,24 +31,37 @@ En Codex no hay subagentes: con `unattended` (A3) el run corre inline en esta se
 <!-- autonomy-levels:end -->
 
 <!-- autonomy-resolve:start -->
-**Nivel efectivo.** El nivel efectivo es el del flag `--autonomy` si vino; si no, la fila del `Stage` en `## Autonomy` del contrato leído del branch default, nunca del branch de trabajo: un PR no puede subirse la autonomía a sí mismo. `grill` lee la fila `grill`, `chiche-spec` la fila `spec`, `chiche-run` la fila `run` y `chiche-land` la fila `land`; `chiche-init`, `issue-triage` y `design-system` no tienen fila: flag o `supervised (A1)`. La lectura hace `git fetch` best-effort de `origin` y `git show origin/<default>:.chiche/project.md`, con fallback a `.sdd/project.md` para un repo que mantuvo `.sdd/`; sin remote lee el working tree en ese mismo orden y avisa `nivel leído del working tree: sin remote`. Si el contrato no tiene `## Autonomy`, o la fila está `unrehearsed` o `FAILED`, rige `supervised (A1)` con aviso. Si el contrato no tiene `## Autonomy` pero sí `## Limites`, esa prosa sigue rigiendo como restricción, el nivel es `supervised (A1)` y el aviso es literal: `contrato sin ## Autonomy: rigen sus ## Limites; corré chiche-init --update`. La stop list (segunda tabla de `## Autonomy`) se lee de la misma fuente y frena en todo nivel: antes de correr un comando o tocar una ruta que matchee un `Pattern`, el skill frena y lo reporta citando la fila. La traza imprime `nivel efectivo: <nombre> (<código>), leído de <fuente>`. Lo imprime este comando, con `<stage>` y `<flag>` reemplazados (`<flag>` vacío sin el flag; `<stage>` es `none` en los skills sin fila), sin parámetros posicionales ni variables de argumentos del harness, que se sustituyen al cargar el skill con argumentos:
+**Nivel efectivo.** El nivel efectivo es el del flag `--autonomy` si vino; si no, la fila del `Stage` en `## Autonomy` del contrato leído del branch default, nunca del branch de trabajo: un PR no puede subirse la autonomía a sí mismo. `grill` lee la fila `grill`, `chiche-spec` la fila `spec`, `chiche-run` la fila `run` y `chiche-land` la fila `land`; `chiche-init`, `issue-triage` y `design-system` no tienen fila: flag o `supervised (A1)`. La lectura valida el flag primero y, si existe el remote `origin`, hace `git fetch` best-effort, resuelve el branch default (`git symbolic-ref refs/remotes/origin/HEAD` y, si falla, `git ls-remote --symref origin HEAD`) y lee `git show origin/<default>:.chiche/project.md`, con fallback a `.sdd/project.md` para un repo que mantuvo `.sdd/`; con `origin` y un default que no se resuelve rige `supervised (A1)` con el aviso `origin sin branch default resoluble`, sin leer el working tree; solo sin `origin` lee el working tree en ese mismo orden y avisa `nivel leído del working tree: sin remote`. Si el contrato no tiene `## Autonomy`, o la fila está `unrehearsed` o `FAILED`, rige `supervised (A1)` con aviso. Si el contrato no tiene `## Autonomy` pero sí `## Limites`, esa prosa sigue rigiendo como restricción, el nivel es `supervised (A1)` y el aviso es literal: `contrato sin ## Autonomy: rigen sus ## Limites; corré chiche-init --update`. La stop list (segunda tabla de `## Autonomy`, con el header `| Action | Pattern | Reason |` y hasta la primera línea que no empieza con `|`) se lee de la misma fuente y frena en todo nivel (la única excepción es la de merge de `chiche-land`, que la invocación y el plan confirmado autorizan): antes de correr un comando o tocar una ruta que matchee un `Pattern`, el skill frena y lo reporta citando la fila. Un `## Autonomy` sin stop list legible (sin ese header o con 0 filas) avisa `## Autonomy sin stop list legible` y el nivel que sale del contrato cae a `supervised (A1)`; con `--autonomy` el flag sigue mandando y solo se avisa. La traza imprime `nivel efectivo: <nombre> (<código>), leído de <fuente>`. Lo imprime este comando, con `<stage>` y `<flag>` reemplazados (`<flag>` vacío sin el flag; `<stage>` es `none` en los skills sin fila), sin parámetros posicionales ni variables de argumentos del harness, que se sustituyen al cargar el skill con argumentos:
 
 ```bash
 (
   stage='<stage>' flag='<flag>'
   export LC_ALL=C
-  pick=$(printf %s "$flag" | tr A-Z a-z); src='--autonomy'; aviso=''; stop=''; contract=''
+  pick=$(printf %s "$flag" | tr A-Z a-z); aviso=''; stop=''; contract=''; legible=1
+  case $pick in
+    ''|a1|supervised|a2|plan-approved|a3|unattended) ;;
+    a0|manual|a4|auto-land|a5|auto-deploy) echo "--autonomy $flag: no soportado todavía (v1 honra A1–A3)" >&2; exit 2 ;;
+    *) echo "--autonomy $flag: valor inválido; válidos: supervised (A1), plan-approved (A2), unattended (A3)" >&2; exit 2 ;;
+  esac
   root=$(git rev-parse --show-toplevel 2>/dev/null) || root=.
-  ref=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)
-  if [ -z "$ref" ]; then for b in main master; do if git rev-parse -q --verify "refs/remotes/origin/$b" >/dev/null 2>&1; then ref="origin/$b"; break; fi; done; fi
-  if [ -n "$ref" ]; then
+  if git remote get-url origin >/dev/null 2>&1; then
     git fetch -q origin >/dev/null 2>&1 || aviso="$aviso aviso: fetch de origin falló, se usa la ref local;"
-    contract=$(git show "$ref:.chiche/project.md" 2>/dev/null) || contract=$(git show "$ref:.sdd/project.md" 2>/dev/null) || contract=''
-    fuente=$ref
+    ref=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)
+    if [ -z "$ref" ]; then
+      def=$(git ls-remote --symref origin HEAD 2>/dev/null | sed -n 's|^ref: refs/heads/\(.*\)[[:space:]]HEAD$|\1|p' | head -n 1)
+      if [ -n "$def" ] && git rev-parse -q --verify "refs/remotes/origin/$def" >/dev/null 2>&1; then ref="origin/$def"; fi
+    fi
+    if [ -n "$ref" ]; then
+      contract=$(git show "$ref:.chiche/project.md" 2>/dev/null) || contract=$(git show "$ref:.sdd/project.md" 2>/dev/null) || contract=''
+      fuente=$ref
+    else
+      fuente='origin (default sin resolver)'; aviso="$aviso aviso: origin sin branch default resoluble: rige supervised (A1) y no se lee el working tree;"
+    fi
   else
     contract=$(cat "$root/.chiche/project.md" 2>/dev/null) || contract=$(cat "$root/.sdd/project.md" 2>/dev/null) || contract=''
     fuente='working tree'; aviso="$aviso aviso: nivel leído del working tree: sin remote;"
   fi
+  contract=$(printf '%s\n' "$contract" | tr -d '\r')
   section=$(printf '%s\n' "$contract" | sed -n '/^## Autonomy$/,$p' | sed -n '2,${/^## /q;p;}')
   if [ -z "$section" ]; then
     if printf '%s\n' "$contract" | grep -q '^## Limites$'; then aviso="$aviso aviso: contrato sin ## Autonomy: rigen sus ## Limites; corré chiche-init --update;"
@@ -56,7 +69,8 @@ En Codex no hay subagentes: con `unattended` (A3) el run corre inline en esta se
     else aviso="$aviso aviso: contrato sin ## Autonomy: rige supervised (A1); corré chiche-init --update;"; fi
     [ -n "$pick" ] || pick=a1
   else
-    stop=$(printf '%s\n' "$section" | sed -n '/^| *Action *| *Pattern *| *Reason *|/,$p' | sed -n '3,$p' | grep '^|')
+    stop=$(printf '%s\n' "$section" | sed -n '/^| *Action *| *Pattern *| *Reason *|/,$p' | sed -n '3,$p' | sed -n '/^|/!q;p')
+    if [ -z "$stop" ]; then legible=0; aviso="$aviso aviso: ## Autonomy sin stop list legible (sin el header | Action | Pattern | Reason | o sin filas);"; fi
     if [ -z "$pick" ] && [ "$stage" = none ]; then pick=a1
     elif [ -z "$pick" ]; then
       row=$(printf '%s\n' "$section" | grep -E "^\|[[:space:]]*$stage[[:space:]]*\|" | head -n 1)
@@ -66,15 +80,14 @@ En Codex no hay subagentes: con `unattended` (A3) el run corre inline en esta se
         reh=$(printf '%s\n' "$row" | cut -d'|' -f5 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
         case $pick in a1|supervised) ;; a2|plan-approved|a3|unattended) case $reh in rehearsed\ *) ;; *) aviso="$aviso aviso: fila $stage sin ensayo ($reh): rige supervised (A1);"; pick=a1 ;; esac ;; *) aviso="$aviso aviso: fila $stage con nivel desconocido ($pick): rige supervised (A1);"; pick=a1 ;; esac
       fi
+      if [ "$legible" -eq 0 ] && [ "$pick" != a1 ]; then aviso="$aviso aviso: sin stop list legible el nivel del contrato cae a supervised (A1);"; pick=a1; fi
     fi
   fi
-  [ "$src" = '--autonomy' ] && [ -z "$flag" ] && src=$fuente
+  if [ -n "$flag" ]; then src='--autonomy'; else src=$fuente; fi
   case $pick in
     a1|supervised) nivel='supervised (A1)' ;;
     a2|plan-approved) nivel='plan-approved (A2)' ;;
     a3|unattended) nivel='unattended (A3)' ;;
-    a0|manual|a4|auto-land|a5|auto-deploy) echo "--autonomy $flag: no soportado todavía (v1 honra A1–A3)" >&2; exit 2 ;;
-    *) echo "--autonomy $flag: valor inválido; válidos: supervised (A1), plan-approved (A2), unattended (A3)" >&2; exit 2 ;;
   esac
   [ -n "$aviso" ] && echo "${aviso# }" | sed 's/;$//' >&2
   echo "nivel efectivo: $nivel, leído de $src"
@@ -85,7 +98,7 @@ En Codex no hay subagentes: con `unattended` (A3) el run corre inline en esta se
 )
 ```
 
-El comando termina con exit 2 ante un nivel no soportado o inválido y el skill aborta ahí; con exit 0 imprime la traza y una línea `parada:` por cada fila de la stop list, e ignora con aviso una fila sin `Pattern`.
+El comando termina con exit 2 ante un nivel no soportado o inválido, antes de tocar la red, y el skill aborta ahí; con exit 0 imprime la traza y una línea `parada:` por cada fila de la stop list, e ignora con aviso una fila sin `Pattern`.
 <!-- autonomy-resolve:end -->
 
 <!-- chiche-run-flow:start -->
@@ -330,7 +343,7 @@ Es una fase post-run y opt-in: no cambia el criterio de terminado de la spec. Si
 9. **Respuesta y resolución**: después de un push exitoso y evidencia verde, responder cada thread inline atendido con la disposición, commit y verificación, y recién entonces resolver ese thread mediante GitHub. Para findings generales sin thread, publicar un único resumen deduplicado. Un finding discutido, bloqueado o sin evidencia queda abierto; no resolverlo para silenciarlo. Toda escritura es idempotente por ID de feedback: ante timeout o resultado ambiguo, inspeccionar antes de reintentar para no duplicar respuestas.
 10. **Rearmar baseline y continuar**: tras las escrituras, refrescar el snapshot completo e incorporar las respuestas propias y cambios de resolución antes de reanudar el polling, evitando que el agente se detecte a sí mismo como feedback nuevo. Volver al paso 4 y seguir por nuevos lotes hasta que el PR quede aprobado sin findings accionables abiertos, se cierre/mergee, el usuario cancele, haya un error permanente o aparezca un bloqueo que requiera decisión. Limpiar el worktree al terminar si está limpio (`git worktree unlock` y después `git worktree remove`); si no, conservarlo bloqueado y reportarlo. Si el worktree ya no existe porque `$chiche-land` lo removió tras el merge, es una salida normal y no se reintenta.
 
-**Por nivel.** Con `supervised` (A1) rige el menú del paso 2. Con `plan-approved` (A2) no se pregunta: se lanza `Code review` (con la rama de este harness) y la corrida termina sin esperar; los findings los lee el humano. Con `unattended` (A3) no se pregunta: se ejecutan `Code review` y `Resolver feedback automáticamente` con tope de 2 ciclos de corrección; al tercer lote de feedback se dejan los threads abiertos y se reporta. Corre en el mismo agente que corrió el run (el `implementer` delegado, o la sesión con `--inline`); el lanzador solo releva. Sin `.github/workflows/claude-review.yml`, el review corre en ese mismo agente con el code review nativo (`$code-review <PR>` sobre el PR), sin lanzar otro subagente. El snapshot del paso 1 y la conservación del worktree aplican también en A3. La espera tiene tope: 30 minutos sin feedback nuevo terminan el seguimiento con `SEGUIMIENTO DE FEEDBACK DETENIDO` y limpian el worktree.
+**Por nivel.** Con `supervised` (A1) rige el menú del paso 2. Con `plan-approved` (A2) no se pregunta: se lanza `Code review` (con la rama de este harness) y la corrida termina sin esperar; los findings los lee el humano. Con `unattended` (A3) no se pregunta: se ejecutan `Code review` y `Resolver feedback automáticamente` con tope de 2 ciclos de corrección; al tercer lote de feedback se dejan los threads abiertos y se reporta. Corre en el mismo agente que corrió el run (el `implementer` delegado, o la sesión con `--inline`); el lanzador solo releva. Sin `.github/workflows/claude-review.yml`, el review corre en ese mismo agente con el code review nativo (`$code-review <PR>` sobre el PR), sin lanzar otro subagente. El snapshot del paso 1 y la conservación del worktree aplican también en A3. La espera tiene tope: 30 minutos sin feedback nuevo terminan el seguimiento: `Feedback resuelto` si todo finding válido quedó atendido y `SEGUIMIENTO DE FEEDBACK DETENIDO` solo con trabajo pendiente; al cortar por el tope de 2 ciclos se emite `SEGUIMIENTO DE FEEDBACK DETENIDO` con los threads abiertos listados. En los dos casos se limpia el worktree si está limpio.
 
 Al salir, emitir `Feedback resuelto` solo si todo finding válido detectado quedó atendido y no hay bloqueos; ante cancelación con trabajo pendiente, error permanente o decisión humana requerida, usar `SEGUIMIENTO DE FEEDBACK DETENIDO`. En ambos casos listar lotes procesados, findings corregidos/descartados/bloqueados, commits y push, verificaciones, threads resueltos/abiertos, motivo de salida y estado del worktree. Una interrupción durante una corrección debe incluir cambios pendientes y cómo reanudar; nunca presentarla como lote resuelto.
 
