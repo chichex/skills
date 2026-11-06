@@ -220,6 +220,9 @@ Con EXACTAMENTE esta estructura:
 <!-- Generada por /chiche-spec el <fecha>. Fuente: <pedido libre | issue #NN | grill <ref>>. Estado: <aprobada|draft> -->
 <!-- Chiche-Tracking: version=2; type=spec; state=<draft|approved>; issue=<#NN|owner/repo#NN|none>; grill=<ref|none>; superseded-by=none -->
 
+## Qué hace esto
+<qué cambia para el usuario, en lenguaje llano: sin rutas ni líneas de código y con un ejemplo; el largo sigue al alcance>
+
 ## Contexto
 <por que existe el pedido + que hay en el codigo hoy; 2-4 lineas con referencias reales>
 
@@ -258,6 +261,24 @@ el protocolo de prueba paso a paso>
 <[ASSUMED] riesgosos, dependencias, flakiness conocida, [NEEDS-INPUT] pendientes,
 conflictos con politicas de generacion del contrato (tamaño, coverage, deps)>
 ```
+
+<!-- chiche-spec-readability:start -->
+### Qué hace esto
+
+Toda spec abre con `## Qué hace esto`, antes de `## Contexto`: quien la lee entiende de qué va sin abrir un archivo. «Usuario» es quien usa el producto que la spec cambia. La vara:
+
+- **Hoy y después.** Dice qué pasa hoy y qué cambia para quien usa el producto.
+- **Lenguaje llano.** Sin rutas de archivos, sin `archivo:línea` y sin conteos de ocurrencias del código. Los nombres que el usuario escribe o ve (comandos, flags, pantallas, secciones) sí van.
+- **Un ejemplo.** Trae al menos un ejemplo concreto.
+- **Largo según el alcance.** El largo sigue al alcance: dos a cuatro frases en una spec de una capa; una tabla o subtítulos en negrita en una de varias capas.
+- **Cambio interno.** Si el cambio no se ve desde afuera (un refactor, CI, un gate), lo dice y cuenta qué gana quien mantiene el repo.
+- **Sin alcance nuevo.** No agrega alcance ni decisiones: todo lo que afirma lo cubre un CA o `## Fuera de alcance`, y las decisiones siguen en `## Inferencias`.
+- **Siempre.** Es obligatoria en toda spec, con cualquier fuente (pedido libre, issue o grill) y en cualquier nivel de autonomía.
+
+**Reescritura.** Cuando `/chiche-spec` reescribe una spec que no tiene la sección, la agrega; y si la reescritura cambia algo que la sección afirma (CAs, alcance), actualiza la sección en la misma pasada. Reescribe, por ejemplo, al re-correr sobre el mismo pedido (Fase 2, punto 4), con `Solicitar cambios`, con `--triage-route update-existing-spec`, con `--triage-route audit-existing-spec` o con una ruta de spec.
+
+**Referencias internas.** Dentro de una spec, las referencias internas (inferencias, capas, decisiones del handoff) no llevan numeral: `inferencia 7`, `capa 2`, `decisión 4`, nunca `inferencia #7`. `#NN` queda solo para issues y PRs, porque GitHub convierte un numeral seguido de un número, fuera del código, en un link al issue o PR con ese número, que no tiene nada que ver con la referencia. La columna `#` de la tabla de inferencias no cambia.
+<!-- chiche-spec-readability:end -->
 
 <!-- chiche-spec-delivery:start -->
 ### Plan de entrega
@@ -393,6 +414,7 @@ Después del reporte, el menú final de "Flujo sin fricción" (solo en A1).
 - Escribir criterios de aceptación observables: paso/no paso sin interpretación.
 - Ser idempotente: re-correr sobre el mismo pedido actualiza la spec existente y upsertea en su lugar su único marker, `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`, no crea otra copia y nunca se agrega otro marker.
 - Emitir el marker `Chiche-Tracking` v2 en toda spec nueva y preservar la referencia al issue heredada del pedido o del grill de origen.
+- Abrir toda spec con `## Qué hace esto`, según la vara de «Qué hace esto»: qué cambia para el usuario, en lenguaje llano y con un ejemplo; al reescribir una spec, agregarla si falta y actualizarla si cambia algo que afirma.
 - Terminar con el menú final (solo en A1): publicar primero, preguntar después.
 
 ## MUST NOT DO
