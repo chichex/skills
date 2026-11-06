@@ -782,7 +782,7 @@ const SDD_SPEC_READABILITY_DOCTRINE = [
 	/`inferencia 7`[\s\S]*`capa 2`[\s\S]*`decisión 4`[\s\S]*nunca `inferencia #7`/,
 	/`#NN` queda solo para issues y PRs[\s\S]*GitHub[\s\S]*link/,
 	/columna `#` de la tabla de inferencias no cambia/,
-];
+].map((pattern) => new RegExp(pattern.source, "i"));
 
 const INTERNAL_NUMERAL = /\b(?:inferencias?|capas?|decisi[oó]n(?:es)?|CAs?)\s+#\d+/gi;
 const NUMERAL_COUNTEREXAMPLE = "`inferencia #7`";
