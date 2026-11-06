@@ -740,6 +740,11 @@ export function queHaceEstoTemplateProblems(template: string): string[] {
 		problems.push(`${QUE_HACE_ESTO} no es el primer heading de nivel 2: antes va \`${headings[0]?.text ?? ""}\``);
 		return problems;
 	}
+	// `parseSddArtifact` lee el marker solo en el preámbulo, antes del primer `##`: la sección va después de los dos comentarios.
+	if (markerIndex >= 0 && section.index < markerIndex) {
+		problems.push(`${QUE_HACE_ESTO} va antes del marker Chiche-Tracking: tiene que ir después de los dos comentarios, porque el marker se lee solo antes del primer \`##\``);
+		return problems;
+	}
 	const between = markerIndex < 0 ? [] : lines.slice(markerIndex + 1, section.index).filter((line) => line.trim() !== "");
 	if (between.length > 0) {
 		problems.push(`hay \`${between[0]}\` entre el marker y ${QUE_HACE_ESTO}: va inmediatamente después de los dos comentarios`);
@@ -774,23 +779,29 @@ const SDD_SPEC_READABILITY_DOCTRINE = [
 	/no agrega alcance ni decisiones[\s\S]*lo cubre un CA o `## Fuera de alcance`[\s\S]*decisiones siguen en `## Inferencias`/,
 	// CA-2 (g): obligatoria.
 	/obligatoria en toda spec[\s\S]*pedido libre, issue o grill[\s\S]*cualquier nivel de autonomía/,
-	// CA-3: reescritura.
-	/reescribe una spec que no tiene la sección[\s\S]*`Solicitar cambios`[\s\S]*`--triage-route update-existing-spec`[\s\S]*`--triage-route audit-existing-spec`[\s\S]*ruta de spec[\s\S]*la agrega/,
-	/si la reescritura cambia los CAs[\s\S]*actualiza la sección en la misma pasada/,
+	// CA-3: reescritura. Los disparadores son ejemplos (la lista no es exhaustiva) y la sección se actualiza
+	// si cambia algo que afirma, no solo los CAs (review de #118).
+	/reescribe una spec que no tiene la sección, la agrega/,
+	/por ejemplo[\s\S]*re-correr sobre el mismo pedido \(Fase 2, punto 4\)[\s\S]*`Solicitar cambios`[\s\S]*`--triage-route update-existing-spec`[\s\S]*`--triage-route audit-existing-spec`[\s\S]*ruta de spec/,
+	/si la reescritura cambia algo que la sección afirma \(CAs, alcance\)[\s\S]*actualiza la sección en la misma pasada/,
 	// CA-4: referencias sin numeral.
 	/referencias internas \(inferencias, capas, decisiones del handoff\)[\s\S]*no llevan numeral/,
 	/`inferencia 7`[\s\S]*`capa 2`[\s\S]*`decisión 4`[\s\S]*nunca `inferencia #7`/,
-	/`#NN` queda solo para issues y PRs[\s\S]*GitHub[\s\S]*link/,
+	// El motivo es exacto: GitHub no linkea dentro del código y linkea al issue o PR con ese número (review de #118).
+	/`#NN` queda solo para issues y PRs[\s\S]*GitHub convierte un numeral seguido de un número, fuera del código, en un link al issue o PR con ese número/,
 	/columna `#` de la tabla de inferencias no cambia/,
 ].map((pattern) => new RegExp(pattern.source, "i"));
 
-const INTERNAL_NUMERAL = /\b(?:inferencias?|capas?|decisi[oó]n(?:es)?|CAs?)\s+#\d+/gi;
+// Referencia interna con numeral: un sustantivo de referencia interna seguido de `#` y un número, con o sin espacio,
+// o de un placeholder (`#N`, `#<n>`) que un agente copiaría literal. `#NN` (issue o PR) y `issue #42` no entran.
+const INTERNAL_NUMERAL = /\b(?:inferencias?|capas?|decisi[oó]n(?:es)?|CAs?|pasos?|filas?|preguntas?|riesgos?|criterios?)\s*#(?:\d+|N\b|<)/gi;
 const NUMERAL_COUNTEREXAMPLE = "`inferencia #7`";
 
 export function internalNumeralProblems(markdown: string): string[] {
 	const block = markdown.match(/<!-- chiche-spec-readability:start -->\n[\s\S]*?\n<!-- chiche-spec-readability:end -->/)?.[0];
 	// El bloque nombra el contraejemplo una vez: es la única referencia con numeral que puede escribir.
-	const cleaned = block === undefined ? markdown : markdown.replace(block, block.replace(NUMERAL_COUNTEREXAMPLE, ""));
+	// El reemplazo es una función: con un string, un `$&` o `$'` del bloque se interpretaría como patrón especial.
+	const cleaned = block === undefined ? markdown : markdown.replace(block, () => block.replace(NUMERAL_COUNTEREXAMPLE, ""));
 	return [...cleaned.matchAll(INTERNAL_NUMERAL)].map((match) => `referencia interna con numeral: \`${match[0]}\``);
 }
 
@@ -811,6 +822,7 @@ test("issue #111 CA-2 y CA-3: chiche-spec fija la vara de `## Qué hace esto` y 
 		for (const expected of SDD_SPEC_READABILITY_DOCTRINE) {
 			assert.match(doctrine, expected, `${harness}/chiche-spec/SKILL.md no declara ${expected}`);
 		}
+		assert.doesNotMatch(doctrine, /convierte cualquier `#`/, `${harness}/chiche-spec/SKILL.md exagera el motivo: GitHub no linkea dentro del código`);
 		const lines = markdown.split("\n");
 		const template = censusTemplates(markdown).markerFences[0];
 		assert.ok(template, `${harness}/chiche-spec/SKILL.md sin template de spec`);
@@ -825,7 +837,7 @@ test("issue #111 CA-2 y CA-3: chiche-spec fija la vara de `## Qué hace esto` y 
 		const mustDo = markdown.match(/## MUST DO\n([\s\S]*?)(?=\n## )/)?.[1] ?? "";
 		assert.match(
 			mustDo,
-			/^- Abrir toda spec con `## Qué hace esto`[^\n]*según la vara de «Qué hace esto»[^\n]*lenguaje llano[^\n]*ejemplo/m,
+			/^- Abrir toda spec con `## Qué hace esto`[^\n]*según la vara de «Qué hace esto»[^\n]*lenguaje llano[^\n]*ejemplo[^\n]*agregarla si falta[^\n]*actualizarla/m,
 			`${harness}/chiche-spec/SKILL.md ## MUST DO no manda abrir toda spec con ## Qué hace esto`,
 		);
 		byHarness.set(harness, [normalizeInvocations(doctrine, prefixes[harness])]);
@@ -899,6 +911,15 @@ test("autotest: queHaceEstoTemplateProblems acepta el template canónico y exige
 		`otro heading entre el marker y la sección: ${otroHeading.join(" | ")}`,
 	);
 
+	// `parseSddArtifact` lee el marker solo antes del primer `##`: una sección arriba de los dos comentarios deja la spec sin marker.
+	const antesDeLosComentarios = queHaceEstoTemplateProblems(
+		[SYNTHETIC_HEAD[0], "", ...SYNTHETIC_SECTION, SYNTHETIC_HEAD[1], SYNTHETIC_HEAD[2], "", ...SYNTHETIC_CONTEXT, ...SYNTHETIC_TAIL].join("\n"),
+	);
+	assert.ok(
+		antesDeLosComentarios.some((problem) => /va antes del marker/.test(problem)),
+		`sección antes de los dos comentarios: ${antesDeLosComentarios.join(" | ") || "sin diagnóstico"}`,
+	);
+
 	const comentarioExtra = queHaceEstoTemplateProblems(syntheticTemplate(["<!-- nota -->", ""], SYNTHETIC_SECTION, SYNTHETIC_CONTEXT));
 	assert.ok(comentarioExtra.some((problem) => /entre el marker y ## Qué hace esto/.test(problem)), `comentario extra: ${comentarioExtra.join(" | ")}`);
 
@@ -919,6 +940,18 @@ test("autotest: internalNumeralProblems deja pasar el contraejemplo del bloque y
 	assert.equal(internalNumeralProblems(`${limpio}Ver inferencia #3 y la Capa #2.\n`).length, 2);
 	assert.equal(internalNumeralProblems(`${block(`nunca ${NUMERAL_COUNTEREXAMPLE} ni ${NUMERAL_COUNTEREXAMPLE}`)}\n`).length, 1);
 	assert.equal(internalNumeralProblems("La decisión #4 y los CA #1.\n").length, 2);
+	// Otros sustantivos de referencia interna.
+	assert.equal(internalNumeralProblems("El paso #2, la fila #3, la pregunta #1, el riesgo #2 y el criterio #4.\n").length, 5);
+	// Forma sin espacio y placeholders que un agente copiaría literal.
+	assert.equal(internalNumeralProblems("Va inferencia#7 y capa#2.\n").length, 2);
+	assert.equal(internalNumeralProblems("Placeholders: inferencia #N, capa #<n> y decisión #N.\n").length, 3);
+	// Los issues y PRs reales, y el placeholder `#NN` de issue, no se marcan.
+	assert.deepEqual(internalNumeralProblems("El issue #111, el PR #118, un `#NN` y la fuente `issue #NN` son reales.\n"), []);
+	// Un `$` en el bloque no es un patrón de reemplazo: el texto limpio no se corrompe.
+	assert.deepEqual(
+		internalNumeralProblems(`Ver el issue #42.\n\n${block(`Va \`inferencia 7\`, nunca ${NUMERAL_COUNTEREXAMPLE}. Con Codex: $& $' $$ y $\`.`)}\n`),
+		[],
+	);
 });
 
 test("chiche-run entrega un stack de PRs por capas con preflight, verificación por capa y force acotado en cada harness", async () => {

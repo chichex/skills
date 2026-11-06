@@ -272,9 +272,9 @@ Toda spec abre con `## Qué hace esto`, antes de `## Contexto`: quien la lee ent
 - **Sin alcance nuevo.** No agrega alcance ni decisiones: todo lo que afirma lo cubre un CA o `## Fuera de alcance`, y las decisiones siguen en `## Inferencias`.
 - **Siempre.** Es obligatoria en toda spec, con cualquier fuente (pedido libre, issue o grill) y en cualquier nivel de autonomía.
 
-**Reescritura.** Cuando `/chiche-spec` reescribe una spec que no tiene la sección (`Solicitar cambios`, `--triage-route update-existing-spec`, `--triage-route audit-existing-spec` o una ruta de spec), la agrega; y si la reescritura cambia los CAs, actualiza la sección en la misma pasada.
+**Reescritura.** Cuando `/chiche-spec` reescribe una spec que no tiene la sección, la agrega; y si la reescritura cambia algo que la sección afirma (CAs, alcance), actualiza la sección en la misma pasada. Reescribe, por ejemplo, al re-correr sobre el mismo pedido (Fase 2, punto 4), con `Solicitar cambios`, con `--triage-route update-existing-spec`, con `--triage-route audit-existing-spec` o con una ruta de spec.
 
-**Referencias internas.** Dentro de una spec, las referencias internas (inferencias, capas, decisiones del handoff) no llevan numeral: `inferencia 7`, `capa 2`, `decisión 4`, nunca `inferencia #7`. `#NN` queda solo para issues y PRs, porque GitHub convierte cualquier `#` seguido de un número en un link a un issue o PR que no tiene nada que ver. La columna `#` de la tabla de inferencias no cambia.
+**Referencias internas.** Dentro de una spec, las referencias internas (inferencias, capas, decisiones del handoff) no llevan numeral: `inferencia 7`, `capa 2`, `decisión 4`, nunca `inferencia #7`. `#NN` queda solo para issues y PRs, porque GitHub convierte un numeral seguido de un número, fuera del código, en un link al issue o PR con ese número, que no tiene nada que ver con la referencia. La columna `#` de la tabla de inferencias no cambia.
 <!-- chiche-spec-readability:end -->
 
 <!-- chiche-spec-delivery:start -->
@@ -411,7 +411,7 @@ Después del reporte, el menú final de "Flujo sin fricción" (solo en A1).
 - Escribir criterios de aceptación observables: pasó/no pasó sin interpretación.
 - Ser idempotente: re-correr sobre el mismo pedido actualiza la spec existente y upsertea en su lugar su único marker, `SDD-Tracking: version=1` o `Chiche-Tracking: version=2`, no crea otra copia y nunca se agrega otro marker.
 - Emitir el marker `Chiche-Tracking` v2 en toda spec nueva y preservar la referencia al issue heredada del pedido o del grill de origen.
-- Abrir toda spec con `## Qué hace esto`, según la vara de «Qué hace esto»: qué cambia para el usuario, en lenguaje llano y con un ejemplo; al reescribir una spec que no la tiene, agregarla.
+- Abrir toda spec con `## Qué hace esto`, según la vara de «Qué hace esto»: qué cambia para el usuario, en lenguaje llano y con un ejemplo; al reescribir una spec, agregarla si falta y actualizarla si cambia algo que afirma.
 - Terminar con el menú final (solo en A1): publicar primero, preguntar después.
 
 ## MUST NOT DO
